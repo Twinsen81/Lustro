@@ -1,5 +1,8 @@
 <p align="center">
-  <img src="art/lustro-wordmark.png" alt="Lustro" width="420">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="art/lustro-wordmark-dark.png">
+    <img src="art/lustro-wordmark.png" alt="Lustro" width="420">
+  </picture>
 </p>
 
 <p align="center"><b>A browser-based, agent-friendly debugging library for Android.</b></p>
