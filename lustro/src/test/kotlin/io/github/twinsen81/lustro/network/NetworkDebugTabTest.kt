@@ -131,6 +131,30 @@ class NetworkDebugTabTest {
     }
 
     @Test
+    fun `sync rejects an invalid entry with 400 and leaves the rule set untouched`() {
+        val tab = tab()
+        tab.handle(post("rules", """{"urlPattern":"/keep"}"""))
+        // One valid, one blank-urlPattern entry: declarative sync is all-or-nothing,
+        // so the whole batch is rejected with a 400 and the existing set is untouched
+        // (never a silent partial apply — the OpenAPI promises set == posted array).
+        val res =
+            tab.handle(post("rules/_/sync", """[{"urlPattern":"/a"},{"name":"bad"}]"""))!!
+        assertEquals(400, res.status)
+        assertEquals("urlPattern", res.json().getString("field"))
+        val items = tab.handle(get("rules"))!!.json().getJSONArray("items")
+        assertEquals(1, items.length())
+        assertEquals("/keep", items.getJSONObject(0).getString("urlPattern"))
+    }
+
+    @Test
+    fun `sync rejects a non-object entry with 400`() {
+        val tab = tab()
+        val res = tab.handle(post("rules/_/sync", """[{"urlPattern":"/a"}, 42]"""))!!
+        assertEquals(400, res.status)
+        assertEquals("bad_request", res.json().getString("error"))
+    }
+
+    @Test
     fun `delete and toggle rule routes`() {
         val tab = tab()
         val add = tab.handle(post("rules", """{"urlPattern":"/x"}"""))!!.json()

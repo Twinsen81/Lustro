@@ -1,5 +1,5 @@
 {
-  "transactionId": "tx_a1b2c3d4",
+  "transactionId": null,
   "statusCode": 200,
   "ok": true
 }

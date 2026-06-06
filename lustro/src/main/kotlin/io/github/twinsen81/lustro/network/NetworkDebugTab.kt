@@ -319,9 +319,17 @@ public class NetworkDebugTab private constructor(
     private fun handleSyncRules(body: String?): DebugResponse =
         try {
             val arr = JSONArray(body ?: "[]")
-            val rules = ArrayList<MockRuleImpl>()
+            val rules = ArrayList<MockRuleImpl>(arr.length())
             for (i in 0 until arr.length()) {
-                arr.optJSONObject(i)?.let(::ruleFromJsonOrNull)?.let(rules::add)
+                // Declarative sync is all-or-nothing: the OpenAPI promises the
+                // resulting set equals the posted array, so a malformed entry must
+                // reject the whole batch with a 400 BEFORE the store is touched —
+                // never silently drop it — mirroring the single-rule add validation.
+                val obj = arr.optJSONObject(i)
+                    ?: return DebugResponse.error("rule at index $i is not a JSON object")
+                val rule = ruleFromJsonOrNull(obj)
+                    ?: return DebugResponse.error("rule at index $i is missing urlPattern", field = "urlPattern")
+                rules.add(rule)
             }
             store.replaceMockRules(rules)
             DebugResponse.json { append("{\"status\":\"ok\",\"count\":${rules.size}}") }
@@ -466,8 +474,10 @@ public class NetworkDebugTab private constructor(
             val result = activeSender.send(sendRequest)
             DebugResponse.json {
                 append("{")
-                // The replayed request flows through the interceptor and is captured
-                // as its own transaction; we surface the outcome inline too.
+                // transactionId is null: the synchronous send path does not correlate
+                // the dispatched call to a captured transaction. The replay is recorded
+                // as its own row only when the configured sender client carries the
+                // Lustro interceptor; either way the outcome is surfaced inline below.
                 append("\"transactionId\":null,")
                 append("\"statusCode\":").append(result.statusCode).append(",")
                 append("\"ok\":").append(result.isSuccess)

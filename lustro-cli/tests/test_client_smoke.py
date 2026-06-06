@@ -125,7 +125,9 @@ def test_send_post(server):
         "/api/v1/network/send", json_body={"url": "https://x/y", "method": "GET"}
     )
     assert result["ok"] is True
-    assert result["transactionId"] == "tx_a1b2c3d4"
+    # The synchronous send path does not correlate the replay to a captured
+    # transaction, so the server emits transactionId:null (schema allows null).
+    assert result["transactionId"] is None
 
 
 def test_query_params_encoded(server):
