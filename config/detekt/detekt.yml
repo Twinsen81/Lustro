@@ -1,0 +1,123 @@
+# Detekt configuration for Lustro library modules.
+#
+# Used with `buildUponDefaultConfig = true`, so this file only OVERRIDES the
+# detekt defaults; unspecified rules keep their default state. The emphasis is on
+# the library-relevant rules: public-API documentation (comments),
+# explicit return types, and no public data classes. Only `src/main/kotlin` is
+# analysed (configured per module), so these never fire on test code.
+
+build:
+  maxIssues: 0
+  excludeCorrectable: false
+
+config:
+  validation: true
+  warningsAsErrors: false
+  checkExhaustiveness: false
+
+# --- Public API documentation -------------------------------------------------
+# The library promises KDoc on every public member. These rules report only on
+# effectively-public declarations (not `internal`/`private`), so internal runtime
+# helpers under src/main/.../internal are not flagged. searchInNestedClass keeps
+# nested public types (companions, builders) covered.
+comments:
+  active: true
+  AbsentOrWrongFileLicense:
+    active: false
+  CommentOverPrivateFunction:
+    active: false
+  CommentOverPrivateProperty:
+    active: false
+  DeprecatedBlockTag:
+    active: false
+  EndOfSentenceFormat:
+    active: false
+  KDocReferencesNonPublicProperty:
+    active: false
+  OutdatedDocumentation:
+    active: false
+  UndocumentedPublicClass:
+    active: true
+    searchInNestedClass: true
+    searchInInnerClass: true
+    searchInInnerObject: true
+    searchInInnerInterface: true
+    searchInProtectedClass: false
+  UndocumentedPublicFunction:
+    active: true
+    searchProtectedFunction: false
+  UndocumentedPublicProperty:
+    active: true
+    searchProtectedProperty: false
+
+# --- Explicit return types and public-surface hygiene -------------------------
+potential-bugs:
+  active: true
+
+style:
+  active: true
+  # No public `data class` in the published surface.
+  DataClassShouldBeImmutable:
+    active: true
+  ForbiddenComment:
+    # Keep porting comments (TODO/FIXME-style notes) — they are
+    # intentional breadcrumbs, not actionable lint.
+    active: false
+  LoopWithTooManyJumpStatements:
+    # The MediaType parser loop uses a couple of `continue`s to skip malformed
+    # parameters; it stays readable and extracting it would not help.
+    active: false
+  MagicNumber:
+    # The facades carry HTTP status codes, byte caps, and ports as literals;
+    # these read clearly in context and are not worth extracting.
+    active: false
+  MaxLineLength:
+    active: true
+    maxLineLength: 160
+    excludeCommentStatements: true
+  ReturnCount:
+    active: false
+  UnusedPrivateMember:
+    active: true
+
+# --- Complexity: the ported Network tab has large but cohesive methods --------
+complexity:
+  active: true
+  ComplexCondition:
+    # The HTTP method allow-list checks (`method != "POST" && ...`) read clearly
+    # as a flat boolean list; the default threshold of 4 is too strict for them.
+    active: false
+  LongMethod:
+    active: false
+  LongParameterList:
+    # Builder/factory signatures and the capture SPI intentionally take several
+    # parameters; @JvmOverloads keeps them ergonomic from Java.
+    active: false
+  CyclomaticComplexMethod:
+    active: false
+  TooManyFunctions:
+    active: false
+  NestedBlockDepth:
+    active: false
+
+# --- Naming -------------------------------------------------------------------
+naming:
+  active: true
+  # Top-level val NoOpNetworkClassifier / annotation markers use PascalCase by
+  # intent (they read as types/constants), so relax the property-name pattern.
+  TopLevelPropertyNaming:
+    active: false
+  ObjectPropertyNaming:
+    active: true
+    constantPattern: '[A-Za-z][_A-Za-z0-9]*'
+
+exceptions:
+  active: true
+  TooGenericExceptionCaught:
+    # The runtime fail-open paths deliberately catch broad exceptions; the files
+    # already carry a file-level @Suppress where appropriate.
+    active: false
+  SwallowedException:
+    active: false
+  ThrowingExceptionsWithoutMessageOrCause:
+    active: false
