@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- The debug server listens on a local socket. Loopback-bound by default. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+</manifest>
