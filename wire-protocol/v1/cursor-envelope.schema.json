@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://twinsen81.github.io/Lustro/wire-protocol/v1/cursor-envelope.schema.json",
+  "title": "Cursor envelope",
+  "description": "Live-polling envelope for observable endpoints. The cursor is opaque; clients echo the last cursor on the next poll and treat any unknown status value as \"reset\". This generic envelope intentionally permits additional properties so observable endpoints may extend it with endpoint-specific data (e.g. the Network tab adds a top-level \"state\" object); a tab schema may pin those extensions.",
+  "type": "object",
+  "required": ["cursor", "status"],
+  "properties": {
+    "cursor": {
+      "type": "string",
+      "description": "Opaque cursor token. Echo it back on the next poll. Every server-side mutation advances the cursor."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["delta", "unchanged", "reset"],
+      "description": "delta = items carry the authoritative current list (omit items => unchanged); unchanged = no change, items omitted; reset = replace the whole list with items."
+    },
+    "items": {
+      "type": "array",
+      "description": "Present for reset (and delta when the list changed). Element shape is endpoint-specific.",
+      "items": {}
+    },
+    "state": {
+      "type": "object",
+      "description": "Optional endpoint-specific observable state (e.g. the Network tab's paused/overwriteMode/throttleDelayMs). Tab schemas pin the exact shape."
+    }
+  }
+}

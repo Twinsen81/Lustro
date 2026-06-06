@@ -1,0 +1,7 @@
+{
+  "error": "not_found",
+  "message": "No transaction with id tx_9f3c1a8e.",
+  "code": "transaction_not_found",
+  "field": "id",
+  "hint": "Poll GET /api/v1/network/transactions to list current transaction ids."
+}

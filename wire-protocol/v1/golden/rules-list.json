@@ -1,0 +1,30 @@
+{
+  "items": [
+    {
+      "id": "orders-500",
+      "name": "Orders boom",
+      "urlPattern": "/v1/orders",
+      "method": "GET",
+      "statusCode": 500,
+      "responseHeaders": {
+        "Content-Type": "application/json"
+      },
+      "responseBody": "{\"error\":\"boom\"}",
+      "enabled": true,
+      "hitCount": 3
+    },
+    {
+      "id": "users-regex",
+      "name": "Users empty",
+      "urlPattern": "regex:/v1/users/\\d+",
+      "method": null,
+      "statusCode": 200,
+      "responseHeaders": {
+        "Content-Type": "application/json"
+      },
+      "responseBody": "{\"users\":[]}",
+      "enabled": false,
+      "hitCount": 0
+    }
+  ]
+}
