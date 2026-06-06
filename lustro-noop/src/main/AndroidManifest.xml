@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The no-op artifact opens no socket and needs no permissions. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" />
