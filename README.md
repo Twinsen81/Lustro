@@ -85,7 +85,7 @@ val httpClient = OkHttpClient.Builder()
 lustro.start()
 ```
 
-`build()` freezes the tab registry; tabs registered after `start()` are not picked up.
+`start()` freezes the tab registry; tabs registered after `start()` are not picked up.
 `start()` returns a `LustroStatus` (`ENABLED` once armed, `DISABLED` if it cannot start) and is
 idempotent, as is `stop()`.
 

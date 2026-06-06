@@ -44,9 +44,11 @@ public object LustroBootstrap {
      *
      * @param app the application, used for [Lustro.builder] and for the
      *   [SharedPreferencesMockRuleStorage] that persists mock rules.
-     * @param appOkHttpClient the app's OkHttp client; wired into the Network
-     *   tab as the "Send Request" sender so replayed requests flow through the
-     *   same interceptor and show up in the traffic list.
+     * @param appOkHttpClient the app's OkHttp client, wired into the Network tab
+     *   as the "Send Request" sender. The capturing interceptor is installed on a
+     *   separate client built afterwards (see [SampleApplication]), so Send-Request
+     *   replays report their inline outcome but do not appear as new rows in the
+     *   traffic list.
      */
     public fun start(app: Application, appOkHttpClient: OkHttpClient): Interceptor {
         interceptor?.let { return it }

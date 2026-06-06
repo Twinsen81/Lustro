@@ -12,9 +12,11 @@ import okhttp3.RequestBody.Companion.toRequestBody
  * The default [NetworkSender], backed by an OkHttp [OkHttpClient].
  *
  * The runtime invokes [send] off the main thread and blocks for the result; this
- * implementation issues a synchronous OkHttp call. Pass the client whose traffic
- * you want the "Send Request" panel to flow through (e.g. one that already has
- * the Lustro interceptor installed, so replayed requests appear in the list).
+ * implementation issues a synchronous OkHttp call. Replayed requests appear as
+ * their own rows in the traffic list only when [client] carries the Lustro
+ * interceptor — pass such a client if you want that. Otherwise the Send panel
+ * still reports the inline outcome (status, success), but the replay is not
+ * captured as a transaction.
  */
 public class OkHttpSender(
     private val client: OkHttpClient,
