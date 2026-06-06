@@ -1,0 +1,270 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Lustro Network debug tab",
+    "version": "1.0",
+    "description": "Capture, inspect, mock, throttle, and replay HTTP traffic. All routes are token-authenticated (Bearer header or HttpOnly cookie) and live under /api/v1/network. Errors use the shared error envelope."
+  },
+  "servers": [
+    { "url": "/", "description": "The Lustro debug server (loopback by default)." }
+  ],
+  "paths": {
+    "/api/v1/network/transactions": {
+      "get": {
+        "operationId": "listTransactions",
+        "summary": "Poll captured transactions with an opaque cursor.",
+        "description": "Short-polling. Send the last cursor back each call. status=reset returns the full current list; status=delta returns the current list after a change; status=unchanged omits items. Treat unknown statuses as reset. Every mutation (capture, mock, pause, throttle, overwrite, send) advances the cursor.",
+        "parameters": [
+          { "name": "cursor", "in": "query", "required": false, "schema": { "type": "string" }, "description": "Opaque cursor from the previous response. Omit on first poll." },
+          { "name": "search", "in": "query", "required": false, "schema": { "type": "string" }, "description": "Case-insensitive filter over URL, method, and captured bodies." }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cursor envelope.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TransactionCursorEnvelope" } } }
+          },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "413": { "$ref": "#/components/responses/Error" },
+          "503": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/v1/network/transactions/{id}": {
+      "get": {
+        "operationId": "getTransaction",
+        "summary": "Full detail for one captured transaction.",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Transaction detail.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Transaction" } } } },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" },
+          "413": { "$ref": "#/components/responses/Error" },
+          "503": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/v1/network/clear": {
+      "post": {
+        "operationId": "clearTransactions",
+        "summary": "Clear the captured transaction list. Mock rules and settings are preserved.",
+        "responses": { "200": { "$ref": "#/components/responses/Ok" }, "401": { "$ref": "#/components/responses/Error" }, "403": { "$ref": "#/components/responses/Error" }, "413": { "$ref": "#/components/responses/Error" }, "503": { "$ref": "#/components/responses/Error" } }
+      }
+    },
+    "/api/v1/network/rules": {
+      "get": {
+        "operationId": "listMockRules",
+        "summary": "List mock rules.",
+        "responses": {
+          "200": { "description": "Mock rules.", "content": { "application/json": { "schema": { "type": "object", "required": ["items"], "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/MockRule" } } } } } } },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "413": { "$ref": "#/components/responses/Error" },
+          "503": { "$ref": "#/components/responses/Error" }
+        }
+      },
+      "post": {
+        "operationId": "addMockRule",
+        "summary": "Add (or upsert by id) a mock rule.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MockRuleInput" } } } },
+        "responses": {
+          "200": { "description": "Created.", "content": { "application/json": { "schema": { "type": "object", "required": ["status", "id"], "properties": { "status": { "const": "ok" }, "id": { "type": "string" } } } } } },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "413": { "$ref": "#/components/responses/Error" },
+          "503": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/v1/network/rules/_/sync": {
+      "post": {
+        "operationId": "syncMockRules",
+        "summary": "Atomically replace the entire set of mock rules.",
+        "description": "Idempotent: the resulting rule set exactly equals the posted array. The interceptor never observes an empty window during the swap.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/MockRuleInput" } } } } },
+        "responses": {
+          "200": { "description": "Replaced.", "content": { "application/json": { "schema": { "type": "object", "required": ["status", "count"], "properties": { "status": { "const": "ok" }, "count": { "type": "integer" } } } } } },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "413": { "$ref": "#/components/responses/Error" },
+          "503": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/v1/network/rules/delete": {
+      "post": {
+        "operationId": "deleteMockRule",
+        "summary": "Delete a mock rule by id.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["id"], "properties": { "id": { "type": "string" } } } } } },
+        "responses": { "200": { "$ref": "#/components/responses/Ok" }, "400": { "$ref": "#/components/responses/Error" }, "401": { "$ref": "#/components/responses/Error" }, "403": { "$ref": "#/components/responses/Error" }, "413": { "$ref": "#/components/responses/Error" }, "503": { "$ref": "#/components/responses/Error" } }
+      }
+    },
+    "/api/v1/network/rules/toggle": {
+      "post": {
+        "operationId": "toggleMockRule",
+        "summary": "Toggle a mock rule's enabled flag.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["id"], "properties": { "id": { "type": "string" } } } } } },
+        "responses": { "200": { "$ref": "#/components/responses/Ok" }, "400": { "$ref": "#/components/responses/Error" }, "401": { "$ref": "#/components/responses/Error" }, "403": { "$ref": "#/components/responses/Error" }, "413": { "$ref": "#/components/responses/Error" }, "503": { "$ref": "#/components/responses/Error" } }
+      }
+    },
+    "/api/v1/network/pause": {
+      "post": {
+        "operationId": "togglePause",
+        "summary": "Toggle capture pause (capture-only; mocks and throttle still apply while paused).",
+        "responses": { "200": { "description": "New state.", "content": { "application/json": { "schema": { "type": "object", "required": ["status", "paused"], "properties": { "status": { "const": "ok" }, "paused": { "type": "boolean" } } } } } }, "401": { "$ref": "#/components/responses/Error" }, "403": { "$ref": "#/components/responses/Error" }, "413": { "$ref": "#/components/responses/Error" }, "503": { "$ref": "#/components/responses/Error" } }
+      }
+    },
+    "/api/v1/network/overwrite-mode": {
+      "post": {
+        "operationId": "toggleOverwriteMode",
+        "summary": "Toggle overwrite mode (new request evicts earlier completed transactions with the same method + URL path).",
+        "responses": { "200": { "description": "New state.", "content": { "application/json": { "schema": { "type": "object", "required": ["status", "overwriteMode"], "properties": { "status": { "const": "ok" }, "overwriteMode": { "type": "boolean" } } } } } }, "401": { "$ref": "#/components/responses/Error" }, "403": { "$ref": "#/components/responses/Error" }, "413": { "$ref": "#/components/responses/Error" }, "503": { "$ref": "#/components/responses/Error" } }
+      }
+    },
+    "/api/v1/network/throttle": {
+      "post": {
+        "operationId": "setThrottle",
+        "summary": "Set a global pre-request throttle delay (ms).",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "delayMs": { "type": "integer", "minimum": 0 } } } } } },
+        "responses": { "200": { "description": "New delay.", "content": { "application/json": { "schema": { "type": "object", "required": ["status", "delayMs"], "properties": { "status": { "const": "ok" }, "delayMs": { "type": "integer" } } } } } }, "401": { "$ref": "#/components/responses/Error" }, "403": { "$ref": "#/components/responses/Error" }, "413": { "$ref": "#/components/responses/Error" }, "503": { "$ref": "#/components/responses/Error" } }
+      }
+    },
+    "/api/v1/network/send": {
+      "post": {
+        "operationId": "sendRequest",
+        "summary": "Dispatch a request through the configured NetworkSender (synchronous).",
+        "description": "Blocks until the sender returns, within the per-request timeout. Relative URLs resolve against the configured app server base. Self-requests to the debug server's own bind host:port are rejected. Only available when a NetworkSender is configured.",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": {
+            "type": "object",
+            "required": ["url"],
+            "properties": {
+              "url": { "type": "string", "description": "Absolute URL, or relative path resolved against the app server base." },
+              "method": { "type": "string", "default": "GET" },
+              "headers": { "type": "object", "additionalProperties": { "type": "string" } },
+              "body": { "type": "string" }
+            }
+          } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Synchronous send result.",
+            "content": { "application/json": { "schema": {
+              "type": "object",
+              "required": ["ok"],
+              "properties": {
+                "transactionId": { "type": ["string", "null"], "description": "Captured transaction id, when the runtime can correlate it (may be null)." },
+                "statusCode": { "type": ["integer", "null"] },
+                "ok": { "type": "boolean" },
+                "error": { "type": "string" }
+              }
+            } } }
+          },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "description": "No sender configured (Send Request disabled).", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } } },
+          "413": { "$ref": "#/components/responses/Error" },
+          "503": { "$ref": "#/components/responses/Error" },
+          "504": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    }
+  },
+  "components": {
+    "responses": {
+      "Ok": { "description": "Acknowledged.", "content": { "application/json": { "schema": { "type": "object", "required": ["status"], "properties": { "status": { "const": "ok" } } } } } },
+      "Error": { "description": "Error envelope.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } } }
+    },
+    "schemas": {
+      "ErrorEnvelope": {
+        "type": "object",
+        "required": ["error", "message"],
+        "properties": {
+          "error": { "type": "string", "enum": ["bad_request", "unauthorized", "forbidden", "not_found", "method_not_allowed", "payload_too_large", "internal_error", "unavailable", "timeout"], "description": "Machine error type, e.g. bad_request, not_found, timeout." },
+          "message": { "type": "string" },
+          "code": { "type": "string" },
+          "field": { "type": "string" },
+          "hint": { "type": "string" }
+        },
+        "additionalProperties": false
+      },
+      "TransactionCursorEnvelope": {
+        "type": "object",
+        "required": ["cursor", "status"],
+        "properties": {
+          "cursor": { "type": "string", "description": "Opaque cursor token." },
+          "status": { "type": "string", "enum": ["delta", "unchanged", "reset"] },
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/Transaction" } },
+          "state": {
+            "type": "object",
+            "properties": {
+              "paused": { "type": "boolean" },
+              "overwriteMode": { "type": "boolean" },
+              "throttleDelayMs": { "type": "integer" }
+            }
+          }
+        }
+      },
+      "Transaction": {
+        "type": "object",
+        "required": ["id", "method", "url"],
+        "properties": {
+          "id": { "type": "string" },
+          "timestamp": { "type": "string", "description": "HH:mm:ss.SSS local time." },
+          "method": { "type": "string" },
+          "url": { "type": "string", "description": "Redacted at capture time." },
+          "statusCode": { "type": ["integer", "null"] },
+          "durationMs": { "type": ["integer", "null"] },
+          "categories": { "type": "array", "items": { "type": "string" }, "description": "Labels from the configured NetworkClassifier (may be empty)." },
+          "isMocked": { "type": "boolean" },
+          "requestBodyBytes": { "type": ["integer", "null"] },
+          "responseBodyBytes": { "type": ["integer", "null"] },
+          "responseComplete": { "type": "boolean" },
+          "error": { "type": ["string", "null"] },
+          "requestHeaders": { "type": "object", "additionalProperties": { "type": "string" } },
+          "requestBody": { "type": ["string", "null"] },
+          "requestBodyTruncated": { "type": "boolean" },
+          "responseHeaders": { "type": ["object", "null"], "additionalProperties": { "type": "string" } },
+          "responseBody": { "type": ["string", "null"] },
+          "responseBodyTruncated": { "type": "boolean" }
+        }
+      },
+      "MockRule": {
+        "type": "object",
+        "required": ["id", "urlPattern", "statusCode", "enabled"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "urlPattern": { "type": "string", "description": "Substring match, or a regular expression when prefixed with regex:." },
+          "method": { "type": ["string", "null"], "description": "null matches any method." },
+          "statusCode": { "type": "integer" },
+          "responseHeaders": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Headers applied to the mocked response (e.g. Content-Type)." },
+          "responseBody": { "type": "string" },
+          "enabled": { "type": "boolean" },
+          "hitCount": { "type": "integer", "description": "Runtime-only; not persisted." }
+        }
+      },
+      "MockRuleInput": {
+        "type": "object",
+        "required": ["urlPattern"],
+        "properties": {
+          "id": { "type": "string", "description": "Optional; generated when omitted. Supplying a stable id makes the write idempotent." },
+          "name": { "type": "string" },
+          "urlPattern": { "type": "string" },
+          "method": { "type": ["string", "null"] },
+          "statusCode": { "type": "integer", "default": 200 },
+          "responseHeaders": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Headers applied to the mocked response (e.g. Content-Type)." },
+          "responseBody": { "type": "string" },
+          "enabled": { "type": "boolean", "default": true }
+        }
+      }
+    }
+  }
+}

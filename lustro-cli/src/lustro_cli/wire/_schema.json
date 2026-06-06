@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://twinsen81.github.io/Lustro/wire-protocol/v1/_schema.json",
+  "title": "Lustro shared wire envelopes (v1)",
+  "description": "Self-contained bundle of the shared envelope shapes reused by every /api/v1 route. Served at GET /api/v1/_schema. Authoritative copies live in the wire-protocol/v1 repository directory; the definitions are inlined here so the served document resolves without external $ref fetches.",
+  "$defs": {
+    "errorEnvelope": {
+      "$anchor": "errorEnvelope",
+      "title": "Error envelope",
+      "description": "Uniform error body returned by every /api/v1/* route on failure.",
+      "type": "object",
+      "required": ["error", "message"],
+      "properties": {
+        "error": { "type": "string", "enum": ["bad_request", "unauthorized", "forbidden", "not_found", "method_not_allowed", "payload_too_large", "internal_error", "unavailable", "timeout"], "description": "Short, stable, machine-readable error identifier." },
+        "message": { "type": "string", "description": "Human-readable explanation of what went wrong." },
+        "code": { "type": "string", "description": "Optional finer-grained error code." },
+        "field": { "type": "string", "description": "Optional name of the offending request field." },
+        "hint": { "type": "string", "description": "Optional actionable suggestion." }
+      },
+      "additionalProperties": false
+    },
+    "cursorEnvelope": {
+      "$anchor": "cursorEnvelope",
+      "title": "Cursor envelope",
+      "description": "Live-polling envelope. Cursor is opaque; echo it back on the next poll; treat unknown status values as \"reset\". This generic envelope permits additional properties so observable endpoints may extend it (e.g. the Network tab adds a top-level \"state\" object); a tab schema may pin those extensions.",
+      "type": "object",
+      "required": ["cursor", "status"],
+      "properties": {
+        "cursor": { "type": "string", "description": "Opaque cursor token; advances on every server-side mutation." },
+        "status": {
+          "type": "string",
+          "enum": ["delta", "unchanged", "reset"],
+          "description": "delta = items are the authoritative current list (omit => unchanged); unchanged = no change; reset = replace the whole list with items."
+        },
+        "items": { "type": "array", "description": "Present for reset (and delta when changed).", "items": {} },
+        "state": { "type": "object", "description": "Optional endpoint-specific observable state (e.g. Network's paused/overwriteMode/throttleDelayMs). Tab schemas pin the exact shape." }
+      }
+    },
+    "pagination": {
+      "$anchor": "pagination",
+      "title": "List pagination envelope",
+      "description": "Standard list-response shape for collection endpoints.",
+      "type": "object",
+      "required": ["items", "nextCursor"],
+      "properties": {
+        "items": { "type": "array", "description": "The page of results.", "items": {} },
+        "nextCursor": { "type": ["string", "null"], "description": "Opaque next-page cursor, or null when exhausted." }
+      },
+      "additionalProperties": false
+    },
+    "meta": {
+      "$anchor": "meta",
+      "title": "Framework metadata",
+      "description": "Response of GET /api/v1/_meta.",
+      "type": "object",
+      "required": ["libraryVersion", "protocolVersion", "tabs"],
+      "properties": {
+        "libraryVersion": { "type": "string", "description": "Lustro library version." },
+        "protocolVersion": { "type": "string", "description": "Wire-protocol minor version (major lives in the path)." },
+        "tabs": {
+          "type": "array",
+          "description": "Registered tabs that expose a schema.",
+          "items": {
+            "type": "object",
+            "required": ["id", "title", "schemaUrl", "version"],
+            "properties": {
+              "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,30}$", "description": "Tab id." },
+              "title": { "type": "string", "description": "Human-readable tab title." },
+              "schemaUrl": { "type": "string", "description": "URL of the tab schema." },
+              "version": { "type": "string", "description": "Tab schema version." }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
