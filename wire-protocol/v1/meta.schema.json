@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://twinsen81.github.io/Lustro/wire-protocol/v1/meta.schema.json",
+  "title": "Framework metadata",
+  "description": "Response of GET /api/v1/_meta. Lists the library/protocol versions and the schema-exposing tabs.",
+  "type": "object",
+  "required": ["libraryVersion", "protocolVersion", "tabs"],
+  "properties": {
+    "libraryVersion": {
+      "type": "string",
+      "description": "The Lustro library version (e.g. \"0.1.0-SNAPSHOT\")."
+    },
+    "protocolVersion": {
+      "type": "string",
+      "description": "The wire-protocol minor version reported at runtime (e.g. \"1.0\"). The major version lives in the route path (/api/v1)."
+    },
+    "tabs": {
+      "type": "array",
+      "description": "The registered tabs that expose a schema (static asset or schema()). Schema-less tabs work in the UI but are omitted here.",
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "schemaUrl", "version"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Tab id; matches the regex [a-z][a-z0-9-]{0,30}.",
+            "pattern": "^[a-z][a-z0-9-]{0,30}$"
+          },
+          "title": {
+            "type": "string",
+            "description": "Human-readable tab title."
+          },
+          "schemaUrl": {
+            "type": "string",
+            "description": "URL of the tab's schema (e.g. /api/v1/<id>/_schema)."
+          },
+          "version": {
+            "type": "string",
+            "description": "Tab schema version."
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,16 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>UnusedParameter:Lustro.kt$Lustro.Builder$config: DebugConfig</ID>
+    <ID>UnusedParameter:Lustro.kt$Lustro.Builder$tab: DebugTab</ID>
+    <ID>UnusedParameter:NetworkDebugTab.kt$NetworkDebugTab.Companion$capturePlatformHttp: Boolean</ID>
+    <ID>UnusedParameter:NetworkDebugTab.kt$NetworkDebugTab.Companion$classifier: NetworkClassifier = NoOpNetworkClassifier</ID>
+    <ID>UnusedParameter:NetworkDebugTab.kt$NetworkDebugTab.Companion$mockRuleStorage: MockRuleStorage? = null</ID>
+    <ID>UnusedParameter:NetworkDebugTab.kt$NetworkDebugTab.Companion$redactor: Redactor = DefaultRedactor</ID>
+    <ID>UnusedParameter:NetworkDebugTab.kt$NetworkDebugTab.Companion$senderClient: OkHttpClient?</ID>
+    <ID>UnusedParameter:NetworkDebugTab.kt$NetworkDebugTab.Companion$senderClient: OkHttpClient? = null</ID>
+    <ID>UnusedPrivateProperty:MockRuleStorage.kt$SharedPreferencesMockRuleStorage$private val prefs: SharedPreferences</ID>
+    <ID>UnusedPrivateProperty:OkHttpSender.kt$OkHttpSender$private val client: OkHttpClient</ID>
+  </CurrentIssues>
+</SmellBaseline>

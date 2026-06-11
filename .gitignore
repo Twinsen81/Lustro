@@ -1,0 +1,29 @@
+# Gradle
+.gradle/
+build/
+!**/src/**/build/
+
+# Android / IDE
+local.properties
+*.iml
+.idea/
+.kotlin/
+captures/
+.cxx/
+
+# OS
+.DS_Store
+
+# Python (lustro-cli)
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+dist/
+.pytest_cache/
+
+# Secrets / signing
+*.keystore
+*.jks
+secrets.properties

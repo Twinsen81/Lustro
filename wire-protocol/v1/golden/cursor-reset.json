@@ -1,0 +1,39 @@
+{
+  "cursor": "c:42",
+  "status": "reset",
+  "state": {
+    "paused": false,
+    "overwriteMode": false,
+    "throttleDelayMs": 0
+  },
+  "items": [
+    {
+      "id": "tx_9f3c1a8e",
+      "timestamp": "14:22:07.512",
+      "method": "GET",
+      "url": "https://api.example.com/v1/orders?status=open",
+      "statusCode": 200,
+      "durationMs": 184,
+      "categories": ["api"],
+      "isMocked": false,
+      "requestBodyBytes": 0,
+      "responseBodyBytes": 256,
+      "responseComplete": true,
+      "error": null
+    },
+    {
+      "id": "tx_4b1d77a0",
+      "timestamp": "14:22:09.003",
+      "method": "POST",
+      "url": "https://api.example.com/v1/orders",
+      "statusCode": 201,
+      "durationMs": 322,
+      "categories": ["api"],
+      "isMocked": false,
+      "requestBodyBytes": 64,
+      "responseBodyBytes": 128,
+      "responseComplete": true,
+      "error": null
+    }
+  ]
+}

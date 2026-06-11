@@ -1,0 +1,24 @@
+name: "Set up JDK + Gradle"
+description: >-
+  Shared toolchain setup for Lustro CI: Temurin JDK 21 and a cached Gradle.
+  Used by ci.yml, snapshot.yml, and release.yml so every job runs the same
+  build environment.
+
+runs:
+  using: "composite"
+  steps:
+    # NOTE ON JDK VERSION: the actions/setup-java v4 docs use "JDK 17" in their
+    # examples, but this build pins a Kotlin/Java toolchain of 21 (every module's
+    # `kotlin { jvmToolchain(21) }` + `java { ... VERSION_17 }`). Gradle launches
+    # and the toolchain provisioner resolve against JDK 21; the COMPILER then
+    # targets JVM 17 bytecode (`jvmTarget = JVM_17`). So the runner needs JDK 21
+    # even though the emitted classes are 17. Using 17 here would force Gradle to
+    # download a 21 toolchain at build time (slower, and offline-fragile).
+    - name: Set up Temurin JDK 21
+      uses: actions/setup-java@v4
+      with:
+        distribution: "temurin"
+        java-version: "21"
+
+    - name: Set up Gradle
+      uses: gradle/actions/setup-gradle@v6

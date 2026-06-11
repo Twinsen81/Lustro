@@ -1,0 +1,110 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Sample Feature Flags debug tab",
+    "version": "1.0",
+    "description": "A sample custom Lustro tab demonstrating async polling (opaque cursor), a file-upload route, and modal UI. All routes are token-authenticated (Bearer header or HttpOnly cookie) and live under /api/v1/flags. Errors use the shared error envelope."
+  },
+  "servers": [
+    { "url": "/", "description": "The Lustro debug server (loopback by default)." }
+  ],
+  "paths": {
+    "/api/v1/flags/snapshot": {
+      "get": {
+        "operationId": "snapshotFlags",
+        "summary": "Poll the current feature-flag set with an opaque cursor.",
+        "description": "Short-polling. Send the last cursor back each call. status=reset returns the full current flag list; status=delta returns the current list after a change; status=unchanged omits items. Treat unknown statuses as reset. Every mutation (toggle, upload) advances the cursor.",
+        "parameters": [
+          { "name": "cursor", "in": "query", "required": false, "schema": { "type": "string" }, "description": "Opaque cursor from the previous response. Omit on first poll." }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cursor envelope.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/FlagCursorEnvelope" } } }
+          }
+        }
+      }
+    },
+    "/api/v1/flags/toggle": {
+      "post": {
+        "operationId": "toggleFlag",
+        "summary": "Toggle a feature flag's enabled state.",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "type": "object", "required": ["id"], "properties": { "id": { "type": "string" } } } } }
+        },
+        "responses": {
+          "200": {
+            "description": "New state.",
+            "content": { "application/json": { "schema": { "type": "object", "required": ["status", "id", "enabled"], "properties": { "status": { "const": "ok" }, "id": { "type": "string" }, "enabled": { "type": "boolean" } } } } }
+          },
+          "400": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/v1/flags/upload": {
+      "post": {
+        "operationId": "uploadFlags",
+        "summary": "Upload a flags file and merge its definitions.",
+        "description": "Accepts the raw contents of an uploaded flags file: either a bare array of flag objects or an object with a top-level \"flags\" array. Existing flags with the same id are replaced; new ids are added. Advances the cursor when at least one flag is imported.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  { "type": "array", "items": { "$ref": "#/components/schemas/Flag" } },
+                  { "type": "object", "required": ["flags"], "properties": { "flags": { "type": "array", "items": { "$ref": "#/components/schemas/Flag" } } } }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Import result.",
+            "content": { "application/json": { "schema": { "type": "object", "required": ["status", "imported"], "properties": { "status": { "const": "ok" }, "imported": { "type": "integer" } } } } }
+          },
+          "400": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    }
+  },
+  "components": {
+    "responses": {
+      "Error": { "description": "Error envelope.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } } }
+    },
+    "schemas": {
+      "ErrorEnvelope": {
+        "type": "object",
+        "required": ["error", "message"],
+        "properties": {
+          "error": { "type": "string", "description": "Machine error type, e.g. bad_request, not_found." },
+          "message": { "type": "string" },
+          "code": { "type": "string" },
+          "field": { "type": "string" },
+          "hint": { "type": "string" }
+        }
+      },
+      "Flag": {
+        "type": "object",
+        "required": ["id"],
+        "properties": {
+          "id": { "type": "string" },
+          "description": { "type": "string" },
+          "enabled": { "type": "boolean", "default": false }
+        }
+      },
+      "FlagCursorEnvelope": {
+        "type": "object",
+        "required": ["cursor", "status"],
+        "properties": {
+          "cursor": { "type": "string", "description": "Opaque cursor token." },
+          "status": { "type": "string", "enum": ["delta", "unchanged", "reset"] },
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/Flag" } }
+        }
+      }
+    }
+  }
+}

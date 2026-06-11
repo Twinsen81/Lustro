@@ -1,0 +1,55 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "lustro-cli"
+version = "0.1.0"
+description = "Command-line client for the Lustro Android debug server (HTTP wire protocol)."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Evgenii Plokhov" }]
+keywords = ["lustro", "android", "debug", "network", "cli"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Software Development :: Debuggers",
+]
+# Runtime dependencies: standard library only (urllib, json, argparse, subprocess).
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/Twinsen81/Lustro"
+Repository = "https://github.com/Twinsen81/Lustro"
+
+[project.optional-dependencies]
+test = ["pytest>=7", "jsonschema>=4"]
+
+[project.scripts]
+lustro = "lustro_cli.cli:main"
+
+[tool.hatch.build.targets.wheel]
+# The package tree (src layout) is bundled wholesale; the vendored wire-protocol
+# schemas, the Network OpenAPI document, and the golden fixtures live under
+# src/lustro_cli/wire/ and are non-Python data, so include them explicitly.
+packages = ["src/lustro_cli"]
+artifacts = [
+    "src/lustro_cli/wire/*.json",
+    "src/lustro_cli/wire/golden/*.json",
+]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/lustro_cli",
+    "tests",
+    "README.md",
+    "pyproject.toml",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

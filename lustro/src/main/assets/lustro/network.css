@@ -1,0 +1,580 @@
+/* Network Debug Tab */
+
+.net-list-pane { width: 42%; }
+.net-detail-pane { flex: 1; }
+
+/* Category filter bar */
+.net-category-bar {
+    display: flex;
+    gap: 4px;
+    padding: 6px 12px;
+    background: var(--bg-elevated);
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+    align-items: center;
+}
+/* Categories are now classifier-supplied strings, not a fixed set. The default
+   pill styling applies to every category; the named rules below tint the classic
+   labels when a classifier happens to emit them, and unknown categories fall back
+   to this generic accent style. */
+.net-cat-pill {
+    padding: 3px 10px;
+    border-radius: 10px;
+    font-size: 12px;
+    cursor: pointer;
+    background: var(--accent-soft);
+    color: var(--accent);
+    border: 1px solid var(--accent-soft-border);
+    transition: all 0.2s;
+    user-select: none;
+}
+.net-cat-pill[data-cat="Sync"]   { background: color-mix(in srgb, var(--cat-sync) 20%, transparent);   color: var(--cat-sync);   border-color: color-mix(in srgb, var(--cat-sync) 40%, transparent); }
+.net-cat-pill[data-cat="Auth"]   { background: color-mix(in srgb, var(--cat-auth) 20%, transparent);   color: var(--cat-auth);   border-color: color-mix(in srgb, var(--cat-auth) 40%, transparent); }
+.net-cat-pill[data-cat="Media"]  { background: color-mix(in srgb, var(--cat-media) 20%, transparent);  color: var(--cat-media);  border-color: color-mix(in srgb, var(--cat-media) 40%, transparent); }
+.net-cat-pill[data-cat="Config"] { background: color-mix(in srgb, var(--cat-config) 20%, transparent); color: var(--cat-config); border-color: color-mix(in srgb, var(--cat-config) 40%, transparent); }
+.net-cat-pill[data-cat="AI"]     { background: color-mix(in srgb, var(--cat-ai) 20%, transparent);     color: var(--cat-ai);     border-color: color-mix(in srgb, var(--cat-ai) 40%, transparent); }
+.net-cat-pill[data-cat="Wiretap"] { background: color-mix(in srgb, var(--cat-wiretap) 20%, transparent); color: var(--cat-wiretap); border-color: color-mix(in srgb, var(--cat-wiretap) 40%, transparent); }
+.net-cat-pill[data-cat="Other"]  { background: color-mix(in srgb, var(--cat-other) 20%, transparent);  color: var(--cat-other);  border-color: color-mix(in srgb, var(--cat-other) 40%, transparent); }
+.net-cat-pill.off,
+.net-cat-pill[data-cat].off {
+    background: var(--bg-chip-off);
+    color: var(--text-muted);
+    border-color: var(--bg-disabled);
+}
+.net-cat-pill:hover { opacity: 0.85; }
+
+/* Status pills used inline (e.g. category labels in list rows / detail). The
+   generic .status-pill.cat-pill rule (in shared.css base + below) handles any
+   classifier string; named rules tint the classic labels. */
+.status-pill.cat-pill {
+    background: var(--accent-soft);
+    color: var(--accent);
+}
+.status-pill.cat-pill[data-cat="Sync"]   { background: color-mix(in srgb, var(--cat-sync) 20%, transparent);   color: var(--cat-sync); }
+.status-pill.cat-pill[data-cat="Auth"]   { background: color-mix(in srgb, var(--cat-auth) 20%, transparent);   color: var(--cat-auth); }
+.status-pill.cat-pill[data-cat="Media"]  { background: color-mix(in srgb, var(--cat-media) 20%, transparent);  color: var(--cat-media); }
+.status-pill.cat-pill[data-cat="Config"] { background: color-mix(in srgb, var(--cat-config) 20%, transparent); color: var(--cat-config); }
+.status-pill.cat-pill[data-cat="AI"]     { background: color-mix(in srgb, var(--cat-ai) 20%, transparent);     color: var(--cat-ai); }
+.status-pill.cat-pill[data-cat="Wiretap"] { background: color-mix(in srgb, var(--cat-wiretap) 20%, transparent); color: var(--cat-wiretap); }
+.status-pill.cat-pill[data-cat="Other"]  { background: color-mix(in srgb, var(--cat-other) 20%, transparent);  color: var(--cat-other); }
+
+/* Toggle-all button (right side of category bar). */
+.net-toggle-all {
+    margin-left: auto;
+    background: transparent;
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 2px 10px;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.net-toggle-all:hover {
+    color: var(--accent);
+    border-color: var(--accent-soft-border);
+}
+
+/* Status & method filter rows */
+.net-filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 4px 12px;
+    background: var(--bg-elevated);
+    border-bottom: 1px solid var(--border);
+}
+.net-filter-pill {
+    padding: 2px 9px;
+    border-radius: 9px;
+    font-size: 11px;
+    cursor: pointer;
+    user-select: none;
+    border: 1px solid transparent;
+    transition: opacity 0.15s, background 0.15s, color 0.15s;
+}
+.net-filter-pill.off {
+    background: var(--bg-chip-off) !important;
+    color: var(--text-muted) !important;
+    border-color: transparent !important;
+}
+/* Status colors mirror the row status colors */
+.net-filter-pill.status-2xx    { background: color-mix(in srgb, var(--status-2xx) 20%, transparent);    color: var(--status-2xx);    border-color: color-mix(in srgb, var(--status-2xx) 40%, transparent); }
+.net-filter-pill.status-3xx    { background: color-mix(in srgb, var(--status-3xx) 20%, transparent);    color: var(--status-3xx);    border-color: color-mix(in srgb, var(--status-3xx) 40%, transparent); }
+.net-filter-pill.status-4xx    { background: color-mix(in srgb, var(--status-4xx) 20%, transparent);    color: var(--status-4xx);    border-color: color-mix(in srgb, var(--status-4xx) 40%, transparent); }
+.net-filter-pill.status-5xx    { background: color-mix(in srgb, var(--status-5xx) 20%, transparent);    color: var(--status-5xx);    border-color: color-mix(in srgb, var(--status-5xx) 40%, transparent); }
+.net-filter-pill.status-error  { background: color-mix(in srgb, var(--status-err) 20%, transparent);    color: var(--status-err);    border-color: color-mix(in srgb, var(--status-err) 40%, transparent); }
+.net-filter-pill.status-mocked { background: color-mix(in srgb, var(--status-mocked) 20%, transparent); color: var(--status-mocked); border-color: color-mix(in srgb, var(--status-mocked) 40%, transparent); }
+/* Method colors – use category palette so each method is distinguishable */
+.net-filter-pill.method-get    { background: color-mix(in srgb, var(--cat-sync) 20%, transparent);   color: var(--cat-sync);   border-color: color-mix(in srgb, var(--cat-sync) 40%, transparent); }
+.net-filter-pill.method-post   { background: color-mix(in srgb, var(--cat-media) 20%, transparent);  color: var(--cat-media);  border-color: color-mix(in srgb, var(--cat-media) 40%, transparent); }
+.net-filter-pill.method-put    { background: color-mix(in srgb, var(--cat-auth) 20%, transparent);   color: var(--cat-auth);   border-color: color-mix(in srgb, var(--cat-auth) 40%, transparent); }
+.net-filter-pill.method-delete { background: color-mix(in srgb, var(--status-err) 20%, transparent); color: var(--status-err); border-color: color-mix(in srgb, var(--status-err) 40%, transparent); }
+.net-filter-pill.method-patch  { background: color-mix(in srgb, var(--cat-config) 20%, transparent); color: var(--cat-config); border-color: color-mix(in srgb, var(--cat-config) 40%, transparent); }
+.net-filter-pill.method-other  { background: color-mix(in srgb, var(--cat-other) 20%, transparent);  color: var(--cat-other);  border-color: color-mix(in srgb, var(--cat-other) 40%, transparent); }
+
+/* ── Right-pane "flap" tabs ──
+   Inactive tabs blend with the pane-header bar. The active tab takes the
+   content background and overlaps the bar's bottom border (margin-bottom:-1px
+   + matching bg) so it visually flows into the content area below. The
+   `.pane-header .net-tab-btn` selector specificity (0,2,1) wins over the
+   shared `.pane-header button` (0,1,1) rule that styles other header buttons. */
+.net-detail-pane > .pane-header {
+    padding-bottom: 0;
+    padding-top: 8px;
+    align-items: flex-end;
+    gap: 0;
+}
+.net-tab-switcher { display: flex; gap: 2px; align-items: flex-end; flex: 1; }
+.net-tab-actions {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    margin-bottom: 6px;
+}
+.pane-header .net-action-btn {
+    background: transparent;
+    color: var(--text-muted);
+    border: none;
+    border-radius: 4px;
+    padding: 4px 10px;
+    font-size: 12px;
+    font-weight: normal;
+    cursor: pointer;
+    margin-bottom: 0;
+    transition: background 0.15s, color 0.15s;
+}
+.pane-header .net-action-btn:hover {
+    color: var(--text-strong);
+    background: var(--row-hover);
+}
+.pane-header .net-tab-btn {
+    background: transparent;
+    color: var(--text-muted);
+    border: 1px solid transparent;
+    border-bottom: none;
+    border-radius: 8px 8px 0 0;
+    padding: 7px 16px;
+    font-size: 13px;
+    font-weight: normal;
+    cursor: pointer;
+    margin-bottom: -1px;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.pane-header .net-tab-btn:hover {
+    background: var(--row-hover);
+    color: var(--text);
+}
+.pane-header .net-tab-btn.active {
+    background: var(--bg-primary);
+    color: var(--accent);
+    border-color: var(--border);
+    font-weight: 600;
+    /* Lift the flap above the pane-header's bottom border so its bg fills
+       across the seam, and so the rounded corners read clearly. */
+    z-index: 1;
+}
+.net-tab-content {
+    display: none;
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    min-height: 0;
+    background: var(--bg-primary);
+}
+.net-tab-content.active { display: flex; flex-direction: column; }
+
+/* Empty state */
+.net-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    color: var(--text-faintest);
+    font-size: 14px;
+}
+.net-empty-icon { font-size: 36px; margin-bottom: 8px; opacity: 0.5; }
+
+/* Status colors */
+.net-status-2xx { color: var(--status-2xx); }
+.net-status-3xx { color: var(--status-3xx); }
+.net-status-4xx { color: var(--status-4xx); }
+.net-status-5xx { color: var(--status-5xx); }
+.net-status-mocked { color: var(--status-mocked); }
+.net-status-err { color: var(--status-err); }
+.net-status-pending { color: var(--status-pending); }
+
+/* Inline header badges */
+.net-error-line {
+    color: var(--status-err);
+    margin-top: 6px;
+    font-size: 12px;
+}
+.net-header-key {
+    color: var(--json-key);
+    width: 180px;
+    word-break: break-all;
+}
+.net-header-value {
+    word-break: break-all;
+}
+.net-rules-empty {
+    color: var(--text-faint);
+    font-size: 13px;
+    margin-bottom: 12px;
+}
+.net-tx-count {
+    color: var(--text-muted);
+    font-size: 12px;
+}
+
+/* Detail view */
+.net-detail-header {
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 0;
+}
+.net-detail-method-url {
+    font-size: 13px;
+    word-break: break-all;
+    line-height: 1.4;
+}
+.net-detail-meta {
+    display: flex;
+    gap: 12px;
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    flex-wrap: wrap;
+}
+
+/* Direction tabs (Response | Request) */
+.net-dir-tabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--border);
+}
+.net-dir-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    padding: 10px 20px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: bold;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+}
+.net-dir-btn:hover { color: var(--text-secondary); }
+.net-dir-btn.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+}
+
+/* Sub-tabs (Body | Headers) */
+.net-sub-tabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--border);
+}
+.net-sub-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    padding: 7px 16px;
+    cursor: pointer;
+    font-size: 12px;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+}
+.net-sub-btn:hover { color: var(--text-secondary); }
+.net-sub-btn.active {
+    color: var(--text-strong);
+    border-bottom-color: var(--text-strong);
+}
+
+/* Collapsible headers section */
+.net-headers-details {
+    margin-top: 4px;
+}
+.net-headers-details > summary {
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--text-muted);
+    padding: 4px 0 8px 0;
+    user-select: none;
+    list-style: none;
+}
+.net-headers-details > summary::-webkit-details-marker { display: none; }
+.net-headers-details > summary::before {
+    content: '▶';
+    display: inline-block;
+    width: 14px;
+    color: var(--text-faint);
+    transition: transform 0.15s;
+}
+.net-headers-details[open] > summary::before {
+    transform: rotate(90deg);
+}
+.net-headers-details > summary:hover {
+    color: var(--text);
+}
+
+/* Content panels */
+.net-dir-content {
+    padding-top: 12px;
+}
+.net-empty-body {
+    color: var(--text-faintest);
+    font-size: 13px;
+    padding: 20px 0;
+}
+.net-truncated-label {
+    color: var(--status-3xx);
+    font-size: 11px;
+    margin-bottom: 6px;
+}
+
+/* Mock rule cards */
+.net-rule-card {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px;
+    margin-bottom: 8px;
+}
+.net-rule-card.disabled { opacity: 0.5; }
+.net-rule-card.editing {
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 1px var(--accent-primary);
+}
+.net-rule-body {
+    margin-top: 8px;
+    font-size: 11px;
+    max-height: 220px;
+    overflow: auto;
+    padding: 8px;
+}
+.net-format-btn {
+    margin-left: 6px;
+    background: transparent;
+    color: var(--accent);
+    border: 1px solid var(--accent-soft-border);
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-size: 10px;
+    cursor: pointer;
+}
+.net-format-btn:hover {
+    background: var(--accent-soft);
+}
+
+/* Send-request header rows */
+.net-send-header-row {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 4px;
+    align-items: center;
+}
+.net-send-header-row input {
+    flex: 1;
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 4px 8px;
+    color: var(--text);
+    font-size: 12px;
+    font-family: monospace;
+    outline: none;
+}
+.net-send-header-row input:focus { border-color: var(--accent-primary); }
+
+/* Send-request synchronous result panel */
+.net-send-result {
+    margin-top: 12px;
+    padding: 10px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--bg-elevated);
+    font-size: 12px;
+    word-break: break-all;
+}
+.net-send-result.ok { border-color: color-mix(in srgb, var(--status-2xx) 50%, transparent); }
+.net-send-result.error { border-color: color-mix(in srgb, var(--status-err) 50%, transparent); }
+.net-send-result .net-send-result-status { font-weight: bold; }
+.net-send-result.ok .net-send-result-status { color: var(--status-2xx); }
+.net-send-result.error .net-send-result-status { color: var(--status-err); }
+.net-send-result .net-send-result-line { margin-top: 4px; color: var(--text-secondary); }
+
+/* Throttle dropdown */
+.net-throttle-select {
+    appearance: none;
+    -webkit-appearance: none;
+    padding-right: 22px;
+    background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
+    background-position: calc(100% - 12px) 50%, calc(100% - 7px) 50%;
+    background-size: 5px 5px, 5px 5px;
+    background-repeat: no-repeat;
+}
+.net-rule-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+.net-rule-name {
+    font-weight: bold;
+    font-size: 13px;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.net-rule-detail {
+    font-size: 11px;
+    color: var(--text-muted);
+    word-break: break-all;
+}
+.net-rule-hits {
+    font-size: 10px;
+    color: var(--text-faint);
+    margin-top: 4px;
+}
+
+/* Toggle switch */
+.net-toggle {
+    position: relative;
+    width: 34px;
+    height: 18px;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+.net-toggle input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+.net-toggle-slider {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: var(--bg-disabled);
+    border-radius: 9px;
+    transition: background 0.2s;
+}
+.net-toggle-slider::before {
+    content: '';
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    left: 2px;
+    bottom: 2px;
+    background: var(--text-on-accent);
+    border-radius: 50%;
+    transition: transform 0.2s;
+}
+.net-toggle input:checked + .net-toggle-slider { background: var(--accent); }
+.net-toggle input:checked + .net-toggle-slider::before { transform: translateX(16px); }
+
+/* Mock rule form */
+.net-rule-form {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px;
+    margin-top: 12px;
+}
+.net-rule-form h4 {
+    margin: 0 0 10px 0;
+    font-size: 13px;
+    color: var(--accent-info);
+}
+.net-form-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+.net-form-row label {
+    font-size: 11px;
+    color: var(--text-muted);
+    min-width: 70px;
+    padding-top: 7px;
+}
+.net-form-row input,
+.net-form-row select {
+    flex: 1;
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 6px 8px;
+    color: var(--text);
+    font-size: 12px;
+    font-family: inherit;
+    outline: none;
+}
+.net-form-row input:focus,
+.net-form-row select:focus,
+.net-form-row textarea:focus { border-color: var(--accent-primary); }
+.net-form-row textarea {
+    flex: 1;
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 6px 8px;
+    color: var(--text);
+    font-size: 12px;
+    font-family: monospace;
+    outline: none;
+    min-height: 80px;
+    resize: vertical;
+}
+.net-form-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+/* Copy to clipboard */
+.net-copy-btn {
+    cursor: pointer;
+    opacity: 0.4;
+    vertical-align: middle;
+    transition: opacity 0.15s;
+    user-select: none;
+    display: inline-flex;
+    align-items: center;
+}
+.net-copy-btn:hover { opacity: 1; }
+.net-copy-hover {
+    opacity: 0;
+    margin-right: 4px;
+}
+.net-header-row:hover .net-copy-hover { opacity: 0.4; }
+.net-header-row:hover .net-copy-hover:hover { opacity: 1; }
+.net-body-wrap {
+    position: relative;
+}
+.net-body-wrap > .net-copy-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 1;
+}
+.net-copy-popup {
+    position: fixed;
+    transform: translate(-50%, -130%);
+    background: var(--status-2xx);
+    color: var(--text-on-light);
+    padding: 4px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: bold;
+    pointer-events: none;
+    z-index: 9999;
+    animation: net-copy-fade 1.5s ease-out forwards;
+}
+@keyframes net-copy-fade {
+    0%, 70% { opacity: 1; }
+    100% { opacity: 0; }
+}

@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://twinsen81.github.io/Lustro/wire-protocol/v1/pagination.schema.json",
+  "title": "List pagination envelope",
+  "description": "Standard list-response shape for paginated/collection endpoints.",
+  "type": "object",
+  "required": ["items", "nextCursor"],
+  "properties": {
+    "items": {
+      "type": "array",
+      "description": "The page of results. Element shape is endpoint-specific.",
+      "items": {}
+    },
+    "nextCursor": {
+      "type": ["string", "null"],
+      "description": "Opaque cursor for the next page, or null when there are no further pages."
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,140 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Cancel superseded runs for the same PR/branch. `github.head_ref` is set only on
+# pull_request events, so PR runs are grouped (and cancelled) per source branch,
+# while pushes to main fall back to the unique run id and are never cancelled.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # --- Gradle: build, test, and all static/ABI/contract gates -----------------
+  gradle:
+    name: Build, test, lint, API & facade checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK + Gradle
+        uses: ./.github/actions/setup
+
+      - name: Assemble all modules
+        run: ./gradlew assemble --console=plain --stacktrace
+
+      - name: Unit + Robolectric tests
+        run: ./gradlew test --console=plain --stacktrace
+
+      - name: Android Lint (runtime + sample, incl. release-safety check)
+        run: ./gradlew :lustro:lintDebug :sample:lintDebug --console=plain --stacktrace
+
+      - name: Detekt
+        run: ./gradlew detekt --console=plain --stacktrace
+
+      - name: Public API check (BCV; :lustro-api baseline)
+        run: ./gradlew apiCheck --console=plain --stacktrace
+
+      - name: Sample debug + release (R8) compile
+        run: ./gradlew :sample:assembleDebug :sample:assembleRelease --console=plain --stacktrace
+
+      # The release-safe :lustro-noop facade must match the :lustro facade exactly
+      # (the BCV-Android follow-up; see gradle/facade-parity.gradle.kts).
+      - name: Facade parity (:lustro vs :lustro-noop)
+        run: ./gradlew checkFacadeParity --console=plain --stacktrace
+
+      - name: Kover coverage report
+        run: ./gradlew :lustro:koverXmlReport --console=plain --stacktrace
+
+      - name: Upload Kover report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: kover-report
+          path: lustro/build/reports/kover/report.xml
+          if-no-files-found: warn
+
+      - name: Upload test + lint reports
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: reports
+          path: |
+            **/build/reports/tests/**
+            **/build/reports/lint-results-*.html
+            **/build/reports/detekt/**
+          if-no-files-found: ignore
+
+  # --- CLI: Python wire-protocol contract tests -------------------------------
+  cli:
+    name: CLI contract tests (pytest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: lustro-cli
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install lustro-cli (with test extras)
+        run: python -m pip install '.[test]'
+
+      - name: Run pytest
+        run: pytest -q
+
+      # Guard against drift between the canonical wire sources and the copies the
+      # CLI vendors under src/lustro_cli/wire/. sync.py locates the repo root
+      # relative to its own file, so it must run from the source tree (PYTHONPATH=src),
+      # NOT the non-editable site-packages install (whose path resolves outside the
+      # checkout). If the refresh changes any vendored artifact, the working tree
+      # differs and `git diff --exit-code` fails the job — re-run the sync and commit.
+      - name: Wire artifacts are in sync
+        run: |
+          PYTHONPATH=src python -m lustro_cli.wire.sync
+          git diff --exit-code -- src/lustro_cli/wire
+
+  # --- Emulator matrix: instrumented connectedCheck on real Android images ----
+  # IMPORTANT: this job runs ONLY on GitHub-hosted runners. The KVM-accelerated
+  # Android emulator (reactivecircus/android-emulator-runner) needs nested
+  # virtualization that is NOT available in this local/sandbox environment, so
+  # this job is UNVERIFIED locally — it is exercised only in GitHub Actions.
+  emulator:
+    name: Instrumented tests (API ${{ matrix.api-level }})
+    runs-on: ubuntu-latest
+    # connectedCheck is slow; gate it to pushes to main and labeled PRs so it does
+    # not run on every push, but still protects the default branch.
+    if: ${{ github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'run-emulator') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        api-level: [26, 34]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK + Gradle
+        uses: ./.github/actions/setup
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run connectedCheck on emulator
+        uses: reactivecircus/android-emulator-runner@e89f39f1abbbd05b1113a29cf4db69e7540cae5a # v2
+        with:
+          api-level: ${{ matrix.api-level }}
+          arch: x86_64
+          profile: Nexus 6
+          script: ./gradlew connectedCheck --console=plain --stacktrace

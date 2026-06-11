@@ -1,0 +1,80 @@
+[versions]
+# Build toolchain — proven against this environment.
+agp = "9.2.1"
+kotlin = "2.3.21"
+ksp = "2.3.21-2.0.4"
+
+# Android Lint tooling. Lint versions are AGP-coupled: lint = AGP major + 23, so
+# AGP 9.2.1 ⇒ lint 32.2.1 (CURRENT_API = 16). Used only by the pure-JVM
+# :lustro-lint module, which is shipped to consumers via lintPublish.
+lint = "32.2.1"
+
+# Android SDK levels (compileSdk 35, minSdk 26).
+compileSdk = "35"
+minSdk = "26"
+targetSdk = "35"
+
+# Runtime dependencies.
+okhttp = "4.12.0"
+nanohttpd = "2.3.1"
+androidxAnnotation = "1.9.1"
+androidxLifecycle = "2.9.4"
+coroutines = "1.11.0"
+
+# Quality / publishing tooling.
+detekt = "1.23.8"
+bcv = "0.18.1"
+vanniktech = "0.32.0"
+dokka = "2.0.0"
+kover = "0.9.1"
+
+# Test dependencies.
+junit = "4.13.2"
+robolectric = "4.16.1"
+mockk = "1.14.11"
+turbine = "1.2.1"
+json = "20240303"
+androidxTestCore = "1.6.1"
+androidxTestExtJunit = "1.2.1"
+
+[libraries]
+okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
+okhttp-mockwebserver = { group = "com.squareup.okhttp3", name = "mockwebserver", version.ref = "okhttp" }
+nanohttpd = { group = "org.nanohttpd", name = "nanohttpd", version.ref = "nanohttpd" }
+androidx-annotation = { group = "androidx.annotation", name = "annotation", version.ref = "androidxAnnotation" }
+androidx-lifecycle-process = { group = "androidx.lifecycle", name = "lifecycle-process", version.ref = "androidxLifecycle" }
+androidx-lifecycle-runtime = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "androidxLifecycle" }
+kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
+kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "coroutines" }
+
+# Test
+junit = { group = "junit", name = "junit", version.ref = "junit" }
+robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
+mockk = { group = "io.mockk", name = "mockk", version.ref = "mockk" }
+mockk-android = { group = "io.mockk", name = "mockk-android", version.ref = "mockk" }
+turbine = { group = "app.cash.turbine", name = "turbine", version.ref = "turbine" }
+kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }
+json = { group = "org.json", name = "json", version.ref = "json" }
+androidx-test-core = { group = "androidx.test", name = "core", version.ref = "androidxTestCore" }
+androidx-test-ext-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidxTestExtJunit" }
+
+# Android Lint check authoring (compileOnly in :lustro-lint; lint provides these
+# at analysis time). lint-tests is testImplementation for the lint unit test.
+lint-api = { group = "com.android.tools.lint", name = "lint-api", version.ref = "lint" }
+lint-checks = { group = "com.android.tools.lint", name = "lint-checks", version.ref = "lint" }
+lint = { group = "com.android.tools.lint", name = "lint", version.ref = "lint" }
+lint-tests = { group = "com.android.tools.lint", name = "lint-tests", version.ref = "lint" }
+
+# Plugin artifacts referenced from buildSrc / convention code if needed.
+detekt-gradle-plugin = { group = "io.gitlab.arturbosch.detekt", name = "detekt-gradle-plugin", version.ref = "detekt" }
+
+[plugins]
+android-library = { id = "com.android.library", version.ref = "agp" }
+android-application = { id = "com.android.application", version.ref = "agp" }
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }
+binary-compatibility-validator = { id = "org.jetbrains.kotlinx.binary-compatibility-validator", version.ref = "bcv" }
+vanniktech-publish = { id = "com.vanniktech.maven.publish", version.ref = "vanniktech" }
+dokka = { id = "org.jetbrains.dokka", version.ref = "dokka" }
+kover = { id = "org.jetbrains.kotlinx.kover", version.ref = "kover" }

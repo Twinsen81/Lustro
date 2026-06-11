@@ -1,0 +1,53 @@
+{
+  "cursor": "c:43",
+  "status": "delta",
+  "state": {
+    "paused": false,
+    "overwriteMode": false,
+    "throttleDelayMs": 250
+  },
+  "items": [
+    {
+      "id": "tx_9f3c1a8e",
+      "timestamp": "14:22:07.512",
+      "method": "GET",
+      "url": "https://api.example.com/v1/orders?status=open",
+      "statusCode": 200,
+      "durationMs": 184,
+      "categories": ["api"],
+      "isMocked": false,
+      "requestBodyBytes": 0,
+      "responseBodyBytes": 256,
+      "responseComplete": true,
+      "error": null
+    },
+    {
+      "id": "tx_4b1d77a0",
+      "timestamp": "14:22:09.003",
+      "method": "POST",
+      "url": "https://api.example.com/v1/orders",
+      "statusCode": 201,
+      "durationMs": 322,
+      "categories": ["api"],
+      "isMocked": false,
+      "requestBodyBytes": 64,
+      "responseBodyBytes": 128,
+      "responseComplete": true,
+      "error": null
+    },
+    {
+      "id": "tx_77e2c014",
+      "timestamp": "14:22:11.781",
+      "method": "GET",
+      "url": "https://api.example.com/v1/orders/77e2",
+      "statusCode": 500,
+      "durationMs": 41,
+      "categories": ["api"],
+      "isMocked": true,
+      "requestBodyBytes": 0,
+      "responseBodyBytes": 17,
+      "responseComplete": true,
+      "error": null
+    }
+  ]
+}
