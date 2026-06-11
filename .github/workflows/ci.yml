@@ -21,7 +21,7 @@ jobs:
     name: Build, test, lint, API & facade checks
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up JDK + Gradle
         uses: ./.github/actions/setup
@@ -79,7 +79,7 @@ jobs:
       run:
         working-directory: lustro-cli
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -119,7 +119,7 @@ jobs:
       matrix:
         api-level: [26, 34]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up JDK + Gradle
         uses: ./.github/actions/setup
