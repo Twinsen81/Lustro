@@ -1,5 +1,6 @@
 import com.vanniktech.maven.publish.AndroidSingleVariantLibrary
 import com.vanniktech.maven.publish.JavadocJar
+import com.vanniktech.maven.publish.SonatypeHost
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.provider.Property
@@ -76,7 +77,8 @@ detekt {
 // therefore NOT leaked into the published POM. Signing is OPT-IN (CI only): see
 // the gate below, so `publishToMavenLocal` works without GPG keys.
 mavenPublishing {
-    publishToMavenCentral()
+    // Pin the Central Portal: the no-arg default targets the retired OSSRH host.
+    publishToMavenCentral(SonatypeHost.CENTRAL_PORTAL)
     configure(
         AndroidSingleVariantLibrary(
             variant = "release",

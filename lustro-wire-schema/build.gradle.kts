@@ -1,5 +1,6 @@
 import com.vanniktech.maven.publish.JavaLibrary
 import com.vanniktech.maven.publish.JavadocJar
+import com.vanniktech.maven.publish.SonatypeHost
 
 plugins {
     // Pure-JVM resource jar: no Kotlin, no Android. It only PACKAGES the wire
@@ -55,7 +56,8 @@ sourceSets {
 // (license, SCM, developers, URL) inherit from the root POM_* properties.
 // Signing is OPT-IN (CI only) so `publishToMavenLocal` works without GPG keys.
 mavenPublishing {
-    publishToMavenCentral()
+    // Pin the Central Portal: the no-arg default targets the retired OSSRH host.
+    publishToMavenCentral(SonatypeHost.CENTRAL_PORTAL)
     configure(
         JavaLibrary(
             javadocJar = JavadocJar.Empty(),
