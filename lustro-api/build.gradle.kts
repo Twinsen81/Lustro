@@ -1,6 +1,5 @@
 import com.vanniktech.maven.publish.JavadocJar
 import com.vanniktech.maven.publish.KotlinJvm
-import com.vanniktech.maven.publish.SonatypeHost
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -52,8 +51,7 @@ detekt {
 // Javadoc jar + a sources jar. Signing is OPT-IN (CI only): see the gate below,
 // so `publishToMavenLocal` works without GPG keys.
 mavenPublishing {
-    // Pin the Central Portal: the no-arg default targets the retired OSSRH host.
-    publishToMavenCentral(SonatypeHost.CENTRAL_PORTAL)
+    publishToMavenCentral()
     configure(
         KotlinJvm(
             javadocJar = JavadocJar.Dokka("dokkaGeneratePublicationHtml"),
