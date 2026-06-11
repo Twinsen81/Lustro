@@ -54,7 +54,7 @@ jobs:
 
       - name: Upload Kover report
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: kover-report
           path: lustro/build/reports/kover/report.xml
@@ -62,7 +62,7 @@ jobs:
 
       - name: Upload test + lint reports
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: reports
           path: |
