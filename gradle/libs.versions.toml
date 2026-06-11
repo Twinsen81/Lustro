@@ -33,7 +33,7 @@ junit = "4.13.2"
 robolectric = "4.16.1"
 mockk = "1.14.11"
 turbine = "1.2.1"
-json = "20240303"
+json = "20260522"
 androidxTestCore = "1.6.1"
 androidxTestExtJunit = "1.2.1"
 
