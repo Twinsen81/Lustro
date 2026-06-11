@@ -14,7 +14,11 @@ updates:
           - "patch"
 
   - package-ecosystem: "github-actions"
-    directory: "/"
+    # "/" covers .github/workflows; composite actions need their directory
+    # listed explicitly or Dependabot never sees them.
+    directories:
+      - "/"
+      - "/.github/actions/setup"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5

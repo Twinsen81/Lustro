@@ -1,5 +1,4 @@
 import com.vanniktech.maven.publish.AndroidSingleVariantLibrary
-import com.vanniktech.maven.publish.SonatypeHost
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -64,8 +63,7 @@ detekt {
 // "release" variant AAR + sources + Dokka Javadoc jar, POM from POM_* props.
 // Signing is OPT-IN (CI only) so `publishToMavenLocal` works without GPG keys.
 mavenPublishing {
-    // Pin the Central Portal: the no-arg default targets the retired OSSRH host.
-    publishToMavenCentral(SonatypeHost.CENTRAL_PORTAL)
+    publishToMavenCentral()
     configure(
         AndroidSingleVariantLibrary(
             variant = "release",
