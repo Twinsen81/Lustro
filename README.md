@@ -198,8 +198,10 @@ Lustro deliberately surfaces app internals, so its defaults are conservative. Se
   'self'; style-src 'self' 'unsafe-inline'; ...`) plus `X-Content-Type-Options: nosniff`.
   **Scripts are `'self'`-only — no inline scripts**, so tab JS loads as an external same-origin
   resource and there are no inline handlers; **styles allow `'unsafe-inline'`** so tabs can use
-  inline `style=` attributes and `<style>` blocks. Origin / `Sec-Fetch-Site` checks are driven by
-  `DebugConfig.allowedOrigins` (loopback is auto-allowed).
+  inline `style=` attributes and `<style>` blocks. State-changing requests pass an Origin /
+  `Sec-Fetch-Site` check: the server's own origin is always allowed, and any other cross-origin
+  caller must be listed in `DebugConfig.allowedOrigins` (other localhost ports are not trusted by
+  default).
 - **Capture-time redaction.** A `Redactor` removes sensitive headers, URL/query params, and
   JSON/form body fields **before** anything is stored, so redacted values never reach the API,
   UI, or fixtures.

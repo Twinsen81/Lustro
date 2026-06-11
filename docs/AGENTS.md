@@ -175,8 +175,9 @@ curl -s -X POST "$BASE/api/v1/network/rules/_/sync" \
 Errors use the shared envelope; key statuses:
 
 - **`401 unauthorized`** — missing/invalid token. Send `Authorization: Bearer <token>`.
-- **`403 forbidden`** — Origin / `Sec-Fetch-Site` rejected (a non-loopback, non-allowed Origin).
-  Missing Origin/`Sec-Fetch-Site` headers are accepted, so plain CLI clients are unaffected.
+- **`403 forbidden`** — Origin / `Sec-Fetch-Site` rejected (a cross-origin, non-allowed Origin;
+  only the server's own origin and configured `allowedOrigins` pass). Missing Origin/`Sec-Fetch-Site`
+  headers are accepted, so plain CLI clients are unaffected.
 - **`413 payload_too_large`** — request body exceeds the configured max (1 MB by default).
 - **`503 unavailable`** — the server is at its concurrency + queue limit; back off and retry.
 - **`504 timeout`** — a handler (e.g. a slow `send`) exceeded the per-request timeout.

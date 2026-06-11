@@ -10,6 +10,9 @@ import okhttp3.Protocol
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
 import okio.Buffer
+import okio.Sink
+import okio.Timeout
+import okio.buffer
 
 /**
  * OkHttp application interceptor that captures request/response data into a
@@ -147,16 +150,48 @@ internal class LustroNetworkInterceptor(
         }
         val buffer = Buffer()
         return try {
-            body.writeTo(buffer)
-            val written = buffer.size
-            val truncated = written > maxBodySize
+            // Retain at most maxBodySize+1 bytes (the +1 lets us detect truncation)
+            // while still counting the full size. Writing the whole body into an
+            // unbounded Buffer first would let a large outgoing request balloon memory
+            // before we ever truncate; the response path is already bounded via peekBody.
+            val capturing = CappingSink(buffer, maxBodySize + 1)
+            capturing.buffer().use { body.writeTo(it) }
+            val fullSize = capturing.bytesSeen
+            val truncated = fullSize > maxBodySize
             val text = if (truncated) buffer.readUtf8(maxBodySize) else buffer.readUtf8()
-            CapturedBody(text = text, truncated = truncated, byteSize = declaredSize ?: written)
+            CapturedBody(text = text, truncated = truncated, byteSize = declaredSize ?: fullSize)
         } catch (_: Exception) {
             CapturedBody(text = null, truncated = false, byteSize = declaredSize)
         } finally {
             buffer.close()
         }
+    }
+
+    /**
+     * An [okio.Sink] that copies at most [cap] bytes into [target] and discards the
+     * rest, while counting every byte written in [bytesSeen]. Lets a request body be
+     * buffered for capture with bounded memory without losing its true total size.
+     */
+    private class CappingSink(
+        private val target: Buffer,
+        private val cap: Long,
+    ) : Sink {
+        var bytesSeen: Long = 0L
+            private set
+
+        override fun write(source: Buffer, byteCount: Long) {
+            val room = (cap - target.size).coerceAtLeast(0L)
+            val keep = minOf(room, byteCount)
+            if (keep > 0) target.write(source, keep)
+            if (byteCount > keep) source.skip(byteCount - keep)
+            bytesSeen += byteCount
+        }
+
+        override fun flush() = Unit
+
+        override fun close() = Unit
+
+        override fun timeout(): Timeout = Timeout.NONE
     }
 
     private fun captureResponseBody(response: Response): CapturedBody? {

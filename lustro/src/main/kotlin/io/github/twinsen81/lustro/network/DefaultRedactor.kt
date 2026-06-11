@@ -11,8 +11,9 @@ import org.json.JSONTokener
  * The default [Redactor] applied at capture time.
  *
  * Redacts:
- * - `Authorization`, `Proxy-Authorization`, `Cookie`, and `Set-Cookie` header
- *   values to `[REDACTED]`.
+ * - Header values to `[REDACTED]` for `Authorization`, `Proxy-Authorization`,
+ *   `Cookie`, `Set-Cookie`, and any header whose NAME contains a sensitive token
+ *   (e.g. `X-Api-Key`, `X-Auth-Token`), so custom auth headers are covered too.
  * - URL query parameters, JSON object fields, and form fields whose name
  *   contains a sensitive token (`token`, `key`, `secret`, `password`, `passwd`,
  *   `pwd`, `auth`, `access_token`, `refresh_token`, `api_key`, `apikey`,
@@ -98,9 +99,14 @@ public object DefaultRedactor : Redactor {
         return "$base?$redactedQuery$fragment"
     }
 
-    /** Returns the header [value], or `[REDACTED]` for a sensitive [name]. */
+    /**
+     * Returns the header [value], or `[REDACTED]` when [name] is a well-known
+     * sensitive header OR its name matches a sensitive key fragment — so custom
+     * auth headers (`X-Api-Key`, `X-Auth-Token`, …) are masked, not just the
+     * standard `Authorization` / `Cookie` set.
+     */
     override fun redactHeaderValue(name: String, value: String): String =
-        if (name.lowercase() in SENSITIVE_HEADERS) PLACEHOLDER else value
+        if (name.lowercase() in SENSITIVE_HEADERS || isSensitiveKey(name)) PLACEHOLDER else value
 
     /**
      * Returns [body] with sensitive values redacted. EVERY captured text body is

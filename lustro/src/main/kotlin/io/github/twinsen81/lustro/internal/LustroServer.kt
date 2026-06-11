@@ -254,7 +254,7 @@ internal class LustroServer(
 
     /**
      * Validates the request's `Origin` / `Sec-Fetch-Site` headers against the
-     * loopback rule + [allowedOrigins]. Returns an enveloped 403 [Response] when
+     * same-origin rule + [allowedOrigins]. Returns an enveloped 403 [Response] when
      * the request must be rejected, or `null` when it is allowed (including when
      * the headers are missing — older clients / CLI are accepted).
      *
@@ -276,32 +276,44 @@ internal class LustroServer(
         val headers = session.headers ?: return true
         val secFetchSite = headers["sec-fetch-site"]
         val origin = headers["origin"]
-        // MISSING headers are accepted (older clients / CLI).
+        // MISSING headers are accepted (older clients / CLI send neither).
         if (secFetchSite == null && origin == null) return true
-        // Sec-Fetch-Site same-origin/none is always allowed.
+        // Sec-Fetch-Site same-origin/none is always allowed: the browser vouches
+        // that the request did not originate from another site.
         if (secFetchSite == "same-origin" || secFetchSite == "none") return true
         if (origin != null) {
-            if (isLoopbackOrigin(origin)) return true
+            // ONLY the server's own origin is auto-trusted. A different loopback
+            // PORT is a different origin and must NOT be trusted implicitly: cookies
+            // are not isolated by port and SameSite treats other localhost ports as
+            // same-site, so allowing "any loopback" would let a page on another local
+            // port drive this API (CSRF) using the ambient auth cookie.
+            if (isOwnOrigin(origin)) return true
             if (allowedOrigins.any { it.equals(origin, ignoreCase = true) }) return true
         }
         // Sec-Fetch-Site present but not same-origin/none, and no acceptable Origin.
-        // If there is no Origin at all but Sec-Fetch-Site is cross-site, reject.
         return false
     }
 
-    /** True when [origin]'s host is a loopback address (any port). */
-    private fun isLoopbackOrigin(origin: String): Boolean {
-        val host =
+    /**
+     * True when [origin] is the server's OWN origin: a loopback host on the actual
+     * listening port. The port match is what separates the real console from a
+     * different-local-port attacker; the host set tolerates the
+     * `localhost` / `127.0.0.1` / `::1` aliasing a browser may use for the same
+     * logical origin.
+     */
+    private fun isOwnOrigin(origin: String): Boolean {
+        val uri =
             try {
-                URI(origin).host
+                URI(origin)
             } catch (_: Exception) {
-                null
-            } ?: return false
-        val normalized = host.removePrefix("[").removeSuffix("]").lowercase()
-        return normalized == "127.0.0.1" ||
-            normalized == "localhost" ||
-            normalized == "::1" ||
-            normalized.startsWith("127.")
+                return false
+            }
+        val host = uri.host?.removePrefix("[")?.removeSuffix("]")?.lowercase() ?: return false
+        val isLoopbackHost =
+            host == "127.0.0.1" || host == "localhost" || host == "::1" || host.startsWith("127.")
+        if (!isLoopbackHost) return false
+        val port = if (uri.port != -1) uri.port else if (uri.scheme == "https") 443 else 80
+        return port == listeningPort
     }
 
     // endregion

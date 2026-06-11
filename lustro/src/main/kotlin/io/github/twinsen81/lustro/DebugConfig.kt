@@ -32,7 +32,10 @@ public class DebugConfig private constructor(
     public val requestQueueCapacity: Int,
     /** Per-request timeout in milliseconds. Default `30000`. */
     public val requestTimeoutMs: Long,
-    /** Extra allowed CORS origins; loopback is auto-allowed. Default empty. */
+    /**
+     * Extra `Origin`s permitted on state-changing requests; the server's own
+     * origin is always allowed (other localhost ports are not). Default empty.
+     */
     public val allowedOrigins: List<String>,
 ) {
     /** Factories and the [DEFAULT] configuration. */

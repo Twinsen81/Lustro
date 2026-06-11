@@ -258,14 +258,27 @@ class LustroServerSecurityTest {
     // region Origin / Sec-Fetch-Site
 
     @Test
-    fun `loopback origin is allowed on state-changing requests`() {
+    fun `the server's own origin is allowed on state-changing requests`() {
         val token = tokenStore.token()
         post(
             "/api/v1/sample/clear",
             "{}",
             bearer = token,
-            origin = "http://127.0.0.1:5555",
+            origin = "http://127.0.0.1:$port",
         ).use { assertEquals(200, it.code) }
+    }
+
+    @Test
+    fun `a different localhost port origin is rejected on state-changing requests`() {
+        val token = tokenStore.token()
+        // A page on another localhost port is a DIFFERENT origin; trusting it would
+        // let it drive the API via the ambient SameSite cookie (CSRF). Must 403.
+        post(
+            "/api/v1/sample/clear",
+            "{}",
+            bearer = token,
+            origin = "http://127.0.0.1:${port + 1}",
+        ).use { assertEquals(403, it.code) }
     }
 
     @Test

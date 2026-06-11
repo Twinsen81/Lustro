@@ -28,6 +28,13 @@ class DefaultRedactorTest {
     }
 
     @Test
+    fun `redacts custom auth headers by name fragment`() {
+        assertEquals("[REDACTED]", redactor.redactHeaderValue("X-Api-Key", "abc123"))
+        assertEquals("[REDACTED]", redactor.redactHeaderValue("X-Auth-Token", "t.t.t"))
+        assertEquals("[REDACTED]", redactor.redactHeaderValue("X-Session-Id", "s"))
+    }
+
+    @Test
     fun `leaves non-sensitive headers untouched`() {
         assertEquals("application/json", redactor.redactHeaderValue("Content-Type", "application/json"))
         assertEquals("gzip", redactor.redactHeaderValue("Accept-Encoding", "gzip"))
