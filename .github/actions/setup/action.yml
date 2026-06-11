@@ -7,7 +7,7 @@ description: >-
 runs:
   using: "composite"
   steps:
-    # NOTE ON JDK VERSION: the actions/setup-java v4 docs use "JDK 17" in their
+    # NOTE ON JDK VERSION: the actions/setup-java docs use "JDK 17" in their
     # examples, but this build pins a Kotlin/Java toolchain of 21 (every module's
     # `kotlin { jvmToolchain(21) }` + `java { ... VERSION_17 }`). Gradle launches
     # and the toolchain provisioner resolve against JDK 21; the COMPILER then
@@ -15,7 +15,7 @@ runs:
     # even though the emitted classes are 17. Using 17 here would force Gradle to
     # download a 21 toolchain at build time (slower, and offline-fragile).
     - name: Set up Temurin JDK 21
-      uses: actions/setup-java@v4
+      uses: actions/setup-java@v5
       with:
         distribution: "temurin"
         java-version: "21"
