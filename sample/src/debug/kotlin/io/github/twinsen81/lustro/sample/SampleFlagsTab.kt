@@ -1,7 +1,6 @@
 package io.github.twinsen81.lustro.sample
 
 import android.app.Application
-import android.util.Base64
 import io.github.twinsen81.lustro.DebugRequest
 import io.github.twinsen81.lustro.DebugResponse
 import io.github.twinsen81.lustro.DebugTab
@@ -22,7 +21,8 @@ import org.json.JSONObject
  *   user picks, so this also exercises reading a request body in [handle].
  * - **Async polling** — `GET snapshot?cursor=<opaque>` returns the cursor
  *   envelope `{ cursor, status: reset|unchanged|delta, items? }`, exactly like
- *   the Network tab. Every mutation (toggle or upload) advances the cursor.
+ *   the Network tab, built with [DebugResponse.cursorEnvelope]. Every mutation
+ *   (toggle or upload) advances the cursor.
  * - **Modal UI** — `flags.js` opens the shared `debugModal` to upload a file.
  * - **Schema-backed** — the static `assets/lustro/flags.openapi.json` (in
  *   `src/debug/assets`) makes the tab appear in `/api/v1/_meta` agent discovery;
@@ -112,43 +112,21 @@ public class SampleFlagsTab(
 
     // region Async polling (opaque cursor envelope)
 
-    private fun handleSnapshot(request: DebugRequest): DebugResponse {
-        val clientCursor = request.queryParam("cursor")?.let(::decodeCursor)
-        val currentSeq = sequence.get()
-        val cursor = encodeCursor(currentSeq)
-        return DebugResponse.json {
-            append("{")
-            append("\"cursor\":\"").append(cursor.escapeForJson()).append("\",")
-            when {
-                clientCursor == null -> {
-                    append("\"status\":\"reset\",")
-                    appendItems()
-                }
-                clientCursor == currentSeq -> {
-                    append("\"status\":\"unchanged\"")
-                }
-                else -> {
-                    append("\"status\":\"delta\",")
-                    appendItems()
-                }
+    private fun handleSnapshot(request: DebugRequest): DebugResponse =
+        DebugResponse.cursorEnvelope(
+            currentSequence = sequence.get(),
+            clientCursor = request.queryParam("cursor"),
+        ) {
+            val snapshot = synchronized(lock) { flags.values.toList() }
+            snapshot.forEachIndexed { index, flag ->
+                if (index > 0) append(",")
+                append("{")
+                append("\"id\":\"").append(flag.id.escapeForJson()).append("\",")
+                append("\"description\":\"").append(flag.description.escapeForJson()).append("\",")
+                append("\"enabled\":").append(flag.enabled)
+                append("}")
             }
-            append("}")
         }
-    }
-
-    private fun StringBuilder.appendItems() {
-        append("\"items\":[")
-        val snapshot = synchronized(lock) { flags.values.toList() }
-        snapshot.forEachIndexed { index, flag ->
-            if (index > 0) append(",")
-            append("{")
-            append("\"id\":\"").append(flag.id.escapeForJson()).append("\",")
-            append("\"description\":\"").append(flag.description.escapeForJson()).append("\",")
-            append("\"enabled\":").append(flag.enabled)
-            append("}")
-        }
-        append("]")
-    }
 
     // endregion
 
@@ -226,14 +204,4 @@ public class SampleFlagsTab(
     }
 
     // endregion
-
-    private fun encodeCursor(seq: Long): String =
-        Base64.encodeToString(seq.toString().toByteArray(Charsets.UTF_8), Base64.NO_WRAP or Base64.URL_SAFE)
-
-    private fun decodeCursor(cursor: String): Long? =
-        try {
-            String(Base64.decode(cursor, Base64.NO_WRAP or Base64.URL_SAFE), Charsets.UTF_8).toLongOrNull()
-        } catch (_: Exception) {
-            null
-        }
 }

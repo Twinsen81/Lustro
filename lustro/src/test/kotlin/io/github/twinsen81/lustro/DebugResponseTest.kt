@@ -134,6 +134,67 @@ class DebugResponseTest {
     }
 
     @Test
+    fun `cursorEnvelope returns reset with items when no client cursor`() {
+        val res =
+            DebugResponse.cursorEnvelope(currentSequence = 7, clientCursor = null) {
+                append("{\"v\":1},{\"v\":2}")
+            }
+        assertEquals(200, res.status)
+        assertEquals(MediaType.JSON, res.contentType)
+        val json = JSONObject(res.bodyString())
+        assertEquals("reset", json.getString("status"))
+        assertEquals(7L, CursorCodec.decode(json.getString("cursor")))
+        assertEquals(2, json.getJSONArray("items").length())
+        assertFalse(json.has("state"))
+    }
+
+    @Test
+    fun `cursorEnvelope returns reset for an undecodable cursor`() {
+        val res = DebugResponse.cursorEnvelope(currentSequence = 7, clientCursor = "garbage") {}
+        val json = JSONObject(res.bodyString())
+        assertEquals("reset", json.getString("status"))
+        assertEquals(0, json.getJSONArray("items").length())
+    }
+
+    @Test
+    fun `cursorEnvelope returns unchanged without items when the cursor matches`() {
+        var itemsWritten = false
+        val res =
+            DebugResponse.cursorEnvelope(
+                currentSequence = 7,
+                clientCursor = CursorCodec.encode(7),
+            ) { itemsWritten = true }
+        val json = JSONObject(res.bodyString())
+        assertEquals("unchanged", json.getString("status"))
+        assertFalse(json.has("items"))
+        assertFalse(itemsWritten)
+    }
+
+    @Test
+    fun `cursorEnvelope returns delta with items for a stale cursor`() {
+        val res =
+            DebugResponse.cursorEnvelope(
+                currentSequence = 8,
+                clientCursor = CursorCodec.encode(7),
+            ) { append("{\"v\":1}") }
+        val json = JSONObject(res.bodyString())
+        assertEquals("delta", json.getString("status"))
+        assertEquals(1, json.getJSONArray("items").length())
+        assertEquals(8L, CursorCodec.decode(json.getString("cursor")))
+    }
+
+    @Test
+    fun `cursorEnvelope appends state verbatim for all statuses`() {
+        val state = """{"paused":true}"""
+        for (cursor in listOf(null, CursorCodec.encode(7), CursorCodec.encode(3))) {
+            val json = JSONObject(
+                DebugResponse.cursorEnvelope(7, cursor, state) {}.bodyString(),
+            )
+            assertTrue(json.getJSONObject("state").getBoolean("paused"))
+        }
+    }
+
+    @Test
     fun `status to error type mapping`() {
         val cases =
             mapOf(

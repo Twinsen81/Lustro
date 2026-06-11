@@ -1,3 +1,9 @@
+public final class io/github/twinsen81/lustro/CursorCodec {
+	public static final field INSTANCE Lio/github/twinsen81/lustro/CursorCodec;
+	public static final fun decode (Ljava/lang/String;)Ljava/lang/Long;
+	public static final fun encode (J)Ljava/lang/String;
+}
+
 public final class io/github/twinsen81/lustro/DebugRequest {
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;)V
@@ -21,6 +27,7 @@ public abstract interface class io/github/twinsen81/lustro/DebugResponse {
 	public static fun bytes ([BLio/github/twinsen81/lustro/MediaType;)Lio/github/twinsen81/lustro/DebugResponse;
 	public static fun bytes ([BLio/github/twinsen81/lustro/MediaType;I)Lio/github/twinsen81/lustro/DebugResponse;
 	public static fun bytes ([BLio/github/twinsen81/lustro/MediaType;ILio/github/twinsen81/lustro/Headers;)Lio/github/twinsen81/lustro/DebugResponse;
+	public static fun cursorEnvelope (JLjava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lio/github/twinsen81/lustro/DebugResponse;
 	public static fun error (Ljava/lang/String;)Lio/github/twinsen81/lustro/DebugResponse;
 	public static fun error (Ljava/lang/String;I)Lio/github/twinsen81/lustro/DebugResponse;
 	public static fun error (Ljava/lang/String;ILjava/lang/String;)Lio/github/twinsen81/lustro/DebugResponse;
@@ -46,6 +53,8 @@ public final class io/github/twinsen81/lustro/DebugResponse$Companion {
 	public final fun bytes ([BLio/github/twinsen81/lustro/MediaType;I)Lio/github/twinsen81/lustro/DebugResponse;
 	public final fun bytes ([BLio/github/twinsen81/lustro/MediaType;ILio/github/twinsen81/lustro/Headers;)Lio/github/twinsen81/lustro/DebugResponse;
 	public static synthetic fun bytes$default (Lio/github/twinsen81/lustro/DebugResponse$Companion;[BLio/github/twinsen81/lustro/MediaType;ILio/github/twinsen81/lustro/Headers;ILjava/lang/Object;)Lio/github/twinsen81/lustro/DebugResponse;
+	public final fun cursorEnvelope (JLjava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lio/github/twinsen81/lustro/DebugResponse;
+	public static synthetic fun cursorEnvelope$default (Lio/github/twinsen81/lustro/DebugResponse$Companion;JLjava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lio/github/twinsen81/lustro/DebugResponse;
 	public final fun error (Ljava/lang/String;)Lio/github/twinsen81/lustro/DebugResponse;
 	public final fun error (Ljava/lang/String;I)Lio/github/twinsen81/lustro/DebugResponse;
 	public final fun error (Ljava/lang/String;ILjava/lang/String;)Lio/github/twinsen81/lustro/DebugResponse;

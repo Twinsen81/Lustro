@@ -289,7 +289,12 @@ Lustro.builder(application)
 - Tab JS is loaded as an **external** script after `shared.js` (CSP: `script-src 'self'`). Use
   `data-action` attributes and event delegation — **no inline `onclick`/`<script>` handlers**.
 - JSON routes go through `handle(request)`; build responses with the `DebugResponse` factories
-  (`ok`, `json { ... }`, `text`, `bytes`, `notFound`, `error`).
+  (`ok`, `json { ... }`, `text`, `bytes`, `notFound`, `error`). For observable list routes,
+  `DebugResponse.cursorEnvelope(currentSequence, clientCursor) { /* items */ }` implements the
+  cursor envelope's `reset`/`unchanged`/`delta` contract — with `CursorCodec` for the opaque
+  tokens — so tabs don't hand-roll it.
+- `handle()` runs off the main thread and calls may be concurrent — keep mutable tab state
+  thread-safe. Blocking I/O is fine; the runtime enforces a per-request timeout.
 - **Ship a schema to be agent-discoverable.** Only tabs that expose a schema (a static
   `assets/lustro/<id>.openapi.json` or a dynamic `schema()`) are listed in `/api/v1/_meta`.
   Schema-less tabs work in the browser UI but are invisible to agents.

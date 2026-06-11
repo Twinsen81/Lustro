@@ -51,6 +51,58 @@ public interface DebugResponse {
             )
 
         /**
+         * A cursor-envelope response for observable list routes (the wire
+         * protocol's live-polling shape):
+         * `{"cursor":..,"status":..,("items":[..],)?(,"state":..)?}`.
+         *
+         * The `status` is derived by checking [clientCursor] — the cursor the
+         * client echoed back, typically `request.queryParam("cursor")` —
+         * against [currentSequence], the server's current change sequence:
+         * absent or undecodable cursor → `reset`; equal → `unchanged` (items
+         * omitted); anything else → `delta`. For `reset` and `delta`,
+         * [appendItems] writes the comma-separated JSON array elements (the
+         * enclosing `"items":[...]` is emitted by this factory); per the
+         * envelope contract the items always carry the full authoritative
+         * list. A non-null [state] must be a valid JSON value and is appended
+         * verbatim as the envelope's `state` member.
+         *
+         * This factory implements snapshot-list semantics only. Routes with
+         * append-stream semantics (e.g. a log tail, where a poll returns only
+         * the entries after the cursor) need their own envelope; build it with
+         * [CursorCodec] and [json].
+         */
+        @JvmStatic
+        public fun cursorEnvelope(
+            currentSequence: Long,
+            clientCursor: String?,
+            state: String? = null,
+            appendItems: StringBuilder.() -> Unit,
+        ): DebugResponse =
+            json {
+                append("{\"cursor\":\"")
+                append(CursorCodec.encode(currentSequence).escapeForJson())
+                append("\",")
+                val clientSequence = CursorCodec.decode(clientCursor)
+                when {
+                    clientSequence == null -> {
+                        append("\"status\":\"reset\",\"items\":[")
+                        appendItems()
+                        append("]")
+                    }
+                    clientSequence == currentSequence -> append("\"status\":\"unchanged\"")
+                    else -> {
+                        append("\"status\":\"delta\",\"items\":[")
+                        appendItems()
+                        append("]")
+                    }
+                }
+                if (state != null) {
+                    append(",\"state\":").append(state)
+                }
+                append("}")
+            }
+
+        /**
          * A text response carrying [body], with the given [status] (default
          * `200`) and [contentType] (default `text/plain; charset=utf-8`).
          */

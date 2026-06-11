@@ -2,7 +2,6 @@
 
 package io.github.twinsen81.lustro.network
 
-import android.util.Base64
 import io.github.twinsen81.lustro.DebugRequest
 import io.github.twinsen81.lustro.DebugResponse
 import io.github.twinsen81.lustro.ExperimentalPlatformCapture
@@ -218,43 +217,18 @@ public class NetworkDebugTab private constructor(
     // region Transactions + cursor envelope
 
     private fun handleTransactions(request: DebugRequest): DebugResponse {
-        val clientCursor = request.queryParam("cursor")?.let(::decodeCursor)
         val search = request.queryParam("search")?.takeIf { it.isNotBlank() }
-        val currentSeq = store.getSequence()
-        val cursor = encodeCursor(currentSeq)
-        val stateJson = stateJson()
-        return DebugResponse.json {
-            append("{")
-            append("\"cursor\":\"").append(cursor.escapeForJson()).append("\",")
-            when {
-                clientCursor == null -> {
-                    // First poll (or an unparseable cursor) -> full snapshot.
-                    append("\"status\":\"reset\",")
-                    appendItems(search)
-                    append(",")
-                }
-                clientCursor == currentSeq -> {
-                    append("\"status\":\"unchanged\",")
-                }
-                else -> {
-                    append("\"status\":\"delta\",")
-                    appendItems(search)
-                    append(",")
-                }
+        return DebugResponse.cursorEnvelope(
+            currentSequence = store.getSequence(),
+            clientCursor = request.queryParam("cursor"),
+            state = stateJson(),
+        ) {
+            val transactions = store.getTransactions(search = search)
+            transactions.forEachIndexed { index, tx ->
+                if (index > 0) append(",")
+                appendTransaction(tx, brief = true)
             }
-            append("\"state\":").append(stateJson)
-            append("}")
         }
-    }
-
-    private fun StringBuilder.appendItems(search: String?) {
-        append("\"items\":[")
-        val transactions = store.getTransactions(search = search)
-        transactions.forEachIndexed { index, tx ->
-            if (index > 0) append(",")
-            appendTransaction(tx, brief = true)
-        }
-        append("]")
     }
 
     private fun stateJson(): String =
@@ -582,16 +556,6 @@ public class NetworkDebugTab private constructor(
     private fun ok(): DebugResponse = DebugResponse.json { append("{\"status\":\"ok\"}") }
 
     // endregion
-
-    private fun encodeCursor(seq: Long): String =
-        Base64.encodeToString(seq.toString().toByteArray(Charsets.UTF_8), Base64.NO_WRAP or Base64.URL_SAFE)
-
-    private fun decodeCursor(cursor: String): Long? =
-        try {
-            String(Base64.decode(cursor, Base64.NO_WRAP or Base64.URL_SAFE), Charsets.UTF_8).toLongOrNull()
-        } catch (_: Exception) {
-            null
-        }
 
     /** Factory for [NetworkDebugTab]. */
     public companion object {

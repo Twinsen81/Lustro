@@ -10,17 +10,13 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
-import org.robolectric.annotation.Config
 
 /**
- * Robolectric tests for [NetworkDebugTab.handle] — the cursor-polling envelope
- * (reset/unchanged/delta + opaque cursor) and the mock/state routes. Needs
- * Robolectric because the cursor is `android.util.Base64`-encoded.
+ * Tests for [NetworkDebugTab.handle] — the cursor-polling envelope
+ * (reset/unchanged/delta + opaque cursor) and the mock/state routes. Plain
+ * JUnit: the routes under test are Android-free (the opaque cursor comes from
+ * the pure-JVM `CursorCodec`).
  */
-@RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34])
 class NetworkDebugTabTest {
     private fun tab(): NetworkDebugTab {
         val classifier = NetworkClassifier { url -> if ("sync" in url) listOf("sync") else emptyList() }

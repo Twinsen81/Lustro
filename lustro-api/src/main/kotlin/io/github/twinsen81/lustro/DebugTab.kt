@@ -53,6 +53,11 @@ public abstract class DebugTab {
     /**
      * Handles a debug API [request]. Return `null` to produce an enveloped
      * `404`; throwing produces an enveloped `500`.
+     *
+     * Invoked OFF the main thread, and calls may be concurrent (the runtime
+     * dispatches multiple requests in flight), so a tab holding mutable state
+     * must be thread-safe. Blocking on I/O here is fine — the runtime enforces
+     * a per-request timeout.
      */
     public open fun handle(request: DebugRequest): DebugResponse? = null
 
