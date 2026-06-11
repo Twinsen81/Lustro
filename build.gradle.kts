@@ -2,6 +2,12 @@ plugins {
     alias(libs.plugins.android.library) apply false
     alias(libs.plugins.android.application) apply false
     alias(libs.plugins.kotlin.jvm) apply false
+    // Declared (unapplied) at the root so all publishing modules share ONE
+    // classloader copy of the publish plugin. Its SonatypeRepositoryBuildService
+    // is a cross-project shared build service; with per-module plugin
+    // classloaders the service type mismatches when the publish task graph is
+    // resolved ("Cannot set the value of task ... property 'buildService'").
+    alias(libs.plugins.vanniktech.publish) apply false
     alias(libs.plugins.binary.compatibility.validator)
     // Dokka at the root aggregates the per-module HTML into a single site at
     // build/dokka/html, which release.yml deploys to gh-pages. The publishable
