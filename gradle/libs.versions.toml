@@ -1,7 +1,7 @@
 [versions]
 # Build toolchain — proven against this environment.
 agp = "9.2.1"
-kotlin = "2.3.21"
+kotlin = "2.4.0"
 ksp = "2.3.21-2.0.4"
 
 # Android Lint tooling. Lint versions are AGP-coupled: lint = AGP major + 23, so
