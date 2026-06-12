@@ -40,6 +40,29 @@ class DefaultRedactorTest {
         assertEquals("gzip", redactor.redactHeaderValue("Accept-Encoding", "gzip"))
     }
 
+    @Test
+    fun `public headers that merely resemble secrets by name pass through`() {
+        // CORS flag: name contains "credential" but the value is just a boolean.
+        assertEquals("true", redactor.redactHeaderValue("Access-Control-Allow-Credentials", "true"))
+        // Server challenges: names contain "auth" but they describe HOW to
+        // authenticate; essential when debugging 401/407 responses.
+        assertEquals(
+            "Bearer realm=\"api\"",
+            redactor.redactHeaderValue("WWW-Authenticate", "Bearer realm=\"api\""),
+        )
+        assertEquals(
+            "Basic realm=\"proxy\"",
+            redactor.redactHeaderValue("proxy-authenticate", "Basic realm=\"proxy\""),
+        )
+    }
+
+    @Test
+    fun `authenticate exemption does not weaken authorization redaction`() {
+        assertEquals("[REDACTED]", redactor.redactHeaderValue("Authorization", "Bearer abc"))
+        assertEquals("[REDACTED]", redactor.redactHeaderValue("Proxy-Authorization", "Basic xyz"))
+        assertEquals("[REDACTED]", redactor.redactHeaderValue("X-Credential-Id", "c1"))
+    }
+
     // endregion
 
     // region url query

@@ -288,6 +288,12 @@ Lustro.builder(application)
   static `.js` / `.css`; returning a non-null `schema()` overrides the static `.openapi.json`.
 - Tab JS is loaded as an **external** script after `shared.js` (CSP: `script-src 'self'`). Use
   `data-action` attributes and event delegation — **no inline `onclick`/`<script>` handlers**.
+- **Styling is free.** Every tab page loads `shared.css` — the console's design system: design
+  tokens (surfaces, text ramp, semantic method/status/level/category palettes; dark + light
+  themes) plus a documented component library (`.dc-*` and the shared `.debug-*` classes).
+  Build on those and your tab matches the console in both themes with no extra CSS; see
+  [`docs/STYLEGUIDE.md`](docs/STYLEGUIDE.md) for the contract and the sample flags tab for a
+  working example.
 - JSON routes go through `handle(request)`; build responses with the `DebugResponse` factories
   (`ok`, `json { ... }`, `text`, `bytes`, `notFound`, `error`). For observable list routes,
   `DebugResponse.cursorEnvelope(currentSequence, clientCursor) { /* items */ }` implements the
