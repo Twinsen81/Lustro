@@ -14,6 +14,10 @@ import org.json.JSONTokener
  * - Header values to `[REDACTED]` for `Authorization`, `Proxy-Authorization`,
  *   `Cookie`, `Set-Cookie`, and any header whose NAME contains a sensitive token
  *   (e.g. `X-Api-Key`, `X-Auth-Token`), so custom auth headers are covered too.
+ *   Well-known PUBLIC headers whose names merely resemble a secret
+ *   (`Access-Control-Allow-Credentials`, `WWW-Authenticate`,
+ *   `Proxy-Authenticate`) are exempt — they carry CORS metadata / server
+ *   challenges, not credentials.
  * - URL query parameters, JSON object fields, and form fields whose name
  *   contains a sensitive token (`token`, `key`, `secret`, `password`, `passwd`,
  *   `pwd`, `auth`, `access_token`, `refresh_token`, `api_key`, `apikey`,
@@ -53,6 +57,14 @@ public object DefaultRedactor : Redactor {
 
     private val SENSITIVE_HEADERS =
         setOf("authorization", "proxy-authorization", "cookie", "set-cookie")
+
+    // Well-known public headers whose NAMES contain a sensitive fragment but
+    // whose values are not secrets: the CORS allow-credentials flag (literally
+    // "true"/"false") and the WWW-/Proxy-Authenticate server challenges (they
+    // describe HOW to authenticate — essential when debugging 401s). Checked
+    // before the fragment heuristic.
+    private val NON_SENSITIVE_HEADERS =
+        setOf("access-control-allow-credentials", "www-authenticate", "proxy-authenticate")
 
     private val SENSITIVE_KEY_FRAGMENTS =
         listOf(
@@ -103,10 +115,17 @@ public object DefaultRedactor : Redactor {
      * Returns the header [value], or `[REDACTED]` when [name] is a well-known
      * sensitive header OR its name matches a sensitive key fragment — so custom
      * auth headers (`X-Api-Key`, `X-Auth-Token`, …) are masked, not just the
-     * standard `Authorization` / `Cookie` set.
+     * standard `Authorization` / `Cookie` set. Well-known public headers that
+     * merely resemble a secret by name ([NON_SENSITIVE_HEADERS]) pass through.
      */
-    override fun redactHeaderValue(name: String, value: String): String =
-        if (name.lowercase() in SENSITIVE_HEADERS || isSensitiveKey(name)) PLACEHOLDER else value
+    override fun redactHeaderValue(name: String, value: String): String {
+        val lower = name.lowercase()
+        return when {
+            lower in NON_SENSITIVE_HEADERS -> value
+            lower in SENSITIVE_HEADERS || isSensitiveKey(name) -> PLACEHOLDER
+            else -> value
+        }
+    }
 
     /**
      * Returns [body] with sensitive values redacted. EVERY captured text body is

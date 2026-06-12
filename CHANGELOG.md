@@ -57,6 +57,15 @@ see [DECISIONS.md](DECISIONS.md).
 - **Docs**: `README.md`, library `docs/AGENTS.md`, `SECURITY.md`, `CONTRIBUTING.md`,
   `CODE_OF_CONDUCT.md`, `DECISIONS.md`, and issue/PR templates + grouped Dependabot.
 
+### Fixed
+
+- **Redaction false positives on public headers.** `DefaultRedactor` no longer
+  masks `Access-Control-Allow-Credentials`, `WWW-Authenticate`, or
+  `Proxy-Authenticate` — their names resemble secrets, but they carry CORS
+  metadata / server challenges, not credentials. The fragment heuristic and the
+  `Authorization`/`Cookie` set are unchanged, and a custom `Redactor` passed to
+  `NetworkDebugTab.create(...)` still overrides all of it.
+
 ### Changed
 
 - **Console redesign — terminal theme.** The web console now uses a dark-first,
