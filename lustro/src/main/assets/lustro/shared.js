@@ -208,7 +208,7 @@ window.debugSetStatus = function(state) {
         document.documentElement.setAttribute('data-theme', effective);
         var btn = document.getElementById('theme-toggle');
         if (btn) {
-            var icon = pref === 'auto' ? '🌗 Auto' : (pref === 'light' ? '☀️ Light' : '🌙 Dark');
+            var icon = pref === 'auto' ? '◑ Auto' : (pref === 'light' ? '☀ Light' : '◐ Dark');
             btn.textContent = icon;
             var explain = pref === 'auto' ? 'follows your system preference' : pref;
             btn.title = 'Theme: ' + pref + ' (' + explain + '). Click to cycle: auto → light → dark.';

@@ -138,7 +138,7 @@
     function showCopyPopup(ev) {
         var popup = document.createElement('div');
         popup.className = 'net-copy-popup';
-        popup.textContent = 'Copied to clipboard';
+        popup.textContent = 'Copied!';
         popup.style.left = (ev ? ev.clientX : window.innerWidth / 2) + 'px';
         popup.style.top = (ev ? ev.clientY : window.innerHeight / 2) + 'px';
         document.body.appendChild(popup);
@@ -157,6 +157,26 @@
         return '<span class="net-copy-btn' + (cls ? ' ' + cls : '') + '" data-action="copyToClip" data-copy-id="' + debugEscapeHtml(id) + '" title="Copy">' + COPY_ICON + '</span>';
     }
 
+    // ── Per-row master toggles (tri-state "select all") ──
+    // ✓ = every chip on, – = mixed, empty = every chip off. Clicking applies
+    // the row's toggle-all action: any off → enable all; all on → disable all.
+    function masterStateClass(keys, enabledMap) {
+        var on = 0;
+        keys.forEach(function(k) { if (enabledMap[k]) on++; });
+        if (keys.length > 0 && on === keys.length) return 'on';
+        if (on === 0) return 'off';
+        return 'mixed';
+    }
+    function masterToggleHtml(action, label, keys, enabledMap) {
+        return '<button class="net-master-toggle ' + masterStateClass(keys, enabledMap) + '"'
+            + ' data-action="' + action + '"'
+            + ' title="Toggle every ' + label + ' at once: if any are off, enable all; if all are on, disable all."></button>';
+    }
+    function updateMasterToggle(action, keys, enabledMap) {
+        var btn = document.querySelector('.net-master-toggle[data-action="' + action + '"]');
+        if (btn) btn.className = 'net-master-toggle ' + masterStateClass(keys, enabledMap);
+    }
+
     // ── Category filter bar ──
     function buildCategoryFilters() {
         var container = document.getElementById('category-filters');
@@ -168,7 +188,7 @@
                 + debugEscapeHtml(cat) + '</span>';
         }).join('');
         container.innerHTML = pills
-            + '<button class="net-toggle-all" data-action="toggleAllCategories" title="Toggle every category at once: if any are off, enable all; if all are on, disable all.">Toggle all</button>';
+            + masterToggleHtml('toggleAllCategories', 'category', knownCategories, enabledCategories);
     }
 
     function updateCategoryPills() {
@@ -177,6 +197,7 @@
             var cat = pill.dataset.cat;
             pill.className = 'net-cat-pill' + (enabledCategories[cat] ? '' : ' off');
         });
+        updateMasterToggle('toggleAllCategories', knownCategories, enabledCategories);
     }
 
     window.toggleCategory = function(cat) {
@@ -205,7 +226,8 @@
             return '<span class="' + cls + '" data-action="toggleStatusFilter" data-status="' + s + '"'
                 + ' title="Toggle ' + s + ' responses. Off = hide. Saved in browser localStorage.">'
                 + s + '</span>';
-        }).join('');
+        }).join('')
+            + masterToggleHtml('toggleAllStatuses', 'status filter', STATUS_FILTERS, enabledStatuses);
     }
     function buildMethodFilters() {
         var container = document.getElementById('method-filters');
@@ -215,19 +237,22 @@
             return '<span class="' + cls + '" data-action="toggleMethodFilter" data-method="' + m + '"'
                 + ' title="Toggle ' + m + ' requests. Off = hide. Saved in browser localStorage.">'
                 + m + '</span>';
-        }).join('');
+        }).join('')
+            + masterToggleHtml('toggleAllMethods', 'method filter', METHOD_FILTERS, enabledMethods);
     }
     function refreshStatusPills() {
         document.querySelectorAll('#status-filters .net-filter-pill').forEach(function(p) {
             var s = p.dataset.status;
             p.classList.toggle('off', !enabledStatuses[s]);
         });
+        updateMasterToggle('toggleAllStatuses', STATUS_FILTERS, enabledStatuses);
     }
     function refreshMethodPills() {
         document.querySelectorAll('#method-filters .net-filter-pill').forEach(function(p) {
             var m = p.dataset.method;
             p.classList.toggle('off', !enabledMethods[m]);
         });
+        updateMasterToggle('toggleAllMethods', METHOD_FILTERS, enabledMethods);
     }
     window.toggleStatusFilter = function(s) {
         enabledStatuses[s] = !enabledStatuses[s];
@@ -238,6 +263,22 @@
     };
     window.toggleMethodFilter = function(m) {
         enabledMethods[m] = !enabledMethods[m];
+        refreshMethodPills();
+        saveFilters();
+        resetDisplayLimit();
+        renderList();
+    };
+    window.toggleAllStatuses = function() {
+        var anyOff = STATUS_FILTERS.some(function(s) { return !enabledStatuses[s]; });
+        STATUS_FILTERS.forEach(function(s) { enabledStatuses[s] = anyOff; });
+        refreshStatusPills();
+        saveFilters();
+        resetDisplayLimit();
+        renderList();
+    };
+    window.toggleAllMethods = function() {
+        var anyOff = METHOD_FILTERS.some(function(m) { return !enabledMethods[m]; });
+        METHOD_FILTERS.forEach(function(m) { enabledMethods[m] = anyOff; });
         refreshMethodPills();
         saveFilters();
         resetDisplayLimit();
@@ -321,12 +362,12 @@
             var sel = tx.id === selectedTxId ? ' selected' : '';
             var mockedBadge = tx.isMocked ? ' <span class="status-pill mocked">Mocked</span>' : '';
             var streamingBadge = streaming ? ' <span class="status-pill">Streaming</span>' : '';
-            return '<tr class="' + sel + '" data-action="selectTransaction" data-tx-id="' + debugEscapeHtml(tx.id) + '" style="cursor:pointer">'
-                + '<td><strong>' + debugEscapeHtml(tx.method || '') + '</strong></td>'
-                + '<td style="font-size:14px;word-break:break-all">' + debugEscapeHtml(shortUrl) + '</td>'
-                + '<td class="' + sc + '"><strong>' + statusText + '</strong>' + mockedBadge + streamingBadge + '</td>'
-                + '<td style="font-size:11px">' + dur + '</td>'
-                + '<td>' + ((tx.categories || []).map(function(c) {
+            return '<tr class="' + sel + '" data-action="selectTransaction" data-tx-id="' + debugEscapeHtml(tx.id) + '">'
+                + '<td class="net-cell-method ' + methodClass(tx) + '">' + debugEscapeHtml(tx.method || '') + '</td>'
+                + '<td class="net-cell-url" title="' + debugEscapeHtml(pathOnly) + '">' + debugEscapeHtml(shortUrl) + '</td>'
+                + '<td class="net-cell-status ' + sc + '">' + statusText + mockedBadge + streamingBadge + '</td>'
+                + '<td class="net-cell-time">' + dur + '</td>'
+                + '<td class="net-cell-cat">' + ((tx.categories || []).map(function(c) {
                     return '<span class="status-pill cat-pill" data-cat="' + debugEscapeHtml(c) + '">' + debugEscapeHtml(c) + '</span>';
                 }).join(' ')) + '</td>'
                 + '</tr>';
@@ -355,6 +396,10 @@
 
     function resetDisplayLimit() {
         displayLimit = DISPLAY_LIMIT_INITIAL;
+    }
+
+    function methodClass(tx) {
+        return 'net-m-' + methodKeyForTx(tx).toLowerCase();
     }
 
     function statusClass(tx) {
@@ -493,7 +538,7 @@
         var statusLabel = tx.error ? 'Error' : (tx.statusCode || 'Pending');
         if (streaming) statusLabel += ' streaming';
         var html = '<div class="net-detail-header">';
-        html += '<div class="net-detail-method-url" style="font-size:16px"><strong>' + debugEscapeHtml(tx.method || '') + '</strong> ' + debugEscapeHtml(tx.url) + ' ' + copyBtn(tx.url || '') + '</div>';
+        html += '<div class="net-detail-method-url"><span class="net-detail-method ' + methodClass(tx) + '">' + debugEscapeHtml(tx.method || '') + '</span> ' + debugEscapeHtml(tx.url) + ' ' + copyBtn(tx.url || '') + '</div>';
         html += '<div class="net-detail-meta">';
         html += '<span class="' + sc + '">' + statusLabel + '</span>';
         html += '<span>' + (tx.durationMs != null ? tx.durationMs + 'ms' + (streaming ? ' streaming' : '') : '—') + '</span>';
@@ -610,7 +655,7 @@
         }).join('');
         return '<details class="net-headers-details">'
             + '<summary>' + keys.length + ' header' + (keys.length === 1 ? '' : 's') + '</summary>'
-            + '<table class="debug-table net-headers-table" style="width:100%;font-size:14px">' + rows + '</table>'
+            + '<table class="debug-table net-headers-table">' + rows + '</table>'
             + '</details>';
     }
 
@@ -731,6 +776,15 @@
     var loadedRules = [];
     var editingRuleId = null;
 
+    // Map a mock rule's status code onto the shared .status-pill variants.
+    function ruleStatusVariant(code) {
+        var c = parseInt(code, 10);
+        if (!c) return '';
+        if (c < 300) return ' success';
+        if (c < 400) return ' warning';
+        return ' error';
+    }
+
     function renderRules(rules) {
         loadedRules = rules || [];
         var listEl = document.getElementById('rules-list');
@@ -750,7 +804,7 @@
                     + '<div class="net-rule-header">'
                     + '<label class="net-toggle" title="Enable or disable this rule. Disabled rules stay in the list but do not match traffic."><input type="checkbox"' + checked + ' data-action="toggleRule" data-rule-id="' + debugEscapeHtml(r.id) + '"><span class="net-toggle-slider"></span></label>'
                     + '<span class="net-rule-name" title="' + debugEscapeHtml(r.name || r.urlPattern) + '">' + debugEscapeHtml(r.name || r.urlPattern) + '</span>'
-                    + '<span class="status-pill" title="HTTP status returned to the app when this rule matches.">' + debugEscapeHtml(r.statusCode) + '</span>'
+                    + '<span class="status-pill' + ruleStatusVariant(r.statusCode) + '" title="HTTP status returned to the app when this rule matches.">' + debugEscapeHtml(r.statusCode) + '</span>'
                     + '<button class="debug-btn-icon" data-action="editRule" data-rule-id="' + debugEscapeHtml(r.id) + '" title="Edit this rule (loads it into the form below).">✎</button>'
                     + '<button class="debug-btn-icon danger" data-action="deleteRule" data-rule-id="' + debugEscapeHtml(r.id) + '" title="Delete this rule permanently.">✕</button>'
                     + '</div>'
@@ -1047,7 +1101,9 @@
     // ── Pause/Resume ──
     function updatePauseButton() {
         var btn = document.getElementById('pause-btn');
-        if (btn) btn.textContent = isPaused ? '▶ Resume' : '⏸ Pause';
+        if (!btn) return;
+        btn.textContent = isPaused ? '▶ Resume' : '⏸ Pause';
+        btn.classList.toggle('active', isPaused);
     }
 
     window.togglePause = function() {
@@ -1068,7 +1124,7 @@
         var btn = document.getElementById('overwrite-btn');
         if (!btn) return;
         btn.textContent = 'Overwrite: ' + (isOverwriteMode ? 'on' : 'off');
-        btn.classList.toggle('debug-btn-primary', isOverwriteMode);
+        btn.classList.toggle('active', isOverwriteMode);
     }
 
     window.toggleOverwriteMode = function() {
@@ -1256,6 +1312,8 @@
         },
         toggleCategory: function(el) { window.toggleCategory(el.dataset.cat); },
         toggleAllCategories: function() { window.toggleAllCategories(); },
+        toggleAllStatuses: function() { window.toggleAllStatuses(); },
+        toggleAllMethods: function() { window.toggleAllMethods(); },
         toggleStatusFilter: function(el) { window.toggleStatusFilter(el.dataset.status); },
         toggleMethodFilter: function(el) { window.toggleMethodFilter(el.dataset.method); },
         selectTransaction: function(el) { window.selectTransaction(el.dataset.txId); },

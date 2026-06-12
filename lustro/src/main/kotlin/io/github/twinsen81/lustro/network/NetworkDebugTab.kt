@@ -136,7 +136,7 @@ public class NetworkDebugTab private constructor(
                     <button class="debug-btn debug-btn-danger" data-action="clearTraffic" title="Clear the captured transaction list. Mock rules and settings are preserved. Keyboard shortcut: C (when not typing in an input).">Clear</button>
                 </div>
                 <div class="debug-search-bar">
-                    <input type="text" id="search-input" placeholder="Filter by URL, method, body..." data-action="onSearchInput" title="Search across URL, method, request body, and response body (server-side, 300ms debounce). Matches are highlighted in body views. Shortcut: Ctrl/Cmd+K to focus." />
+                    <label class="dc-field"><span class="dc-field__prefix">&gt;</span><input type="text" id="search-input" class="dc-input" placeholder="filter url, method, body…" data-action="onSearchInput" title="Search across URL, method, request body, and response body (server-side, 300ms debounce). Matches are highlighted in body views. Shortcut: Ctrl/Cmd+K to focus." /></label>
                 </div>
                 <div class="net-category-bar" id="category-filters"></div>
                 <div class="net-filter-bar" id="status-filters"></div>
@@ -145,11 +145,11 @@ public class NetworkDebugTab private constructor(
                     <table class="debug-table" style="width:100%">
                         <thead>
                             <tr>
-                                <th style="width:55px">Method</th>
+                                <th style="width:74px">Method</th>
                                 <th>URL</th>
-                                <th style="width:45px">Status</th>
-                                <th style="width:55px">Time</th>
-                                <th style="width:55px">Cat</th>
+                                <th style="width:60px">Status</th>
+                                <th style="width:66px">Time</th>
+                                <th style="width:96px">Cat</th>
                             </tr>
                         </thead>
                         <tbody id="tx-list"></tbody>

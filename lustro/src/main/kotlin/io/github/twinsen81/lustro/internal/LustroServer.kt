@@ -355,7 +355,7 @@ internal class LustroServer(
         val tabsHtml =
             registry.visibleTabs().joinToString("\n") { tab ->
                 val activeClass = if (tab.id == activeTab.id) "active" else ""
-                """<a href="/tab/${tab.id}" class="tab $activeClass">${tab.icon.escapeHtml()} ${tab.title.escapeHtml()}</a>"""
+                """<a href="/tab/${tab.id}" class="tab $activeClass"><span class="tab-icon">${tab.icon.escapeHtml()}</span>${tab.title.escapeHtml()}</a>"""
             }
         val title = activeTab.title.escapeHtml()
         // EXTERNAL scripts/styles only (no inline tab logic — CSP holds). The tab
@@ -380,7 +380,7 @@ internal class LustroServer(
 $tabsHtml
         </div>
         <div class="status-bar">
-            <button id="theme-toggle" class="theme-toggle" type="button">🌗 Auto</button>
+            <button id="theme-toggle" class="theme-toggle" type="button">◑ Auto</button>
             <span id="status" class="status disconnected">Connecting...</span>
         </div>
     </div>
@@ -402,9 +402,10 @@ $tabsHtml
     <title>Lustro Debug Console</title>
     <style>
         body {
-            font-family: -apple-system, BlinkMacSystemFont, monospace;
-            background: #1a1a2e;
-            color: #eee;
+            font-family: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+            background: #08090b;
+            color: #7b828d;
+            letter-spacing: 0.04em;
             display: flex;
             align-items: center;
             justify-content: center;

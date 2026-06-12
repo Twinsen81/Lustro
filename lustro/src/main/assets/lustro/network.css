@@ -1,187 +1,268 @@
-/* Network Debug Tab */
+/* Network Debug Tab — terminal design (see shared.css for the token
+   system and the .dc-* component library this builds on). */
 
-.net-list-pane { width: 42%; }
-.net-detail-pane { flex: 1; }
+.net-list-pane { width: 54%; min-width: 380px; }
+.net-detail-pane { flex: 1; min-width: 360px; background: var(--raise); }
 
-/* Category filter bar */
+/* ── Left pane toolbar block ──
+   Title row, search, category chips and status/method chips are stacked
+   strips; only the last strip draws the separator to the grid below. */
+.net-list-pane .pane-header {
+    border-bottom: none;
+    padding: 16px 22px 0;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.net-list-pane .pane-header h3 { margin-right: 2px; }
+.net-tx-count {
+    color: var(--accent-2);
+    font-size: 12px;
+}
+.net-list-pane .debug-search-bar {
+    border-bottom: none;
+    padding: 13px 22px 0;
+}
 .net-category-bar {
     display: flex;
-    gap: 4px;
-    padding: 6px 12px;
-    background: var(--bg-elevated);
-    border-bottom: 1px solid var(--border);
+    gap: 6px;
+    padding: 13px 22px 0;
     flex-wrap: wrap;
     align-items: center;
 }
-/* Categories are now classifier-supplied strings, not a fixed set. The default
-   pill styling applies to every category; the named rules below tint the classic
-   labels when a classifier happens to emit them, and unknown categories fall back
-   to this generic accent style. */
-.net-cat-pill {
-    padding: 3px 10px;
-    border-radius: 10px;
-    font-size: 12px;
-    cursor: pointer;
-    background: var(--accent-soft);
-    color: var(--accent);
-    border: 1px solid var(--accent-soft-border);
-    transition: all 0.2s;
-    user-select: none;
-}
-.net-cat-pill[data-cat="Sync"]   { background: color-mix(in srgb, var(--cat-sync) 20%, transparent);   color: var(--cat-sync);   border-color: color-mix(in srgb, var(--cat-sync) 40%, transparent); }
-.net-cat-pill[data-cat="Auth"]   { background: color-mix(in srgb, var(--cat-auth) 20%, transparent);   color: var(--cat-auth);   border-color: color-mix(in srgb, var(--cat-auth) 40%, transparent); }
-.net-cat-pill[data-cat="Media"]  { background: color-mix(in srgb, var(--cat-media) 20%, transparent);  color: var(--cat-media);  border-color: color-mix(in srgb, var(--cat-media) 40%, transparent); }
-.net-cat-pill[data-cat="Config"] { background: color-mix(in srgb, var(--cat-config) 20%, transparent); color: var(--cat-config); border-color: color-mix(in srgb, var(--cat-config) 40%, transparent); }
-.net-cat-pill[data-cat="AI"]     { background: color-mix(in srgb, var(--cat-ai) 20%, transparent);     color: var(--cat-ai);     border-color: color-mix(in srgb, var(--cat-ai) 40%, transparent); }
-.net-cat-pill[data-cat="Wiretap"] { background: color-mix(in srgb, var(--cat-wiretap) 20%, transparent); color: var(--cat-wiretap); border-color: color-mix(in srgb, var(--cat-wiretap) 40%, transparent); }
-.net-cat-pill[data-cat="Other"]  { background: color-mix(in srgb, var(--cat-other) 20%, transparent);  color: var(--cat-other);  border-color: color-mix(in srgb, var(--cat-other) 40%, transparent); }
-.net-cat-pill.off,
-.net-cat-pill[data-cat].off {
-    background: var(--bg-chip-off);
-    color: var(--text-muted);
-    border-color: var(--bg-disabled);
-}
-.net-cat-pill:hover { opacity: 0.85; }
-
-/* Status pills used inline (e.g. category labels in list rows / detail). The
-   generic .status-pill.cat-pill rule (in shared.css base + below) handles any
-   classifier string; named rules tint the classic labels. */
-.status-pill.cat-pill {
-    background: var(--accent-soft);
-    color: var(--accent);
-}
-.status-pill.cat-pill[data-cat="Sync"]   { background: color-mix(in srgb, var(--cat-sync) 20%, transparent);   color: var(--cat-sync); }
-.status-pill.cat-pill[data-cat="Auth"]   { background: color-mix(in srgb, var(--cat-auth) 20%, transparent);   color: var(--cat-auth); }
-.status-pill.cat-pill[data-cat="Media"]  { background: color-mix(in srgb, var(--cat-media) 20%, transparent);  color: var(--cat-media); }
-.status-pill.cat-pill[data-cat="Config"] { background: color-mix(in srgb, var(--cat-config) 20%, transparent); color: var(--cat-config); }
-.status-pill.cat-pill[data-cat="AI"]     { background: color-mix(in srgb, var(--cat-ai) 20%, transparent);     color: var(--cat-ai); }
-.status-pill.cat-pill[data-cat="Wiretap"] { background: color-mix(in srgb, var(--cat-wiretap) 20%, transparent); color: var(--cat-wiretap); }
-.status-pill.cat-pill[data-cat="Other"]  { background: color-mix(in srgb, var(--cat-other) 20%, transparent);  color: var(--cat-other); }
-
-/* Toggle-all button (right side of category bar). */
-.net-toggle-all {
-    margin-left: auto;
-    background: transparent;
-    color: var(--text-muted);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 2px 10px;
-    font-size: 11px;
-    cursor: pointer;
-    transition: all 0.2s;
-}
-.net-toggle-all:hover {
-    color: var(--accent);
-    border-color: var(--accent-soft-border);
-}
-
-/* Status & method filter rows */
 .net-filter-bar {
     display: flex;
     flex-wrap: wrap;
-    gap: 4px;
-    padding: 4px 12px;
-    background: var(--bg-elevated);
-    border-bottom: 1px solid var(--border);
+    gap: 6px;
+    padding: 10px 22px 0;
 }
-.net-filter-pill {
-    padding: 2px 9px;
-    border-radius: 9px;
+#method-filters {
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--border-soft);
+}
+
+/* Category filter chips: pill + colored dot (dc-chip pattern). The dot
+   carries the per-category color via --c; categories are classifier-
+   supplied strings, so unknown labels fall back to --cat-other.
+   Enabled = soft tinted fill in the category color; off = hollow + faded. */
+.net-cat-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 4px 11px;
+    border-radius: var(--radius-pill);
+    border: 1px solid color-mix(in srgb, var(--c, var(--cat-other)) 40%, transparent);
+    background: color-mix(in srgb, var(--c, var(--cat-other)) 13%, transparent);
+    color: var(--c, var(--cat-other));
     font-size: 11px;
+    font-weight: 500;
+    letter-spacing: .04em;
+    text-transform: uppercase;
     cursor: pointer;
     user-select: none;
-    border: 1px solid transparent;
-    transition: opacity 0.15s, background 0.15s, color 0.15s;
+    transition: border-color 0.15s, color 0.15s, background 0.15s;
 }
-.net-filter-pill.off {
-    background: var(--bg-chip-off) !important;
-    color: var(--text-muted) !important;
-    border-color: transparent !important;
+.net-cat-pill::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--c, var(--cat-other));
 }
-/* Status colors mirror the row status colors */
-.net-filter-pill.status-2xx    { background: color-mix(in srgb, var(--status-2xx) 20%, transparent);    color: var(--status-2xx);    border-color: color-mix(in srgb, var(--status-2xx) 40%, transparent); }
-.net-filter-pill.status-3xx    { background: color-mix(in srgb, var(--status-3xx) 20%, transparent);    color: var(--status-3xx);    border-color: color-mix(in srgb, var(--status-3xx) 40%, transparent); }
-.net-filter-pill.status-4xx    { background: color-mix(in srgb, var(--status-4xx) 20%, transparent);    color: var(--status-4xx);    border-color: color-mix(in srgb, var(--status-4xx) 40%, transparent); }
-.net-filter-pill.status-5xx    { background: color-mix(in srgb, var(--status-5xx) 20%, transparent);    color: var(--status-5xx);    border-color: color-mix(in srgb, var(--status-5xx) 40%, transparent); }
-.net-filter-pill.status-error  { background: color-mix(in srgb, var(--status-err) 20%, transparent);    color: var(--status-err);    border-color: color-mix(in srgb, var(--status-err) 40%, transparent); }
-.net-filter-pill.status-mocked { background: color-mix(in srgb, var(--status-mocked) 20%, transparent); color: var(--status-mocked); border-color: color-mix(in srgb, var(--status-mocked) 40%, transparent); }
-/* Method colors – use category palette so each method is distinguishable */
-.net-filter-pill.method-get    { background: color-mix(in srgb, var(--cat-sync) 20%, transparent);   color: var(--cat-sync);   border-color: color-mix(in srgb, var(--cat-sync) 40%, transparent); }
-.net-filter-pill.method-post   { background: color-mix(in srgb, var(--cat-media) 20%, transparent);  color: var(--cat-media);  border-color: color-mix(in srgb, var(--cat-media) 40%, transparent); }
-.net-filter-pill.method-put    { background: color-mix(in srgb, var(--cat-auth) 20%, transparent);   color: var(--cat-auth);   border-color: color-mix(in srgb, var(--cat-auth) 40%, transparent); }
-.net-filter-pill.method-delete { background: color-mix(in srgb, var(--status-err) 20%, transparent); color: var(--status-err); border-color: color-mix(in srgb, var(--status-err) 40%, transparent); }
-.net-filter-pill.method-patch  { background: color-mix(in srgb, var(--cat-config) 20%, transparent); color: var(--cat-config); border-color: color-mix(in srgb, var(--cat-config) 40%, transparent); }
-.net-filter-pill.method-other  { background: color-mix(in srgb, var(--cat-other) 20%, transparent);  color: var(--cat-other);  border-color: color-mix(in srgb, var(--cat-other) 40%, transparent); }
+.net-cat-pill:not(.off):hover { border-color: color-mix(in srgb, var(--c, var(--cat-other)) 65%, transparent); }
+.net-cat-pill[data-cat="Sync"]    { --c: var(--cat-sync); }
+.net-cat-pill[data-cat="Auth"]    { --c: var(--cat-auth); }
+.net-cat-pill[data-cat="Media"]   { --c: var(--cat-media); }
+.net-cat-pill[data-cat="Config"]  { --c: var(--cat-config); }
+.net-cat-pill[data-cat="AI"]      { --c: var(--cat-ai); }
+.net-cat-pill[data-cat="Wiretap"] { --c: var(--cat-wiretap); }
+.net-cat-pill[data-cat="Other"]   { --c: var(--cat-other); }
+.net-cat-pill.off {
+    background: transparent;
+    color: var(--t4);
+    border-color: var(--border-soft);
+}
+.net-cat-pill.off::before { background: var(--t5); }
+.net-cat-pill.off:hover { border-color: var(--hover-border); color: var(--t2); }
 
-/* ── Right-pane "flap" tabs ──
-   Inactive tabs blend with the pane-header bar. The active tab takes the
-   content background and overlaps the bar's bottom border (margin-bottom:-1px
-   + matching bg) so it visually flows into the content area below. The
-   `.pane-header .net-tab-btn` selector specificity (0,2,1) wins over the
-   shared `.pane-header button` (0,1,1) rule that styles other header buttons. */
-.net-detail-pane > .pane-header {
-    padding-bottom: 0;
-    padding-top: 8px;
-    align-items: flex-end;
-    gap: 0;
+/* Master toggle: one per filter row. Tri-state "select all" checkbox —
+   ✓ = all on, – = mixed, empty = all off. Click: all on ↔ all off. */
+.net-master-toggle {
+    margin-left: auto;
+    width: 18px;
+    height: 18px;
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 1px solid var(--chip-border);
+    border-radius: var(--radius-sm);
+    color: #fff;
+    font-family: inherit;
+    font-size: 11px;
+    line-height: 1;
+    padding: 0;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
 }
-.net-tab-switcher { display: flex; gap: 2px; align-items: flex-end; flex: 1; }
+.net-master-toggle:hover { border-color: var(--hover-border); }
+.net-master-toggle.on { background: var(--accent); border-color: var(--accent); }
+.net-master-toggle.on::before { content: '✓'; }
+.net-master-toggle.mixed {
+    background: var(--accent-soft);
+    border-color: var(--accent-border);
+    color: var(--accent-2);
+}
+.net-master-toggle.mixed::before { content: '–'; }
+
+/* Status & method filter chips: small square tags. Enabled = soft tinted
+   fill in the semantic color; off = hollow + faded. */
+.net-filter-pill {
+    padding: 3px 9px;
+    border-radius: var(--radius-sm);
+    border: 1px solid color-mix(in srgb, var(--c, var(--t3)) 35%, transparent);
+    background: color-mix(in srgb, var(--c, var(--t3)) 13%, transparent);
+    color: var(--c, var(--t2));
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    user-select: none;
+    transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.net-filter-pill:not(.off):hover { border-color: color-mix(in srgb, var(--c, var(--t3)) 65%, transparent); }
+.net-filter-pill.off {
+    background: transparent;
+    color: var(--t4);
+    border-color: var(--border-soft);
+}
+.net-filter-pill.off:hover { border-color: var(--hover-border); color: var(--t2); }
+.net-filter-pill.status-2xx    { --c: var(--status-2xx); }
+.net-filter-pill.status-3xx    { --c: var(--status-3xx); }
+.net-filter-pill.status-4xx    { --c: var(--status-4xx); }
+.net-filter-pill.status-5xx    { --c: var(--status-5xx); }
+.net-filter-pill.status-error  { --c: var(--danger); }
+.net-filter-pill.status-mocked { --c: var(--ai); }
+.net-filter-pill.method-get    { --c: var(--method-get); }
+.net-filter-pill.method-post   { --c: var(--method-post); }
+.net-filter-pill.method-put    { --c: var(--method-put); }
+.net-filter-pill.method-delete { --c: var(--method-delete); }
+.net-filter-pill.method-patch  { --c: var(--method-patch); }
+.net-filter-pill.method-other  { --c: var(--method-head); }
+
+/* ── Traffic grid ── */
+#tx-list tr { cursor: pointer; }
+.net-cell-method {
+    font-weight: 600;
+    white-space: nowrap;
+}
+.net-cell-url {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 0; /* let the table's 1fr column own the width */
+}
+.net-cell-status { font-weight: 600; white-space: nowrap; }
+td.net-cell-time { color: var(--t3); white-space: nowrap; font-size: 11.5px; }
+.net-cell-cat .status-pill { margin-right: 3px; }
+
+/* HTTP method coloring (list cells + detail header). The td variants
+   exist to outrank the `.debug-table td` color in shared.css. */
+.net-m-get,    td.net-m-get    { color: var(--method-get); }
+.net-m-post,   td.net-m-post   { color: var(--method-post); }
+.net-m-put,    td.net-m-put    { color: var(--method-put); }
+.net-m-patch,  td.net-m-patch  { color: var(--method-patch); }
+.net-m-delete, td.net-m-delete { color: var(--method-delete); }
+.net-m-other,  td.net-m-other  { color: var(--method-head); }
+
+/* Category tags inside rows / detail meta: outlined dc-tag look. */
+.status-pill.cat-pill {
+    background: transparent;
+    border: 1px solid var(--tag-border);
+    color: var(--c, var(--cat-other));
+    padding: 1px 5px;
+    font-size: 9.5px;
+}
+.status-pill.cat-pill[data-cat="Sync"]    { --c: var(--cat-sync); }
+.status-pill.cat-pill[data-cat="Auth"]    { --c: var(--cat-auth); }
+.status-pill.cat-pill[data-cat="Media"]   { --c: var(--cat-media); }
+.status-pill.cat-pill[data-cat="Config"]  { --c: var(--cat-config); }
+.status-pill.cat-pill[data-cat="AI"]      { --c: var(--cat-ai); }
+.status-pill.cat-pill[data-cat="Wiretap"] { --c: var(--cat-wiretap); }
+.status-pill.cat-pill[data-cat="Other"]   { --c: var(--cat-other); }
+
+/* ── Right pane: connected tabs (dc-tabs pattern) ──
+   The strip is recessed (--tabbar); the active tab lifts onto --raise,
+   takes a top accent bar, and covers the strip's bottom border so it
+   joins the panel below. */
+.net-detail-pane > .pane-header {
+    flex: none;
+    align-items: stretch;
+    gap: 0;
+    height: 46px;
+    padding: 7px 8px 0;
+    background: var(--tabbar);
+    border-bottom: 1px solid var(--border);
+}
+.net-tab-switcher { display: flex; align-items: stretch; gap: 3px; flex: 1; min-width: 0; }
 .net-tab-actions {
     margin-left: auto;
     display: flex;
     align-items: center;
-    gap: 2px;
-    margin-bottom: 6px;
-}
-.pane-header .net-action-btn {
-    background: transparent;
-    color: var(--text-muted);
-    border: none;
-    border-radius: 4px;
-    padding: 4px 10px;
-    font-size: 12px;
-    font-weight: normal;
-    cursor: pointer;
-    margin-bottom: 0;
-    transition: background 0.15s, color 0.15s;
-}
-.pane-header .net-action-btn:hover {
-    color: var(--text-strong);
-    background: var(--row-hover);
+    gap: 6px;
+    padding-bottom: 7px;
 }
 .pane-header .net-tab-btn {
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    white-space: nowrap;
+    position: relative;
     background: transparent;
-    color: var(--text-muted);
-    border: 1px solid transparent;
-    border-bottom: none;
-    border-radius: 8px 8px 0 0;
-    padding: 7px 16px;
-    font-size: 13px;
-    font-weight: normal;
+    border: none;
+    border-radius: var(--radius-md) var(--radius-md) 0 0;
+    color: var(--t3);
+    font-size: 11.5px;
+    font-weight: 500;
+    letter-spacing: .08em;
+    text-transform: uppercase;
     cursor: pointer;
-    margin-bottom: -1px;
-    transition: background 0.15s, color 0.15s, border-color 0.15s;
+    margin-bottom: 0;
+    transition: color 0.15s, background 0.15s;
 }
-.pane-header .net-tab-btn:hover {
-    background: var(--row-hover);
-    color: var(--text);
-}
+.pane-header .net-tab-btn:hover { color: var(--t1); background: transparent; border-color: transparent; }
 .pane-header .net-tab-btn.active {
-    background: var(--bg-primary);
-    color: var(--accent);
-    border-color: var(--border);
+    color: var(--accent-2);
     font-weight: 600;
-    /* Lift the flap above the pane-header's bottom border so its bg fills
-       across the seam, and so the rounded corners read clearly. */
-    z-index: 1;
+    background: var(--raise);
+    box-shadow: inset 0 2px 0 var(--accent), 0 1px 0 0 var(--raise);
 }
+/* cURL / Copy: small ghost buttons living inside the tab strip. */
+.pane-header .net-action-btn,
+.pane-header .net-action-btn:hover,
+.pane-header .net-action-btn.active {
+    align-self: center;
+    padding: 4px 10px;
+    border: 1px solid var(--chip-border);
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--t3);
+    font-size: 10.5px;
+    font-weight: 500;
+    letter-spacing: .06em;
+    box-shadow: none;
+}
+.pane-header .net-action-btn:hover {
+    color: var(--t1);
+    border-color: var(--hover-border);
+}
+
 .net-tab-content {
     display: none;
     flex: 1;
     overflow-y: auto;
-    padding: 16px;
+    padding: 22px 24px;
     min-height: 0;
-    background: var(--bg-primary);
+    background: var(--raise);
 }
 .net-tab-content.active { display: flex; flex-direction: column; }
 
@@ -192,118 +273,135 @@
     align-items: center;
     justify-content: center;
     flex: 1;
-    color: var(--text-faintest);
-    font-size: 14px;
+    color: var(--t5);
+    font-size: 13px;
+    letter-spacing: .03em;
 }
-.net-empty-icon { font-size: 36px; margin-bottom: 8px; opacity: 0.5; }
+.net-empty-icon { font-size: 30px; margin-bottom: 10px; opacity: 0.45; }
 
-/* Status colors */
-.net-status-2xx { color: var(--status-2xx); }
-.net-status-3xx { color: var(--status-3xx); }
-.net-status-4xx { color: var(--status-4xx); }
-.net-status-5xx { color: var(--status-5xx); }
-.net-status-mocked { color: var(--status-mocked); }
-.net-status-err { color: var(--status-err); }
-.net-status-pending { color: var(--status-pending); }
+/* Status colors (td variants outrank `.debug-table td` in shared.css) */
+.net-status-2xx, td.net-status-2xx { color: var(--status-2xx); }
+.net-status-3xx, td.net-status-3xx { color: var(--status-3xx); }
+.net-status-4xx, td.net-status-4xx { color: var(--status-4xx); }
+.net-status-5xx, td.net-status-5xx { color: var(--status-5xx); }
+.net-status-mocked, td.net-status-mocked { color: var(--ai); }
+.net-status-err, td.net-status-err { color: var(--danger); }
+.net-status-pending, td.net-status-pending { color: var(--t3); }
 
-/* Inline header badges */
 .net-error-line {
-    color: var(--status-err);
-    margin-top: 6px;
+    color: var(--danger);
+    margin-top: 8px;
     font-size: 12px;
-}
-.net-header-key {
-    color: var(--json-key);
-    width: 180px;
-    word-break: break-all;
-}
-.net-header-value {
-    word-break: break-all;
 }
 .net-rules-empty {
-    color: var(--text-faint);
-    font-size: 13px;
+    color: var(--t4);
+    font-size: 12px;
     margin-bottom: 12px;
 }
-.net-tx-count {
-    color: var(--text-muted);
-    font-size: 12px;
-}
+.net-rules-empty::before { content: '// '; }
 
-/* Detail view */
+/* ── Detail view ── */
 .net-detail-header {
-    padding-bottom: 12px;
-    border-bottom: 1px solid var(--border);
-    margin-bottom: 0;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--border-soft);
+    margin-bottom: 16px;
 }
 .net-detail-method-url {
-    font-size: 13px;
+    font-size: 12.5px;
+    color: var(--t2);
     word-break: break-all;
-    line-height: 1.4;
+    line-height: 1.5;
+}
+.net-detail-method {
+    font-weight: 600;
+    font-size: 13px;
+    margin-right: 4px;
 }
 .net-detail-meta {
     display: flex;
-    gap: 12px;
-    margin-top: 8px;
-    font-size: 12px;
-    color: var(--text-secondary);
+    align-items: center;
+    gap: 10px;
+    margin-top: 9px;
+    font-size: 11.5px;
+    color: var(--t4);
     flex-wrap: wrap;
 }
+.net-detail-meta > span:first-child { font-weight: 600; font-size: 12px; }
 
-/* Direction tabs (Response | Request) */
+/* Direction toggle (Response | Request): segmented control. */
 .net-dir-tabs {
-    display: flex;
-    gap: 0;
-    border-bottom: 1px solid var(--border);
+    display: inline-flex;
+    align-self: flex-start;
+    gap: 3px;
+    padding: 3px;
+    background: var(--field);
+    border: 1px solid var(--chip-border);
+    border-radius: var(--radius-md);
+    margin-bottom: 12px;
 }
 .net-dir-btn {
     background: transparent;
     border: none;
-    color: var(--text-muted);
-    padding: 10px 20px;
+    border-radius: var(--radius);
+    color: var(--t3);
+    padding: 6px 16px;
     cursor: pointer;
-    font-size: 13px;
-    font-weight: bold;
-    border-bottom: 2px solid transparent;
-    transition: all 0.2s;
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    transition: color 0.15s, background 0.15s;
 }
-.net-dir-btn:hover { color: var(--text-secondary); }
+.net-dir-btn:hover { color: var(--t1); }
 .net-dir-btn.active {
-    color: var(--accent);
-    border-bottom-color: var(--accent);
+    background: var(--accent);
+    color: #fff;
+    font-weight: 600;
 }
 
-/* Sub-tabs (Body | Headers) */
+/* Sub-tabs (Body | Headers): quiet underline toggles. */
 .net-sub-tabs {
     display: flex;
-    gap: 0;
-    border-bottom: 1px solid var(--border);
+    gap: 16px;
+    border-bottom: 1px solid var(--border-soft);
 }
 .net-sub-btn {
     background: transparent;
     border: none;
-    color: var(--text-muted);
-    padding: 7px 16px;
-    cursor: pointer;
-    font-size: 12px;
     border-bottom: 2px solid transparent;
-    transition: all 0.2s;
+    color: var(--t4);
+    padding: 5px 2px 8px;
+    margin-bottom: -1px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    transition: color 0.15s, border-color 0.15s;
 }
-.net-sub-btn:hover { color: var(--text-secondary); }
+.net-sub-btn:hover { color: var(--t1); }
 .net-sub-btn.active {
-    color: var(--text-strong);
-    border-bottom-color: var(--text-strong);
+    color: var(--accent-2);
+    border-bottom-color: var(--accent);
 }
 
-/* Collapsible headers section */
+/* Collapsible headers section: a recessed well of key: value lines. */
 .net-headers-details {
-    margin-top: 4px;
+    margin-top: 2px;
+    background: var(--field);
+    border: 1px solid var(--chip-border);
+    border-radius: var(--radius);
+    padding: 10px 14px;
 }
 .net-headers-details > summary {
     cursor: pointer;
-    font-size: 12px;
-    color: var(--text-muted);
-    padding: 4px 0 8px 0;
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--t4);
     user-select: none;
     list-style: none;
 }
@@ -312,121 +410,138 @@
     content: '▶';
     display: inline-block;
     width: 14px;
-    color: var(--text-faint);
+    font-size: 9px;
+    color: var(--t5);
     transition: transform 0.15s;
 }
-.net-headers-details[open] > summary::before {
-    transform: rotate(90deg);
+.net-headers-details[open] > summary::before { transform: rotate(90deg); }
+.net-headers-details > summary:hover { color: var(--t1); }
+.net-headers-table { margin-top: 8px; }
+.net-headers-table td {
+    padding: 3px 6px 3px 0;
+    border: none;
+    font-size: 12px;
+    line-height: 1.6;
 }
-.net-headers-details > summary:hover {
-    color: var(--text);
+.net-headers-table tr:hover td,
+.net-headers-table tr:nth-child(even) td { background: transparent; }
+.net-header-key,
+td.net-header-key {
+    color: var(--accent-2);
+    width: 200px;
+    word-break: break-all;
 }
+.net-header-value { word-break: break-all; color: var(--t2); }
 
 /* Content panels */
-.net-dir-content {
-    padding-top: 12px;
-}
+.net-dir-content { padding-top: 14px; }
 .net-empty-body {
-    color: var(--text-faintest);
-    font-size: 13px;
-    padding: 20px 0;
+    color: var(--t4);
+    font-size: 12px;
+    padding: 16px 0;
 }
+.net-empty-body::before { content: '// '; }
 .net-truncated-label {
     color: var(--status-3xx);
-    font-size: 11px;
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: .06em;
+    text-transform: uppercase;
     margin-bottom: 6px;
 }
 
-/* Mock rule cards */
+/* ── Mock rule cards ── */
 .net-rule-card {
-    background: var(--bg-elevated);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 12px;
+    background: var(--field);
+    border: 1px solid var(--chip-border);
+    border-radius: var(--radius);
+    padding: 12px 14px;
     margin-bottom: 8px;
 }
 .net-rule-card.disabled { opacity: 0.5; }
 .net-rule-card.editing {
-    border-color: var(--accent-primary);
-    box-shadow: 0 0 0 1px var(--accent-primary);
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent);
 }
 .net-rule-body {
     margin-top: 8px;
     font-size: 11px;
     max-height: 220px;
     overflow: auto;
-    padding: 8px;
+    padding: 8px 10px;
 }
 .net-format-btn {
     margin-left: 6px;
     background: transparent;
-    color: var(--accent);
-    border: 1px solid var(--accent-soft-border);
-    border-radius: 4px;
-    padding: 1px 6px;
-    font-size: 10px;
+    color: var(--accent-2);
+    border: 1px solid var(--chip-border);
+    border-radius: var(--radius-sm);
+    padding: 2px 9px;
+    font-family: inherit;
+    font-size: 10.5px;
+    letter-spacing: .06em;
+    text-transform: uppercase;
     cursor: pointer;
 }
-.net-format-btn:hover {
-    background: var(--accent-soft);
-}
+.net-format-btn:hover { background: var(--accent-soft); border-color: var(--accent-border); }
 
 /* Send-request header rows */
 .net-send-header-row {
     display: flex;
-    gap: 6px;
-    margin-bottom: 4px;
+    gap: 7px;
+    margin-bottom: 7px;
     align-items: center;
 }
 .net-send-header-row input {
     flex: 1;
-    background: var(--bg-primary);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 4px 8px;
-    color: var(--text);
+    background: var(--field);
+    border: 1px solid var(--chip-border);
+    border-radius: var(--radius);
+    padding: 8px 11px;
+    color: var(--t1);
     font-size: 12px;
-    font-family: monospace;
+    font-family: inherit;
     outline: none;
 }
-.net-send-header-row input:focus { border-color: var(--accent-primary); }
+.net-send-header-row input:focus { border-color: var(--accent); }
 
 /* Send-request synchronous result panel */
 .net-send-result {
-    margin-top: 12px;
-    padding: 10px 12px;
-    border-radius: 6px;
-    border: 1px solid var(--border);
-    background: var(--bg-elevated);
+    margin-top: 14px;
+    padding: 11px 13px;
+    border-radius: var(--radius);
+    border: 1px solid var(--chip-border);
+    background: var(--field);
     font-size: 12px;
     word-break: break-all;
 }
-.net-send-result.ok { border-color: color-mix(in srgb, var(--status-2xx) 50%, transparent); }
-.net-send-result.error { border-color: color-mix(in srgb, var(--status-err) 50%, transparent); }
-.net-send-result .net-send-result-status { font-weight: bold; }
-.net-send-result.ok .net-send-result-status { color: var(--status-2xx); }
-.net-send-result.error .net-send-result-status { color: var(--status-err); }
-.net-send-result .net-send-result-line { margin-top: 4px; color: var(--text-secondary); }
+.net-send-result.ok { border-color: var(--live-border); }
+.net-send-result.error { border-color: var(--danger-border); }
+.net-send-result .net-send-result-status { font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+.net-send-result.ok .net-send-result-status { color: var(--live); }
+.net-send-result.error .net-send-result-status { color: var(--danger); }
+.net-send-result .net-send-result-line { margin-top: 4px; color: var(--t3); }
 
-/* Throttle dropdown */
+/* Throttle dropdown (a select dressed as a button). */
 .net-throttle-select {
     appearance: none;
     -webkit-appearance: none;
-    padding-right: 22px;
+    padding-right: 24px;
     background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
-    background-position: calc(100% - 12px) 50%, calc(100% - 7px) 50%;
-    background-size: 5px 5px, 5px 5px;
+    background-position: calc(100% - 13px) 55%, calc(100% - 9px) 55%;
+    background-size: 4px 4px, 4px 4px;
     background-repeat: no-repeat;
 }
 .net-rule-header {
     display: flex;
     align-items: center;
     gap: 8px;
-    margin-bottom: 6px;
+    margin-bottom: 7px;
 }
 .net-rule-name {
-    font-weight: bold;
-    font-size: 13px;
+    font-weight: 600;
+    font-size: 12px;
+    color: var(--t1);
     flex: 1;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -434,20 +549,20 @@
 }
 .net-rule-detail {
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--t4);
     word-break: break-all;
 }
 .net-rule-hits {
     font-size: 10px;
-    color: var(--text-faint);
-    margin-top: 4px;
+    color: var(--t5);
+    margin-top: 5px;
 }
 
 /* Toggle switch */
 .net-toggle {
     position: relative;
-    width: 34px;
-    height: 18px;
+    width: 30px;
+    height: 16px;
     cursor: pointer;
     flex-shrink: 0;
 }
@@ -458,99 +573,109 @@
 }
 .net-toggle-slider {
     position: absolute;
-    top: 0; left: 0; right: 0; bottom: 0;
-    background: var(--bg-disabled);
-    border-radius: 9px;
+    inset: 0;
+    background: var(--t5);
+    border-radius: var(--radius-pill);
     transition: background 0.2s;
 }
 .net-toggle-slider::before {
     content: '';
     position: absolute;
-    width: 14px;
-    height: 14px;
+    width: 12px;
+    height: 12px;
     left: 2px;
     bottom: 2px;
-    background: var(--text-on-accent);
+    background: #fff;
     border-radius: 50%;
     transition: transform 0.2s;
 }
 .net-toggle input:checked + .net-toggle-slider { background: var(--accent); }
-.net-toggle input:checked + .net-toggle-slider::before { transform: translateX(16px); }
+.net-toggle input:checked + .net-toggle-slider::before { transform: translateX(14px); }
 
-/* Mock rule form */
+/* ── Mock rule / send request forms ── */
 .net-rule-form {
-    background: var(--bg-elevated);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 14px;
-    margin-top: 12px;
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-md);
+    padding: 16px;
+    margin-top: 14px;
 }
 .net-rule-form h4 {
-    margin: 0 0 10px 0;
-    font-size: 13px;
-    color: var(--accent-info);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 14px 0;
+    font-size: 12.5px;
+    font-weight: 600;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: var(--t1);
 }
 .net-form-row {
     display: flex;
-    gap: 8px;
-    margin-bottom: 8px;
+    gap: 10px;
+    margin-bottom: 12px;
 }
 .net-form-row label {
-    font-size: 11px;
-    color: var(--text-muted);
-    min-width: 70px;
-    padding-top: 7px;
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--t4);
+    min-width: 92px;
+    padding-top: 11px;
 }
 .net-form-row input,
 .net-form-row select {
     flex: 1;
-    background: var(--bg-primary);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 6px 8px;
-    color: var(--text);
+    background: var(--field);
+    border: 1px solid var(--chip-border);
+    border-radius: var(--radius);
+    padding: 9px 12px;
+    color: var(--t1);
     font-size: 12px;
     font-family: inherit;
     outline: none;
 }
 .net-form-row input:focus,
 .net-form-row select:focus,
-.net-form-row textarea:focus { border-color: var(--accent-primary); }
+.net-form-row textarea:focus { border-color: var(--accent); }
 .net-form-row textarea {
     flex: 1;
-    background: var(--bg-primary);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 6px 8px;
-    color: var(--text);
-    font-size: 12px;
-    font-family: monospace;
+    background: var(--field);
+    border: 1px solid var(--chip-border);
+    border-radius: var(--radius);
+    padding: 11px 13px;
+    color: var(--t1);
+    font-size: 12.5px;
+    line-height: 1.5;
+    font-family: inherit;
     outline: none;
-    min-height: 80px;
+    min-height: 96px;
     resize: vertical;
 }
 .net-form-actions {
     display: flex;
-    gap: 8px;
-    margin-top: 10px;
+    gap: 10px;
+    margin-top: 12px;
 }
 
 /* Copy to clipboard */
 .net-copy-btn {
     cursor: pointer;
-    opacity: 0.4;
+    color: var(--t3);
+    opacity: 0.55;
     vertical-align: middle;
-    transition: opacity 0.15s;
+    transition: opacity 0.15s, color 0.15s;
     user-select: none;
     display: inline-flex;
     align-items: center;
 }
-.net-copy-btn:hover { opacity: 1; }
+.net-copy-btn:hover { opacity: 1; color: var(--t1); }
 .net-copy-hover {
     opacity: 0;
     margin-right: 4px;
 }
-.net-header-row:hover .net-copy-hover { opacity: 0.4; }
+.net-header-row:hover .net-copy-hover { opacity: 0.55; }
 .net-header-row:hover .net-copy-hover:hover { opacity: 1; }
 .net-body-wrap {
     position: relative;
@@ -564,16 +689,19 @@
 .net-copy-popup {
     position: fixed;
     transform: translate(-50%, -130%);
-    background: var(--status-2xx);
-    color: var(--text-on-light);
-    padding: 4px 12px;
-    border-radius: 4px;
+    background: var(--live);
+    color: var(--bg);
+    padding: 6px 14px;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-menu);
     font-size: 12px;
-    font-weight: bold;
+    font-weight: 700;
+    letter-spacing: .04em;
     pointer-events: none;
     z-index: 9999;
     animation: net-copy-fade 1.5s ease-out forwards;
 }
+.net-copy-popup::before { content: '✓ '; }
 @keyframes net-copy-fade {
     0%, 70% { opacity: 1; }
     100% { opacity: 0; }
