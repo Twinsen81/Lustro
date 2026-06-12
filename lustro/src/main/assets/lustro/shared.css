@@ -283,6 +283,14 @@ a { text-decoration: none; color: inherit; }
 @keyframes dc-modal-in { from { opacity: 0; transform: translateY(8px) scale(.99); } to { opacity: 1; transform: none; } }
 @keyframes dc-live-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .4; } }
 
+/* Honor the OS reduced-motion preference: the connection/live dot otherwise
+   pulses for the entire debug session. Covers both the chrome status dot and
+   the .dc-pill--live component (so future tabs inherit the courtesy too). */
+@media (prefers-reduced-motion: reduce) {
+  .status.connected::before,
+  .dc-pill--live .dc-dot { animation: none; }
+}
+
 /* ─────────────────── 2. .dc-* component library ────────────────── */
 /* The documented component contract for tab UIs. Semantic color is
    passed via the --c custom property where noted, e.g.
@@ -515,7 +523,11 @@ body {
 .status.disconnected,
 .status.error { color: var(--danger); border-color: var(--danger-border); background: var(--danger-soft); }
 
-.content { flex: 1; min-height: 0; overflow: auto; padding: 0; }
+.content { flex: 1; min-height: 0; overflow: auto; padding: 0; display: flex; flex-direction: column; }
+/* The injected tab content fills the scroll area so split-pane tabs (which size
+   themselves with height:100%) resolve against a real height instead of
+   collapsing to content height. Non-split tabs just get a taller container. */
+#lustro-tab-content { flex: 1; min-height: 0; }
 
 /* Theme toggle (cycles auto → light → dark; label set by shared.js). */
 .theme-toggle {
@@ -723,7 +735,13 @@ body {
   font-weight: 600;
 }
 .debug-btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
-.debug-btn-danger:hover { color: var(--danger); border-color: var(--danger-border); }
+/* Destructive buttons read danger AT REST (ghost-danger), not only on hover. The
+   .debug-btn.debug-btn-danger form (0,2,0) outranks the .pane-header button element
+   rule (0,1,1), so the danger color/border still wins inside a pane-header toolbar. */
+.debug-btn-danger,
+.debug-btn.debug-btn-danger { color: var(--danger); border-color: var(--danger-border); }
+.debug-btn-danger:hover,
+.debug-btn.debug-btn-danger:hover { background: var(--danger-soft); border-color: var(--danger); }
 .debug-btn.active,
 .pane-header button.active {
   background: var(--accent-soft);
@@ -769,7 +787,10 @@ body {
   border-bottom: 1px solid var(--border-soft);
 }
 .debug-search-bar .dc-field { flex: 1; }
-.debug-search-bar > input {
+/* Style a legacy bare <input> nested anywhere in the bar, but never the
+   .dc-input inside a .dc-field (it is intentionally borderless/transparent).
+   Descendant + :not() so wrapped legacy markup keeps working as documented. */
+.debug-search-bar input:not(.dc-input) {
   flex: 1;
   background: var(--field);
   border: 1px solid var(--chip-border);
@@ -780,7 +801,7 @@ body {
   font-size: 12.5px;
   outline: none;
 }
-.debug-search-bar > input:focus { border-color: var(--accent); }
+.debug-search-bar input:not(.dc-input):focus { border-color: var(--accent); }
 .debug-filter-group {
   display: flex;
   gap: 6px;
@@ -954,6 +975,7 @@ mark {
 .debug-toast.error::before { background: var(--danger); }
 .debug-toast.info { border-color: var(--accent-border); }
 .debug-toast.info::before { background: var(--accent-2); }
+.debug-toast.warning { border-color: color-mix(in srgb, var(--lvl-w) 50%, transparent); }
 .debug-toast.warning::before { background: var(--lvl-w); }
 @keyframes debugToastIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes debugToastOut { from { opacity: 1; } to { opacity: 0; } }
@@ -990,7 +1012,7 @@ mark {
   --bg-primary: var(--bg);
   --bg-elevated: var(--header);
   --bg-code: var(--field);
-  --bg-chip-off: var(--field);
+  --bg-chip-off: var(--t5);   /* off-state toggle track: a visible neutral, distinct from the card surface (matches .net-toggle) */
   --bg-disabled: var(--t5);
 
   --border-subtle: var(--border-soft);

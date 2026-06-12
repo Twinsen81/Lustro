@@ -208,7 +208,9 @@ window.debugSetStatus = function(state) {
         document.documentElement.setAttribute('data-theme', effective);
         var btn = document.getElementById('theme-toggle');
         if (btn) {
-            var icon = pref === 'auto' ? '◑ Auto' : (pref === 'light' ? '☀ Light' : '◐ Dark');
+            // U+FE0E forces text (not emoji) presentation for the sun, so all three
+            // glyphs render as monochrome text on platforms that default ☀ to emoji.
+            var icon = pref === 'auto' ? '◑ Auto' : (pref === 'light' ? '☀︎ Light' : '◐ Dark');
             btn.textContent = icon;
             var explain = pref === 'auto' ? 'follows your system preference' : pref;
             btn.title = 'Theme: ' + pref + ' (' + explain + '). Click to cycle: auto → light → dark.';
@@ -507,22 +509,50 @@ window.debugPoll = function(endpointOrFn, intervalMs, callback) {
 };
 
 window.debugInitResizers = function() {
-    document.querySelectorAll('.pane-divider').forEach(function(divider) {
+    // Both divider flavors are supported: the legacy .pane-divider (explicit
+    // data-left/data-right element-id contract) and the .dc-divider component
+    // (infers its two flanking panes from the DOM: pane | divider | pane).
+    document.querySelectorAll('.pane-divider, .dc-divider').forEach(function(divider) {
         var isDragging = false;
         var startX = 0;
         var leftPane = null;
         var rightPane = null;
         var leftStartWidth = 0;
-        var rightStartWidth = 0;
+        var total = 0;
+
+        function resolvePanes() {
+            var left = divider.dataset.left
+                ? document.getElementById(divider.dataset.left)
+                : divider.previousElementSibling;
+            var right = divider.dataset.right
+                ? document.getElementById(divider.dataset.right)
+                : divider.nextElementSibling;
+            return { left: left, right: right };
+        }
+
+        // Read each pane's CSS min-width so the drag honors it. Clamping to a
+        // hardcoded floor instead would let JS and CSS disagree: JS would write a
+        // width below the CSS min-width, the pane would render at its min-width,
+        // and the panes + divider would overflow the container (the divider then
+        // detaching from the cursor).
+        function minWidthOf(pane) {
+            if (!pane) return 0;
+            var v = parseFloat(window.getComputedStyle(pane).minWidth);
+            return isNaN(v) ? 0 : v;
+        }
 
         divider.addEventListener('mousedown', function(e) {
+            var panes = resolvePanes();
+            leftPane = panes.left;
+            rightPane = panes.right;
+            if (!leftPane || !rightPane) return;
             e.preventDefault();
             isDragging = true;
             startX = e.clientX;
-            leftPane = document.getElementById(divider.dataset.left);
-            rightPane = document.getElementById(divider.dataset.right);
-            if (leftPane) leftStartWidth = leftPane.offsetWidth;
-            if (rightPane) rightStartWidth = rightPane.offsetWidth;
+            leftStartWidth = leftPane.offsetWidth;
+            // The pair shares a fixed total: their combined width stays constant as
+            // the divider moves, so resizing is a single split point between them.
+            total = leftStartWidth + rightPane.offsetWidth;
             divider.classList.add('dragging');
             document.body.style.cursor = 'col-resize';
         });
@@ -530,13 +560,17 @@ window.debugInitResizers = function() {
         document.addEventListener('mousemove', function(e) {
             if (!isDragging) return;
             e.preventDefault();
-            var delta = e.clientX - startX;
-            var newLeftWidth = Math.max(200, leftStartWidth + delta);
-            var newRightWidth = Math.max(200, rightStartWidth - delta);
-            if (newLeftWidth >= 200 && newRightWidth >= 200) {
-                if (leftPane) { leftPane.style.width = newLeftWidth + 'px'; leftPane.style.flex = 'none'; }
-                if (rightPane) { rightPane.style.width = newRightWidth + 'px'; rightPane.style.flex = 'none'; }
-            }
+            var leftMin = minWidthOf(leftPane);
+            var rightMin = minWidthOf(rightPane);
+            // Clamp the split so BOTH panes keep their CSS min-width while the pair
+            // still sums to the original total — no overflow, divider tracks the
+            // cursor until a pane hits its min.
+            var newLeft = leftStartWidth + (e.clientX - startX);
+            newLeft = Math.max(leftMin, Math.min(newLeft, total - rightMin));
+            leftPane.style.width = newLeft + 'px';
+            leftPane.style.flex = 'none';
+            rightPane.style.width = (total - newLeft) + 'px';
+            rightPane.style.flex = 'none';
         });
 
         document.addEventListener('mouseup', function() {

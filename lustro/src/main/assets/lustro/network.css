@@ -69,13 +69,18 @@
     background: var(--c, var(--cat-other));
 }
 .net-cat-pill:not(.off):hover { border-color: color-mix(in srgb, var(--c, var(--cat-other)) 65%, transparent); }
-.net-cat-pill[data-cat="Sync"]    { --c: var(--cat-sync); }
-.net-cat-pill[data-cat="Auth"]    { --c: var(--cat-auth); }
-.net-cat-pill[data-cat="Media"]   { --c: var(--cat-media); }
-.net-cat-pill[data-cat="Config"]  { --c: var(--cat-config); }
-.net-cat-pill[data-cat="AI"]      { --c: var(--cat-ai); }
-.net-cat-pill[data-cat="Wiretap"] { --c: var(--cat-wiretap); }
-.net-cat-pill[data-cat="Other"]   { --c: var(--cat-other); }
+/* Category → color, defined ONCE. --c is read by both the filter pills
+   (.net-cat-pill, tinted fill) and the row/detail tags (.status-pill.cat-pill,
+   outlined). data-cat appears on nothing else, so a bare attribute map is safe
+   and keeps the two treatments from drifting when a category is added. Unknown
+   labels fall back to --cat-other via each consumer's var() default. */
+[data-cat="Sync"]    { --c: var(--cat-sync); }
+[data-cat="Auth"]    { --c: var(--cat-auth); }
+[data-cat="Media"]   { --c: var(--cat-media); }
+[data-cat="Config"]  { --c: var(--cat-config); }
+[data-cat="AI"]      { --c: var(--cat-ai); }
+[data-cat="Wiretap"] { --c: var(--cat-wiretap); }
+[data-cat="Other"]   { --c: var(--cat-other); }
 .net-cat-pill.off {
     background: transparent;
     color: var(--t4);
@@ -91,6 +96,7 @@
     width: 18px;
     height: 18px;
     flex: none;
+    position: relative;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -105,6 +111,9 @@
     cursor: pointer;
     transition: background 0.15s, border-color 0.15s;
 }
+/* Keep the compact 18px look but expand the touch target to ~26px (the
+   styleguide floor is 24px for icon affordances) without affecting layout. */
+.net-master-toggle::after { content: ''; position: absolute; inset: -4px; }
 .net-master-toggle:hover { border-color: var(--hover-border); }
 .net-master-toggle.on { background: var(--accent); border-color: var(--accent); }
 .net-master-toggle.on::before { content: '✓'; }
@@ -114,6 +123,15 @@
     color: var(--accent-2);
 }
 .net-master-toggle.mixed::before { content: '–'; }
+
+/* Paused = the purple --ai accent (reserved for mock/paused), so a paused capture
+   reads distinctly from the blue 'active' of ordinary toggles like Overwrite.
+   #pause-btn.active (1,1,0) outranks .debug-btn.active / .pane-header button.active. */
+#pause-btn.active {
+    background: var(--ai-soft);
+    border-color: var(--ai-border);
+    color: var(--ai);
+}
 
 /* Status & method filter chips: small square tags. Enabled = soft tinted
    fill in the semantic color; off = hollow + faded. */
@@ -182,13 +200,7 @@ td.net-cell-time { color: var(--t3); white-space: nowrap; font-size: 11.5px; }
     padding: 1px 5px;
     font-size: 9.5px;
 }
-.status-pill.cat-pill[data-cat="Sync"]    { --c: var(--cat-sync); }
-.status-pill.cat-pill[data-cat="Auth"]    { --c: var(--cat-auth); }
-.status-pill.cat-pill[data-cat="Media"]   { --c: var(--cat-media); }
-.status-pill.cat-pill[data-cat="Config"]  { --c: var(--cat-config); }
-.status-pill.cat-pill[data-cat="AI"]      { --c: var(--cat-ai); }
-.status-pill.cat-pill[data-cat="Wiretap"] { --c: var(--cat-wiretap); }
-.status-pill.cat-pill[data-cat="Other"]   { --c: var(--cat-other); }
+/* (category → --c color map is unified above and shared with the filter pills) */
 
 /* ── Right pane: connected tabs (dc-tabs pattern) ──
    The strip is recessed (--tabbar); the active tab lifts onto --raise,
@@ -540,6 +552,8 @@ td.net-header-key {
     cursor: pointer;
     flex-shrink: 0;
 }
+/* Expand the switch's touch target to ≥24px tall without changing its size. */
+.net-toggle::after { content: ''; position: absolute; inset: -5px -4px; }
 .net-toggle input {
     opacity: 0;
     width: 0;

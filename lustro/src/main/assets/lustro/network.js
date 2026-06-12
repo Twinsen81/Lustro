@@ -191,8 +191,13 @@
                 + ' title="' + debugEscapeHtml(CATEGORY_HELP[cat] || cat) + ' Toggle off to hide these rows (saved in your browser).">'
                 + debugEscapeHtml(cat) + '</span>';
         }).join('');
+        // Only show the master toggle once at least one category is known.
+        // Otherwise the empty category bar renders a lone unchecked checkbox that
+        // implies "everything off" and does nothing when clicked.
         container.innerHTML = pills
-            + masterToggleHtml('toggleAllCategories', 'category', knownCategories, enabledCategories);
+            + (knownCategories.length
+                ? masterToggleHtml('toggleAllCategories', 'category', knownCategories, enabledCategories)
+                : '');
     }
 
     function updateCategoryPills() {
