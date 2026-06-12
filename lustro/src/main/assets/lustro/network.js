@@ -139,7 +139,11 @@
         var popup = document.createElement('div');
         popup.className = 'net-copy-popup';
         popup.textContent = 'Copied!';
-        popup.style.left = (ev ? ev.clientX : window.innerWidth / 2) + 'px';
+        // Clamp toward the viewport so the (nowrap, x-centered) pill never
+        // hangs off the edge when a copy button sits near it.
+        var x = ev ? ev.clientX : window.innerWidth / 2;
+        x = Math.max(70, Math.min(x, window.innerWidth - 70));
+        popup.style.left = x + 'px';
         popup.style.top = (ev ? ev.clientY : window.innerHeight / 2) + 'px';
         document.body.appendChild(popup);
         setTimeout(function() { popup.remove(); }, 1500);
@@ -557,15 +561,15 @@
         html += '<button class="net-dir-btn' + (activeDir === 'request' ? ' active' : '') + '" data-action="switchDir" data-dir="request" title="Show what the app sent (method, URL, headers, body). Redacted values are removed.">Request</button>';
         html += '</div>';
 
-        // Sub-tabs: Body | Headers (shared between both directions)
-        html += '<div class="net-sub-tabs">';
-        html += '<button class="net-sub-btn' + (activeSub === 'body' ? ' active' : '') + '" data-action="switchSub" data-sub="body" title="Show the body. JSON is syntax-highlighted; search matches are highlighted with yellow.">Body</button>';
-        html += '<button class="net-sub-btn' + (activeSub === 'headers' ? ' active' : '') + '" data-action="switchSub" data-sub="headers" title="Show the headers (collapsed by default). Click each value to copy.">Headers</button>';
-        html += '</div>';
+        // One panel per direction: headers (collapsed <details>) above the
+        // body. The collapsed/expanded choice is global, persisted in the
+        // browser (see headersOpen), and shared by both directions.
+        var vis = function(dir) { return dir === activeDir ? '' : ' style="display:none"'; };
 
-        // Response body
-        var vis = function(dir, sub) { return (dir === activeDir && sub === activeSub) ? '' : ' style="display:none"'; };
-        html += '<div class="net-dir-content" data-dir="response" data-sub="body"' + vis('response', 'body') + '>';
+        html += '<div class="net-dir-content" data-dir="response"' + vis('response') + '>';
+        if (tx.responseHeaders && Object.keys(tx.responseHeaders).length > 0) {
+            html += formatHeaders(tx.responseHeaders);
+        }
         if (tx.responseBody) {
             var respFmt = debugFormatJson(tx.responseBody);
             var respHtml = renderBody(tx.responseBody);
@@ -576,17 +580,10 @@
         }
         html += '</div>';
 
-        // Response headers
-        html += '<div class="net-dir-content" data-dir="response" data-sub="headers"' + vis('response', 'headers') + '>';
-        if (tx.responseHeaders && Object.keys(tx.responseHeaders).length > 0) {
-            html += formatHeaders(tx.responseHeaders);
-        } else {
-            html += '<div class="net-empty-body">No response headers</div>';
+        html += '<div class="net-dir-content" data-dir="request"' + vis('request') + '>';
+        if (tx.requestHeaders && Object.keys(tx.requestHeaders).length > 0) {
+            html += formatHeaders(tx.requestHeaders);
         }
-        html += '</div>';
-
-        // Request body
-        html += '<div class="net-dir-content" data-dir="request" data-sub="body"' + vis('request', 'body') + '>';
         if (tx.requestBody) {
             var reqFmt = debugFormatJson(tx.requestBody);
             var reqHtml = renderBody(tx.requestBody);
@@ -594,15 +591,6 @@
             html += '<div class="net-body-wrap">' + copyBtn(reqFmt) + '<pre class="debug-code-block debug-json">' + reqHtml + '</pre></div>';
         } else {
             html += '<div class="net-empty-body">No request body</div>';
-        }
-        html += '</div>';
-
-        // Request headers
-        html += '<div class="net-dir-content" data-dir="request" data-sub="headers"' + vis('request', 'headers') + '>';
-        if (tx.requestHeaders && Object.keys(tx.requestHeaders).length > 0) {
-            html += formatHeaders(tx.requestHeaders);
-        } else {
-            html += '<div class="net-empty-body">No request headers</div>';
         }
         html += '</div>';
 
@@ -615,12 +603,11 @@
     }
 
     var activeDir = 'response';
-    var activeSub = 'body';
 
     function updateDetailPanels() {
         var panels = document.querySelectorAll('.net-dir-content');
         panels.forEach(function(p) {
-            p.style.display = (p.dataset.dir === activeDir && p.dataset.sub === activeSub) ? '' : 'none';
+            p.style.display = (p.dataset.dir === activeDir) ? '' : 'none';
         });
     }
 
@@ -632,13 +619,26 @@
         updateDetailPanels();
     };
 
-    window.switchSub = function(sub) {
-        activeSub = sub;
-        document.querySelectorAll('.net-sub-btn').forEach(function(b) {
-            b.classList.toggle('active', b.dataset.sub === sub);
+    // Headers <details> expanded state: ONE browser-persisted flag shared by
+    // every transaction and both directions (not per URL).
+    var HEADERS_OPEN_KEY = 'debug-network-headers-open';
+    function headersOpen() {
+        try { return localStorage.getItem(HEADERS_OPEN_KEY) === '1'; } catch(e) { return false; }
+    }
+    function setHeadersOpen(open) {
+        try { localStorage.setItem(HEADERS_OPEN_KEY, open ? '1' : '0'); } catch(e) {}
+    }
+    // <details> toggle events don't bubble; the delegated listener in
+    // setupDelegation uses capture. Mirrors the state onto the other
+    // direction's details so switching Response/Request stays consistent.
+    function onHeadersToggle(ev) {
+        var el = ev.target;
+        if (!el.classList || !el.classList.contains('net-headers-details')) return;
+        setHeadersOpen(el.open);
+        document.querySelectorAll('.net-headers-details').forEach(function(d) {
+            if (d !== el && d.open !== el.open) d.open = el.open;
         });
-        updateDetailPanels();
-    };
+    }
 
     // Render a request/response body. JSON gets syntax-highlighted; non-JSON
     // is HTML-escaped. When the search field has text, matches are wrapped in
@@ -653,8 +653,9 @@
             return '<tr class="net-header-row"><td class="net-header-key">' + debugEscapeHtml(k)
                 + '</td><td class="net-header-value">' + copyBtn(headers[k], 'net-copy-hover') + debugEscapeHtml(headers[k]) + '</td></tr>';
         }).join('');
-        return '<details class="net-headers-details">'
-            + '<summary>' + keys.length + ' header' + (keys.length === 1 ? '' : 's') + '</summary>'
+        return '<details class="net-headers-details"' + (headersOpen() ? ' open' : '') + '>'
+            + '<summary title="Expand or collapse the headers. The choice is remembered in your browser.">'
+            + keys.length + ' header' + (keys.length === 1 ? '' : 's') + '</summary>'
             + '<table class="debug-table net-headers-table">' + rows + '</table>'
             + '</details>';
     }
@@ -1318,7 +1319,6 @@
         toggleMethodFilter: function(el) { window.toggleMethodFilter(el.dataset.method); },
         selectTransaction: function(el) { window.selectTransaction(el.dataset.txId); },
         switchDir: function(el) { window.switchDir(el.dataset.dir); },
-        switchSub: function(el) { window.switchSub(el.dataset.sub); },
         switchRightTab: function(el) { window.switchRightTab(el.dataset.tab); },
         mockThis: function() { window.mockThis(); },
         editRule: function(el) { window.editRule(el.dataset.ruleId); },
@@ -1378,6 +1378,8 @@
         delegationRoot.addEventListener('click', onDelegatedClick);
         delegationRoot.addEventListener('input', onDelegatedInput);
         delegationRoot.addEventListener('change', onDelegatedChange);
+        // capture: <details> toggle events do not bubble.
+        delegationRoot.addEventListener('toggle', onHeadersToggle, true);
     }
 
     // ── Init ──

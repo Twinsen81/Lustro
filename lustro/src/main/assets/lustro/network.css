@@ -360,36 +360,10 @@ td.net-cell-time { color: var(--t3); white-space: nowrap; font-size: 11.5px; }
     font-weight: 600;
 }
 
-/* Sub-tabs (Body | Headers): quiet underline toggles. */
-.net-sub-tabs {
-    display: flex;
-    gap: 16px;
-    border-bottom: 1px solid var(--border-soft);
-}
-.net-sub-btn {
-    background: transparent;
-    border: none;
-    border-bottom: 2px solid transparent;
-    color: var(--t4);
-    padding: 5px 2px 8px;
-    margin-bottom: -1px;
-    cursor: pointer;
-    font-family: inherit;
-    font-size: 10.5px;
-    font-weight: 600;
-    letter-spacing: .1em;
-    text-transform: uppercase;
-    transition: color 0.15s, border-color 0.15s;
-}
-.net-sub-btn:hover { color: var(--t1); }
-.net-sub-btn.active {
-    color: var(--accent-2);
-    border-bottom-color: var(--accent);
-}
-
-/* Collapsible headers section: a recessed well of key: value lines. */
+/* Collapsible headers section: a recessed well of key: value lines,
+   rendered above the body. Expanded state persists in the browser. */
 .net-headers-details {
-    margin-top: 2px;
+    margin: 0 0 14px;
     background: var(--field);
     border: 1px solid var(--chip-border);
     border-radius: var(--radius);
@@ -434,7 +408,7 @@ td.net-header-key {
 .net-header-value { word-break: break-all; color: var(--t2); }
 
 /* Content panels */
-.net-dir-content { padding-top: 14px; }
+.net-dir-content { padding-top: 2px; }
 .net-empty-body {
     color: var(--t4);
     font-size: 12px;
@@ -689,6 +663,7 @@ td.net-header-key {
 .net-copy-popup {
     position: fixed;
     transform: translate(-50%, -130%);
+    white-space: nowrap;
     background: var(--live);
     color: var(--bg);
     padding: 6px 14px;

@@ -76,12 +76,13 @@
 
   /* Text (primary → faintest). The muted steps are deliberately lighter
      than the original spec — t3/t4 were hard to read on the near-black
-     surfaces (secondary text still has to be legible, just quieter). */
+     surfaces. Secondary text is quieter than t2 but stays legible:
+     t3 ≈ 8:1, t4 ≈ 6:1; only t5 (disabled) drops near 3.5:1. */
   --t1: #e7e9ee;  /* headings, key values */
   --t2: #c4cad3;  /* body / cell text */
-  --t3: #8b93a0;  /* muted labels, inactive nav */
-  --t4: #6f7886;  /* faint meta, placeholders, // comments */
-  --t5: #4d5563;  /* disabled, empty-count, unstarred */
+  --t3: #a3abb8;  /* muted labels, inactive nav */
+  --t4: #8a92a0;  /* faint meta, placeholders, // comments */
+  --t5: #5d6573;  /* disabled, empty-count, unstarred */
 
   /* Primary accent (blue) */
   --accent:        #3b82f6;
@@ -155,7 +156,7 @@
   --syn-str:  #34d399;
   --syn-num:  #fbbf24;
   --syn-bool: #c084fc;
-  --syn-punc: #7b828d;
+  --syn-punc: #8b93a0;
 
   /* Misc accents */
   --star: #fbbf24;  /* favorite (gold) */
