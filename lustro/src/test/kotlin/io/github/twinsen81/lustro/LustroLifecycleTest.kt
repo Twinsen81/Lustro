@@ -78,7 +78,6 @@ class LustroLifecycleTest {
         assertEquals("socket bound state", expected, lustro.isBound())
     }
 
-    // region arming / idempotency
 
     @Test
     fun `start arms and returns ENABLED, second start is idempotent`() {
@@ -97,9 +96,7 @@ class LustroLifecycleTest {
         assertFalse(lustro.isBound())
     }
 
-    // endregion
 
-    // region foreground binds / background drains
 
     @Test
     fun `foreground binds the socket and background closes it`() {
@@ -151,9 +148,7 @@ class LustroLifecycleTest {
         assertFalse("disarmed: no re-bind", lustro.isBound())
     }
 
-    // endregion
 
-    // region port collision
 
     @Test
     fun `port collision with bindFallback false yields DISABLED-style unbound server`() {
@@ -193,5 +188,4 @@ class LustroLifecycleTest {
         }
     }
 
-    // endregion
 }

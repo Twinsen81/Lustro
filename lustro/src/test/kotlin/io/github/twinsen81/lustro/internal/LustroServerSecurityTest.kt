@@ -117,7 +117,6 @@ class LustroServerSecurityTest {
         return client.newCall(builder.build()).execute()
     }
 
-    // region Auth gating
 
     @Test
     fun `unauthenticated api route returns enveloped 401`() {
@@ -173,9 +172,7 @@ class LustroServerSecurityTest {
         }
     }
 
-    // endregion
 
-    // region _auth endpoint
 
     @Test
     fun `auth endpoint sets cookie on token match`() {
@@ -199,9 +196,7 @@ class LustroServerSecurityTest {
         }
     }
 
-    // endregion
 
-    // region Unauth chrome
 
     @Test
     fun `pre-auth chrome carries the tab bar but no tab content or data`() {
@@ -232,9 +227,7 @@ class LustroServerSecurityTest {
         get("/shared.css").use { assertEquals(200, it.code) }
     }
 
-    // endregion
 
-    // region CSP + headers
 
     @Test
     fun `chrome page carries the exact CSP header and nosniff`() {
@@ -253,9 +246,7 @@ class LustroServerSecurityTest {
         }
     }
 
-    // endregion
 
-    // region Origin / Sec-Fetch-Site
 
     @Test
     fun `the server's own origin is allowed on state-changing requests`() {
@@ -327,5 +318,4 @@ class LustroServerSecurityTest {
         }
     }
 
-    // endregion
 }

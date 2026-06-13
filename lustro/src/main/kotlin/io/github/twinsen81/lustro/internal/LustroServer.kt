@@ -152,8 +152,6 @@ internal class LustroServer(
                 toNanoResponse(DebugResponse.error(message = "Request timed out", status = 504))
         }
 
-    // region Auth
-
     /**
      * Runs [block] only when the request carries a valid Bearer token OR a valid
      * `lustro_token` cookie. Otherwise short-circuits to an enveloped 401.
@@ -248,10 +246,6 @@ internal class LustroServer(
         return diff == 0
     }
 
-    // endregion
-
-    // region Origin / Sec-Fetch-Site
-
     /**
      * Validates the request's `Origin` / `Sec-Fetch-Site` headers against the
      * same-origin rule + [allowedOrigins]. Returns an enveloped 403 [Response] when
@@ -315,10 +309,6 @@ internal class LustroServer(
         val port = if (uri.port != -1) uri.port else if (uri.scheme == "https") 443 else 80
         return port == listeningPort
     }
-
-    // endregion
-
-    // region Assets + root + tab pages
 
     private fun handleFavicon(): Response {
         // No bundled favicon; an empty 204 keeps browsers from 404-spamming.
@@ -420,10 +410,6 @@ $tabsHtml
 </html>
         """.trimIndent()
 
-    // endregion
-
-    // region /api/v1/_meta + schemas
-
     private fun handleMeta(): Response {
         val body = buildString {
             append("{")
@@ -466,10 +452,6 @@ $tabsHtml
             toNanoResponse(DebugResponse.notFound("No schema for tab: ${tab.id}"))
         }
     }
-
-    // endregion
-
-    // region API routing
 
     private fun handleApi(session: IHTTPSession, remainder: String): Response {
         val parts = remainder.split("/", limit = 2)
@@ -583,8 +565,6 @@ $tabsHtml
             if (read > 0) buffer.copyOf(read) else null
         }
     }
-
-    // endregion
 
     private fun redirectTo(location: String): Response {
         val response = newFixedLengthResponse(Response.Status.REDIRECT, "text/plain", "")

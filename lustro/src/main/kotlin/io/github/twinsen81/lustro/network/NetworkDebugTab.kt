@@ -64,8 +64,6 @@ public class NetworkDebugTab private constructor(
     @Volatile
     private var appServerBaseUrl: String? = null
 
-    // region NetworkCaptureProvider
-
     override val captureSink: io.github.twinsen81.lustro.network.NetworkCaptureSink
         get() = store
 
@@ -77,8 +75,6 @@ public class NetworkDebugTab private constructor(
             incrementMockHit = { store.incrementHitCount(it) },
             maxBodySize = maxBodyCaptureBytes,
         )
-
-    // endregion
 
     /** Records the live bind address so the Send panel can detect self-requests. */
     internal fun bindTo(host: String, port: Int) {
@@ -188,8 +184,8 @@ public class NetworkDebugTab private constructor(
         </div>
         """.trimIndent()
 
-    // The static OpenAPI lives at assets/lustro/network.openapi.json (authored by
-    // another agent); the tab still works without a dynamic schema.
+    // The static OpenAPI lives at assets/lustro/network.openapi.json; the tab
+    // still works without a dynamic schema.
     override fun schema(): String? = null
 
     override fun handle(request: DebugRequest): DebugResponse? {
@@ -213,8 +209,6 @@ public class NetworkDebugTab private constructor(
             else -> null
         }
     }
-
-    // region Transactions + cursor envelope
 
     private fun handleTransactions(request: DebugRequest): DebugResponse {
         val search = request.queryParam("search")?.takeIf { it.isNotBlank() }
@@ -249,10 +243,6 @@ public class NetworkDebugTab private constructor(
         store.clear()
         return ok()
     }
-
-    // endregion
-
-    // region Mock rules
 
     private fun handleGetRules(): DebugResponse =
         DebugResponse.json {
@@ -361,10 +351,6 @@ public class NetworkDebugTab private constructor(
             DebugResponse.error("Invalid JSON: ${e.message}")
         }
 
-    // endregion
-
-    // region State mutations
-
     private fun handleTogglePause(): DebugResponse {
         val newState = !store.isPaused()
         store.setPaused(newState)
@@ -386,10 +372,6 @@ public class NetworkDebugTab private constructor(
         } catch (e: Exception) {
             DebugResponse.error("Invalid JSON: ${e.message}")
         }
-
-    // endregion
-
-    // region Send (synchronous)
 
     private fun handleSendRequest(body: String?): DebugResponse {
         val activeSender = sender ?: return DebugResponse.notFound("Send is not configured")
@@ -482,10 +464,6 @@ public class NetworkDebugTab private constructor(
         }
     }
 
-    // endregion
-
-    // region JSON serialization
-
     private fun StringBuilder.appendTransaction(tx: NetworkTransaction, brief: Boolean) {
         append("{")
         append("\"id\":\"${tx.id.escapeForJson()}\",")
@@ -554,8 +532,6 @@ public class NetworkDebugTab private constructor(
         }
 
     private fun ok(): DebugResponse = DebugResponse.json { append("{\"status\":\"ok\"}") }
-
-    // endregion
 
     /** Factory for [NetworkDebugTab]. */
     public companion object {

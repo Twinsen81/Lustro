@@ -11,7 +11,6 @@ internal data class NetworkTransaction(
     val timestamp: Long,
     val durationMs: Long? = null,
     val categories: List<String> = emptyList(),
-    // Request
     val method: String,
     val url: String,
     val requestHeaders: Map<String, String> = emptyMap(),
@@ -19,7 +18,6 @@ internal data class NetworkTransaction(
     val requestBodyTruncated: Boolean = false,
     val requestContentType: String? = null,
     val requestBodyBytes: Long? = null,
-    // Response
     val statusCode: Int? = null,
     val responseHeaders: Map<String, String>? = null,
     val responseBody: String? = null,
@@ -27,7 +25,6 @@ internal data class NetworkTransaction(
     val responseContentType: String? = null,
     val responseBodyBytes: Long? = null,
     val responseComplete: Boolean = false,
-    // Meta
     val isMocked: Boolean = false,
     val error: String? = null,
 )

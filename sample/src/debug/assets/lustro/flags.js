@@ -1,9 +1,4 @@
 (function() {
-    // Sample "Feature Flags" tab UI. Served as an EXTERNAL script (loaded after
-    // shared.js). The tab id is "flags" (from <body data-lustro-tab>), so
-    // lustroApiUrl(path) yields `/api/v1/flags/<path>`. Per the page CSP there are
-    // NO inline on*= handlers: every interactive element carries data-action and
-    // a small set of delegated listeners dispatch on it.
     function flagUrl(path) {
         return window.lustroApiUrl(path);
     }
@@ -11,7 +6,6 @@
     var allFlags = [];
     var lastCursor = null; // opaque cursor; omitted on the first poll
 
-    // ── Render the flag list ──
     function renderFlags() {
         var listEl = document.getElementById('flags-list');
         var countEl = document.getElementById('flags-count');
@@ -39,7 +33,6 @@
         }).join('');
     }
 
-    // ── Toggle ──
     window.toggleFlag = function(id) {
         window.debugFetch(flagUrl('toggle'), {
             method: 'POST',
@@ -54,7 +47,6 @@
         });
     };
 
-    // ── Upload (modal UI) ──
     var uploadModal = null;
 
     window.openUploadModal = function() {
@@ -103,7 +95,6 @@
           });
     };
 
-    // ── Polling (opaque cursor envelope) ──
     // GET snapshot?cursor=<opaque> →
     //   { cursor, status: "reset"|"unchanged"|"delta", items? }
     // Same contract as the Network tab: echo the last cursor; unchanged carries
@@ -118,12 +109,9 @@
     function handleSnapshot(data) {
         if (!data) return;
         var status = data.status;
-        if (status === 'unchanged') {
-            // no change
-        } else if (status === 'delta') {
+        if (status === 'delta') {
             if (data.items) { allFlags = data.items; renderFlags(); }
-        } else {
-            // reset or unknown → replace the whole list
+        } else if (status !== 'unchanged') {
             allFlags = data.items || [];
             renderFlags();
         }
@@ -141,7 +129,6 @@
         window.debugPoll(function() { return snapshotUrl(); }, 1500, handleSnapshot);
     }
 
-    // ── CSP-safe event delegation ──
     // The served HTML uses NO inline on*= handlers. Every interactive element
     // carries data-action plus data-* payload; delegated listeners on the tab
     // content root dispatch on data-action and survive re-renders.
@@ -178,7 +165,6 @@
         delegationRoot.addEventListener('change', onDelegatedChange);
     }
 
-    // ── Init ──
     // shared.js injects the authenticated /_view HTML then fires
     // lustroOnContentReady; all DOM-dependent setup runs there. Fall back to
     // immediate init on an older host without the hook.

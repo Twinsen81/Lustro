@@ -110,8 +110,6 @@ internal class HttpUrlConnectionCapture(
             null
         }
 
-    // region Stream handler
-
     private class CapturingStreamHandler(
         private val real: URLStreamHandler,
         private val sink: NetworkCaptureSink,
@@ -147,10 +145,6 @@ internal class HttpUrlConnectionCapture(
             }
     }
 
-    // endregion
-
-    // region Capture state shared by the http/https decorators
-
     private class CaptureState(
         private val url: URL,
         private val connection: HttpURLConnection,
@@ -184,7 +178,6 @@ internal class HttpUrlConnectionCapture(
             return BoundedTeeOutputStream(real, buffer, maxBodySize).also { wrappedOutput = it }
         }
 
-        /** Record the request the first time the connection is actually fired. */
         fun recordRequestOnce() {
             if (!requestRecorded.compareAndSet(false, true)) return
             try {
@@ -303,10 +296,6 @@ internal class HttpUrlConnectionCapture(
             return builder.build()
         }
     }
-
-    // endregion
-
-    // region Decorators
 
     private class CapturingHttpURLConnection(
         url: URL,
@@ -605,7 +594,6 @@ internal class HttpUrlConnectionCapture(
 
         override fun getContentEncoding(): String? = real.contentEncoding
 
-        // HttpsURLConnection-specific surface
         override fun getCipherSuite(): String = real.cipherSuite
 
         override fun getLocalCertificates(): Array<Certificate>? = real.localCertificates
@@ -628,10 +616,6 @@ internal class HttpUrlConnectionCapture(
 
         override fun getSSLSocketFactory(): SSLSocketFactory = real.sslSocketFactory
     }
-
-    // endregion
-
-    // region Stream tees
 
     private class BoundedTeeOutputStream(
         private val delegate: OutputStream,
@@ -688,8 +672,6 @@ internal class HttpUrlConnectionCapture(
             if (done.compareAndSet(false, true)) onComplete()
         }
     }
-
-    // endregion
 
     private companion object {
         private const val TAG = "LustroHttpUrlCapture"
