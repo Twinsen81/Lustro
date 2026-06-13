@@ -69,6 +69,7 @@ class LustroServerSecurityTest {
                 assetLoader = assetLoader,
                 tokenStore = tokenStore,
                 allowedOrigins = listOf("https://allowed.example"),
+                appName = "Test App",
             )
         server.start(2000, false)
         port = server.listeningPort
@@ -218,6 +219,33 @@ class LustroServerSecurityTest {
             // NO renderContent() output and NO tab data leaks pre-auth.
             assertFalse(html.contains("SECRET_TAB_CONTENT"))
             assertFalse(html.contains("TAB_DATA"))
+        }
+    }
+
+    @Test
+    fun `pre-auth chrome carries app title and icon links`() {
+        get("/tab/sample").use { resp ->
+            assertEquals(200, resp.code)
+            val html = resp.body!!.string()
+            assertTrue(html.contains("<title>Lustro - Test App</title>"))
+            assertTrue(html.contains("""<link rel="icon" type="image/png" href="/lustro-icon.png">"""))
+            assertTrue(html.contains("""<link rel="apple-touch-icon" href="/lustro-icon.png">"""))
+        }
+    }
+
+    @Test
+    fun `browser icons are unauthenticated png responses`() {
+        listOf("/lustro-icon.png", "/favicon.ico").forEach { path ->
+            get(path).use { resp ->
+                assertEquals(200, resp.code)
+                assertEquals("image/png", resp.header("Content-Type"))
+                val bytes = resp.body!!.bytes()
+                assertTrue("icon should be a PNG", bytes.size > 8)
+                assertEquals(0x89.toByte(), bytes[0])
+                assertEquals('P'.code.toByte(), bytes[1])
+                assertEquals('N'.code.toByte(), bytes[2])
+                assertEquals('G'.code.toByte(), bytes[3])
+            }
         }
     }
 
