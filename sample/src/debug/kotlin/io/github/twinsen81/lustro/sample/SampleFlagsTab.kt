@@ -14,7 +14,7 @@ public class SampleFlagsTab(
     @Suppress("UNUSED_PARAMETER") application: Application,
 ) : DebugTab() {
     override val id: String = "flags"
-    override val title: String = "Feature Flags"
+    override val title: String = "Sample Client Feature Flags"
     override val icon: String = "🚩"
     override val order: Int = 20
 
@@ -41,7 +41,7 @@ public class SampleFlagsTab(
     override fun renderContent(): String =
         """
         <div class="flags-toolbar">
-            <h3>Feature Flags</h3>
+            <h3>Sample Client Feature Flags</h3>
             <span id="flags-count" class="flags-count">0 flags</span>
             <button class="debug-btn debug-btn-primary" data-action="openUpload" style="margin-left:auto" title="Upload a flags file (JSON). Opens a modal where you can pick a file or paste contents, then merge them.">Upload flags…</button>
         </div>
