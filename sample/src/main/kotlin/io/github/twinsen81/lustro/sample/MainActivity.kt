@@ -24,8 +24,10 @@ import okhttp3.Response
  * It is a plain launcher activity (no resource files) with one button per HTTP
  * shape. Every button fires a request through [SampleApplication.httpClient] —
  * the OkHttp client that has the Lustro interceptor installed — so the traffic
- * shows up in the Network tab of the debug console (debug variant). The buttons
- * cover GET, POST, PUT, PATCH, DELETE, a mocked 500, and a slow/throttled call.
+ * shows up in the Network tab of the debug console (debug variant). The base
+ * buttons cover GET, POST, PUT, PATCH, DELETE, a 500, and a slow/throttled call.
+ * Debug builds add extra fixture buttons so the Network tab can demonstrate the
+ * remaining filter buckets.
  *
  * Demo traffic hits the public httpbingo.org fixture host. It is auth-free and
  * httpbin-compatible; Lustro's own debug API stays token-authenticated and is
@@ -78,6 +80,9 @@ public class MainActivity : Activity() {
         addButton(root, "DELETE /delete") { deleteRequest() }
         addButton(root, "Mocked 500 (/status/500)") { errorRequest() }
         addButton(root, "Slow call (/delay/3)") { slowRequest() }
+        LustroBootstrap.extraDemoRequests(BASE).forEach { spec ->
+            addButton(root, spec.label) { dispatch(spec.buildRequest()) }
+        }
 
         statusView =
             TextView(this).apply {

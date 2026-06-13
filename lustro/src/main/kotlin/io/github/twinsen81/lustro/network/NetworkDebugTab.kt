@@ -126,7 +126,7 @@ public class NetworkDebugTab private constructor(
                     <span id="tx-count" class="net-tx-count">0 requests</span>
                     <button class="debug-btn" id="pause-btn" data-action="togglePause" style="margin-left:auto" title="Pause traffic capture. The interceptor still runs but new requests are not recorded into the list. Click again to resume.">⏸ Pause</button>
                     <button class="debug-btn" id="overwrite-btn" data-action="toggleOverwriteMode" title="Overwrite mode: when a new request arrives, any earlier completed transaction with the same method + URL path is removed from the list. In-flight requests are never evicted.">Overwrite: off</button>
-                    <select class="debug-btn net-throttle-select" id="throttle-select" data-action="setThrottle" title="Global throttle: sleep this long before every request (mocked or real). Useful for testing loading spinners and timeout handling.">
+                    <select class="debug-btn net-throttle-select" id="throttle-select" name="throttleDelayMs" aria-label="Global throttle" data-action="setThrottle" title="Global throttle: sleep this long before every request (mocked or real). Useful for testing loading spinners and timeout handling.">
                         <option value="0">No throttle</option>
                         <option value="500">500ms</option>
                         <option value="1000">1s</option>
@@ -136,7 +136,7 @@ public class NetworkDebugTab private constructor(
                     <button class="debug-btn debug-btn-danger" data-action="clearTraffic" title="Clear the captured transaction list. Mock rules and settings are preserved. Keyboard shortcut: C (when not typing in an input).">Clear</button>
                 </div>
                 <div class="debug-search-bar">
-                    <label class="dc-field"><span class="dc-field__prefix">&gt;</span><input type="text" id="search-input" class="dc-input" placeholder="filter url, method, body…" data-action="onSearchInput" title="Search across URL, method, request body, and response body (server-side, 300ms debounce). Matches are highlighted in body views. Shortcut: Ctrl/Cmd+K to focus." /></label>
+                    <label class="dc-field" for="search-input"><span class="dc-field__prefix">&gt;</span><input type="text" id="search-input" name="search" class="dc-input" placeholder="filter url, method, body…" data-action="onSearchInput" title="Search across URL, method, request body, and response body (server-side, 300ms debounce). Matches are highlighted in body views. Shortcut: Ctrl/Cmd+K to focus." /></label>
                 </div>
                 <div class="net-category-bar" id="category-filters"></div>
                 <div class="net-filter-bar" id="status-filters"></div>

@@ -161,22 +161,32 @@ window.debugSetStatus = function(state) {
             });
     }
 
+    var authInFlight = false;
+
+    function authenticateWithToken(token, reloadContent) {
+        if (authInFlight) return;
+        authInFlight = true;
+        // POST the fragment token once, strip it, then load content.
+        fetch('/api/v1/_auth', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: token })
+        }).then(function() {
+            stripHash();
+            if (reloadContent !== false) loadTabContent();
+        }).catch(function() {
+            stripHash();
+            if (reloadContent !== false) loadTabContent();
+        }).then(function() {
+            authInFlight = false;
+        });
+    }
+
     function bootstrap() {
         var token = tokenFromHash();
         if (token) {
-            // POST the fragment token once, strip it, then load content.
-            fetch('/api/v1/_auth', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ token: token })
-            }).then(function() {
-                stripHash();
-                loadTabContent();
-            }).catch(function() {
-                stripHash();
-                loadTabContent();
-            });
+            authenticateWithToken(token, true);
         } else {
             // No fragment: rely on an existing cookie. The _view call 401s (and
             // shows the instruction) when no valid cookie is present.
@@ -189,6 +199,15 @@ window.debugSetStatus = function(state) {
     } else {
         bootstrap();
     }
+
+    window.addEventListener('hashchange', function() {
+        var token = tokenFromHash();
+        if (!token) return;
+        // A hash-only navigation does not reload the document, so the initial
+        // bootstrap will not run again after the unauthenticated shell is shown.
+        var needsContent = !contentReady || !!document.querySelector('.lustro-auth-needed');
+        authenticateWithToken(token, needsContent);
+    });
 })();
 
 // ═══ Theme (auto / light / dark) ═══

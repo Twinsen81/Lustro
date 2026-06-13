@@ -808,7 +808,7 @@
                 }
                 return '<div class="net-rule-card' + disabled + editing + '">'
                     + '<div class="net-rule-header">'
-                    + '<label class="net-toggle" title="Enable or disable this rule. Disabled rules stay in the list but do not match traffic."><input type="checkbox"' + checked + ' data-action="toggleRule" data-rule-id="' + debugEscapeHtml(r.id) + '"><span class="net-toggle-slider"></span></label>'
+                    + '<label class="net-toggle" title="Enable or disable this rule. Disabled rules stay in the list but do not match traffic."><input id="rule-toggle-' + debugEscapeHtml(r.id) + '" name="ruleEnabled" type="checkbox" aria-label="Enable mock rule ' + debugEscapeHtml(r.name || r.urlPattern) + '"' + checked + ' data-action="toggleRule" data-rule-id="' + debugEscapeHtml(r.id) + '"><span class="net-toggle-slider"></span></label>'
                     + '<span class="net-rule-name" title="' + debugEscapeHtml(r.name || r.urlPattern) + '">' + debugEscapeHtml(r.name || r.urlPattern) + '</span>'
                     + '<span class="status-pill' + ruleStatusVariant(r.statusCode) + '" title="HTTP status returned to the app when this rule matches.">' + debugEscapeHtml(r.statusCode) + '</span>'
                     + '<button class="debug-btn-icon" data-action="editRule" data-rule-id="' + debugEscapeHtml(r.id) + '" title="Edit this rule (loads it into the form below).">✎</button>'
@@ -839,19 +839,19 @@
             : 'Save this rule. Future matching requests get the synthetic response. Rules persist across app restarts.';
         formEl.innerHTML = '<div class="net-rule-form">'
             + '<h4>' + heading + (isEdit ? ' <button class="debug-btn-icon" data-action="cancelEditRule" title="Cancel editing and return to the empty Add form.">✕</button>' : '') + '</h4>'
-            + '<input type="hidden" id="rf-id" value="' + debugEscapeHtml(prefill.id || '') + '">'
-            + '<div class="net-form-row"><label title="Optional human label shown in the rule list. Defaults to the URL pattern.">Name</label><input id="rf-name" placeholder="Optional label" value="' + debugEscapeHtml(prefill.name || '') + '" title="Optional human label. Doesn\'t affect matching."></div>'
-            + '<div class="net-form-row"><label title="What URLs this rule intercepts.">URL Pattern</label><input id="rf-pattern" placeholder="Substring or regex:..." value="' + debugEscapeHtml(prefill.urlPattern || '') + '" title="Substring match by default (e.g. /api/sync). Prefix with regex: for a regular expression (e.g. regex:^.+/api/v\\d+/entries$)."></div>'
-            + '<div class="net-form-row"><label title="HTTP method to match.">Method</label>'
-            + '<select id="rf-method" title="HTTP method this rule applies to. Choose Any to match every method.">'
+            + '<input type="hidden" id="rf-id" name="id" value="' + debugEscapeHtml(prefill.id || '') + '">'
+            + '<div class="net-form-row"><label for="rf-name" title="Optional human label shown in the rule list. Defaults to the URL pattern.">Name</label><input id="rf-name" name="name" placeholder="Optional label" value="' + debugEscapeHtml(prefill.name || '') + '" title="Optional human label. Doesn\'t affect matching."></div>'
+            + '<div class="net-form-row"><label for="rf-pattern" title="What URLs this rule intercepts.">URL Pattern</label><input id="rf-pattern" name="urlPattern" placeholder="Substring or regex:..." value="' + debugEscapeHtml(prefill.urlPattern || '') + '" title="Substring match by default (e.g. /api/sync). Prefix with regex: for a regular expression (e.g. regex:^.+/api/v\\d+/entries$)."></div>'
+            + '<div class="net-form-row"><label for="rf-method" title="HTTP method to match.">Method</label>'
+            + '<select id="rf-method" name="method" title="HTTP method this rule applies to. Choose Any to match every method.">'
             + '<option value="">Any</option>'
             + ['GET','POST','PUT','PATCH','DELETE'].map(function(m) {
                 var sel = prefill.method === m ? ' selected' : '';
                 return '<option value="' + m + '"' + sel + '>' + m + '</option>';
             }).join('')
             + '</select></div>'
-            + '<div class="net-form-row"><label title="HTTP status code returned to the app.">Status</label><input id="rf-status" type="number" value="' + (prefill.statusCode || 200) + '" style="width:80px;flex:none" title="Status code returned to the app (e.g. 200, 404, 503)."></div>'
-            + '<div class="net-form-row"><label title="Body returned to the app when this rule matches.">Body <button type="button" class="net-format-btn" data-action="formatRuleBody" title="Pretty-print the body as JSON (no-op if not valid JSON).">Format</button></label><textarea id="rf-body" placeholder="Response body (JSON, text, etc.)" title="Response body returned to the app. Can be any string; JSON is auto-formatted in the rule preview.">' + debugEscapeHtml(prefill.responseBody || '') + '</textarea></div>'
+            + '<div class="net-form-row"><label for="rf-status" title="HTTP status code returned to the app.">Status</label><input id="rf-status" name="statusCode" type="number" value="' + (prefill.statusCode || 200) + '" style="width:80px;flex:none" title="Status code returned to the app (e.g. 200, 404, 503)."></div>'
+            + '<div class="net-form-row"><label for="rf-body" title="Body returned to the app when this rule matches.">Body <button type="button" class="net-format-btn" data-action="formatRuleBody" title="Pretty-print the body as JSON (no-op if not valid JSON).">Format</button></label><textarea id="rf-body" name="responseBody" placeholder="Response body (JSON, text, etc.)" title="Response body returned to the app. Can be any string; JSON is auto-formatted in the rule preview.">' + debugEscapeHtml(prefill.responseBody || '') + '</textarea></div>'
             + '<div class="net-form-actions">'
             + '<button class="debug-btn debug-btn-primary" data-action="submitRule" title="' + submitTooltip + '">' + submitText + '</button>'
             + (isEdit ? '<button class="debug-btn" data-action="cancelEditRule" title="Discard changes and return to the empty Add form.">Cancel</button>' : '')
@@ -899,13 +899,13 @@
             .map(function(m) { return '<option value="' + m + '">' + m + '</option>'; }).join('');
         container.innerHTML = '<div class="net-rule-form">'
             + '<h4>Send a request through the app\'s OkHttp client</h4>'
-            + '<div class="net-form-row"><label title="HTTP method for the dispatched request.">Method</label>'
-            + '<select id="sf-method" style="max-width:120px;flex:0 0 120px" title="HTTP method.">' + methodOptions + '</select></div>'
-            + '<div class="net-form-row"><label title="Where to send the request.">URL</label>'
-            + '<input id="sf-url" placeholder="/api/v1/entries or https://example.com/path" title="Absolute URL or a relative path. Relative paths are resolved against the app\'s configured server base URL."></div>'
-            + '<div class="net-form-row"><label title="Custom request headers (the app\'s OkHttp interceptors still add Auth/UA/etc.).">Headers</label><div id="sf-headers" style="flex:1"></div></div>'
-            + '<div class="net-form-row"><label title="Body sent with the request.">Body <button type="button" class="net-format-btn" data-action="formatSendBody" title="Pretty-print the body as JSON (no-op if not valid JSON).">Format</button></label>'
-            + '<textarea id="sf-body" placeholder="Request body (omit for GET/HEAD)" title="Body sent with the request. Omit for GET/HEAD. Content-Type defaults to application/json unless overridden via Headers."></textarea></div>'
+            + '<div class="net-form-row"><label for="sf-method" title="HTTP method for the dispatched request.">Method</label>'
+            + '<select id="sf-method" name="method" style="max-width:120px;flex:0 0 120px" title="HTTP method.">' + methodOptions + '</select></div>'
+            + '<div class="net-form-row"><label for="sf-url" title="Where to send the request.">URL</label>'
+            + '<input id="sf-url" name="url" placeholder="/api/v1/entries or https://example.com/path" title="Absolute URL or a relative path. Relative paths are resolved against the app\'s configured server base URL."></div>'
+            + '<div class="net-form-row"><label id="sf-headers-label" title="Custom request headers (the app\'s OkHttp interceptors still add Auth/UA/etc.).">Headers</label><div id="sf-headers" role="group" aria-labelledby="sf-headers-label" style="flex:1"></div></div>'
+            + '<div class="net-form-row"><label for="sf-body" title="Body sent with the request.">Body <button type="button" class="net-format-btn" data-action="formatSendBody" title="Pretty-print the body as JSON (no-op if not valid JSON).">Format</button></label>'
+            + '<textarea id="sf-body" name="body" placeholder="Request body (omit for GET/HEAD)" title="Body sent with the request. Omit for GET/HEAD. Content-Type defaults to application/json unless overridden via Headers."></textarea></div>'
             + '<div class="net-form-actions">'
             + '<button class="debug-btn debug-btn-primary" id="sf-send-btn" data-action="submitSendRequest" title="Dispatch through the app\'s authorized OkHttpClient. Goes through every real interceptor (auth, logging, debug capture). Self-requests to the debug server are rejected. The request is sent synchronously and the result is shown below.">Send</button>'
             + '</div>'
@@ -918,10 +918,12 @@
         var container = document.getElementById('sf-headers');
         if (!container) return;
         container.innerHTML = sendHeaders.map(function(h, i) {
+            var keyId = 'sf-header-key-' + i;
+            var valueId = 'sf-header-value-' + i;
             return '<div class="net-send-header-row">'
-                + '<input type="text" placeholder="Header" value="' + debugEscapeHtml(h.key) + '" data-action="updateSendHeader" data-index="' + i + '" data-field="key" title="Header name (e.g. Content-Type, Accept).">'
-                + '<input type="text" placeholder="Value" value="' + debugEscapeHtml(h.value) + '" data-action="updateSendHeader" data-index="' + i + '" data-field="value" title="Header value.">'
-                + '<button type="button" class="debug-btn-icon danger" data-action="removeSendHeader" data-index="' + i + '" title="Remove this header row.">✕</button>'
+                + '<input id="' + keyId + '" name="headerKey" type="text" aria-label="Header name" placeholder="Header" value="' + debugEscapeHtml(h.key) + '" data-action="updateSendHeader" data-index="' + i + '" data-field="key" title="Header name (e.g. Content-Type, Accept).">'
+                + '<input id="' + valueId + '" name="headerValue" type="text" aria-label="Header value" placeholder="Value" value="' + debugEscapeHtml(h.value) + '" data-action="updateSendHeader" data-index="' + i + '" data-field="value" title="Header value.">'
+                + '<button type="button" class="debug-btn-icon danger" data-action="removeSendHeader" data-index="' + i + '" aria-label="Remove header row" title="Remove this header row.">✕</button>'
                 + '</div>';
         }).join('')
             + '<button type="button" class="net-format-btn" data-action="addSendHeader" style="margin-top:6px" title="Add another header row.">+ Add header</button>';
