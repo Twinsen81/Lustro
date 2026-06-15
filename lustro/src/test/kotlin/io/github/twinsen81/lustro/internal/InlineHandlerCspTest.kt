@@ -92,6 +92,8 @@ class InlineHandlerCspTest {
 
         assertTrue(html.contains("for=\"search-input\""))
         assertTrue(html.contains("name=\"search\""))
+        assertTrue(html.contains("aria-label=\"Search network traffic\""))
+        assertTrue(html.contains("class=\"dc-field__prefix\" aria-hidden=\"true\""))
         assertTrue(html.contains("name=\"throttleDelayMs\""))
         assertTrue(html.contains("aria-label=\"Global throttle\""))
 

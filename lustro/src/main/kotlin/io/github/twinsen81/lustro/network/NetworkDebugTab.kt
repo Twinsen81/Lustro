@@ -132,7 +132,7 @@ public class NetworkDebugTab private constructor(
                     <button class="debug-btn debug-btn-danger" data-action="clearTraffic" title="Clear the captured transaction list. Mock rules and settings are preserved. Keyboard shortcut: C (when not typing in an input).">Clear</button>
                 </div>
                 <div class="debug-search-bar">
-                    <label class="dc-field" for="search-input"><span class="dc-field__prefix">&gt;</span><input type="text" id="search-input" name="search" class="dc-input" placeholder="filter url, method, body…" data-action="onSearchInput" title="Search across URL, method, request body, and response body (server-side, 300ms debounce). Matches are highlighted in body views. Shortcut: Ctrl/Cmd+K to focus." /></label>
+                    <label class="dc-field" for="search-input"><span class="dc-field__prefix" aria-hidden="true">&gt;</span><input type="text" id="search-input" name="search" aria-label="Search network traffic" class="dc-input" placeholder="filter url, method, body…" data-action="onSearchInput" title="Search across URL, method, request body, and response body (server-side, 300ms debounce). Matches are highlighted in body views. Shortcut: Ctrl/Cmd+K to focus." /></label>
                 </div>
                 <div class="net-category-bar" id="category-filters"></div>
                 <div class="net-filter-bar" id="status-filters"></div>
