@@ -32,6 +32,9 @@ public class SampleNetworkClassifier : NetworkClassifier {
         if ("/status/5" in lower || "/delay/" in lower) {
             labels += "Slow/Error"
         }
+        if ("/anything/other" in lower) {
+            labels += "Other"
+        }
         return labels
     }
 }

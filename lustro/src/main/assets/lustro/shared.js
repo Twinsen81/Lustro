@@ -1,14 +1,4 @@
-// Lustro shared debug UI runtime.
-//
-// Served as an EXTERNAL script (CSP-ready): there are no inline <script>-injected
-// globals or %PLACEHOLDER% substitutions. The active tab id is read from
-// `document.body[data-lustro-tab]`, and the versioned API base is derived from it.
-
-// ═══ API base ═══
-// The page sets <body data-lustro-tab="<id>">. All tab API calls go to
-// `/api/v1/<id>/...`. lustroApiBase() returns that prefix (no trailing slash);
-// lustroApiUrl(path) joins a sub-path onto it. These are exposed on window so
-// per-tab scripts (e.g. network.js) reuse the exact same base.
+// Shared runtime for tab URL helpers, auth bootstrap, theme, and utilities.
 window.lustroTabId = function() {
     return (document.body && document.body.dataset && document.body.dataset.lustroTab) || '';
 };
@@ -36,22 +26,9 @@ window.debugSetStatus = function(state) {
     }
 };
 
-// ═══ Auth bootstrap + tab-content loading ═══
-//
-// The server now serves only the framework CHROME for /tab/<id> (tab bar +
-// connecting/authorizing shell, NO tab content or data). Tab content is loaded
-// here, AFTER authentication, from the authenticated /api/v1/<id>/_view endpoint.
-//
-// A browser becomes authenticated by setting the `lustro_token` cookie via
-// POST /api/v1/_auth. The token arrives in the URL fragment (#lustro_token=<t>
-// or #token=<t>) when opened via `lustro open`; we POST it once, strip the
-// fragment from the address bar, then load the content. Programmatic clients use
-// `Authorization: Bearer <token>` instead and never hit this path.
-//
-// Per-tab scripts (e.g. network.js) register their DOM-dependent init via
-// window.lustroOnContentReady(fn); those callbacks fire only once the _view HTML
-// has been injected into #lustro-tab-content. If the API returns 401, we show a
-// short instruction instead of erroring out.
+// The tab page starts as unauthenticated chrome. After fragment-token auth sets
+// the cookie, this loads the authenticated _view fragment and then the tab's
+// CSS/JS. Per-tab scripts register DOM init with lustroOnContentReady().
 (function() {
     var contentReadyCallbacks = [];
     var contentReady = false;
@@ -137,7 +114,6 @@ window.debugSetStatus = function(state) {
         }
     }
 
-    // Fetch the authenticated tab content and inject it, then fire init hooks.
     function loadTabContent() {
         var root = contentRoot();
         if (!root) { fireContentReady(); return; }
@@ -161,22 +137,32 @@ window.debugSetStatus = function(state) {
             });
     }
 
+    var authInFlight = false;
+
+    function authenticateWithToken(token, reloadContent) {
+        if (authInFlight) return;
+        authInFlight = true;
+        // POST the fragment token once, strip it, then load content.
+        fetch('/api/v1/_auth', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: token })
+        }).then(function() {
+            stripHash();
+            if (reloadContent !== false) loadTabContent();
+        }).catch(function() {
+            stripHash();
+            if (reloadContent !== false) loadTabContent();
+        }).then(function() {
+            authInFlight = false;
+        });
+    }
+
     function bootstrap() {
         var token = tokenFromHash();
         if (token) {
-            // POST the fragment token once, strip it, then load content.
-            fetch('/api/v1/_auth', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ token: token })
-            }).then(function() {
-                stripHash();
-                loadTabContent();
-            }).catch(function() {
-                stripHash();
-                loadTabContent();
-            });
+            authenticateWithToken(token, true);
         } else {
             // No fragment: rely on an existing cookie. The _view call 401s (and
             // shows the instruction) when no valid cookie is present.
@@ -189,9 +175,17 @@ window.debugSetStatus = function(state) {
     } else {
         bootstrap();
     }
+
+    window.addEventListener('hashchange', function() {
+        var token = tokenFromHash();
+        if (!token) return;
+        // A hash-only navigation does not reload the document, so the initial
+        // bootstrap will not run again after the unauthenticated shell is shown.
+        var needsContent = !contentReady || !!document.querySelector('.lustro-auth-needed');
+        authenticateWithToken(token, needsContent);
+    });
 })();
 
-// ═══ Theme (auto / light / dark) ═══
 (function() {
     var STORAGE_KEY = 'debug-theme';
     var systemQuery = window.matchMedia('(prefers-color-scheme: light)');
@@ -237,7 +231,6 @@ window.debugSetStatus = function(state) {
         });
     }
 
-    // Wire up toggle button when DOM is ready.
     function wireToggle() {
         var btn = document.getElementById('theme-toggle');
         if (btn) {
@@ -252,16 +245,9 @@ window.debugSetStatus = function(state) {
     }
 })();
 
-// ═══ Session / restart detection — DEFERRED ═══
-// Earlier versions polled `/api/session` (with an inline-injected session id)
-// to reload the page after an app restart. Session identity is not yet enforced;
-// this is a no-op stub for now. The disconnect overlay below is instead driven
-// purely by fetch failures (see debugPoll / .disconnect-overlay).
+// Compatibility hook for older tab scripts; restart detection uses fetch failures.
 window.debugCheckSession = function() { /* no-op */ };
 
-// ═══ Shared Debug Utilities ═══
-
-// Toast container
 (function() {
     var c = document.createElement('div');
     c.className = 'debug-toast-container';

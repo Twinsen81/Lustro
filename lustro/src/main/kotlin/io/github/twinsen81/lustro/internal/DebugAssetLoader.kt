@@ -4,11 +4,12 @@ import android.content.Context
 import java.util.Collections
 
 /**
- * Loads and caches CSS/JS/JSON asset files for the debug web server, using a
- * bounded LRU cache to avoid unbounded memory growth.
+ * Loads CSS/JS/JSON/image asset files for the debug web server. Text assets use
+ * a bounded LRU cache to avoid unbounded memory growth.
  *
  * Asset files live under `assets/lustro/` and follow a naming convention:
  * - `shared.css` / `shared.js` — shared styles and utilities loaded by the server.
+ * - `lustro-icon-transparent.png` — browser favicon / app icon.
  * - `<tab.id>.css` / `<tab.id>.js` — per-tab assets, matched by the tab id.
  *
  * For dynamic values, use `%UPPER_SNAKE%` placeholders in asset files and pass a
@@ -44,6 +45,13 @@ internal class DebugAssetLoader(
             null
         }
     }
+
+    fun loadBytes(name: String): ByteArray? =
+        try {
+            context.assets.open("$ASSET_DIR/$name").use { it.readBytes() }
+        } catch (_: Exception) {
+            null
+        }
 
     /**
      * Loads the asset template and replaces `%PLACEHOLDER%` tokens with the given

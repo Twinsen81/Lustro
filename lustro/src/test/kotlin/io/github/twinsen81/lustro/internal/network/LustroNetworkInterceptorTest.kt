@@ -325,7 +325,6 @@ class LustroNetworkInterceptorTest {
         assertEquals(64L, tx.requestBodyBytes)
     }
 
-    // region helpers
 
     private fun responseFor(request: Request, body: ResponseBody): Response =
         Response.Builder()
@@ -452,5 +451,4 @@ class LustroNetworkInterceptorTest {
         }
     }
 
-    // endregion
 }

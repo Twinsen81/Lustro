@@ -59,6 +59,8 @@ public object LustroBootstrap {
         // No-op: the release facade never started a server.
     }
 
+    internal fun extraDemoRequests(base: String): List<DemoRequestSpec> = emptyList()
+
     /**
      * Mirrors the debug bootstrap's platform-capture demo so the opt-in call
      * site also compiles against the no-op facade. Never invoked at runtime.

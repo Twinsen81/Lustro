@@ -1,7 +1,7 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Sample Feature Flags debug tab",
+    "title": "Sample Client Feature Flags debug tab",
     "version": "1.0",
     "description": "A sample custom Lustro tab demonstrating async polling (opaque cursor), a file-upload route, and modal UI. All routes are token-authenticated (Bearer header or HttpOnly cookie) and live under /api/v1/flags. Errors use the shared error envelope."
   },

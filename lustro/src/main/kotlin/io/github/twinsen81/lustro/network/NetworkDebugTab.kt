@@ -64,8 +64,6 @@ public class NetworkDebugTab private constructor(
     @Volatile
     private var appServerBaseUrl: String? = null
 
-    // region NetworkCaptureProvider
-
     override val captureSink: io.github.twinsen81.lustro.network.NetworkCaptureSink
         get() = store
 
@@ -77,8 +75,6 @@ public class NetworkDebugTab private constructor(
             incrementMockHit = { store.incrementHitCount(it) },
             maxBodySize = maxBodyCaptureBytes,
         )
-
-    // endregion
 
     /** Records the live bind address so the Send panel can detect self-requests. */
     internal fun bindTo(host: String, port: Int) {
@@ -126,7 +122,7 @@ public class NetworkDebugTab private constructor(
                     <span id="tx-count" class="net-tx-count">0 requests</span>
                     <button class="debug-btn" id="pause-btn" data-action="togglePause" style="margin-left:auto" title="Pause traffic capture. The interceptor still runs but new requests are not recorded into the list. Click again to resume.">⏸ Pause</button>
                     <button class="debug-btn" id="overwrite-btn" data-action="toggleOverwriteMode" title="Overwrite mode: when a new request arrives, any earlier completed transaction with the same method + URL path is removed from the list. In-flight requests are never evicted.">Overwrite: off</button>
-                    <select class="debug-btn net-throttle-select" id="throttle-select" data-action="setThrottle" title="Global throttle: sleep this long before every request (mocked or real). Useful for testing loading spinners and timeout handling.">
+                    <select class="debug-btn net-throttle-select" id="throttle-select" name="throttleDelayMs" aria-label="Global throttle" data-action="setThrottle" title="Global throttle: sleep this long before every request (mocked or real). Useful for testing loading spinners and timeout handling.">
                         <option value="0">No throttle</option>
                         <option value="500">500ms</option>
                         <option value="1000">1s</option>
@@ -136,7 +132,7 @@ public class NetworkDebugTab private constructor(
                     <button class="debug-btn debug-btn-danger" data-action="clearTraffic" title="Clear the captured transaction list. Mock rules and settings are preserved. Keyboard shortcut: C (when not typing in an input).">Clear</button>
                 </div>
                 <div class="debug-search-bar">
-                    <label class="dc-field"><span class="dc-field__prefix">&gt;</span><input type="text" id="search-input" class="dc-input" placeholder="filter url, method, body…" data-action="onSearchInput" title="Search across URL, method, request body, and response body (server-side, 300ms debounce). Matches are highlighted in body views. Shortcut: Ctrl/Cmd+K to focus." /></label>
+                    <label class="dc-field" for="search-input"><span class="dc-field__prefix" aria-hidden="true">&gt;</span><input type="text" id="search-input" name="search" aria-label="Search network traffic" class="dc-input" placeholder="filter url, method, body…" data-action="onSearchInput" title="Search across URL, method, request body, and response body (server-side, 300ms debounce). Matches are highlighted in body views. Shortcut: Ctrl/Cmd+K to focus." /></label>
                 </div>
                 <div class="net-category-bar" id="category-filters"></div>
                 <div class="net-filter-bar" id="status-filters"></div>
@@ -188,8 +184,8 @@ public class NetworkDebugTab private constructor(
         </div>
         """.trimIndent()
 
-    // The static OpenAPI lives at assets/lustro/network.openapi.json (authored by
-    // another agent); the tab still works without a dynamic schema.
+    // The static OpenAPI lives at assets/lustro/network.openapi.json; the tab
+    // still works without a dynamic schema.
     override fun schema(): String? = null
 
     override fun handle(request: DebugRequest): DebugResponse? {
@@ -213,8 +209,6 @@ public class NetworkDebugTab private constructor(
             else -> null
         }
     }
-
-    // region Transactions + cursor envelope
 
     private fun handleTransactions(request: DebugRequest): DebugResponse {
         val search = request.queryParam("search")?.takeIf { it.isNotBlank() }
@@ -249,10 +243,6 @@ public class NetworkDebugTab private constructor(
         store.clear()
         return ok()
     }
-
-    // endregion
-
-    // region Mock rules
 
     private fun handleGetRules(): DebugResponse =
         DebugResponse.json {
@@ -361,10 +351,6 @@ public class NetworkDebugTab private constructor(
             DebugResponse.error("Invalid JSON: ${e.message}")
         }
 
-    // endregion
-
-    // region State mutations
-
     private fun handleTogglePause(): DebugResponse {
         val newState = !store.isPaused()
         store.setPaused(newState)
@@ -386,10 +372,6 @@ public class NetworkDebugTab private constructor(
         } catch (e: Exception) {
             DebugResponse.error("Invalid JSON: ${e.message}")
         }
-
-    // endregion
-
-    // region Send (synchronous)
 
     private fun handleSendRequest(body: String?): DebugResponse {
         val activeSender = sender ?: return DebugResponse.notFound("Send is not configured")
@@ -482,10 +464,6 @@ public class NetworkDebugTab private constructor(
         }
     }
 
-    // endregion
-
-    // region JSON serialization
-
     private fun StringBuilder.appendTransaction(tx: NetworkTransaction, brief: Boolean) {
         append("{")
         append("\"id\":\"${tx.id.escapeForJson()}\",")
@@ -554,8 +532,6 @@ public class NetworkDebugTab private constructor(
         }
 
     private fun ok(): DebugResponse = DebugResponse.json { append("{\"status\":\"ok\"}") }
-
-    // endregion
 
     /** Factory for [NetworkDebugTab]. */
     public companion object {

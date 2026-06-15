@@ -6,7 +6,9 @@
     <application
         android:name=".SampleApplication"
         android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
         android:label="Lustro Sample"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:theme="@android:style/Theme.Material.Light">
 
         <activity

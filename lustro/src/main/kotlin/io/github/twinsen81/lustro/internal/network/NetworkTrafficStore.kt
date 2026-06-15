@@ -71,8 +71,6 @@ internal class NetworkTrafficStore(
         storage?.load()?.forEach { rule -> mockRules[rule.id] = rule.toImpl() }
     }
 
-    // region NetworkCaptureSink
-
     // TransactionId's constructor/value are @RestrictTo(LIBRARY_GROUP); :lustro and
     // :lustro-api share the io.github.twinsen81 group, so these calls are legitimate.
     // Android Lint's RestrictedApi check can't resolve the group across local project
@@ -140,10 +138,6 @@ internal class NetworkTrafficStore(
     override fun failRequest(id: TransactionId, durationMs: Long, error: String) {
         updateWithError(id.value, durationMs, error)
     }
-
-    // endregion
-
-    // region Capture path used directly by the interceptors (already-redacted callers)
 
     fun recordRequest(transaction: NetworkTransaction) {
         if (overwriteMode.get()) {
@@ -242,10 +236,6 @@ internal class NetworkTrafficStore(
         sequence.incrementAndGet()
     }
 
-    // endregion
-
-    // region Redaction / classification helpers
-
     private fun redactHeaders(headers: Headers): Map<String, String> {
         val out = LinkedHashMap<String, String>()
         headers.forEach { name, value ->
@@ -263,10 +253,6 @@ internal class NetworkTrafficStore(
         } catch (_: Exception) {
             emptyList()
         }
-
-    // endregion
-
-    // region Query
 
     fun getTransactions(search: String? = null): List<NetworkTransaction> {
         var result: Sequence<NetworkTransaction> =
@@ -286,10 +272,6 @@ internal class NetworkTrafficStore(
     }
 
     fun getTransaction(id: String): NetworkTransaction? = transactionMap[id]
-
-    // endregion
-
-    // region Mock rules
 
     fun addMockRule(rule: MockRuleImpl) {
         mockRules[rule.id] = rule
@@ -334,10 +316,6 @@ internal class NetworkTrafficStore(
         storage?.save(mockRules.values.toList())
     }
 
-    // endregion
-
-    // region State + cursor
-
     fun isPaused(): Boolean = paused.get()
 
     fun setPaused(value: Boolean) {
@@ -370,8 +348,6 @@ internal class NetworkTrafficStore(
 
     /** Current total of captured body bytes (request+response). Exposed for tests. */
     fun capturedBytes(): Long = capturedBytes.get()
-
-    // endregion
 
     private fun trimToMaxSize() {
         while (insertionOrder.size > maxTransactions) {

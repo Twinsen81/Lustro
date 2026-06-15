@@ -13,7 +13,6 @@ import org.junit.Test
 class DefaultRedactorTest {
     private val redactor = DefaultRedactor
 
-    // region headers
 
     @Test
     fun `redacts authorization header`() {
@@ -63,9 +62,7 @@ class DefaultRedactorTest {
         assertEquals("[REDACTED]", redactor.redactHeaderValue("X-Credential-Id", "c1"))
     }
 
-    // endregion
 
-    // region url query
 
     @Test
     fun `redacts sensitive url query params and keeps the rest`() {
@@ -99,9 +96,7 @@ class DefaultRedactorTest {
         assertTrue(redacted.contains("token=%5BREDACTED%5D"))
     }
 
-    // endregion
 
-    // region json body
 
     @Test
     fun `redacts sensitive json fields including nested`() {
@@ -129,9 +124,7 @@ class DefaultRedactorTest {
         assertEquals(3, out.getInt("count"))
     }
 
-    // endregion
 
-    // region form body
 
     @Test
     fun `redacts sensitive form fields and keeps the rest`() {
@@ -158,9 +151,7 @@ class DefaultRedactorTest {
         assertEquals("", redactor.redactBody("", MediaType.JSON))
     }
 
-    // endregion
 
-    // region textual fallback (non-strict-JSON / SSE / XML / plain)
 
     @Test
     fun `NDJSON masks the sensitive token without storing it raw`() {
@@ -205,5 +196,4 @@ class DefaultRedactorTest {
         assertEquals("plain prose is byte-identical", prose, redactor.redactBody(prose, MediaType.TEXT))
     }
 
-    // endregion
 }
