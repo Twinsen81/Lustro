@@ -50,6 +50,7 @@ internal class LustroServer(
     private val assetLoader: DebugAssetLoader,
     private val tokenStore: LustroTokenStore,
     private val allowedOrigins: List<String>,
+    private val appName: String = DEFAULT_APP_NAME,
     private val maxRequestBodyBytes: Long = DEFAULT_MAX_REQUEST_BODY_BYTES,
     maxConcurrentRequests: Int = DEFAULT_MAX_CONCURRENT_REQUESTS,
     requestQueueCapacity: Int = DEFAULT_REQUEST_QUEUE_CAPACITY,
@@ -92,6 +93,7 @@ internal class LustroServer(
         return when {
             uri == "/" -> handleRoot()
             uri == "/favicon.ico" -> handleFavicon()
+            uri == "/lustro-icon.png" -> serveIcon()
             uri == "/shared.css" -> serveSharedAsset("shared.css", "text/css")
             uri == "/shared.js" -> serveSharedAsset("shared.js", "application/javascript")
             uri.startsWith("/tab/") -> handleTabPage(uri.removePrefix("/tab/").substringBefore('/'))
@@ -151,8 +153,6 @@ internal class LustroServer(
             RequestLimiter.Outcome.TimedOut ->
                 toNanoResponse(DebugResponse.error(message = "Request timed out", status = 504))
         }
-
-    // region Auth
 
     /**
      * Runs [block] only when the request carries a valid Bearer token OR a valid
@@ -248,10 +248,6 @@ internal class LustroServer(
         return diff == 0
     }
 
-    // endregion
-
-    // region Origin / Sec-Fetch-Site
-
     /**
      * Validates the request's `Origin` / `Sec-Fetch-Site` headers against the
      * same-origin rule + [allowedOrigins]. Returns an enveloped 403 [Response] when
@@ -316,13 +312,20 @@ internal class LustroServer(
         return port == listeningPort
     }
 
-    // endregion
-
-    // region Assets + root + tab pages
-
     private fun handleFavicon(): Response {
-        // No bundled favicon; an empty 204 keeps browsers from 404-spamming.
-        return newFixedLengthResponse(Response.Status.NO_CONTENT, "image/x-icon", "")
+        return serveIcon()
+    }
+
+    private fun serveIcon(): Response {
+        val bytes =
+            assetLoader.loadBytes(ICON_ASSET)
+                ?: return newFixedLengthResponse(Response.Status.NO_CONTENT, "image/png", "")
+        return newFixedLengthResponse(
+            Response.Status.OK,
+            "image/png",
+            ByteArrayInputStream(bytes),
+            bytes.size.toLong(),
+        )
     }
 
     private fun serveSharedAsset(name: String, mime: String): Response {
@@ -357,7 +360,7 @@ internal class LustroServer(
                 val activeClass = if (tab.id == activeTab.id) "active" else ""
                 """<a href="/tab/${tab.id}" class="tab $activeClass"><span class="tab-icon">${tab.icon.escapeHtml()}</span>${tab.title.escapeHtml()}</a>"""
             }
-        val title = activeTab.title.escapeHtml()
+        val pageTitle = pageTitle()
         // EXTERNAL scripts/styles only (no inline tab logic — CSP holds). The tab
         // content area starts empty (the "authorizing" shell); shared.js loads the
         // authenticated /_view content once a cookie/token is present.
@@ -367,7 +370,9 @@ internal class LustroServer(
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>$title - Lustro Debug Console</title>
+    <title>$pageTitle</title>
+    <link rel="icon" type="image/png" href="/lustro-icon.png">
+    <link rel="apple-touch-icon" href="/lustro-icon.png">
     <link rel="stylesheet" href="/shared.css">
     <!-- The tab's own _view.css / _view.js are auth-gated (tab-authored output is
          not served before auth). shared.js injects them dynamically AFTER the auth
@@ -399,7 +404,9 @@ $tabsHtml
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Lustro Debug Console</title>
+    <title>${pageTitle()}</title>
+    <link rel="icon" type="image/png" href="/lustro-icon.png">
+    <link rel="apple-touch-icon" href="/lustro-icon.png">
     <style>
         body {
             font-family: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;
@@ -420,9 +427,7 @@ $tabsHtml
 </html>
         """.trimIndent()
 
-    // endregion
-
-    // region /api/v1/_meta + schemas
+    private fun pageTitle(): String = "Lustro - ${appName.escapeHtml()}"
 
     private fun handleMeta(): Response {
         val body = buildString {
@@ -466,10 +471,6 @@ $tabsHtml
             toNanoResponse(DebugResponse.notFound("No schema for tab: ${tab.id}"))
         }
     }
-
-    // endregion
-
-    // region API routing
 
     private fun handleApi(session: IHTTPSession, remainder: String): Response {
         val parts = remainder.split("/", limit = 2)
@@ -584,8 +585,6 @@ $tabsHtml
         }
     }
 
-    // endregion
-
     private fun redirectTo(location: String): Response {
         val response = newFixedLengthResponse(Response.Status.REDIRECT, "text/plain", "")
         response.addHeader("Location", location)
@@ -629,6 +628,8 @@ $tabsHtml
 
     private companion object {
         private const val TAG = "LustroServer"
+        private const val ICON_ASSET = "lustro-icon-transparent.png"
+        private const val DEFAULT_APP_NAME = "App"
 
         // The browser auth cookie name (must match the value expected by shared.js).
         private const val COOKIE_NAME = "lustro_token"

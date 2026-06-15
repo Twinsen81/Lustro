@@ -58,7 +58,6 @@ class NetworkTrafficStoreTest {
         enabled: Boolean = true,
     ) = MockRuleImpl(id = id, name = id, urlPattern = urlPattern, method = method, enabled = enabled)
 
-    // region sequence / cursor backing
 
     @Test
     fun `beginRequest advances the sequence`() {
@@ -91,9 +90,7 @@ class NetworkTrafficStoreTest {
         assertTrue(store.getSequence() > seq)
     }
 
-    // endregion
 
-    // region capture + ordering
 
     @Test
     fun `transactions are returned in reverse-chronological order`() {
@@ -177,9 +174,7 @@ class NetworkTrafficStoreTest {
         assertNull("oldest in-flight dropped as the last resort", store.getTransaction(oldest.value))
     }
 
-    // endregion
 
-    // region capture budget
 
     @Test
     fun `capture budget evicts oldest transactions once the byte total is exceeded`() {
@@ -238,9 +233,7 @@ class NetworkTrafficStoreTest {
         assertEquals(1, store.getTransactions().size)
     }
 
-    // endregion
 
-    // region overwrite-mode eviction
 
     @Test
     fun `overwrite mode evicts prior completed same method and path`() {
@@ -279,9 +272,7 @@ class NetworkTrafficStoreTest {
         assertEquals(2, store.getTransactions().size)
     }
 
-    // endregion
 
-    // region pause (capture-only) + throttle state
 
     @Test
     fun `pause state toggles and reports`() {
@@ -319,9 +310,7 @@ class NetworkTrafficStoreTest {
         assertEquals(0, store.getThrottleDelayMs())
     }
 
-    // endregion
 
-    // region mock rules CRUD + atomic replace + matching
 
     @Test
     fun `add, toggle, and delete mock rules`() {
@@ -416,9 +405,7 @@ class NetworkTrafficStoreTest {
         assertEquals(listOf("persisted"), store.getMockRules().map { it.id })
     }
 
-    // endregion
 
-    // region classifier + redaction at capture
 
     @Test
     fun `classifier categories are applied to captured transactions`() {
@@ -482,7 +469,6 @@ class NetworkTrafficStoreTest {
         assertFalse(responseBody.contains("RESPSECRET"))
     }
 
-    // endregion
 
     /** Simple in-memory [MockRuleStorage] fake. */
     private class InMemoryMockRuleStorage : MockRuleStorage {

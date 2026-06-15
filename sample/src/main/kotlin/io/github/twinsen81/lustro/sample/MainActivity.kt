@@ -18,19 +18,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 
-/**
- * Demo activity for the Lustro sample.
- *
- * It is a plain launcher activity (no resource files) with one button per HTTP
- * shape. Every button fires a request through [SampleApplication.httpClient] —
- * the OkHttp client that has the Lustro interceptor installed — so the traffic
- * shows up in the Network tab of the debug console (debug variant). The buttons
- * cover GET, POST, PUT, PATCH, DELETE, a mocked 500, and a slow/throttled call.
- *
- * Demo traffic hits the public httpbingo.org fixture host. It is auth-free and
- * httpbin-compatible; Lustro's own debug API stays token-authenticated and is
- * unrelated to this traffic.
- */
+/** Launcher activity with one button per sample HTTP request shape. */
 public class MainActivity : Activity() {
     private val ioExecutor = Executors.newFixedThreadPool(4)
     private lateinit var statusView: TextView
@@ -78,6 +66,9 @@ public class MainActivity : Activity() {
         addButton(root, "DELETE /delete") { deleteRequest() }
         addButton(root, "Mocked 500 (/status/500)") { errorRequest() }
         addButton(root, "Slow call (/delay/3)") { slowRequest() }
+        LustroBootstrap.extraDemoRequests(BASE).forEach { spec ->
+            addButton(root, spec.label) { dispatch(spec.buildRequest()) }
+        }
 
         statusView =
             TextView(this).apply {
@@ -98,8 +89,6 @@ public class MainActivity : Activity() {
             },
         )
     }
-
-    // region Requests
 
     private fun getRequest() {
         dispatch(Request.Builder().url("$BASE/get").get().build())
@@ -136,21 +125,13 @@ public class MainActivity : Activity() {
         dispatch(Request.Builder().url("$BASE/delete").delete().build())
     }
 
-    /**
-     * A request that returns a 500. The fixture host returns it directly; in the
-     * debug console you can also add a mock rule to short-circuit any request to
-     * a synthetic 500, which is the "mocked 500" the Network tab demonstrates.
-     */
     private fun errorRequest() {
         dispatch(Request.Builder().url("$BASE/status/500").get().build())
     }
 
-    /** A slow response (server delays 3s). Combine with the Network tab's throttle to test spinners. */
     private fun slowRequest() {
         dispatch(Request.Builder().url("$BASE/delay/3").get().build())
     }
-
-    // endregion
 
     private fun dispatch(request: Request) {
         setStatus("→ ${request.method} ${request.url}")

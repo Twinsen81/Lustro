@@ -75,6 +75,57 @@ class InlineHandlerCspTest {
     }
 
     @Test
+    fun `shared js retries token auth on hash-only navigation`() {
+        val js = assetLoader().load("shared.js")
+        assertNotNull("shared.js asset must be present", js)
+        assertTrue(js!!.contains("window.addEventListener('hashchange'"))
+        assertTrue(js.contains("authenticateWithToken(token, true)"))
+        assertTrue(js.contains("authenticateWithToken(token, needsContent)"))
+        assertTrue(js.contains("document.querySelector('.lustro-auth-needed')"))
+    }
+
+    @Test
+    fun `network forms expose stable labels and field names`() {
+        val html = NetworkDebugTab.create().renderContent()
+        val js = assetLoader().load("network.js")
+        assertNotNull("network.js asset must be present", js)
+
+        assertTrue(html.contains("for=\"search-input\""))
+        assertTrue(html.contains("name=\"search\""))
+        assertTrue(html.contains("aria-label=\"Search network traffic\""))
+        assertTrue(html.contains("class=\"dc-field__prefix\" aria-hidden=\"true\""))
+        assertTrue(html.contains("name=\"throttleDelayMs\""))
+        assertTrue(html.contains("aria-label=\"Global throttle\""))
+
+        val networkJs = js!!
+        listOf(
+            "for=\"rf-name\"",
+            "name=\"name\"",
+            "for=\"rf-pattern\"",
+            "name=\"urlPattern\"",
+            "for=\"rf-method\"",
+            "name=\"method\"",
+            "for=\"rf-status\"",
+            "name=\"statusCode\"",
+            "for=\"rf-body\"",
+            "name=\"responseBody\"",
+            "for=\"sf-method\"",
+            "for=\"sf-url\"",
+            "name=\"url\"",
+            "for=\"sf-body\"",
+            "name=\"body\"",
+            "id=\"sf-headers-label\"",
+            "role=\"group\" aria-labelledby=\"sf-headers-label\"",
+            "id=\"' + keyId + '\" name=\"headerKey\"",
+            "id=\"' + valueId + '\" name=\"headerValue\"",
+            "aria-label=\"Header name\"",
+            "aria-label=\"Header value\"",
+        ).forEach { expected ->
+            assertTrue("network.js should contain $expected", networkJs.contains(expected))
+        }
+    }
+
+    @Test
     fun `the guard regex actually detects an inline handler`() {
         // Sanity: a known-bad fragment must trip the guard, so a green suite means
         // the assertion has teeth rather than a regex that never matches.

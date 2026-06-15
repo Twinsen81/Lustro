@@ -109,7 +109,6 @@ class LustroServerLimitsTest {
                 .build(),
         ).execute()
 
-    // region 413
 
     @Test
     fun `request body over the cap is rejected with enveloped 413`() {
@@ -132,9 +131,7 @@ class LustroServerLimitsTest {
         }
     }
 
-    // endregion
 
-    // region 503 concurrency + queue overflow
 
     @Test
     fun `concurrency plus queue saturation yields enveloped 503`() {
@@ -181,9 +178,7 @@ class LustroServerLimitsTest {
         assertTrue("at least one request must be rejected with 503: $codes", codes.contains(503))
     }
 
-    // endregion
 
-    // region 504 per-request timeout
 
     @Test
     fun `handler exceeding the timeout yields enveloped 504`() {
@@ -196,5 +191,4 @@ class LustroServerLimitsTest {
         }
     }
 
-    // endregion
 }

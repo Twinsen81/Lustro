@@ -106,6 +106,17 @@ public object LustroBootstrap {
         lustro?.stop()
     }
 
+    internal fun extraDemoRequests(base: String): List<DemoRequestSpec> =
+        listOf(
+            DemoRequestSpec("GET /status/304", "GET", "$base/status/304"),
+            DemoRequestSpec("GET /status/404", "GET", "$base/status/404"),
+            DemoRequestSpec("GET /bearer", "GET", "$base/bearer"),
+            DemoRequestSpec("GET /image/png", "GET", "$base/image/png"),
+            DemoRequestSpec("GET /anything/other", "GET", "$base/anything/other"),
+            DemoRequestSpec("HEAD /status/204", "HEAD", "$base/status/204"),
+            DemoRequestSpec("GET https://127.0.0.1:1/lustro-error", "GET", "https://127.0.0.1:1/lustro-error"),
+        )
+
     /**
      * Demonstrates the experimental platform-capture opt-in. Not wired into the
      * running demo — it exists only to prove the [ExperimentalPlatformCapture]

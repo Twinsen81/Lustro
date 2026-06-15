@@ -47,6 +47,12 @@ public class Lustro internal constructor(
     private val lifecycle: Lifecycle = ProcessLifecycleOwner.get().lifecycle,
 ) {
     private val assetLoader = DebugAssetLoader(application.applicationContext)
+    private val appName: String =
+        application.applicationInfo
+            .loadLabel(application.packageManager)
+            .toString()
+            .takeIf { it.isNotBlank() }
+            ?: application.packageName
 
     // Always-on token store backed by a private SharedPreferences file. The token
     // is materialised lazily and surfaced on the machine-parseable startup log line
@@ -245,6 +251,7 @@ public class Lustro internal constructor(
             assetLoader = assetLoader,
             tokenStore = tokenStore,
             allowedOrigins = config.allowedOrigins,
+            appName = appName,
             maxRequestBodyBytes = config.maxRequestBodyBytes,
             maxConcurrentRequests = config.maxConcurrentRequests,
             requestQueueCapacity = config.requestQueueCapacity,

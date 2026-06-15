@@ -1,15 +1,9 @@
 (function() {
-    // Lustro network tab UI. Served as an EXTERNAL script. The tab id is already
-    // "network" (from <body data-lustro-tab>), so lustroApiUrl(path) yields
-    // `/api/v1/network/<path>`. netUrl() is a thin alias for clarity.
     function netUrl(path) {
         return window.lustroApiUrl(path);
     }
 
-    // Categories are now classifier-supplied strings, NOT a fixed enum. We don't
-    // know the universe up front, so the category filter set is discovered from
-    // incoming traffic and every newly-seen category defaults to enabled. The
-    // classic category labels are kept only as preset tooltips/order hints.
+    // Category filters are discovered from classifier-supplied strings at runtime.
     var KNOWN_CATEGORY_ORDER = ['Sync', 'Auth', 'Media', 'Config', 'AI', 'Wiretap', 'Other'];
     var CATEGORY_HELP = {
         'Sync': 'Sync data endpoints.',
@@ -105,8 +99,6 @@
         return true;
     }
 
-    // Scan a list of transactions for categories not yet known. Returns true if
-    // the known set changed (so the filter bar can be rebuilt).
     function discoverCategories(list) {
         var changed = false;
         (list || []).forEach(function(tx) {
@@ -117,7 +109,6 @@
         return changed;
     }
 
-    // ── Copy to clipboard ──
     var copyStore = {};
     var copyIdSeq = 0;
 
@@ -161,7 +152,6 @@
         return '<span class="net-copy-btn' + (cls ? ' ' + cls : '') + '" data-action="copyToClip" data-copy-id="' + debugEscapeHtml(id) + '" title="Copy">' + COPY_ICON + '</span>';
     }
 
-    // ── Per-row master toggles (tri-state "select all") ──
     // ✓ = every chip on, – = mixed, empty = every chip off. Clicking applies
     // the row's toggle-all action: any off → enable all; all on → disable all.
     function masterStateClass(keys, enabledMap) {
@@ -181,7 +171,6 @@
         if (btn) btn.className = 'net-master-toggle ' + masterStateClass(keys, enabledMap);
     }
 
-    // ── Category filter bar ──
     function buildCategoryFilters() {
         var container = document.getElementById('category-filters');
         if (!container) return;
@@ -226,7 +215,6 @@
         renderList();
     };
 
-    // ── Status & method filter bars ──
     function buildStatusFilters() {
         var container = document.getElementById('status-filters');
         if (!container) return;
@@ -318,7 +306,6 @@
         return !!enabledMethods[methodKeyForTx(tx)];
     }
 
-    // ── Search (server-side to match against bodies) ──
     window.onSearchInput = function(val) {
         clearTimeout(searchTimer);
         searchTimer = setTimeout(function() {
@@ -333,7 +320,6 @@
         }, 300);
     };
 
-    // ── Filtering (category/status/method are client-side, search is server-side) ──
     function filterTransactions() {
         return allTransactions.filter(function(tx) {
             var cats = (tx && tx.categories) || [];
@@ -347,7 +333,6 @@
         });
     }
 
-    // ── Left pane: transaction list ──
     function renderList() {
         var filtered = filterTransactions();
         var tbody = document.getElementById('tx-list');
@@ -444,7 +429,6 @@
             || previous.isMocked !== next.isMocked;
     }
 
-    // ── Transaction selection ──
     window.selectTransaction = function(id) {
         selectedTxId = id;
         renderList();
@@ -483,7 +467,6 @@
         }, waitMs);
     }
 
-    // ── Right pane: detail ──
     var currentDetailTx = null;
 
     window.copyAllDetail = function(ev) {
@@ -560,7 +543,6 @@
         if (tx.error) html += '<div class="net-error-line">' + debugEscapeHtml(tx.error) + '</div>';
         html += '</div>';
 
-        // Direction tabs: Response | Request
         html += '<div class="net-dir-tabs">';
         html += '<button class="net-dir-btn' + (activeDir === 'response' ? ' active' : '') + '" data-action="switchDir" data-dir="response" title="Show what the server sent back (status, headers, body).">Response</button>';
         html += '<button class="net-dir-btn' + (activeDir === 'request' ? ' active' : '') + '" data-action="switchDir" data-dir="request" title="Show what the app sent (method, URL, headers, body). Redacted values are removed.">Request</button>';
@@ -599,7 +581,6 @@
         }
         html += '</div>';
 
-        // Mock This button
         html += '<div style="margin-top:16px">';
         html += '<button class="debug-btn" data-action="mockThis" title="Switch to Mock Rules and pre-fill a new rule that intercepts this request. Edit the status/body before saving to control the response on the next match.">Mock This Request</button>';
         html += '</div>';
@@ -645,9 +626,6 @@
         });
     }
 
-    // Render a request/response body. JSON gets syntax-highlighted; non-JSON
-    // is HTML-escaped. When the search field has text, matches are wrapped in
-    // <mark> inside both code paths.
     function renderBody(rawBody) {
         return window.debugSyntaxHighlightJson(rawBody, { searchText: searchText });
     }
@@ -672,7 +650,6 @@
         return (n / (1024 * 1024)).toFixed(2) + ' MB';
     }
 
-    // Build a curl(1) command from the captured transaction.
     function buildCurlCommand(tx) {
         var parts = ['curl', '-X', tx.method || 'GET'];
         var headers = tx.requestHeaders || {};
@@ -696,7 +673,6 @@
         copyNetworkText(buildCurlCommand(currentDetailTx), ev);
     };
 
-    // ── Right pane: tab switcher ──
     window.switchRightTab = function(tab) {
         document.getElementById('detail-content').classList.toggle('active', tab === 'detail');
         document.getElementById('rules-content').classList.toggle('active', tab === 'rules');
@@ -713,7 +689,6 @@
         if (tab === 'send') ensureSendForm();
     };
 
-    // ── Mock Rules ──
     var RULES_STORAGE_KEY = 'debug-network-mock-rules';
 
     function readLocalRules() {
@@ -808,7 +783,7 @@
                 }
                 return '<div class="net-rule-card' + disabled + editing + '">'
                     + '<div class="net-rule-header">'
-                    + '<label class="net-toggle" title="Enable or disable this rule. Disabled rules stay in the list but do not match traffic."><input type="checkbox"' + checked + ' data-action="toggleRule" data-rule-id="' + debugEscapeHtml(r.id) + '"><span class="net-toggle-slider"></span></label>'
+                    + '<label class="net-toggle" title="Enable or disable this rule. Disabled rules stay in the list but do not match traffic."><input id="rule-toggle-' + debugEscapeHtml(r.id) + '" name="ruleEnabled" type="checkbox" aria-label="Enable mock rule ' + debugEscapeHtml(r.name || r.urlPattern) + '"' + checked + ' data-action="toggleRule" data-rule-id="' + debugEscapeHtml(r.id) + '"><span class="net-toggle-slider"></span></label>'
                     + '<span class="net-rule-name" title="' + debugEscapeHtml(r.name || r.urlPattern) + '">' + debugEscapeHtml(r.name || r.urlPattern) + '</span>'
                     + '<span class="status-pill' + ruleStatusVariant(r.statusCode) + '" title="HTTP status returned to the app when this rule matches.">' + debugEscapeHtml(r.statusCode) + '</span>'
                     + '<button class="debug-btn-icon" data-action="editRule" data-rule-id="' + debugEscapeHtml(r.id) + '" title="Edit this rule (loads it into the form below).">✎</button>'
@@ -839,19 +814,19 @@
             : 'Save this rule. Future matching requests get the synthetic response. Rules persist across app restarts.';
         formEl.innerHTML = '<div class="net-rule-form">'
             + '<h4>' + heading + (isEdit ? ' <button class="debug-btn-icon" data-action="cancelEditRule" title="Cancel editing and return to the empty Add form.">✕</button>' : '') + '</h4>'
-            + '<input type="hidden" id="rf-id" value="' + debugEscapeHtml(prefill.id || '') + '">'
-            + '<div class="net-form-row"><label title="Optional human label shown in the rule list. Defaults to the URL pattern.">Name</label><input id="rf-name" placeholder="Optional label" value="' + debugEscapeHtml(prefill.name || '') + '" title="Optional human label. Doesn\'t affect matching."></div>'
-            + '<div class="net-form-row"><label title="What URLs this rule intercepts.">URL Pattern</label><input id="rf-pattern" placeholder="Substring or regex:..." value="' + debugEscapeHtml(prefill.urlPattern || '') + '" title="Substring match by default (e.g. /api/sync). Prefix with regex: for a regular expression (e.g. regex:^.+/api/v\\d+/entries$)."></div>'
-            + '<div class="net-form-row"><label title="HTTP method to match.">Method</label>'
-            + '<select id="rf-method" title="HTTP method this rule applies to. Choose Any to match every method.">'
+            + '<input type="hidden" id="rf-id" name="id" value="' + debugEscapeHtml(prefill.id || '') + '">'
+            + '<div class="net-form-row"><label for="rf-name" title="Optional human label shown in the rule list. Defaults to the URL pattern.">Name</label><input id="rf-name" name="name" placeholder="Optional label" value="' + debugEscapeHtml(prefill.name || '') + '" title="Optional human label. Doesn\'t affect matching."></div>'
+            + '<div class="net-form-row"><label for="rf-pattern" title="What URLs this rule intercepts.">URL Pattern</label><input id="rf-pattern" name="urlPattern" placeholder="Substring or regex:..." value="' + debugEscapeHtml(prefill.urlPattern || '') + '" title="Substring match by default (e.g. /api/sync). Prefix with regex: for a regular expression (e.g. regex:^.+/api/v\\d+/entries$)."></div>'
+            + '<div class="net-form-row"><label for="rf-method" title="HTTP method to match.">Method</label>'
+            + '<select id="rf-method" name="method" title="HTTP method this rule applies to. Choose Any to match every method.">'
             + '<option value="">Any</option>'
             + ['GET','POST','PUT','PATCH','DELETE'].map(function(m) {
                 var sel = prefill.method === m ? ' selected' : '';
                 return '<option value="' + m + '"' + sel + '>' + m + '</option>';
             }).join('')
             + '</select></div>'
-            + '<div class="net-form-row"><label title="HTTP status code returned to the app.">Status</label><input id="rf-status" type="number" value="' + (prefill.statusCode || 200) + '" style="width:80px;flex:none" title="Status code returned to the app (e.g. 200, 404, 503)."></div>'
-            + '<div class="net-form-row"><label title="Body returned to the app when this rule matches.">Body <button type="button" class="net-format-btn" data-action="formatRuleBody" title="Pretty-print the body as JSON (no-op if not valid JSON).">Format</button></label><textarea id="rf-body" placeholder="Response body (JSON, text, etc.)" title="Response body returned to the app. Can be any string; JSON is auto-formatted in the rule preview.">' + debugEscapeHtml(prefill.responseBody || '') + '</textarea></div>'
+            + '<div class="net-form-row"><label for="rf-status" title="HTTP status code returned to the app.">Status</label><input id="rf-status" name="statusCode" type="number" value="' + (prefill.statusCode || 200) + '" style="width:80px;flex:none" title="Status code returned to the app (e.g. 200, 404, 503)."></div>'
+            + '<div class="net-form-row"><label for="rf-body" title="Body returned to the app when this rule matches.">Body <button type="button" class="net-format-btn" data-action="formatRuleBody" title="Pretty-print the body as JSON (no-op if not valid JSON).">Format</button></label><textarea id="rf-body" name="responseBody" placeholder="Response body (JSON, text, etc.)" title="Response body returned to the app. Can be any string; JSON is auto-formatted in the rule preview.">' + debugEscapeHtml(prefill.responseBody || '') + '</textarea></div>'
             + '<div class="net-form-actions">'
             + '<button class="debug-btn debug-btn-primary" data-action="submitRule" title="' + submitTooltip + '">' + submitText + '</button>'
             + (isEdit ? '<button class="debug-btn" data-action="cancelEditRule" title="Discard changes and return to the empty Add form.">Cancel</button>' : '')
@@ -882,7 +857,6 @@
         renderRules(loadedRules);
     };
 
-    // ── Send Request panel ──
     var sendHeaders = [
         { key: 'Content-Type', value: 'application/json' },
     ];
@@ -899,13 +873,13 @@
             .map(function(m) { return '<option value="' + m + '">' + m + '</option>'; }).join('');
         container.innerHTML = '<div class="net-rule-form">'
             + '<h4>Send a request through the app\'s OkHttp client</h4>'
-            + '<div class="net-form-row"><label title="HTTP method for the dispatched request.">Method</label>'
-            + '<select id="sf-method" style="max-width:120px;flex:0 0 120px" title="HTTP method.">' + methodOptions + '</select></div>'
-            + '<div class="net-form-row"><label title="Where to send the request.">URL</label>'
-            + '<input id="sf-url" placeholder="/api/v1/entries or https://example.com/path" title="Absolute URL or a relative path. Relative paths are resolved against the app\'s configured server base URL."></div>'
-            + '<div class="net-form-row"><label title="Custom request headers (the app\'s OkHttp interceptors still add Auth/UA/etc.).">Headers</label><div id="sf-headers" style="flex:1"></div></div>'
-            + '<div class="net-form-row"><label title="Body sent with the request.">Body <button type="button" class="net-format-btn" data-action="formatSendBody" title="Pretty-print the body as JSON (no-op if not valid JSON).">Format</button></label>'
-            + '<textarea id="sf-body" placeholder="Request body (omit for GET/HEAD)" title="Body sent with the request. Omit for GET/HEAD. Content-Type defaults to application/json unless overridden via Headers."></textarea></div>'
+            + '<div class="net-form-row"><label for="sf-method" title="HTTP method for the dispatched request.">Method</label>'
+            + '<select id="sf-method" name="method" style="max-width:120px;flex:0 0 120px" title="HTTP method.">' + methodOptions + '</select></div>'
+            + '<div class="net-form-row"><label for="sf-url" title="Where to send the request.">URL</label>'
+            + '<input id="sf-url" name="url" placeholder="/api/v1/entries or https://example.com/path" title="Absolute URL or a relative path. Relative paths are resolved against the app\'s configured server base URL."></div>'
+            + '<div class="net-form-row"><label id="sf-headers-label" title="Custom request headers (the app\'s OkHttp interceptors still add Auth/UA/etc.).">Headers</label><div id="sf-headers" role="group" aria-labelledby="sf-headers-label" style="flex:1"></div></div>'
+            + '<div class="net-form-row"><label for="sf-body" title="Body sent with the request.">Body <button type="button" class="net-format-btn" data-action="formatSendBody" title="Pretty-print the body as JSON (no-op if not valid JSON).">Format</button></label>'
+            + '<textarea id="sf-body" name="body" placeholder="Request body (omit for GET/HEAD)" title="Body sent with the request. Omit for GET/HEAD. Content-Type defaults to application/json unless overridden via Headers."></textarea></div>'
             + '<div class="net-form-actions">'
             + '<button class="debug-btn debug-btn-primary" id="sf-send-btn" data-action="submitSendRequest" title="Dispatch through the app\'s authorized OkHttpClient. Goes through every real interceptor (auth, logging, debug capture). Self-requests to the debug server are rejected. The request is sent synchronously and the result is shown below.">Send</button>'
             + '</div>'
@@ -918,10 +892,12 @@
         var container = document.getElementById('sf-headers');
         if (!container) return;
         container.innerHTML = sendHeaders.map(function(h, i) {
+            var keyId = 'sf-header-key-' + i;
+            var valueId = 'sf-header-value-' + i;
             return '<div class="net-send-header-row">'
-                + '<input type="text" placeholder="Header" value="' + debugEscapeHtml(h.key) + '" data-action="updateSendHeader" data-index="' + i + '" data-field="key" title="Header name (e.g. Content-Type, Accept).">'
-                + '<input type="text" placeholder="Value" value="' + debugEscapeHtml(h.value) + '" data-action="updateSendHeader" data-index="' + i + '" data-field="value" title="Header value.">'
-                + '<button type="button" class="debug-btn-icon danger" data-action="removeSendHeader" data-index="' + i + '" title="Remove this header row.">✕</button>'
+                + '<input id="' + keyId + '" name="headerKey" type="text" aria-label="Header name" placeholder="Header" value="' + debugEscapeHtml(h.key) + '" data-action="updateSendHeader" data-index="' + i + '" data-field="key" title="Header name (e.g. Content-Type, Accept).">'
+                + '<input id="' + valueId + '" name="headerValue" type="text" aria-label="Header value" placeholder="Value" value="' + debugEscapeHtml(h.value) + '" data-action="updateSendHeader" data-index="' + i + '" data-field="value" title="Header value.">'
+                + '<button type="button" class="debug-btn-icon danger" data-action="removeSendHeader" data-index="' + i + '" aria-label="Remove header row" title="Remove this header row.">✕</button>'
                 + '</div>';
         }).join('')
             + '<button type="button" class="net-format-btn" data-action="addSendHeader" style="margin-top:6px" title="Add another header row.">+ Add header</button>';
@@ -949,7 +925,6 @@
         }
     };
 
-    // Render the synchronous send result (or error) into the Send panel.
     function renderSendResult(data, networkError) {
         var el = document.getElementById('sf-result');
         if (!el) return;
@@ -1104,7 +1079,6 @@
         }
     }
 
-    // ── Pause/Resume ──
     function updatePauseButton() {
         var btn = document.getElementById('pause-btn');
         if (!btn) return;
@@ -1125,7 +1099,6 @@
             .catch(function(e) { debugToast('Failed to toggle pause: ' + e.message, 'error'); });
     };
 
-    // ── Overwrite mode ──
     function updateOverwriteButton() {
         var btn = document.getElementById('overwrite-btn');
         if (!btn) return;
@@ -1143,7 +1116,6 @@
             .catch(function(e) { debugToast('Failed to toggle overwrite mode: ' + e.message, 'error'); });
     };
 
-    // ── Throttle ──
     function updateThrottleSelect() {
         var sel = document.getElementById('throttle-select');
         if (sel && sel.value !== String(throttleDelayMs)) sel.value = String(throttleDelayMs);
@@ -1165,7 +1137,6 @@
           .catch(function(e) { debugToast('Failed to set throttle: ' + e.message, 'error'); });
     };
 
-    // ── Clear ──
     window.clearTraffic = function() {
         debugFetch(netUrl('clear'), {method: 'POST'}).then(function() {
             allTransactions = [];
@@ -1178,7 +1149,6 @@
         });
     };
 
-    // ── Polling (opaque cursor envelope) ──
     // GET transactions?cursor=<opaque>&search=<q> →
     //   { cursor, status: "delta"|"unchanged"|"reset", items?, state: {paused, overwriteMode, throttleDelayMs} }
     // The cursor is opaque: we echo back the last one we received (omitted on the
@@ -1267,19 +1237,16 @@
         });
     }
 
-    // ── Keyboard shortcuts ──
     document.addEventListener('keydown', function(e) {
         var t = document.activeElement;
         var inInput = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT');
 
-        // Cmd/Ctrl+K → focus search
         if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
             e.preventDefault();
             var search = document.getElementById('search-input');
             if (search) { search.focus(); search.select(); }
             return;
         }
-        // Esc → deselect transaction (only if not handled by modal)
         if (e.key === 'Escape' && !document.querySelector('.debug-modal.visible')) {
             if (selectedTxId) {
                 selectedTxId = null;
@@ -1295,21 +1262,17 @@
             }
             return;
         }
-        // C → clear (when not in input)
         if (!inInput && (e.key === 'c' || e.key === 'C') && !e.metaKey && !e.ctrlKey && !e.altKey) {
             window.clearTraffic();
         }
     });
 
-    // ── CSP-safe event delegation ──
     // The served HTML uses NO inline on*= handlers (the page's CSP forbids them:
     // script-src 'self', no 'unsafe-inline'). Instead, every interactive element
     // carries data-action="<name>" plus data-* payload, and a SMALL number of
     // delegated listeners on the tab container dispatch on data-action. Delegation
     // survives the dynamic re-rendering of the list/detail/rules/send panes.
 
-    // Click actions keyed by data-action. Each receives (el, event); el is the
-    // matched [data-action] element. stopPropagation is applied per-action below.
     var CLICK_ACTIONS = {
         copyToClip: function(el, ev) {
             // Copy buttons live inside clickable rows — don't also select the row.
@@ -1387,11 +1350,6 @@
         delegationRoot.addEventListener('toggle', onHeadersToggle, true);
     }
 
-    // ── Init ──
-    // The chrome serves an empty content shell; shared.js injects the
-    // authenticated /_view HTML, then fires lustroOnContentReady. All
-    // DOM-dependent setup (filters, resizers) and polling start there. When
-    // shared.js is unavailable (older host), fall back to running immediately.
     function init() {
         setupDelegation();
         buildCategoryFilters();
