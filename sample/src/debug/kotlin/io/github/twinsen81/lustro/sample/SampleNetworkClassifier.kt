@@ -35,7 +35,7 @@ public class SampleNetworkClassifier : NetworkClassifier {
         if ("/anything/sync" in lower) {
             labels += "Sync"
         }
-        if ("platform" in lower) {
+        if ("/anything/platform" in lower) {
             labels += "Platform"
         }
         if ("/status/4" in lower || "/status/5" in lower) {
