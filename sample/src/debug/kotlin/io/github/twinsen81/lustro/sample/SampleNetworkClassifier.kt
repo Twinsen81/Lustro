@@ -29,8 +29,20 @@ public class SampleNetworkClassifier : NetworkClassifier {
         if ("/image" in lower || "/upload" in lower || "media" in lower) {
             labels += "Media"
         }
-        if ("/status/5" in lower || "/delay/" in lower) {
-            labels += "Slow/Error"
+        if ("/sse" in lower) {
+            labels += "Streaming"
+        }
+        if ("/anything/sync" in lower) {
+            labels += "Sync"
+        }
+        if ("/anything/platform" in lower) {
+            labels += "Platform"
+        }
+        if ("/status/4" in lower || "/status/5" in lower) {
+            labels += "Errors"
+        }
+        if ("/delay/" in lower) {
+            labels += "Slow"
         }
         if ("/anything/other" in lower) {
             labels += "Other"

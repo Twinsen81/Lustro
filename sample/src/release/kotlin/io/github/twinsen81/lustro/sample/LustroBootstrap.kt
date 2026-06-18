@@ -36,6 +36,7 @@ public object LustroBootstrap {
      * interceptor unconditionally; in the no-op build it forwards every request
      * unchanged, so there is no release overhead and no debug server.
      */
+    @OptIn(ExperimentalPlatformCapture::class)
     public fun start(app: Application, appOkHttpClient: OkHttpClient): Interceptor {
         val instance =
             Lustro.builder(app)
@@ -45,7 +46,15 @@ public object LustroBootstrap {
                         .appServerBaseUrl("https://httpbingo.org")
                         .build(),
                 )
-                .addTab(NetworkDebugTab.create(senderClient = appOkHttpClient))
+                .addTab(
+                    // Mirror the debug bootstrap's experimental opt-in so the same
+                    // overload is compile-tested against the no-op facade (the
+                    // cross-variant parity gate). Inert here: nothing is captured.
+                    NetworkDebugTab.create(
+                        senderClient = appOkHttpClient,
+                        capturePlatformHttp = true,
+                    ),
+                )
                 .build()
 
         val interceptor = instance.networkInterceptor()
@@ -60,12 +69,4 @@ public object LustroBootstrap {
     }
 
     internal fun extraDemoRequests(base: String): List<DemoRequestSpec> = emptyList()
-
-    /**
-     * Mirrors the debug bootstrap's platform-capture demo so the opt-in call
-     * site also compiles against the no-op facade. Never invoked at runtime.
-     */
-    @OptIn(ExperimentalPlatformCapture::class)
-    public fun platformCaptureTab(appOkHttpClient: OkHttpClient): NetworkDebugTab =
-        NetworkDebugTab.create(senderClient = appOkHttpClient, capturePlatformHttp = true)
 }

@@ -27,9 +27,6 @@ Other useful targets:
 ./gradlew :sample:assembleDebug :sample:assembleRelease   # cross-variant sample
 ```
 
-Builds can be slow; prefer compiling or assembling the specific module you are
-working on over a full `build`.
-
 ## Running tests
 
 ```bash
@@ -95,7 +92,7 @@ All commits must be signed off. Lustro uses the
 adding a `Signed-off-by` line you certify that you wrote the contribution or
 otherwise have the right to submit it under the project's open-source license.
 
-Sign off automatically when committing:
+Sign off when committing:
 
 ```bash
 git commit -s -m "Your message"

@@ -77,6 +77,11 @@ dependencies {
     debugImplementation(project(":lustro"))
     releaseImplementation(project(":lustro-noop"))
 
+    // A mainstream HTTP client whose default transport is java.net.HttpURLConnection
+    // (not OkHttp). The demo fires a request through it to show that platform-HTTP
+    // capture picks up traffic that never touches the app's OkHttpClient.
+    implementation(libs.volley)
+
     // CI network test (testDebugUnitTest): exercises the real interceptor against
     // an offline MockWebServer. The real :lustro runtime is already on the debug
     // unit-test classpath via debugImplementation; the test-only libs are added
