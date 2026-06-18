@@ -41,8 +41,6 @@ public object SseStreamingDemo {
                     return
                 }
                 var eventCount = 0
-                // Block on readUtf8Line() until each line is available rather than
-                // reading the whole body at once. This loop is the core of SSE.
                 while (!source.exhausted()) {
                     val line = source.readUtf8Line() ?: break
                     if (line.startsWith(DATA_PREFIX)) {
