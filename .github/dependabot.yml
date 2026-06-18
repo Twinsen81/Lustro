@@ -5,6 +5,14 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    # Kotlin is upgraded deliberately, not on the automated cadence: KSP is
+    # version-locked to the exact Kotlin release, and the Android modules' Kotlin
+    # comes from AGP's built-in compiler rather than this catalog ref, so a lone
+    # catalog bump only moves the JVM modules and skews the published artifacts.
+    # The trailing "." / ":" keep org.jetbrains.kotlinx (coroutines) in scope.
+    ignore:
+      - dependency-name: "org.jetbrains.kotlin:*"
+      - dependency-name: "org.jetbrains.kotlin.*"
     groups:
       gradle-dependencies:
         patterns:
