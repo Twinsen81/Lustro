@@ -32,7 +32,7 @@ public final class JavaUsage {
 
         // The experimental @ExperimentalPlatformCapture overload (with the
         // required capturePlatformHttp flag) is exercised from Kotlin in
-        // LustroBootstrap.platformCaptureTab (src/debug); from Java the safe
+        // LustroBootstrap.start (capturePlatformHttp = true); from Java the safe
         // overload above is the documented entry point.
         NetworkDebugTab tabWithFlag = tabWithSender;
 

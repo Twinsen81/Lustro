@@ -50,6 +50,7 @@ public object LustroBootstrap {
      *   replays report their inline outcome but do not appear as new rows in the
      *   traffic list.
      */
+    @OptIn(ExperimentalPlatformCapture::class)
     public fun start(app: Application, appOkHttpClient: OkHttpClient): Interceptor {
         interceptor?.let { return it }
 
@@ -66,23 +67,18 @@ public object LustroBootstrap {
                         .build(),
                 )
                 .addTab(
-                    // Safe (non-opt-in) overload: OkHttp-only capture via the
-                    // returned interceptor. The classifier tags traffic by URL
+                    // Experimental overload: alongside OkHttp capture (via the
+                    // returned interceptor), install the process-global platform
+                    // capture so traffic from libraries that bypass OkHttp and use
+                    // java.net.HttpURLConnection (here: Volley and a raw
+                    // HttpURLConnection demo) also surfaces in the Network tab.
+                    // Best-effort and fail-open — it rests on a non-public platform
+                    // detail (hence the opt-in) and silently disables itself if the
+                    // platform blocks the hook. The classifier tags traffic by URL
                     // substring; mock rules persist across restarts via prefs.
-                    //
-                    // To ALSO capture platform `HttpURLConnection` traffic (e.g.
-                    // from a 3rd-party SDK that bypasses OkHttp), swap to the
-                    // experimental overload:
-                    //
-                    //   @OptIn(ExperimentalPlatformCapture::class)
-                    //   NetworkDebugTab.create(
-                    //       senderClient = appOkHttpClient,
-                    //       capturePlatformHttp = true,
-                    //       classifier = SampleNetworkClassifier(),
-                    //   )
-                    //
                     NetworkDebugTab.create(
                         senderClient = appOkHttpClient,
+                        capturePlatformHttp = true,
                         classifier = SampleNetworkClassifier(),
                         mockRuleStorage = SharedPreferencesMockRuleStorage(prefs),
                     ),
@@ -109,25 +105,15 @@ public object LustroBootstrap {
     internal fun extraDemoRequests(base: String): List<DemoRequestSpec> =
         listOf(
             DemoRequestSpec("GET /status/304", "GET", "$base/status/304"),
+            DemoRequestSpec("GET /status/400", "GET", "$base/status/400"),
+            DemoRequestSpec("GET /status/401", "GET", "$base/status/401"),
             DemoRequestSpec("GET /status/404", "GET", "$base/status/404"),
+            DemoRequestSpec("GET /status/429", "GET", "$base/status/429"),
+            DemoRequestSpec("GET /status/503", "GET", "$base/status/503"),
             DemoRequestSpec("GET /bearer", "GET", "$base/bearer"),
             DemoRequestSpec("GET /image/png", "GET", "$base/image/png"),
             DemoRequestSpec("GET /anything/other", "GET", "$base/anything/other"),
             DemoRequestSpec("HEAD /status/204", "HEAD", "$base/status/204"),
             DemoRequestSpec("GET https://127.0.0.1:1/lustro-error", "GET", "https://127.0.0.1:1/lustro-error"),
-        )
-
-    /**
-     * Demonstrates the experimental platform-capture opt-in. Not wired into the
-     * running demo — it exists only to prove the [ExperimentalPlatformCapture]
-     * call site compiles against the real runtime. Opting in acknowledges that
-     * platform `HttpURLConnection` capture rests on a non-public platform detail.
-     */
-    @OptIn(ExperimentalPlatformCapture::class)
-    public fun platformCaptureTab(appOkHttpClient: OkHttpClient): NetworkDebugTab =
-        NetworkDebugTab.create(
-            senderClient = appOkHttpClient,
-            capturePlatformHttp = true,
-            classifier = SampleNetworkClassifier(),
         )
 }

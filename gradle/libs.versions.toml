@@ -21,6 +21,10 @@ androidxAnnotation = "1.10.0"
 androidxLifecycle = "2.10.0"
 coroutines = "1.11.0"
 
+# Sample app only — a mainstream HTTP client backed by java.net.HttpURLConnection
+# (not OkHttp), used to demonstrate platform (non-OkHttp) traffic capture.
+volley = "1.2.1"
+
 # Quality / publishing tooling.
 detekt = "1.23.8"
 bcv = "0.18.1"
@@ -46,6 +50,10 @@ androidx-lifecycle-process = { group = "androidx.lifecycle", name = "lifecycle-p
 androidx-lifecycle-runtime = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "androidxLifecycle" }
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
 kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "coroutines" }
+
+# Sample app only (see version note): demonstrates capturing a library that
+# talks to the network via the platform HttpURLConnection stack, bypassing OkHttp.
+volley = { group = "com.android.volley", name = "volley", version.ref = "volley" }
 
 # Test
 junit = { group = "junit", name = "junit", version.ref = "junit" }
