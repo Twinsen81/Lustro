@@ -1,10 +1,10 @@
 [versions]
 # Build toolchain.
-agp = "9.2.1"
+agp = "9.3.0"
 kotlin = "2.3.21"
 ksp = "2.3.21-2.0.4"
 # lint = AGP major + 23; shipped to consumers via :lustro-lint.
-lint = "32.2.1"
+lint = "32.3.0"
 
 # Android SDK levels.
 compileSdk = "35"
@@ -24,9 +24,9 @@ volley = "1.2.1"
 # Build / publishing tooling.
 detekt = "1.23.8"
 bcv = "0.18.1"
-vanniktech = "0.36.0"
+vanniktech = "0.37.0"
 dokka = "2.2.0"
-kover = "0.9.8"
+kover = "0.9.9"
 
 # Test.
 junit = "4.13.2"
