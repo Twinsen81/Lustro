@@ -80,9 +80,11 @@ public class OkHttpSender internal constructor(
         }
     }
 
+    // Buffers one byte past the cap: a capturing interceptor on the client sees
+    // only what is read from event streams, and flags truncation only past the cap.
     private fun ResponseBody.readAtMost(maxBytes: Long): ByteArray {
         val source = source()
-        source.request(maxBytes)
+        source.request(maxBytes + 1)
         return source.readByteArray(minOf(source.buffer.size, maxBytes))
     }
 

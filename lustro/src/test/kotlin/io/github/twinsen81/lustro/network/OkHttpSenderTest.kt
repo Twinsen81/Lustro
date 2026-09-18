@@ -2,7 +2,9 @@ package io.github.twinsen81.lustro.network
 
 import io.github.twinsen81.lustro.Headers
 import io.github.twinsen81.lustro.MediaType
+import io.github.twinsen81.lustro.internal.network.LustroNetworkInterceptor
 import io.github.twinsen81.lustro.internal.network.NetworkSendRequestImpl
+import io.github.twinsen81.lustro.internal.network.NetworkTrafficStore
 import java.util.concurrent.TimeUnit
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
@@ -97,6 +99,37 @@ class OkHttpSenderTest {
 
         assertTrue(result.errorMessage, result.isSuccess)
         assertEquals(256 * 1024, result.body?.size)
+    }
+
+    @Test(timeout = 20_000)
+    fun `an event-stream body over the cap is still captured as truncated`() {
+        // Throttled so the first reads land exactly on the cap; the capture only
+        // sees what the sender reads and flags truncation past the cap.
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody("x".repeat(4096))
+                .throttleBody(1024, 250, TimeUnit.MILLISECONDS),
+        )
+        val store =
+            NetworkTrafficStore(maxTransactions = 10, redactor = DefaultRedactor, classifier = NoOpNetworkClassifier, storage = null)
+        val capturingClient =
+            client.newBuilder()
+                .addInterceptor(
+                    LustroNetworkInterceptor(
+                        sink = store,
+                        captureEnabled = { true },
+                        throttleDelayMs = { 0 },
+                        incrementMockHit = {},
+                        maxBodySize = 1024,
+                    ),
+                )
+                .build()
+
+        val result = OkHttpSender(capturingClient, maxResponseBodyBytes = 1024, callTimeoutMs = 0).send(get("/sse"))
+
+        assertEquals(1024, result.body?.size)
+        assertTrue(store.getTransactions().single().responseBodyTruncated)
     }
 
     @Test(timeout = 20_000)
