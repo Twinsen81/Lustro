@@ -123,7 +123,12 @@ public class MainActivity : Activity() {
             }
         root.addView(statusView)
 
-        return ScrollView(this).apply { addView(root) }
+        return ScrollView(this).apply {
+            // Targeting API 35 draws the window edge-to-edge, so the action bar and
+            // the system bars overlap the content unless it pads itself by the insets.
+            fitsSystemWindows = true
+            addView(root)
+        }
     }
 
     private fun addSection(parent: LinearLayout, title: String) {
