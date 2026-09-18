@@ -95,7 +95,8 @@ internal class RequestLimiter(
      * Admits the request through the concurrency/queue gate, runs [work] on a
      * worker thread under the per-request [timeoutMs], and returns the typed
      * [Outcome]. The caller maps each non-[Outcome.Completed] outcome to its
-     * enveloped error response.
+     * enveloped error response. Whatever [work] throws, Errors included, is
+     * rethrown on the calling thread, so the caller must catch [Throwable].
      */
     fun <T> dispatch(work: () -> T): Outcome<T> {
         if (shuttingDown) return Outcome.Rejected
@@ -165,7 +166,7 @@ internal class RequestLimiter(
             Thread.currentThread().interrupt()
             Outcome.TimedOut
         } catch (e: ExecutionException) {
-            // The work threw; rethrow so the server's own try/catch maps it to 500.
+            // The work threw; rethrow so the server's Throwable guard maps it to 500.
             throw e.cause ?: e
         }
     }

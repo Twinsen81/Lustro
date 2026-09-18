@@ -5,6 +5,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
 import androidx.test.core.app.ApplicationProvider
+import io.github.twinsen81.lustro.internal.DebugTabRegistry
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.junit.After
@@ -61,7 +62,7 @@ class LustroLifecycleTest {
     private fun lustro(config: DebugConfig = DebugConfig.builder().serverPort(0).build()): Lustro {
         // A fresh (unstarted) internal registry; Lustro.start() freezes it. No tabs
         // are needed — the unauthenticated /shared.js asset route proves binding.
-        val tabRegistry = io.github.twinsen81.lustro.internal.DebugTabRegistry()
+        val tabRegistry = DebugTabRegistry()
         return Lustro(app, config, tabRegistry, registry).also { started.add(it) }
     }
 
@@ -146,6 +147,51 @@ class LustroLifecycleTest {
         registry.currentState = Lifecycle.State.CREATED
         registry.currentState = Lifecycle.State.STARTED
         assertFalse("disarmed: no re-bind", lustro.isBound())
+    }
+
+    @Test
+    fun `a tab lifecycle callback that throws an Error does not break start or stop`() {
+        val calls = mutableListOf<String>()
+        val throwing =
+            object : DebugTab() {
+                override val id = "a-throws"
+                override val title = "Throws"
+                override val icon = "T"
+
+                override fun onStart() {
+                    TODO("simulated")
+                }
+
+                override fun onStop() {
+                    TODO("simulated")
+                }
+            }
+        val recording =
+            object : DebugTab() {
+                override val id = "b-records"
+                override val title = "Records"
+                override val icon = "R"
+
+                override fun onStart() {
+                    calls += "onStart"
+                }
+
+                override fun onStop() {
+                    calls += "onStop"
+                }
+            }
+        val tabRegistry = DebugTabRegistry().apply {
+            addTab(throwing)
+            addTab(recording)
+        }
+        val lustro =
+            Lustro(app, DebugConfig.builder().serverPort(0).build(), tabRegistry, registry)
+                .also { started.add(it) }
+
+        // The throwing tab sorts first, so the other one is notified after it fails.
+        assertEquals(LustroStatus.ENABLED, lustro.start())
+        lustro.stop()
+        assertEquals(listOf("onStart", "onStop"), calls)
     }
 
 

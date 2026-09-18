@@ -127,7 +127,7 @@ public class Lustro internal constructor(
                     bind()
                 }
                 LustroStatus.ENABLED
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 Log.w(TAG, "Failed to arm the debug server", e)
                 armed = false
                 LustroStatus.DISABLED
@@ -141,7 +141,7 @@ public class Lustro internal constructor(
             if (!armed) return
             try {
                 lifecycle.removeObserver(lifecycleObserver)
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 Log.w(TAG, "Error removing lifecycle observer", e)
             }
             closeServer()
@@ -222,7 +222,7 @@ public class Lustro internal constructor(
         return try {
             srv.start(NanoSocketReadTimeoutMs, false)
             srv
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             Log.w(TAG, "Failed to bind debug server on ${config.bindAddress}:$port", e)
             srv.shutdownLimiter()
             null
@@ -280,7 +280,7 @@ public class Lustro internal constructor(
         try {
             srv.stop()
             srv.shutdownLimiter()
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             Log.w(TAG, "Error stopping debug server", e)
         }
         server = null
@@ -295,6 +295,11 @@ public class Lustro internal constructor(
      * straddling a slow drain ends up bound again. If a newer server was bound in
      * the meantime, we leave [server] untouched (we only ever close the instance
      * we captured).
+     *
+     * Never throws. It runs as a plain executor task on [drainExecutor] (or
+     * inline on the main thread), and unlike the limiter's `FutureTask`, nothing
+     * there captures a throwable: it would reach the default handler and kill
+     * the host app.
      */
     private fun drainAndClose(toClose: LustroServer) {
         try {
@@ -302,16 +307,20 @@ public class Lustro internal constructor(
             awaitInFlightDrain(toClose)
             toClose.stop()
             toClose.shutdownLimiter()
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             Log.w(TAG, "Error draining/closing debug server", e)
         }
-        synchronized(this) {
-            if (server === toClose) {
-                server = null
-                if (armed && lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
-                    bind()
+        try {
+            synchronized(this) {
+                if (server === toClose) {
+                    server = null
+                    if (armed && lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+                        bind()
+                    }
                 }
             }
+        } catch (e: Throwable) {
+            Log.w(TAG, "Error rebinding debug server after drain", e)
         }
     }
 
@@ -332,7 +341,7 @@ public class Lustro internal constructor(
         for (tab in registry.sortedTabs) {
             try {
                 action(tab)
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 Log.w(TAG, "Tab ${tab.id} lifecycle callback failed", e)
             }
         }
