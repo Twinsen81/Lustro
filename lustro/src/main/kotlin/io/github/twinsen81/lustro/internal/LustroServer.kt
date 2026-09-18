@@ -30,6 +30,8 @@ import java.net.URI
  *   `POST /api/v1/_auth`, and the favicon are UNAUTHENTICATED; every other
  *   `/api/v1/` route requires auth → enveloped 401.
  * - `POST /api/v1/_auth` sets the `lustro_token` cookie on a token match.
+ * - The `Authorization` and `Cookie` headers are stripped from the
+ *   [DebugRequest] handed to a tab, so tab code never sees the credentials.
  * - CSP + `X-Content-Type-Options: nosniff` attached to all responses.
  * - Origin / `Sec-Fetch-Site` validation on state-changing POST `/api/v1/` requests.
  *
@@ -535,7 +537,8 @@ $tabsHtml
         val method = session.method.name
         val queryParams: Map<String, List<String>> =
             session.parameters?.mapValues { (_, v) -> v.toList() } ?: emptyMap()
-        val headers = Headers.from(session.headers ?: emptyMap())
+        val headers =
+            Headers.from((session.headers ?: emptyMap()).filterKeys { it.lowercase() !in CREDENTIAL_HEADERS })
         val contentTypeHeader = session.headers?.get("content-type")
         val contentType = contentTypeHeader?.let { MediaType.parse(it) }
         val body = readRawBody(session)
@@ -643,6 +646,12 @@ $tabsHtml
 
         // The browser auth cookie name (must match the value expected by shared.js).
         private const val COOKIE_NAME = "lustro_token"
+
+        // Never forwarded to tabs: auth is settled before dispatch, and a tab that
+        // logs or echoes its headers would leak the long-lived token. Cookie goes
+        // whole because browsers don't isolate cookies by port, so it can also carry
+        // other local services' sessions.
+        private val CREDENTIAL_HEADERS = setOf("authorization", "cookie")
 
         // The exact CSP header served on the chrome and tab views.
         private const val CSP =

@@ -20,6 +20,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * End-to-end (over real loopback HTTP) tests for the auth / CSP / origin
@@ -55,10 +56,26 @@ class LustroServerSecurityTest {
             DebugResponse.ok("{\"secret\":\"TAB_DATA\"}")
     }
 
+    /** Keeps the last request it handled, to check what a tab actually receives. */
+    private class RecordingTab : DebugTab() {
+        override val id: String = "recorder"
+        override val title: String = "Recorder"
+        override val icon: String = "R"
+
+        val lastRequest = AtomicReference<DebugRequest?>()
+
+        override fun handle(request: DebugRequest): DebugResponse? {
+            lastRequest.set(request)
+            return DebugResponse.ok("{}")
+        }
+    }
+
+    private val recordingTab = RecordingTab()
+
     @Before
     fun setUp() {
         val context = ApplicationProvider.getApplicationContext<android.app.Application>()
-        val registry = DebugTabRegistry().apply { addTab(SentinelTab()); start() }
+        val registry = DebugTabRegistry().apply { addTab(SentinelTab()); addTab(recordingTab); start() }
         val assetLoader = DebugAssetLoader(context)
         tokenStore = LustroTokenStore(context)
         server =
@@ -89,12 +106,14 @@ class LustroServerSecurityTest {
         cookie: String? = null,
         origin: String? = null,
         secFetchSite: String? = null,
+        extraHeaders: Map<String, String> = emptyMap(),
     ): Response {
         val builder = Request.Builder().url(url(path)).get()
         bearer?.let { builder.header("Authorization", "Bearer $it") }
         cookie?.let { builder.header("Cookie", it) }
         origin?.let { builder.header("Origin", it) }
         secFetchSite?.let { builder.header("Sec-Fetch-Site", it) }
+        extraHeaders.forEach { (name, value) -> builder.header(name, value) }
         return client.newCall(builder.build()).execute()
     }
 
@@ -171,6 +190,39 @@ class LustroServerSecurityTest {
         get("/api/v1/sample/transactions", bearer = tokenStore.token()).use {
             assertEquals(200, it.code)
         }
+    }
+
+    @Test
+    fun `tab does not receive the bearer header`() {
+        val token = tokenStore.token()
+        get("/api/v1/recorder/headers", bearer = token).use { assertEquals(200, it.code) }
+        val headers = recordingTab.lastRequest.get()!!.headers
+        assertNull(headers.get("Authorization"))
+        assertTrue(headers.toList().none { (_, value) -> value.contains(token) })
+    }
+
+    @Test
+    fun `tab does not receive the cookie header`() {
+        val token = tokenStore.token()
+        get("/api/v1/recorder/headers", cookie = "other=1; lustro_token=$token").use {
+            assertEquals(200, it.code)
+        }
+        val headers = recordingTab.lastRequest.get()!!.headers
+        assertNull(headers.get("Cookie"))
+        assertTrue(headers.toList().none { (_, value) -> value.contains(token) })
+    }
+
+    @Test
+    fun `tab still receives the non-credential headers`() {
+        get(
+            "/api/v1/recorder/headers",
+            bearer = tokenStore.token(),
+            extraHeaders = mapOf("X-Probe" to "1", "Accept" to "application/json"),
+        ).use { assertEquals(200, it.code) }
+        val headers = recordingTab.lastRequest.get()!!.headers
+        assertEquals("1", headers.get("X-Probe"))
+        assertEquals("application/json", headers.get("Accept"))
+        assertEquals("127.0.0.1:$port", headers.get("Host"))
     }
 
 

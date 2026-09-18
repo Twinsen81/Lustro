@@ -199,6 +199,9 @@ Lustro deliberately surfaces app internals, so its defaults are conservative. Se
   debug preferences. Programmatic clients send `Authorization: Bearer <token>`; browsers use an
   `HttpOnly; SameSite=Strict` cookie set via `/api/v1/_auth`. Before auth, only framework chrome
   is served — no tab output or captured data. The token is logged at the `LustroToken` tag.
+- **Tabs never see the credentials.** The server authenticates a request before dispatching it,
+  and the `DebugRequest` a tab receives carries no `Authorization` or `Cookie` header, so a tab
+  that logs or echoes its request can't leak the token.
 - **Content Security Policy.** Chrome and tab views ship a CSP (`default-src 'self'; script-src
   'self'; style-src 'self' 'unsafe-inline'; ...`) plus `X-Content-Type-Options: nosniff`.
   **Scripts are `'self'`-only — no inline scripts**, so tab JS loads as an external same-origin

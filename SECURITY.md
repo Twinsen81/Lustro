@@ -55,6 +55,11 @@ build, and that even in debug builds it stays bound to the local device.
   rotates on explicit reset, app-data clear, or fresh install. Before
   authentication, the server serves only framework chrome — no tab-authored
   output or captured data.
+- **Credentials stop at the server.** The server authenticates a request before
+  dispatching it to a tab and strips the `Authorization` and `Cookie` headers
+  from the `DebugRequest` that `DebugTab.handle()` receives. Tab code, including
+  third-party tabs, never sees the token, so a tab that logs or echoes its
+  request headers cannot leak it.
 - **Content Security Policy.** Chrome and tab views are served with
   `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';
   connect-src 'self'; img-src 'self' data:; form-action 'self'; object-src

@@ -104,4 +104,14 @@ see [DECISIONS.md](DECISIONS.md).
   `.content` container is now full-bleed (no built-in padding) — tabs own their
   edge padding.
 
+### Security
+
+- **Tabs could read the session token.** The server passed every request header
+  to `DebugTab.handle()`, including `Authorization: Bearer <token>` and the
+  `lustro_token` cookie, so a tab that logged or echoed its request could leak
+  the token, which stays valid across app restarts. The server now strips
+  `Authorization` and `Cookie` from the `DebugRequest` before dispatch. Tabs no
+  longer see any cookies: browsers don't isolate cookies by port, so the header
+  can also carry other local services' sessions.
+
 [Unreleased]: https://github.com/Twinsen81/Lustro/compare/HEAD
