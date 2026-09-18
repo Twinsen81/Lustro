@@ -81,6 +81,13 @@ see [DECISIONS.md](DECISIONS.md).
   throws, and lifecycle callbacks and the background drain log the error and carry
   on. Connection threads also catch anything NanoHTTPD lets through, so nothing
   reaches the app's uncaught-exception handler.
+- **StrictMode disk reads at app startup.** Building `Lustro` opened its token's
+  SharedPreferences file on the calling thread, usually the main thread in
+  `Application.onCreate`, so a StrictMode thread policy reported a
+  `DiskReadViolation` from Lustro. The file now opens on first use, and the
+  `LustroToken` endpoint line, which does that first read, is logged from a
+  background thread instead of the main-thread lifecycle callback that binds the
+  socket.
 
 ### Changed
 

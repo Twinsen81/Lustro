@@ -1,11 +1,14 @@
 package io.github.twinsen81.lustro
 
 import android.app.Application
+import android.content.Context
+import android.content.SharedPreferences
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
 import androidx.test.core.app.ApplicationProvider
 import io.github.twinsen81.lustro.internal.DebugTabRegistry
+import io.github.twinsen81.lustro.internal.LustroTokenStore
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.junit.After
@@ -18,7 +21,9 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowLog
 import java.net.ServerSocket
+import java.util.concurrent.CopyOnWriteArrayList
 
 /**
  * Lifecycle + binding tests for [Lustro]. Drives binding
@@ -133,6 +138,47 @@ class LustroLifecycleTest {
         val lustro = lustro()
         assertEquals(LustroStatus.ENABLED, lustro.start())
         assertTrue("binds eagerly without waiting for a fresh onStart", lustro.isBound())
+    }
+
+    /** An [Application] over [base] that records the threads opening prefs through it. */
+    private class PrefsRecordingApplication(base: Context) : Application() {
+        val prefsThreads = CopyOnWriteArrayList<Thread>()
+
+        init {
+            attachBaseContext(base)
+        }
+
+        override fun getApplicationContext(): Context = this
+
+        override fun getSharedPreferences(name: String, mode: Int): SharedPreferences {
+            prefsThreads += Thread.currentThread()
+            return super.getSharedPreferences(name, mode)
+        }
+    }
+
+    @Test
+    fun `binding leaves the token read to the worker thread`() {
+        val recording = PrefsRecordingApplication(app)
+        val lustro =
+            Lustro(recording, DebugConfig.builder().serverPort(0).build(), DebugTabRegistry(), registry)
+                .also { started.add(it) }
+        lustro.start()
+        registry.currentState = Lifecycle.State.STARTED // fires onStart -> bind, on this thread
+        assertTrue(lustro.isBound())
+
+        val endpoint = "Lustro ready endpoint=http://127.0.0.1:${lustro.boundPort()} token="
+        val deadline = System.currentTimeMillis() + 5_000
+        var line: String? = null
+        while (line == null && System.currentTimeMillis() < deadline) {
+            line = ShadowLog.getLogsForTag("LustroToken").map { it.msg }.firstOrNull { it.startsWith(endpoint) }
+            if (line == null) Thread.sleep(10)
+        }
+        assertEquals(endpoint + LustroTokenStore(app).token(), line)
+        assertTrue("the endpoint log read the token", recording.prefsThreads.isNotEmpty())
+        assertFalse(
+            "the binding thread must not open the prefs file",
+            Thread.currentThread() in recording.prefsThreads,
+        )
     }
 
     @Test
