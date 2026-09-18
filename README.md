@@ -269,7 +269,7 @@ class FlagsTab(private val flags: FeatureFlagRepository) : DebugTab() {
     override fun renderContent() = """<div id="flags-list"></div>"""
 
     // request.path is the remainder after /api/v1/flags/; null -> enveloped 404,
-    // a thrown exception -> enveloped 500 (it never escapes into your app).
+    // anything thrown, even TODO(), -> enveloped 500 (it never escapes into your app).
     override fun handle(request: DebugRequest): DebugResponse? = when (request.path) {
         "list" -> DebugResponse.ok(flags.toJson())
         else -> null

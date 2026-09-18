@@ -73,6 +73,14 @@ see [DECISIONS.md](DECISIONS.md).
   `text/plain` body added about 5 s to the call, a 250 KB NDJSON body about 4 s,
   and a truncated 256 KB JSON response blocked it for over a minute. A linear
   scan now masks the same values in milliseconds.
+- **Errors in tab code crashing the app.** Lustro's catch-alls caught only
+  `Exception`, so an `Error` got past them. `TODO()` in a custom tab's `handle()`
+  killed the app from NanoHTTPD's request thread, and the same call in `onStart()`
+  crashed `Lustro.start()` at launch; a `StackOverflowError` or `OutOfMemoryError`
+  did the same. A request now answers an enveloped `500` whatever a route or tab
+  throws, and lifecycle callbacks and the background drain log the error and carry
+  on. Connection threads also catch anything NanoHTTPD lets through, so nothing
+  reaches the app's uncaught-exception handler.
 
 ### Changed
 

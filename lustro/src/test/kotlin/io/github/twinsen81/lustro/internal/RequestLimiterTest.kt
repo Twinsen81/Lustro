@@ -1,6 +1,7 @@
 package io.github.twinsen81.lustro.internal
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.concurrent.CountDownLatch
@@ -11,7 +12,7 @@ import java.util.concurrent.atomic.AtomicInteger
 /**
  * Pure-JVM tests for [RequestLimiter]: concurrency + queue
  * saturation rejects, the per-request timeout interrupts the worker, and a
- * thrown handler propagates so the server can map it to a 500.
+ * thrown handler, Errors included, propagates so the server can map it to a 500.
  */
 class RequestLimiterTest {
     private val limiters = mutableListOf<RequestLimiter>()
@@ -101,6 +102,14 @@ class RequestLimiterTest {
     fun `a thrown handler propagates out of dispatch`() {
         val limiter = limiter(maxConcurrent = 1, queueCapacity = 1, timeoutMs = 1000)
         limiter.dispatch { error("boom") }
+    }
+
+    @Test
+    fun `an Error thrown by the work propagates and frees the permit`() {
+        // No queue: if the failed dispatch kept its permit, the next one would be rejected.
+        val limiter = limiter(maxConcurrent = 1, queueCapacity = 0, timeoutMs = 1000)
+        assertThrows(NotImplementedError::class.java) { limiter.dispatch { TODO("boom") } }
+        assertTrue(limiter.dispatch { 1 } is RequestLimiter.Outcome.Completed)
     }
 
     @Test

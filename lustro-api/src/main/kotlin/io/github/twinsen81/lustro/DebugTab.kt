@@ -52,7 +52,8 @@ public abstract class DebugTab {
 
     /**
      * Handles a debug API [request]. Return `null` to produce an enveloped
-     * `404`; throwing produces an enveloped `500`.
+     * `404`; throwing anything, including an [Error] such as `TODO()`, produces an
+     * enveloped `500`.
      *
      * Invoked OFF the main thread, and calls may be concurrent (the runtime
      * dispatches multiple requests in flight), so a tab holding mutable state
@@ -61,9 +62,9 @@ public abstract class DebugTab {
      */
     public open fun handle(request: DebugRequest): DebugResponse? = null
 
-    /** Called once when the debug server starts. */
+    /** Called once when the debug server starts. Anything it throws is logged and ignored. */
     public open fun onStart() {}
 
-    /** Called once when the debug server stops. */
+    /** Called once when the debug server stops. Anything it throws is logged and ignored. */
     public open fun onStop() {}
 }

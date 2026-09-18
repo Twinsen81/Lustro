@@ -4,6 +4,7 @@ package io.github.twinsen81.lustro
 
 import android.app.Application
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
 import androidx.test.core.app.ApplicationProvider
@@ -16,10 +17,12 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowLog
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
@@ -40,6 +43,9 @@ import java.util.concurrent.atomic.AtomicInteger
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class LustroDrainTest {
+    @get:Rule
+    val uncaught = UncaughtExceptionRecorder()
+
     private val client =
         OkHttpClient.Builder()
             .followRedirects(false)
@@ -180,5 +186,47 @@ class LustroDrainTest {
         assertFalse("socket must be closed after the drain", lustro.isBound())
 
         requestThread.join(TimeUnit.SECONDS.toMillis(5))
+    }
+
+    /** Delegates to [delegate], except that [currentState] throws [failure] once it is set. */
+    private class FailingLifecycle(private val delegate: Lifecycle) : Lifecycle() {
+        @Volatile
+        var failure: Throwable? = null
+
+        override val currentState: State
+            get() = failure?.let { throw it } ?: delegate.currentState
+
+        override fun addObserver(observer: LifecycleObserver) = delegate.addObserver(observer)
+
+        override fun removeObserver(observer: LifecycleObserver) = delegate.removeObserver(observer)
+    }
+
+    @Test
+    fun `an Error during the background drain stays on the drain thread`() {
+        val lifecycle = FailingLifecycle(registry)
+        val config = DebugConfig.builder().serverPort(0).build()
+        val lustro = Lustro(app, config, DebugTabRegistry(), lifecycle).also { started.add(it) }
+        assertEquals(LustroStatus.ENABLED, lustro.start())
+        registry.currentState = Lifecycle.State.STARTED
+        assertTrue(lustro.isBound())
+
+        // After closing the socket, the drain reads the lifecycle state to decide
+        // whether to rebind; that read is where this Error surfaces.
+        val failure = NotImplementedError("simulated")
+        lifecycle.failure = failure
+        registry.currentState = Lifecycle.State.CREATED
+
+        val deadline = System.currentTimeMillis() + 5_000
+        while (ShadowLog.getLogsForTag("Lustro").none { it.throwable === failure } &&
+            System.currentTimeMillis() < deadline
+        ) {
+            Thread.sleep(10)
+        }
+        assertTrue(
+            "the drain logs the Error it contained",
+            ShadowLog.getLogsForTag("Lustro").any { it.throwable === failure },
+        )
+        assertFalse(lustro.isBound())
+        uncaught.assertNothingUncaught()
     }
 }

@@ -38,6 +38,9 @@ import java.net.URI
  *   concurrency + queue (503), per-request timeout (504, interrupts the handler).
  *   The chrome/asset routes are exempt; only the `/api/v1/` surface flows
  *   through the limiter.
+ * - Failure containment: anything a route throws, Errors included, becomes an
+ *   enveloped 500, and connections run on a [ContainedAsyncRunner], so nothing
+ *   reaches the host app's uncaught-exception handler.
  *
  * Lifecycle binding is driven from [io.github.twinsen81.lustro.Lustro]; the
  * [beginDrain]/[shutdownLimiter] hooks below let it stop accepting new requests
@@ -66,6 +69,10 @@ internal class LustroServer(
             timeoutMs = requestTimeoutMs,
         )
 
+    init {
+        setAsyncRunner(ContainedAsyncRunner())
+    }
+
     /** In-flight `/api/v1/` request count, used by the lifecycle drain. */
     fun inFlightCount(): Int = limiter.activeCount()
 
@@ -82,9 +89,12 @@ internal class LustroServer(
     override fun serve(session: IHTTPSession): Response =
         try {
             withSecurityHeaders(route(session))
-        } catch (e: Exception) {
-            // Library exceptions must never escape into the host app.
-            Log.w(TAG, "Error serving request: ${session.uri}", e)
+        } catch (t: Throwable) {
+            // Nothing a route throws may escape into the host app, Errors included:
+            // NanoHTTPD catches only Exception, and an uncaught Error on its thread
+            // kills the app. A 500 beats a crash even for an OutOfMemoryError: the
+            // failed request's allocations are unreachable once it unwinds.
+            Log.w(TAG, "Error serving request: ${session.uri}", t)
             withSecurityHeaders(toNanoResponse(DebugResponse.error("Internal error", status = 500)))
         }
 
@@ -513,9 +523,9 @@ $tabsHtml
         val response =
             try {
                 tab.handle(request)
-            } catch (e: Exception) {
-                // Thrown -> enveloped 500, logged WARN. Never escapes.
-                Log.w(TAG, "Tab ${tab.id} handle() threw for path '$subPath'", e)
+            } catch (t: Throwable) {
+                // Thrown (Errors such as TODO() included) -> enveloped 500, logged WARN.
+                Log.w(TAG, "Tab ${tab.id} handle() threw for path '$subPath'", t)
                 DebugResponse.error("Internal error", status = 500)
             } ?: DebugResponse.notFound("Not found")
         return toNanoResponse(response)
