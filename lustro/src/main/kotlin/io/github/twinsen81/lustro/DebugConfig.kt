@@ -26,11 +26,20 @@ public class DebugConfig private constructor(
     public val maxBodyCaptureBytes: Long,
     /** Maximum accepted request body size; larger requests get a 413. Default 1 MB. */
     public val maxRequestBodyBytes: Long,
-    /** Maximum concurrent in-flight requests. Default `16`. */
+    /**
+     * Maximum concurrent in-flight requests. Default `16`. A request that times
+     * out keeps its slot until its handler returns.
+     */
     public val maxConcurrentRequests: Int,
-    /** Bounded request queue capacity. Default `64`. */
+    /**
+     * Bounded request queue capacity. Default `64`. A queued request waits at
+     * most [requestTimeoutMs] for a slot, then gets a `503`.
+     */
     public val requestQueueCapacity: Int,
-    /** Per-request timeout in milliseconds. Default `30000`. */
+    /**
+     * Per-request timeout in milliseconds. Default `30000`. A request that runs
+     * longer gets a `504` and is cancelled; see [DebugRequest.onCancel].
+     */
     public val requestTimeoutMs: Long,
     /**
      * Extra `Origin`s permitted on state-changing requests; the server's own

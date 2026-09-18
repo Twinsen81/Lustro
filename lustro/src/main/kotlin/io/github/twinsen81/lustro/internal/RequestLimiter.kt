@@ -1,14 +1,20 @@
+@file:Suppress("TooGenericExceptionCaught")
+
 package io.github.twinsen81.lustro.internal
 
 import java.util.concurrent.Callable
+import java.util.concurrent.CancellationException
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutionException
-import java.util.concurrent.Future
+import java.util.concurrent.FutureTask
+import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.Semaphore
 import java.util.concurrent.SynchronousQueue
 import java.util.concurrent.ThreadFactory
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -17,20 +23,23 @@ import java.util.concurrent.atomic.AtomicInteger
  * them:
  *
  * - **Concurrency** — a fair [Semaphore] of [maxConcurrent] permits caps the
- *   number of requests executing at once.
+ *   number of requests executing at once. A request keeps its permit until its
+ *   work returns, even past the timeout, so the permits cap the work actually
+ *   running.
  * - **Queue** — an [AtomicInteger] tracks requests *waiting* for a permit. When
  *   `active == maxConcurrent` AND `waiting == queueCapacity`, a new request is
  *   rejected immediately with [Outcome.Rejected] (→ enveloped 503) instead of
- *   blocking unboundedly. Otherwise it waits for a permit.
+ *   blocking unboundedly. Otherwise it waits for a permit, for at most
+ *   [timeoutMs]: work that ignores its timeout keeps its permit, and the
+ *   requests queued behind it must not wait forever.
  * - **Timeout** — the routed work runs on a worker thread; the caller blocks on
- *   the [Future] for at most [timeoutMs]. On timeout the worker thread is
- *   INTERRUPTED ([Future.cancel] `true`) and [Outcome.TimedOut] (→ 504) is
- *   returned; handler cleanup is cooperative.
+ *   it for at most [timeoutMs]. On timeout the work is CANCELLED (its
+ *   [Cancellation] actions run and the worker thread is interrupted) and
+ *   [Outcome.TimedOut] (→ 504) is returned; the work stops cooperatively.
  *
- * A pooled, daemon [ThreadPoolExecutor] runs the workers. It is unbounded in the
- * sense that the [Semaphore] already caps how many tasks can be submitted at
- * once (active permits == in-flight workers), so the pool never grows past
- * [maxConcurrent] live workers; idle threads die after a short keep-alive.
+ * A pooled, daemon [ThreadPoolExecutor] runs the workers. Its size is uncapped
+ * because the [Semaphore] already caps the work running at once; idle threads
+ * die after a short keep-alive.
  *
  * The whole class is test-driven: counters are exposed and the limits come from
  * the constructor so unit tests can set tiny caps and assert overflow/timeout.
@@ -56,10 +65,15 @@ internal class RequestLimiter(
             },
         )
 
+    private val running: MutableSet<Task<*>> = ConcurrentHashMap.newKeySet()
+
     @Volatile
     private var shuttingDown = false
 
-    /** Number of requests currently holding a permit (executing). */
+    /**
+     * Number of requests currently holding a permit: being served, or timed out
+     * with their work still running.
+     */
     fun activeCount(): Int = active.get()
 
     /** Number of requests currently blocked waiting for a permit. */
@@ -85,20 +99,25 @@ internal class RequestLimiter(
         shuttingDown = false
     }
 
-    /** Releases the worker pool. Call once the server is permanently stopped. */
+    /**
+     * Stops accepting work, cancels the work still running, and releases the
+     * worker pool. Call once the server is permanently stopped.
+     */
     fun shutdown() {
         shuttingDown = true
-        workers.shutdownNow()
+        workers.shutdown()
+        running.forEach(::cancel)
     }
 
     /**
      * Admits the request through the concurrency/queue gate, runs [work] on a
      * worker thread under the per-request [timeoutMs], and returns the typed
-     * [Outcome]. The caller maps each non-[Outcome.Completed] outcome to its
+     * [Outcome]. [work] gets the [Cancellation] the limiter fires when it stops
+     * waiting for it. The caller maps each non-[Outcome.Completed] outcome to its
      * enveloped error response. Whatever [work] throws, Errors included, is
      * rethrown on the calling thread, so the caller must catch [Throwable].
      */
-    fun <T> dispatch(work: () -> T): Outcome<T> {
+    fun <T> dispatch(work: (Cancellation) -> T): Outcome<T> {
         if (shuttingDown) return Outcome.Rejected
 
         // Reserve a queue slot. We may take a permit immediately (no real wait),
@@ -108,8 +127,7 @@ internal class RequestLimiter(
         val reserved = reserveQueueSlot() ?: return Outcome.Rejected
         val permitAcquired =
             try {
-                permits.acquire()
-                true
+                permits.tryAcquire(timeoutMs, TimeUnit.MILLISECONDS)
             } catch (_: InterruptedException) {
                 Thread.currentThread().interrupt()
                 false
@@ -120,12 +138,20 @@ internal class RequestLimiter(
         if (!permitAcquired) return Outcome.Rejected
 
         active.incrementAndGet()
-        return try {
-            runWithTimeout(work)
+        val cancellation = Cancellation()
+        val task = Task(cancellation, Callable { work(cancellation) })
+        running.add(task)
+        var submitted = false
+        try {
+            workers.execute(task)
+            submitted = true
+        } catch (_: RejectedExecutionException) {
+            // Pool was shut down (drain/stop) between the gate and submit.
+            return Outcome.Rejected
         } finally {
-            active.decrementAndGet()
-            permits.release()
+            if (!submitted) task.release()
         }
+        return await(task)
     }
 
     /**
@@ -148,26 +174,93 @@ internal class RequestLimiter(
         }
     }
 
-    private fun <T> runWithTimeout(work: () -> T): Outcome<T> {
-        val future: Future<T> =
-            try {
-                workers.submit(Callable { work() })
-            } catch (_: Exception) {
-                // Pool was shut down (drain/stop) between the gate and submit.
-                return Outcome.Rejected
-            }
-        return try {
-            Outcome.Completed(future.get(timeoutMs, TimeUnit.MILLISECONDS))
+    private fun <T> await(task: Task<T>): Outcome<T> =
+        try {
+            Outcome.Completed(task.get(timeoutMs, TimeUnit.MILLISECONDS))
         } catch (_: TimeoutException) {
-            future.cancel(/* mayInterruptIfRunning = */ true)
+            cancel(task)
             Outcome.TimedOut
         } catch (_: InterruptedException) {
-            future.cancel(true)
+            cancel(task)
             Thread.currentThread().interrupt()
             Outcome.TimedOut
+        } catch (_: CancellationException) {
+            // shutdown() cancelled the work while we waited for it.
+            Outcome.Rejected
         } catch (e: ExecutionException) {
             // The work threw; rethrow so the server's Throwable guard maps it to 500.
             throw e.cause ?: e
+        } finally {
+            // Work that returned frees its permit now, before the response goes
+            // out. Cancelled work frees it on its own thread once it returns.
+            if (task.isDone && !task.isCancelled) task.release()
+        }
+
+    private fun cancel(task: Task<*>) {
+        if (task.isDone) return
+        task.cancellation.cancel()
+        task.cancel(/* mayInterruptIfRunning = */ true)
+    }
+
+    /**
+     * Lets dispatched work react when the limiter stops waiting for it: on its
+     * timeout, or at [shutdown].
+     */
+    class Cancellation {
+        // Null once cancelled. Guarded by this.
+        private var actions: MutableList<Runnable>? = ArrayList(1)
+
+        /**
+         * Runs [action] once the work is cancelled, or right away if it already
+         * is. Anything [action] throws is ignored, so it can't stop the 504.
+         */
+        fun onCancel(action: Runnable) {
+            synchronized(this) {
+                val pending = actions
+                if (pending != null) {
+                    pending.add(action)
+                    return
+                }
+            }
+            runIgnoringFailure(action)
+        }
+
+        fun cancel() {
+            val pending = synchronized(this) { actions.also { actions = null } } ?: return
+            pending.forEach(::runIgnoringFailure)
+        }
+
+        private fun runIgnoringFailure(action: Runnable) {
+            try {
+                action.run()
+            } catch (_: Throwable) {
+                // Callers that care log it themselves.
+            }
+        }
+    }
+
+    // Holds its request's permit until the work returns, even when the caller
+    // stopped waiting. run() releases it even when shutdown() cancelled the task
+    // before it started and the work never ran.
+    private inner class Task<T>(
+        val cancellation: Cancellation,
+        work: Callable<T>,
+    ) : FutureTask<T>(work) {
+        private val released = AtomicBoolean(false)
+
+        override fun run() {
+            try {
+                super.run()
+            } finally {
+                release()
+            }
+        }
+
+        fun release() {
+            if (!released.compareAndSet(false, true)) return
+            running.remove(this)
+            active.decrementAndGet()
+            permits.release()
         }
     }
 
@@ -176,7 +269,7 @@ internal class RequestLimiter(
         /** [work] ran to completion; [value] is its result. */
         data class Completed<T>(val value: T) : Outcome<T>
 
-        /** Concurrency + queue both saturated → caller maps to enveloped 503. */
+        /** Concurrency + queue saturated, or shutting down → caller maps to enveloped 503. */
         data object Rejected : Outcome<Nothing>
 
         /** [work] exceeded the per-request timeout → caller maps to enveloped 504. */

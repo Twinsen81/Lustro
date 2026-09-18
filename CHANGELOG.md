@@ -56,6 +56,11 @@ see [DECISIONS.md](DECISIONS.md).
   release GitHub Actions workflows.
 - **Docs**: `README.md`, library `docs/AGENTS.md`, `SECURITY.md`, `CONTRIBUTING.md`,
   `CODE_OF_CONDUCT.md`, `DECISIONS.md`, and issue/PR templates + grouped Dependabot.
+- **Request cancellation for tabs**: `DebugRequest.isCancelled`, `onCancel(Runnable)`, and
+  `cancel()`. The runtime cancels a request when it times out or the server shuts down, so a
+  handler can abort blocking work that ignores thread interrupts, such as a SQLite query
+  (through its `CancellationSignal`) or an OkHttp `Call`. Unit tests can call `cancel()` to
+  simulate a timeout.
 
 ### Fixed
 
@@ -88,6 +93,16 @@ see [DECISIONS.md](DECISIONS.md).
   `LustroToken` endpoint line, which does that first read, is logged from a
   background thread instead of the main-thread lifecycle callback that binds the
   socket.
+- **Timed-out handlers escaping the concurrency limit.** A request that hit the
+  per-request timeout got its `504` and gave up its concurrency slot, but its
+  handler kept running whenever it ignored the thread interrupt, as a slow
+  SQLite query or a CPU-bound loop does. New requests took the slot, worker
+  threads grew with every timeout, and the background drain closed the socket
+  while those handlers still ran. Timed-out requests are now cancelled (see
+  `DebugRequest.onCancel`), and a request keeps its slot until its handler
+  actually returns, so `maxConcurrentRequests` caps what really runs and the
+  drain waits for it. A queued request now waits at most the per-request
+  timeout for a slot, then gets a `503`.
 
 ### Changed
 
