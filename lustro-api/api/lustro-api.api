@@ -12,12 +12,15 @@ public final class io/github/twinsen81/lustro/DebugRequest {
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Lio/github/twinsen81/lustro/Headers;[BLio/github/twinsen81/lustro/MediaType;)V
 	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Lio/github/twinsen81/lustro/Headers;[BLio/github/twinsen81/lustro/MediaType;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun bodyAsString ()Ljava/lang/String;
+	public final fun cancel ()V
 	public final fun getBody ()[B
 	public final fun getContentType ()Lio/github/twinsen81/lustro/MediaType;
 	public final fun getHeaders ()Lio/github/twinsen81/lustro/Headers;
 	public final fun getMethod ()Ljava/lang/String;
 	public final fun getPath ()Ljava/lang/String;
 	public final fun getQueryParams ()Ljava/util/Map;
+	public final fun isCancelled ()Z
+	public final fun onCancel (Ljava/lang/Runnable;)V
 	public final fun queryParam (Ljava/lang/String;)Ljava/lang/String;
 }
 

@@ -188,6 +188,62 @@ class LustroDrainTest {
         requestThread.join(TimeUnit.SECONDS.toMillis(5))
     }
 
+    /** A tab whose handler ignores interrupts and cancellation until [release] opens. */
+    private class StuckTab(private val release: CountDownLatch) : DebugTab() {
+        override val id: String = "stuck"
+        override val title: String = "Stuck"
+        override val icon: String = "S"
+
+        override fun handle(request: DebugRequest): DebugResponse {
+            while (true) {
+                try {
+                    release.await()
+                    break
+                } catch (_: InterruptedException) {
+                    // Ignore it, like work that doesn't check for interrupts.
+                }
+            }
+            return DebugResponse.ok("{\"done\":true}")
+        }
+    }
+
+    @Test
+    fun `background drain waits for a timed-out handler that is still running`() {
+        val release = CountDownLatch(1)
+        val tabRegistry = DebugTabRegistry().apply { addTab(StuckTab(release)) }
+        val config = DebugConfig.builder().serverPort(0).requestTimeoutMs(200).build()
+        val lustro = Lustro(app, config, tabRegistry, registry).also { started.add(it) }
+        assertEquals(LustroStatus.ENABLED, lustro.start())
+        registry.currentState = Lifecycle.State.STARTED
+        val port = lustro.boundPort()
+        val token = LustroTokenStore(app).token()
+
+        try {
+            val code =
+                client.newCall(
+                    Request.Builder()
+                        .url("http://127.0.0.1:$port/api/v1/stuck/slow")
+                        .header("Authorization", "Bearer $token")
+                        .get()
+                        .build(),
+                ).execute().use { it.code }
+            assertEquals(504, code)
+
+            // The handler is still running after its 504, so the drain must wait for it.
+            registry.currentState = Lifecycle.State.CREATED
+            Thread.sleep(300)
+            assertTrue("socket must stay bound while the timed-out handler runs", lustro.isBound())
+        } finally {
+            release.countDown()
+        }
+
+        val deadline = System.currentTimeMillis() + 5_000
+        while (lustro.isBound() && System.currentTimeMillis() < deadline) {
+            Thread.sleep(10)
+        }
+        assertFalse("socket must close once the handler returns", lustro.isBound())
+    }
+
     /** Delegates to [delegate], except that [currentState] throws [failure] once it is set. */
     private class FailingLifecycle(private val delegate: Lifecycle) : Lifecycle() {
         @Volatile

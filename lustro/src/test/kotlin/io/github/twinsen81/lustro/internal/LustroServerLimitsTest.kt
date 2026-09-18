@@ -4,6 +4,7 @@ import androidx.test.core.app.ApplicationProvider
 import io.github.twinsen81.lustro.DebugRequest
 import io.github.twinsen81.lustro.DebugResponse
 import io.github.twinsen81.lustro.DebugTab
+import io.github.twinsen81.lustro.UncaughtExceptionRecorder
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -12,10 +13,12 @@ import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowLog
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -23,13 +26,17 @@ import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * End-to-end (over loopback HTTP) tests for the bounded-dispatch limits in
- * [LustroServer]: 413 (body too large), 503 (concurrency +
- * queue saturated), and 504 (per-request timeout). The server is constructed
- * directly with tiny caps so the limits are reachable from a unit test.
+ * [LustroServer]: 413 (body too large), 503 (concurrency + queue saturated,
+ * slots held by timed-out handlers included), and 504 (per-request timeout,
+ * which cancels the request). The server is constructed directly with tiny caps
+ * so the limits are reachable from a unit test.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class LustroServerLimitsTest {
+    @get:Rule
+    val uncaught = UncaughtExceptionRecorder()
+
     private val client =
         OkHttpClient.Builder()
             .followRedirects(false)
@@ -58,6 +65,35 @@ class LustroServerLimitsTest {
             } catch (_: InterruptedException) {
                 Thread.currentThread().interrupt()
             }
+            return DebugResponse.ok("{\"ok\":true}")
+        }
+    }
+
+    /**
+     * A tab whose handler blocks until [release] opens and ignores interrupts.
+     * With [honourCancel] it opens [release] itself once its request is cancelled.
+     */
+    private class StuckTab(
+        private val release: CountDownLatch,
+        private val honourCancel: Boolean,
+    ) : DebugTab() {
+        override val id: String = "sample"
+        override val title: String = "Sample"
+        override val icon: String = "S"
+
+        val returnedCancelled = CountDownLatch(1)
+
+        override fun handle(request: DebugRequest): DebugResponse {
+            if (honourCancel) request.onCancel { release.countDown() }
+            while (true) {
+                try {
+                    release.await()
+                    break
+                } catch (_: InterruptedException) {
+                    // Ignore it, like work that doesn't check for interrupts.
+                }
+            }
+            if (request.isCancelled) returnedCancelled.countDown()
             return DebugResponse.ok("{\"ok\":true}")
         }
     }
@@ -191,4 +227,77 @@ class LustroServerLimitsTest {
         }
     }
 
+    @Test
+    fun `a timed-out request is cancelled`() {
+        val tab = StuckTab(CountDownLatch(1), honourCancel = true)
+        startServer(tab, timeoutMs = 200)
+        postBytes("/api/v1/sample/query", ByteArray(0)).use { resp ->
+            assertEquals(504, resp.code)
+        }
+        assertTrue(
+            "the handler saw its request cancelled and returned",
+            tab.returnedCancelled.await(5, TimeUnit.SECONDS),
+        )
+    }
+
+    @Test
+    fun `a timed-out handler keeps its slot until it returns`() {
+        val release = CountDownLatch(1)
+        startServer(StuckTab(release, honourCancel = false), maxConcurrent = 1, queueCapacity = 0, timeoutMs = 200)
+        try {
+            postBytes("/api/v1/sample/query", ByteArray(0)).use { assertEquals(504, it.code) }
+            postBytes("/api/v1/sample/query", ByteArray(0)).use { resp ->
+                assertEquals(503, resp.code)
+                assertEquals("unavailable", JSONObject(resp.body!!.string()).getString("error"))
+            }
+        } finally {
+            release.countDown()
+        }
+
+        // Once the timed-out handler returns, its slot serves requests again.
+        val deadline = System.currentTimeMillis() + 5_000
+        var code: Int
+        do {
+            code = postBytes("/api/v1/sample/query", ByteArray(0)).use { it.code }
+        } while (code != 200 && System.currentTimeMillis() < deadline)
+        assertEquals(200, code)
+    }
+
+    @Test
+    fun `an Error from a cancel action is logged and the client still gets its 504`() {
+        val failure = NotImplementedError("simulated")
+        val returned = CountDownLatch(1)
+        val tab =
+            object : DebugTab() {
+                override val id: String = "sample"
+                override val title: String = "Sample"
+                override val icon: String = "S"
+
+                override fun handle(request: DebugRequest): DebugResponse {
+                    val cancelled = CountDownLatch(1)
+                    request.onCancel { throw failure }
+                    request.onCancel { cancelled.countDown() }
+                    while (true) {
+                        try {
+                            cancelled.await()
+                            break
+                        } catch (_: InterruptedException) {
+                            // Wait for the cancel actions instead.
+                        }
+                    }
+                    returned.countDown()
+                    return DebugResponse.ok("{\"ok\":true}")
+                }
+            }
+        startServer(tab, timeoutMs = 200)
+
+        postBytes("/api/v1/sample/query", ByteArray(0)).use { assertEquals(504, it.code) }
+
+        assertTrue("the later action still ran", returned.await(5, TimeUnit.SECONDS))
+        assertTrue(
+            "the server logs the action's Error",
+            ShadowLog.getLogsForTag("LustroServer").any { it.throwable === failure },
+        )
+        uncaught.assertNothingUncaught()
+    }
 }

@@ -37,9 +37,10 @@ import java.net.URI
  *
  * Also implemented here:
  * - Bounded dispatch: max request body (413 before allocating), bounded
- *   concurrency + queue (503), per-request timeout (504, interrupts the handler).
- *   The chrome/asset routes are exempt; only the `/api/v1/` surface flows
- *   through the limiter.
+ *   concurrency + queue (503), per-request timeout (504, cancels the tab's
+ *   [DebugRequest] and interrupts the handler; a handler that keeps running
+ *   keeps its concurrency slot). The chrome/asset routes are exempt; only the
+ *   `/api/v1/` surface flows through the limiter.
  * - Failure containment: anything a route throws, Errors included, becomes an
  *   enveloped 500, and connections run on a [ContainedAsyncRunner], so nothing
  *   reaches the host app's uncaught-exception handler.
@@ -75,7 +76,10 @@ internal class LustroServer(
         setAsyncRunner(ContainedAsyncRunner())
     }
 
-    /** In-flight `/api/v1/` request count, used by the lifecycle drain. */
+    /**
+     * In-flight `/api/v1/` request count, including handlers still running after
+     * their request timed out. Used by the lifecycle drain.
+     */
     fun inFlightCount(): Int = limiter.activeCount()
 
     /** Stops admitting new API requests; in-flight work keeps running. */
@@ -83,7 +87,10 @@ internal class LustroServer(
         limiter.beginDrain()
     }
 
-    /** Releases the limiter's worker pool. Call when the server is fully stopped. */
+    /**
+     * Cancels the handlers still running and releases the limiter's worker pool.
+     * Call when the server is fully stopped.
+     */
     fun shutdownLimiter() {
         limiter.shutdown()
     }
@@ -111,13 +118,17 @@ internal class LustroServer(
             uri.startsWith("/tab/") -> handleTabPage(uri.removePrefix("/tab/").substringBefore('/'))
             // The debug API flows through the bounded dispatcher (concurrency,
             // queue, timeout). Chrome/asset routes above are intentionally exempt.
-            uri.startsWith("/api/v1/") -> bounded { routeApi(session, uri) }
+            uri.startsWith("/api/v1/") -> bounded { cancellation -> routeApi(session, uri, cancellation) }
             else -> toNanoResponse(DebugResponse.notFound("Not found"))
         }
     }
 
     /** Routes the authenticated `/api/v1/` surface (called inside the limiter). */
-    private fun routeApi(session: IHTTPSession, uri: String): Response {
+    private fun routeApi(
+        session: IHTTPSession,
+        uri: String,
+        cancellation: RequestLimiter.Cancellation,
+    ): Response {
         // Reject oversize bodies BEFORE reading/allocating them (413). The
         // in-process server has no isolation, so we never buffer an over-cap body.
         oversizeRejection(session)?.let { return it }
@@ -125,7 +136,7 @@ internal class LustroServer(
             uri == "/api/v1/_auth" -> handleAuth(session)
             uri == "/api/v1/_meta" -> requireAuth(session) { handleMeta() }
             uri == "/api/v1/_schema" -> requireAuth(session) { handleSharedSchema() }
-            else -> requireAuth(session) { handleApi(session, uri.removePrefix("/api/v1/")) }
+            else -> requireAuth(session) { handleApi(session, uri.removePrefix("/api/v1/"), cancellation) }
         }
     }
 
@@ -151,8 +162,8 @@ internal class LustroServer(
      * concurrency+queue to an enveloped 503 and a per-request timeout to an
      * enveloped 504. A handler that throws propagates out to [serve]'s 500 guard.
      */
-    private inline fun bounded(crossinline block: () -> Response): Response =
-        when (val outcome = limiter.dispatch { block() }) {
+    private inline fun bounded(crossinline block: (RequestLimiter.Cancellation) -> Response): Response =
+        when (val outcome = limiter.dispatch { block(it) }) {
             is RequestLimiter.Outcome.Completed -> outcome.value
             RequestLimiter.Outcome.Rejected ->
                 toNanoResponse(
@@ -484,7 +495,11 @@ $tabsHtml
         }
     }
 
-    private fun handleApi(session: IHTTPSession, remainder: String): Response {
+    private fun handleApi(
+        session: IHTTPSession,
+        remainder: String,
+        cancellation: RequestLimiter.Cancellation,
+    ): Response {
         val parts = remainder.split("/", limit = 2)
         val tabId = parts.getOrNull(0).orEmpty()
         val subPath = parts.getOrNull(1).orEmpty()
@@ -495,7 +510,7 @@ $tabsHtml
             "_view" -> serveViewContent(tab)
             "_view.js" -> serveView(tab, isCss = false)
             "_view.css" -> serveView(tab, isCss = true)
-            else -> dispatchToTab(session, tab, subPath)
+            else -> dispatchToTab(session, tab, subPath, cancellation)
         }
     }
 
@@ -516,12 +531,18 @@ $tabsHtml
         return newFixedLengthResponse(Response.Status.OK, "$mime; charset=utf-8", asset)
     }
 
-    private fun dispatchToTab(session: IHTTPSession, tab: DebugTab, subPath: String): Response {
+    private fun dispatchToTab(
+        session: IHTTPSession,
+        tab: DebugTab,
+        subPath: String,
+        cancellation: RequestLimiter.Cancellation,
+    ): Response {
         // State-changing requests must pass the origin gate.
         if (session.method == Method.POST) {
             originRejection(session)?.let { return it }
         }
         val request = buildDebugRequest(session, subPath)
+        cancellation.onCancel { cancelRequest(tab, request) }
         val response =
             try {
                 tab.handle(request)
@@ -531,6 +552,14 @@ $tabsHtml
                 DebugResponse.error("Internal error", status = 500)
             } ?: DebugResponse.notFound("Not found")
         return toNanoResponse(response)
+    }
+
+    private fun cancelRequest(tab: DebugTab, request: DebugRequest) {
+        try {
+            request.cancel()
+        } catch (t: Throwable) {
+            Log.w(TAG, "Tab ${tab.id} cancel action threw for path '${request.path}'", t)
+        }
     }
 
     private fun buildDebugRequest(session: IHTTPSession, subPath: String): DebugRequest {

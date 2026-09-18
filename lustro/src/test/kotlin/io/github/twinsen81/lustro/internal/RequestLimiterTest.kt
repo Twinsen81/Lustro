@@ -8,11 +8,14 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
+import kotlin.concurrent.thread
 
 /**
  * Pure-JVM tests for [RequestLimiter]: concurrency + queue
- * saturation rejects, the per-request timeout interrupts the worker, and a
- * thrown handler, Errors included, propagates so the server can map it to a 500.
+ * saturation rejects, the per-request timeout cancels and interrupts the work,
+ * which keeps its permit until it returns, and a thrown handler, Errors
+ * included, propagates so the server can map it to a 500.
  */
 class RequestLimiterTest {
     private val limiters = mutableListOf<RequestLimiter>()
@@ -113,11 +116,127 @@ class RequestLimiterTest {
     }
 
     @Test
+    fun `a timed-out handler keeps its permit until it returns`() {
+        val limiter = limiter(maxConcurrent = 1, queueCapacity = 0, timeoutMs = 100)
+        val release = CountDownLatch(1)
+
+        val outcome = limiter.dispatch { awaitIgnoringInterrupts(release) }
+
+        assertTrue(outcome is RequestLimiter.Outcome.TimedOut)
+        assertEquals("the handler still holds the permit", 1, limiter.activeCount())
+        assertTrue(limiter.dispatch { 42 } is RequestLimiter.Outcome.Rejected)
+
+        release.countDown()
+        awaitTrue("the permit is freed once the handler returns") { limiter.activeCount() == 0 }
+        assertTrue(limiter.dispatch { 42 } is RequestLimiter.Outcome.Completed)
+    }
+
+    @Test
+    fun `a request queued behind a timed-out handler gives up after the timeout`() {
+        val limiter = limiter(maxConcurrent = 1, queueCapacity = 1, timeoutMs = 100)
+        val release = CountDownLatch(1)
+        try {
+            assertTrue(limiter.dispatch { awaitIgnoringInterrupts(release) } is RequestLimiter.Outcome.TimedOut)
+
+            val started = System.nanoTime()
+            val outcome = limiter.dispatch { 42 }
+            val waitedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started)
+
+            assertEquals(RequestLimiter.Outcome.Rejected, outcome)
+            assertTrue("waited for the permit first (${waitedMs}ms)", waitedMs >= 90)
+        } finally {
+            release.countDown()
+        }
+    }
+
+    @Test
+    fun `timing out cancels the work so it can stop`() {
+        val limiter = limiter(maxConcurrent = 1, queueCapacity = 0, timeoutMs = 100)
+        val cancelled = CountDownLatch(1)
+        val returned = CountDownLatch(1)
+
+        val outcome =
+            limiter.dispatch { cancellation ->
+                cancellation.onCancel { cancelled.countDown() }
+                awaitIgnoringInterrupts(cancelled)
+                returned.countDown()
+            }
+
+        assertTrue(outcome is RequestLimiter.Outcome.TimedOut)
+        assertTrue("the work saw its cancellation and returned", returned.await(5, TimeUnit.SECONDS))
+        awaitTrue("the cancelled work frees its permit") { limiter.activeCount() == 0 }
+    }
+
+    @Test
+    fun `a throwing cancel action does not break the timeout`() {
+        val limiter = limiter(maxConcurrent = 1, queueCapacity = 0, timeoutMs = 100)
+        val outcome =
+            limiter.dispatch { cancellation ->
+                cancellation.onCancel { throw IllegalStateException("boom") }
+                Thread.sleep(5000)
+            }
+        assertTrue(outcome is RequestLimiter.Outcome.TimedOut)
+    }
+
+    @Test
+    fun `shutdown cancels running work and releases its caller`() {
+        val limiter = limiter(maxConcurrent = 1, queueCapacity = 0, timeoutMs = 10_000)
+        val cancelled = CountDownLatch(1)
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val outcome = AtomicReference<RequestLimiter.Outcome<Unit>>()
+        val caller =
+            thread {
+                outcome.set(
+                    limiter.dispatch { cancellation ->
+                        cancellation.onCancel { cancelled.countDown() }
+                        entered.countDown()
+                        // Ignores the cancellation, so shutdown() always finds it running.
+                        awaitIgnoringInterrupts(release)
+                    },
+                )
+            }
+        assertTrue(entered.await(5, TimeUnit.SECONDS))
+
+        try {
+            limiter.shutdown()
+
+            caller.join(5_000)
+            assertEquals(RequestLimiter.Outcome.Rejected, outcome.get())
+            assertEquals("the work was cancelled", 0L, cancelled.count)
+            assertEquals("the work keeps its permit until it returns", 1, limiter.activeCount())
+        } finally {
+            release.countDown()
+        }
+        awaitTrue("the work frees its permit once it returns") { limiter.activeCount() == 0 }
+    }
+
+    @Test
     fun `beginDrain rejects new work`() {
         val limiter = limiter(maxConcurrent = 1, queueCapacity = 1, timeoutMs = 1000)
         limiter.beginDrain()
         assertTrue(limiter.dispatch { 1 } is RequestLimiter.Outcome.Rejected)
         limiter.reopen()
         assertTrue(limiter.dispatch { 1 } is RequestLimiter.Outcome.Completed)
+    }
+
+    /** Blocks until [release] opens, swallowing interrupts like work that ignores them. */
+    private fun awaitIgnoringInterrupts(release: CountDownLatch) {
+        while (true) {
+            try {
+                release.await()
+                return
+            } catch (_: InterruptedException) {
+                // Keep waiting.
+            }
+        }
+    }
+
+    private fun awaitTrue(message: String, condition: () -> Boolean) {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+        while (!condition()) {
+            assertTrue(message, System.nanoTime() < deadline)
+            Thread.sleep(10)
+        }
     }
 }

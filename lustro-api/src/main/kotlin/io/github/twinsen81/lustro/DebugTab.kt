@@ -60,6 +60,12 @@ public abstract class DebugTab {
      * must be thread-safe. Blocking on I/O here is fine — the runtime enforces
      * a per-request timeout.
      *
+     * When a request times out, the client gets a `504` and the runtime cancels
+     * the request: [DebugRequest.isCancelled] turns `true`, the actions
+     * registered with [DebugRequest.onCancel] run, and this thread is
+     * interrupted. A handler that ignores all three keeps its request's
+     * concurrency slot until it returns.
+     *
      * The runtime authenticates the request before calling this and does not
      * pass the credentials on: [DebugRequest.headers] never contains
      * `Authorization` or `Cookie`.

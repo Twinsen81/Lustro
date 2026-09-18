@@ -309,6 +309,12 @@ Lustro.builder(application)
   tokens — so tabs don't hand-roll it.
 - `handle()` runs off the main thread and calls may be concurrent — keep mutable tab state
   thread-safe. Blocking I/O is fine; the runtime enforces a per-request timeout.
+- When a request times out, the client gets a `504` and the runtime cancels the request:
+  `request.isCancelled` turns `true`, actions registered with `request.onCancel { ... }` run,
+  and the handler's thread is interrupted. Use `onCancel` to abort blocking calls that ignore
+  interrupts, such as cancelling the `CancellationSignal` passed to `SQLiteDatabase.rawQuery`
+  or an OkHttp `Call`. A handler that ignores cancellation keeps its concurrency slot until it
+  returns.
 - **Ship a schema to be agent-discoverable.** Only tabs that expose a schema (a static
   `assets/lustro/<id>.openapi.json` or a dynamic `schema()`) are listed in `/api/v1/_meta`.
   Schema-less tabs work in the browser UI but are invisible to agents.
