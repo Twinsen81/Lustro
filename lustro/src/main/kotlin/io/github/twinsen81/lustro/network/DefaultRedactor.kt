@@ -1,6 +1,7 @@
 package io.github.twinsen81.lustro.network
 
 import io.github.twinsen81.lustro.MediaType
+import io.github.twinsen81.lustro.internal.network.TextualRedactor
 import java.net.URLDecoder
 import java.net.URLEncoder
 import org.json.JSONArray
@@ -32,28 +33,7 @@ import org.json.JSONTokener
 public object DefaultRedactor : Redactor {
     private const val PLACEHOLDER = "[REDACTED]"
 
-    // Framing-agnostic masking patterns for [redactTextually]. Each captures the
-    // key so the value is replaced only for sensitive keys; they are mutually
-    // non-overlapping by shape (quoted-key JSON vs bare-key attribute vs element
-    // vs bare-key form) so the four passes never corrupt each other's output.
-
-    // JSON-ish "<key>" <sep> "<value>": group 1 = prefix through the value's
-    // opening quote, group 2 = key. Value handles escaped quotes.
-    private val JSON_KV_REGEX = Regex("(\"((?:[^\"\\\\]|\\\\.)*)\"\\s*:\\s*\")(?:[^\"\\\\]|\\\\.)*\"")
-
-    // Attribute <key>="<value>": group 1 = prefix through the opening quote,
-    // group 2 = attribute name.
-    private val ATTRIBUTE_REGEX = Regex("(([A-Za-z_][\\w.\\-:]*)\\s*=\\s*\")[^\"]*\"")
-
-    // XML element <key ...>text</key>: group 1 = open tag through '>', group 2 =
-    // open-tag name, group 3 = close-tag name (a backreference to group 2). Inner
-    // text is leaf text only (no nested elements).
-    private val XML_ELEMENT_REGEX = Regex("(<([A-Za-z_][\\w.\\-:]*)\\b[^>]*>)[^<]*</(\\2)\\s*>")
-
-    // Form/query-ish <key>=<value>: group 1 = key, group 2 = the unquoted value.
-    // The (?!\") lookahead skips quoted attribute values so it doesn't double-touch
-    // an attribute already masked by [ATTRIBUTE_REGEX].
-    private val FORM_KV_REGEX = Regex("\\b([A-Za-z_][\\w.\\-]*)=(?!\")([^&;\\s]*)")
+    private val textualRedactor = TextualRedactor(isSensitiveKey = ::isSensitiveKey, placeholder = PLACEHOLDER)
 
     private val SENSITIVE_HEADERS =
         setOf("authorization", "proxy-authorization", "cookie", "set-cookie")
@@ -222,36 +202,11 @@ public object DefaultRedactor : Redactor {
      * - form/query-ish `<key>=<value>`,
      * - XML element text `<key>...</key>`,
      * - XML / HTML attributes `<key>="..."` (and `name="..."`-style attributes).
+     *
+     * Linear in the body size (see [TextualRedactor]): it runs on the app's own
+     * HTTP thread, on bodies up to the capture cap.
      */
-    private fun redactTextually(body: String): String {
-        var out = body
-        // JSON-ish: "<key>"<sep>"<value>". Group 1 = the prefix through the value's
-        // opening quote (preserved verbatim so the exact separator survives),
-        // group 2 = the key. Only the value bytes change.
-        out = JSON_KV_REGEX.replace(out) { match ->
-            if (isSensitiveKey(match.groupValues[2])) "${match.groupValues[1]}$PLACEHOLDER\"" else match.value
-        }
-        // XML / HTML attribute: <key>="<value>". Group 1 = the prefix through the
-        // opening quote, group 2 = the attribute name.
-        out = ATTRIBUTE_REGEX.replace(out) { match ->
-            if (isSensitiveKey(match.groupValues[2])) "${match.groupValues[1]}$PLACEHOLDER\"" else match.value
-        }
-        // XML element text: <key>text</key>. Group 1 = the open tag through '>',
-        // group 2 = the open-tag name, group 3 = the close-tag name.
-        out = XML_ELEMENT_REGEX.replace(out) { match ->
-            if (isSensitiveKey(match.groupValues[2])) {
-                "${match.groupValues[1]}$PLACEHOLDER</${match.groupValues[3]}>"
-            } else {
-                match.value
-            }
-        }
-        // Form / query-ish: <key>=<value>. Group 1 = the key. Runs last so it never
-        // re-touches a JSON/XML value already masked above.
-        out = FORM_KV_REGEX.replace(out) { match ->
-            if (isSensitiveKey(match.groupValues[1])) "${match.groupValues[1]}=$PLACEHOLDER" else match.value
-        }
-        return out
-    }
+    private fun redactTextually(body: String): String = textualRedactor.redact(body)
 
     private fun redactForm(body: String): String =
         body.split('&').joinToString("&") { pair ->

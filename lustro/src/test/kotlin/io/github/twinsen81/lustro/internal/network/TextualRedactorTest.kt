@@ -1,0 +1,106 @@
+package io.github.twinsen81.lustro.internal.network
+
+import kotlin.random.Random
+import org.junit.Assert.assertEquals
+import org.junit.Test
+
+/**
+ * [TextualRedactor] is a linear-time scanner for four regex shapes. These tests
+ * pin it byte-for-byte to the regexes themselves, which stay here as the
+ * reference: quadratic, but fast enough on short inputs.
+ */
+class TextualRedactorTest {
+    @Test
+    fun `matches the regex reference on generated inputs`() {
+        val random = Random(20260918)
+        repeat(FUZZ_CASES) {
+            val input = buildString { repeat(random.nextInt(1, 14)) { append(FRAGMENTS.random(random)) } }
+            assertMatchesReference(input)
+        }
+    }
+
+    @Test
+    fun `matches the regex reference on edge cases`() {
+        listOf(
+            "",
+            "\"token\"",
+            "\"token\":\"",
+            "\"token\" : \"a\\\"b\" \"k\":\"v\"",
+            "\"a\":\"x\\\n\", \"token\":\"s\"",
+            "\"a\\\"\\\"\\\":\"x\"",
+            "token=\"a\" id=\"b\" key =  \"c\"",
+            "1token=\"a\" -key=\"b\" _secret=\"c\"",
+            "a.b.c.token=\"v",
+            "<token>s</token><id>1</id><key a=\"1\">v</key >",
+            "<soap:Envelope>s</soap><ns:token>v</ns:token><a->x</a-><a <b>x</a>",
+            "<token>a<b>c</b></token>",
+            "a=1&token=2;key=3 password=\"x\" pwd= sig=",
+            "x.token=1&a-key=2&1token=3&b_key=4",
+        ).forEach(::assertMatchesReference)
+    }
+
+    @Test
+    fun `non-ASCII letters belong to key names, as on Android's Unicode-aware regex engine`() {
+        val out = redactor.redact("tokenкey=\"s\" <tokenк>s</tokenк> tokenк=s")
+        assertEquals("tokenкey=\"[R]\" <tokenк>[R]</tokenк> tokenк=[R]", out)
+    }
+
+    private fun assertMatchesReference(input: String) {
+        val expectedKeys = mutableListOf<String>()
+        val actualKeys = mutableListOf<String>()
+        val expected = RegexReference({ key -> expectedKeys += key; isSensitive(key) }, "[R]").redact(input)
+        val actual = TextualRedactor({ key -> actualKeys += key; isSensitive(key) }, "[R]").redact(input)
+        val message = "input: ${input.escaped()}"
+        assertEquals(message, expected, actual)
+        assertEquals("keys checked for $message", expectedKeys, actualKeys)
+    }
+
+    private fun String.escaped(): String = replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
+
+    /** The regex formulation of [TextualRedactor]'s four passes. */
+    private class RegexReference(
+        private val isSensitiveKey: (String) -> Boolean,
+        private val placeholder: String,
+    ) {
+        fun redact(body: String): String {
+            var out = body
+            out = JSON_KV.replace(out) { m ->
+                if (isSensitiveKey(m.groupValues[2])) "${m.groupValues[1]}$placeholder\"" else m.value
+            }
+            out = ATTRIBUTE.replace(out) { m ->
+                if (isSensitiveKey(m.groupValues[2])) "${m.groupValues[1]}$placeholder\"" else m.value
+            }
+            out = XML_ELEMENT.replace(out) { m ->
+                if (isSensitiveKey(m.groupValues[2])) "${m.groupValues[1]}$placeholder</${m.groupValues[3]}>" else m.value
+            }
+            out = FORM_KV.replace(out) { m ->
+                if (isSensitiveKey(m.groupValues[1])) "${m.groupValues[1]}=$placeholder" else m.value
+            }
+            return out
+        }
+
+        private companion object {
+            val JSON_KV = Regex("(\"((?:[^\"\\\\]|\\\\.)*)\"\\s*:\\s*\")(?:[^\"\\\\]|\\\\.)*\"")
+            val ATTRIBUTE = Regex("(([A-Za-z_][\\w.\\-:]*)\\s*=\\s*\")[^\"]*\"")
+            val XML_ELEMENT = Regex("(<([A-Za-z_][\\w.\\-:]*)\\b[^>]*>)[^<]*</(\\2)\\s*>")
+            val FORM_KV = Regex("\\b([A-Za-z_][\\w.\\-]*)=(?!\")([^&;\\s]*)")
+        }
+    }
+
+    private companion object {
+        const val FUZZ_CASES = 50_000
+
+        // ASCII only: the JVM's regex `\w`/`\s` are ASCII-only, while the scanner
+        // (like Android's engine) is Unicode-aware; the two agree on ASCII.
+        val FRAGMENTS =
+            listOf(
+                "\"", "\\", ":", "=", "<", ">", "/", "&", ";", " ", "\n", "\r", "\t", ".", "-", "_", "1", "a", "Z",
+                "token", "key", "id", "\"token\"", "\"id\"", "=\"", "\":\"", "\": \"", "</", "<token>", "</token>",
+                "<id>", "</id>", "<a:token>", "</a>", "password=", "x.token", "\\\"", "k:v", "sig", "=&", "  ",
+            )
+
+        val redactor = TextualRedactor({ isSensitive(it) }, "[R]")
+
+        fun isSensitive(key: String): Boolean = key.lowercase().let { "token" in it || "key" in it || "sig" in it }
+    }
+}

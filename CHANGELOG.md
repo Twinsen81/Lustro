@@ -65,6 +65,14 @@ see [DECISIONS.md](DECISIONS.md).
   metadata / server challenges, not credentials. The fragment heuristic and the
   `Authorization`/`Cookie` set are unchanged, and a custom `Redactor` passed to
   `NetworkDebugTab.create(...)` still overrides all of it.
+- **Capture stalling the app's HTTP calls on large text bodies.** `DefaultRedactor`
+  masks bodies that aren't a single JSON value or a form (plain text, XML, SSE,
+  NDJSON, and JSON cut off at the capture cap) on the app's own HTTP thread. Its
+  regex passes were quadratic there: they backtracked on long identifier runs,
+  and on Android each match cost time proportional to the whole body. A 20 KB
+  `text/plain` body added about 5 s to the call, a 250 KB NDJSON body about 4 s,
+  and a truncated 256 KB JSON response blocked it for over a minute. A linear
+  scan now masks the same values in milliseconds.
 
 ### Changed
 
