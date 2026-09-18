@@ -54,9 +54,9 @@ public class Lustro internal constructor(
             .takeIf { it.isNotBlank() }
             ?: application.packageName
 
-    // Always-on token store backed by a private SharedPreferences file. The token
-    // is materialised lazily and surfaced on the machine-parseable startup log line
-    // emitted after each successful bind.
+    // Always-on token store backed by a private SharedPreferences file. Opening
+    // that file is disk I/O, so the token is only read off the main thread: by
+    // request handlers, and on [workExecutor] for the endpoint log after each bind.
     private val tokenStore = LustroTokenStore(application.applicationContext)
 
     @Volatile
@@ -70,12 +70,13 @@ public class Lustro internal constructor(
     @Volatile
     private var captureEnabled: Boolean = true
 
-    // Single daemon thread that runs the background drain+close off the main
-    // thread (the ProcessLifecycleOwner fires onStop on the main thread). Serial
-    // by construction, so overlapping background events drain in order.
-    private val drainExecutor: ExecutorService =
+    // Single daemon thread for the lifecycle work that must stay off the main
+    // thread, where the ProcessLifecycleOwner fires onStart/onStop: the background
+    // drain+close, and the endpoint log with its token read. Serial by
+    // construction, so overlapping background events drain in order.
+    private val workExecutor: ExecutorService =
         Executors.newSingleThreadExecutor { runnable ->
-            Thread(runnable, "lustro-drain").apply { isDaemon = true }
+            Thread(runnable, "lustro-worker").apply { isDaemon = true }
         }
 
     // The process-lifecycle observer installed by start(); foreground binds,
@@ -166,7 +167,7 @@ public class Lustro internal constructor(
      * Background lifecycle hook: DRAINS in-flight requests
      * (up to [DRAIN_TIMEOUT_MS]) and closes the socket. Internal for tests.
      *
-     * The drain+close runs on [drainExecutor] so this returns IMMEDIATELY: the
+     * The drain+close runs on [workExecutor] so this returns IMMEDIATELY: the
      * ProcessLifecycleOwner dispatches `onStop` on the MAIN thread and a slow
      * in-flight request must never block the UI for the drain budget. We capture
      * the exact server instance to drain so a rapid re-foreground that rebinds a
@@ -179,11 +180,11 @@ public class Lustro internal constructor(
                 server ?: return
             }
         try {
-            drainExecutor.execute { drainAndClose(toClose) }
+            workExecutor.execute { drainAndClose(toClose) }
         } catch (e: RejectedExecutionException) {
             // Executor already shut down (stop() ran). Fall back to a synchronous
             // close so the socket still tears down.
-            Log.w(TAG, "Drain executor rejected the background close; closing inline", e)
+            Log.w(TAG, "Worker rejected the background close; closing inline", e)
             drainAndClose(toClose)
         }
     }
@@ -262,12 +263,30 @@ public class Lustro internal constructor(
      * Emits the single machine-parseable endpoint-discovery line. Tag `LustroToken`,
      * level INFO. The CLI/agent parses host, port, and
      * token from this line — it is the single source of truth for discovery.
+     *
+     * Logged from [workExecutor]: binds usually run on the main thread, and the
+     * first token read opens the prefs file.
      */
     private fun logEndpoint(port: Int) {
-        Log.i(
-            ENDPOINT_LOG_TAG,
-            "Lustro ready endpoint=http://${config.bindAddress}:$port token=${tokenStore.token()}",
-        )
+        // Never throws: a throwable escaping a workExecutor task reaches the default
+        // handler and kills the host app.
+        val logLine =
+            Runnable {
+                try {
+                    Log.i(
+                        ENDPOINT_LOG_TAG,
+                        "Lustro ready endpoint=http://${config.bindAddress}:$port token=${tokenStore.token()}",
+                    )
+                } catch (e: Throwable) {
+                    Log.w(TAG, "Failed to log the debug server endpoint", e)
+                }
+            }
+        try {
+            workExecutor.execute(logLine)
+        } catch (e: RejectedExecutionException) {
+            Log.w(TAG, "Worker rejected the endpoint log; logging inline", e)
+            logLine.run()
+        }
     }
 
     /**
@@ -296,7 +315,7 @@ public class Lustro internal constructor(
      * the meantime, we leave [server] untouched (we only ever close the instance
      * we captured).
      *
-     * Never throws. It runs as a plain executor task on [drainExecutor] (or
+     * Never throws. It runs as a plain executor task on [workExecutor] (or
      * inline on the main thread), and unlike the limiter's `FutureTask`, nothing
      * there captures a throwable: it would reach the default handler and kill
      * the host app.

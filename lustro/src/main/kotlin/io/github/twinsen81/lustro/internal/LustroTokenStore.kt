@@ -16,29 +16,32 @@ import java.util.Base64
  * Because the prefs file lives in app-private storage, clearing the app's data
  * or a fresh install naturally yields a new (empty) prefs file and therefore a
  * new token — no special handling is required.
+ *
+ * Construction does no disk I/O: the prefs file is opened on first use, so
+ * call [token], [rotate], and [reset] off the main thread.
  */
 internal class LustroTokenStore(context: Context) {
-    private val prefs: SharedPreferences =
-        context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val appContext: Context = context.applicationContext
+
+    private val prefs: SharedPreferences by lazy {
+        appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    }
 
     /**
      * Returns the persisted token, generating and persisting one on first
      * access. Subsequent calls return the same value until [rotate]/[reset].
      */
-    @Synchronized
-    fun token(): String {
-        prefs.getString(KEY_TOKEN, null)?.let { if (it.isNotEmpty()) return it }
-        return generateAndStore()
-    }
+    fun token(): String =
+        synchronized(LOCK) {
+            prefs.getString(KEY_TOKEN, null)?.takeIf { it.isNotEmpty() } ?: generateAndStore()
+        }
 
     /** Generates, persists, and returns a fresh token, invalidating the old one. */
-    @Synchronized
-    fun rotate(): String = generateAndStore()
+    fun rotate(): String = synchronized(LOCK) { generateAndStore() }
 
     /** Clears the persisted token. The next [token] call generates a new one. */
-    @Synchronized
     fun reset() {
-        prefs.edit().remove(KEY_TOKEN).apply()
+        synchronized(LOCK) { prefs.edit().remove(KEY_TOKEN).apply() }
     }
 
     private fun generateAndStore(): String {
@@ -57,5 +60,10 @@ internal class LustroTokenStore(context: Context) {
         private const val TOKEN_BYTES = 32
 
         private val ENCODER: Base64.Encoder = Base64.getUrlEncoder().withoutPadding()
+
+        // Process-wide rather than per instance: every store shares the one prefs
+        // file, so two stores reading it concurrently for the first time must not
+        // both generate a token and persist different values.
+        private val LOCK = Any()
     }
 }
