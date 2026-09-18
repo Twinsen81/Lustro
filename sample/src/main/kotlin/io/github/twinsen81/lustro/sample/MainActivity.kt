@@ -68,12 +68,6 @@ public class MainActivity : Activity() {
 
         root.addView(
             TextView(this).apply {
-                text = "Lustro sample"
-                textSize = TITLE_TEXT_SIZE
-            },
-        )
-        root.addView(
-            TextView(this).apply {
                 text =
                     "Each button fires a request through the Lustro-instrumented " +
                         "OkHttpClient — or, under Platform HTTP, the java.net stack. " +
@@ -81,7 +75,7 @@ public class MainActivity : Activity() {
                         "tab. Flip the Overwrite toggle while a periodic sync runs to " +
                         "collapse repeats into one row, or use the Mock Rules panel to " +
                         "inject error responses."
-                setPadding(0, PADDING / 2, 0, PADDING)
+                setPadding(0, 0, 0, PADDING)
             },
         )
 
@@ -291,7 +285,6 @@ public class MainActivity : Activity() {
         private const val BASE = "https://httpbingo.org"
         private val JSON = "application/json; charset=utf-8".toMediaType()
         private const val PADDING = 48
-        private const val TITLE_TEXT_SIZE = 22f
         private const val SECTION_TEXT_SIZE = 16f
         private const val IO_THREADS = 4
         private const val SYNC_INTERVAL_MS = 2_000L
