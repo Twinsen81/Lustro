@@ -196,4 +196,34 @@ class DefaultRedactorTest {
         assertEquals("plain prose is byte-identical", prose, redactor.redactBody(prose, MediaType.TEXT))
     }
 
+    // Redaction runs on the app's HTTP thread. A backtracking regex needs minutes
+    // on these bodies (and overflows the JVM's stack on long strings); a linear
+    // scan needs milliseconds.
+    @Test(timeout = 10_000)
+    fun `text bodies at the capture cap that defeat backtracking redact quickly and unchanged`() {
+        val size = 256 * 1024
+        listOf(
+            "a".repeat(size),
+            "a.".repeat(size / 2),
+            "<a ".repeat(size / 3) + ">",
+            "{\"note\":\"" + "\\\"".repeat(size / 2),
+            "\"k\":\"" + "v".repeat(size),
+        ).forEach { body -> assertEquals(body, redactor.redactBody(body, MediaType.TEXT)) }
+    }
+
+    @Test(timeout = 10_000)
+    fun `JSON truncated at the capture cap is masked quickly`() {
+        // A base64url blob reads as one long identifier run.
+        val blob = "aGVsbG8_d29ybGQ-".repeat(4 * 1024)
+        val body =
+            buildString {
+                append("{\"items\":[")
+                var i = 0
+                while (length < 256 * 1024) append("{\"id\":$i,\"access_token\":\"tok-${i++}\",\"thumb\":\"$blob\"},")
+                append("{\"id\":$i,\"thumb\":\"${blob.take(1000)}")
+            }
+        val out = redactor.redactBody(body, MediaType.JSON)
+        assertTrue("every token masked", !out.contains("tok-"))
+        assertTrue("masked in place", out.startsWith("{\"items\":[{\"id\":0,\"access_token\":\"[REDACTED]\",\"thumb\":\"$blob\"},"))
+    }
 }
