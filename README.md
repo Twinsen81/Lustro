@@ -163,6 +163,11 @@ client that already has the Lustro interceptor installed so replayed requests sh
 traffic list. Relative URLs resolve against `DebugConfig.appServerBaseUrl` (rejected when it is
 unset); requests aimed at the debug server's own bind host:port are rejected.
 
+The panel reports only the status and outcome, so the sender reads at most
+`DebugConfig.maxBodyCaptureBytes` of the response body and then closes the response: a large
+download or an endless stream cannot exhaust the app's heap. A send still running when the
+per-request timeout answers `504` has its call cancelled right after.
+
 ## Platform `HttpURLConnection` capture
 
 OkHttp capture is the default and needs no opt-in. To **also** capture platform

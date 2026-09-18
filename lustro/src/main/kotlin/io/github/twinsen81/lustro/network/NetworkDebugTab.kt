@@ -34,7 +34,7 @@ import org.json.JSONObject
  */
 public class NetworkDebugTab private constructor(
     private val store: NetworkTrafficStore,
-    private val sender: NetworkSender?,
+    private val senderClient: OkHttpClient?,
     private val capturePlatformHttp: Boolean,
     maxBodyCaptureBytes: Long,
 ) : DebugTab(), NetworkCaptureProvider {
@@ -64,6 +64,11 @@ public class NetworkDebugTab private constructor(
     @Volatile
     private var appServerBaseUrl: String? = null
 
+    // Bounds a Send Request call; pushed in via applyConfig from
+    // DebugConfig.requestTimeoutMs.
+    @Volatile
+    private var requestTimeoutMs: Long = DEFAULT_REQUEST_TIMEOUT_MS
+
     override val captureSink: io.github.twinsen81.lustro.network.NetworkCaptureSink
         get() = store
 
@@ -85,19 +90,22 @@ public class NetworkDebugTab private constructor(
     /**
      * Internal config-injection seam invoked by `Lustro.Builder.build()` so the
      * tab honours [DebugConfig] instead of its standalone factory defaults:
-     * the transaction ring cap, the per-body capture cap, and the base URL used
-     * to resolve relative Send Request URLs.
+     * the transaction ring cap, the per-body capture cap, the base URL used
+     * to resolve relative Send Request URLs, and the per-request timeout that
+     * bounds a Send Request call.
      */
     internal fun applyConfig(
         maxCaptureTransactions: Int,
         maxBodyCaptureBytes: Long,
         appServerBaseUrl: String?,
         captureBudgetBytes: Long,
+        requestTimeoutMs: Long,
     ) {
         store.maxTransactions = maxCaptureTransactions
         store.captureBudgetBytes = captureBudgetBytes
         this.maxBodyCaptureBytes = maxBodyCaptureBytes
         this.appServerBaseUrl = appServerBaseUrl
+        this.requestTimeoutMs = requestTimeoutMs
     }
 
     override fun onStart() {
@@ -205,7 +213,7 @@ public class NetworkDebugTab private constructor(
             path == "pause" && method == "POST" -> handleTogglePause()
             path == "overwrite-mode" && method == "POST" -> handleToggleOverwriteMode()
             path == "throttle" && method == "POST" -> handleSetThrottle(body)
-            path == "send" && method == "POST" && sender != null -> handleSendRequest(body)
+            path == "send" && method == "POST" && senderClient != null -> handleSendRequest(body)
             else -> null
         }
     }
@@ -374,7 +382,7 @@ public class NetworkDebugTab private constructor(
         }
 
     private fun handleSendRequest(body: String?): DebugResponse {
-        val activeSender = sender ?: return DebugResponse.notFound("Send is not configured")
+        val client = senderClient ?: return DebugResponse.notFound("Send is not configured")
         return try {
             val json = JSONObject(body ?: "{}")
             val rawUrl = json.optString("url").trim()
@@ -427,7 +435,7 @@ public class NetworkDebugTab private constructor(
                 )
             // SYNCHRONOUS: block for the sender result. The runtime calls handle()
             // off the main thread, so blocking here is safe.
-            val result = activeSender.send(sendRequest)
+            val result = newSender(client).send(sendRequest)
             DebugResponse.json {
                 append("{")
                 // transactionId is null: the synchronous send path does not correlate
@@ -446,6 +454,18 @@ public class NetworkDebugTab private constructor(
             DebugResponse.error("Failed to send: ${e.message}")
         }
     }
+
+    // Built per send so it observes the current config. Only the status and
+    // outcome are reported, so the response read is capped at the capture cap.
+    // The call timeout runs a moment past the per-request timeout: the server
+    // still answers 504 first, then OkHttp cancels the call so a slow or stalled
+    // response cannot keep the worker thread and socket busy.
+    private fun newSender(client: OkHttpClient): OkHttpSender =
+        OkHttpSender(
+            client = client,
+            maxResponseBodyBytes = maxBodyCaptureBytes,
+            callTimeoutMs = requestTimeoutMs + SEND_CANCEL_GRACE_MS,
+        )
 
     private fun isSelfRequest(rawUrl: String): Boolean {
         // Compare against the server's ACTUAL bind host:port (not all loopback): a
@@ -621,16 +641,19 @@ public class NetworkDebugTab private constructor(
                 )
             return NetworkDebugTab(
                 store = store,
-                sender = senderClient?.let { OkHttpSender(it) },
+                senderClient = senderClient,
                 capturePlatformHttp = capturePlatformHttp,
                 maxBodyCaptureBytes = DEFAULT_MAX_BODY_CAPTURE_BYTES,
             )
         }
+
+        private const val SEND_CANCEL_GRACE_MS = 1_000L
 
         // The built-in defaults. The configurable DebugConfig values are applied by the
         // runtime when the tab is registered via Lustro.Builder (the proven defaults are
         // kept here so create() works standalone).
         private const val DEFAULT_MAX_TRANSACTIONS = 1000
         private const val DEFAULT_MAX_BODY_CAPTURE_BYTES = 256L * 1024
+        private const val DEFAULT_REQUEST_TIMEOUT_MS = 30_000L
     }
 }

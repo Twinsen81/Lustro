@@ -121,9 +121,12 @@ persisted).
 **Send request semantics.** Body `{ url, method?="GET", headers?, body? }`. Blocks until the
 sender returns, within the per-request timeout. Relative URLs resolve against the app server base
 the developer configured (rejected if unset). The response is `{ transactionId?, statusCode?,
-ok, error? }` (`transactionId` may be `null`). Requests to the debug server's **own** bind
-host:port are rejected. **Send is only available when a `NetworkSender` is configured** — if not,
-the route returns an enveloped `404` and the panel is hidden.
+ok, error? }` (`transactionId` may be `null`); the response body is never returned, and the
+sender reads at most `maxBodyCaptureBytes` of it, so large or endless responses are safe to send.
+A send that outlives the per-request timeout gets the enveloped `504`, and its call is cancelled.
+Requests to the debug server's **own** bind host:port are rejected. **Send is only available when
+a `NetworkSender` is configured** — if not, the route returns an enveloped `404` and the panel is
+hidden.
 
 **Mutations advance the cursor.** Capture, mock changes, pause, throttle, overwrite, and send all
 bump the transactions cursor, so a poller observing `transactions` sees the effect.
