@@ -4,6 +4,11 @@ import io.github.twinsen81.lustro.DebugRequest
 import io.github.twinsen81.lustro.DebugResponse
 import io.github.twinsen81.lustro.Headers
 import io.github.twinsen81.lustro.MediaType
+import java.util.concurrent.TimeUnit
+import okhttp3.OkHttpClient
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
+import okio.Buffer
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -192,6 +197,61 @@ class NetworkDebugTabTest {
     fun `send route is hidden when no sender configured`() {
         val tab = tab()
         assertNull(tab.handle(post("send", """{"url":"https://example.com"}""")))
+    }
+
+    private fun <T> withServer(response: MockResponse, block: (url: String) -> T): T {
+        val server = MockWebServer()
+        server.enqueue(response)
+        server.start()
+        try {
+            return block(server.url("/send-target").toString())
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    // No read timeout, so only the call timeout can end a stalled send.
+    private fun senderTab(maxBodyCaptureBytes: Long, requestTimeoutMs: Long): NetworkDebugTab =
+        NetworkDebugTab.create(senderClient = OkHttpClient.Builder().readTimeout(0, TimeUnit.MILLISECONDS).build())
+            .apply {
+                applyConfig(
+                    maxCaptureTransactions = 1000,
+                    maxBodyCaptureBytes = maxBodyCaptureBytes,
+                    appServerBaseUrl = null,
+                    captureBudgetBytes = 50L * 1024 * 1024,
+                    requestTimeoutMs = requestTimeoutMs,
+                )
+            }
+
+    @Test(timeout = 20_000)
+    fun `send reports the status of a large response without reading all of it`() {
+        // 1 MiB at 16 KiB/s would take ~64 s to read in full.
+        val big = MockResponse().setBody(Buffer().write(ByteArray(1024 * 1024))).throttleBody(16L * 1024, 1, TimeUnit.SECONDS)
+        val tab = senderTab(maxBodyCaptureBytes = 4096, requestTimeoutMs = 30_000)
+
+        val json = withServer(big) { url -> tab.handle(post("send", """{"url":"$url"}"""))!!.json() }
+
+        assertTrue(json.toString(), json.getBoolean("ok"))
+        assertEquals(200, json.getInt("statusCode"))
+    }
+
+    @Test(timeout = 20_000)
+    fun `send cancels a stalled call shortly after the configured request timeout`() {
+        // One byte, then silence for 4 s.
+        val stalled = MockResponse().setBody("xy").throttleBody(1, 4, TimeUnit.SECONDS)
+        val tab = senderTab(maxBodyCaptureBytes = 4096, requestTimeoutMs = 200)
+
+        var elapsedMs = 0L
+        val json =
+            withServer(stalled) { url ->
+                val started = System.nanoTime()
+                tab.handle(post("send", """{"url":"$url"}"""))!!.json()
+                    .also { elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started) }
+            }
+
+        assertFalse(json.getBoolean("ok"))
+        assertEquals("timeout", json.getString("error"))
+        assertTrue("send took ${elapsedMs}ms", elapsedMs < 3_000)
     }
 
     @Test

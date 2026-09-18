@@ -382,14 +382,16 @@ public class Lustro internal constructor(
         /** Builds the [Lustro] runtime. */
         public fun build(): Lustro {
             // Push DebugConfig into the registered NetworkDebugTab (config-injection
-            // seam) so it honours the configured ring cap, body cap, and relative
-            // Send Request base instead of its standalone factory defaults.
+            // seam) so it honours the configured ring cap, body cap, relative Send
+            // Request base, and request timeout instead of its standalone factory
+            // defaults.
             registry.sortedTabs.filterIsInstance<NetworkDebugTab>().forEach { tab ->
                 tab.applyConfig(
                     maxCaptureTransactions = config.maxCaptureTransactions,
                     maxBodyCaptureBytes = config.maxBodyCaptureBytes,
                     appServerBaseUrl = config.appServerBaseUrl,
                     captureBudgetBytes = config.captureBudgetBytes,
+                    requestTimeoutMs = config.requestTimeoutMs,
                 )
             }
             return Lustro(application, config, registry)
