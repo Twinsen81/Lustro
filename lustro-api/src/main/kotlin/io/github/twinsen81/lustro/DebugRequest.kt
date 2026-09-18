@@ -14,7 +14,10 @@ public class DebugRequest @JvmOverloads constructor(
     public val method: String,
     /** Query parameters, each name mapped to its ordered list of values. */
     public val queryParams: Map<String, List<String>> = emptyMap(),
-    /** The request headers. */
+    /**
+     * The request headers. The runtime leaves out `Authorization` and `Cookie`,
+     * which carry the debug session's credentials.
+     */
     public val headers: Headers = Headers.EMPTY,
     /** The raw request body bytes, or `null` if there is no body. */
     public val body: ByteArray? = null,

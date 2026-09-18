@@ -59,6 +59,10 @@ public abstract class DebugTab {
      * dispatches multiple requests in flight), so a tab holding mutable state
      * must be thread-safe. Blocking on I/O here is fine — the runtime enforces
      * a per-request timeout.
+     *
+     * The runtime authenticates the request before calling this and does not
+     * pass the credentials on: [DebugRequest.headers] never contains
+     * `Authorization` or `Cookie`.
      */
     public open fun handle(request: DebugRequest): DebugResponse? = null
 
