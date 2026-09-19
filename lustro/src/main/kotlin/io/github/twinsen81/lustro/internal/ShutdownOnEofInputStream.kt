@@ -18,12 +18,18 @@ import java.net.SocketException
  * Once the client has closed, nothing more can arrive on the connection, so
  * ending it is always right. Readers still get every byte the client sent;
  * only the read past the last one throws.
+ *
+ * It also reports no bytes available. NanoHTTPD reads through a buffered
+ * stream whose `available()` adds this stream's count to its own buffered
+ * bytes, and [IncomingBody.headersFit] needs those buffered bytes alone.
  */
 internal class ShutdownOnEofInputStream(input: InputStream) : FilterInputStream(input) {
     override fun read(): Int = super.read().also { if (it < 0) throw connectionEnd() }
 
     override fun read(b: ByteArray, off: Int, len: Int): Int =
         super.read(b, off, len).also { if (it < 0) throw connectionEnd() }
+
+    override fun available(): Int = 0
 }
 
 /**

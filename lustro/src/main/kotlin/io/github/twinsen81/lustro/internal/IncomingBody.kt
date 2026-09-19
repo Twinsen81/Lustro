@@ -17,13 +17,23 @@ import java.io.InputStream
  * must close the connection.
  */
 internal class IncomingBody(private val session: NanoHTTPD.IHTTPSession) {
+    /**
+     * False when the request line and headers didn't fit the 8 KB buffer
+     * NanoHTTPD 2.3.1 reads them into. NanoHTTPD then parses only the part that
+     * fit and rewinds the stream to the start of the request, so on a keep-alive
+     * connection it would parse the same bytes as the next request and serve it
+     * again, forever. Such a request can't be served, and where its body starts
+     * is unknown.
+     */
+    val headersFit: Boolean
+
     /** The declared `Content-Length`, or null when there's none or it's malformed. */
     val declaredLength: Long?
 
     /**
      * False when the end of the body can't be found: the request has a
-     * `Transfer-Encoding`, which NanoHTTPD doesn't decode, or a malformed
-     * `Content-Length`.
+     * `Transfer-Encoding`, which NanoHTTPD doesn't decode, a malformed
+     * `Content-Length`, or headers that didn't fit.
      */
     val isFramed: Boolean
 
@@ -32,10 +42,15 @@ internal class IncomingBody(private val session: NanoHTTPD.IHTTPSession) {
         private set
 
     init {
+        // After headers that fit, NanoHTTPD has taken at least the header block
+        // out of its buffer. After the rewind, the buffer holds a full 8 KB it
+        // hasn't taken. The socket's own bytes don't count, as the connection's
+        // input reports none available (ShutdownOnEofInputStream).
+        headersFit = session.inputStream.available() < HEADER_BUFFER_BYTES
         val headers = session.headers.orEmpty()
         val contentLength = headers["content-length"]
         declaredLength = contentLength?.toLongOrNull()?.takeIf { it >= 0 }
-        isFramed = "transfer-encoding" !in headers && (contentLength == null || declaredLength != null)
+        isFramed = headersFit && "transfer-encoding" !in headers && (contentLength == null || declaredLength != null)
         isConsumed = isFramed && (declaredLength ?: 0L) == 0L
     }
 
@@ -109,6 +124,10 @@ internal class IncomingBody(private val session: NanoHTTPD.IHTTPSession) {
     class Incomplete(cause: IOException) : Exception(cause)
 
     private companion object {
+        // NanoHTTPD's HTTPSession.BUFSIZE: the size of both its header buffer and
+        // the buffered stream it reads the connection through.
+        private const val HEADER_BUFFER_BYTES = 8 * 1024
+
         // Enough for a client still uploading a body a few times the default cap
         // to get its response. Past it, the connection closes regardless.
         private const val MAX_DISCARDED_BYTES = 4L * 1024 * 1024

@@ -9,6 +9,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
+import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -28,11 +29,12 @@ import kotlin.concurrent.thread
 
 /**
  * End-to-end (over loopback HTTP) tests for how [LustroServer] handles request
- * bodies. NanoHTTPD parses a connection's next request from wherever the last
- * one's body stopped, so a response that leaves a body unread must close the
- * connection. And an API request's body is read before the request takes a
- * concurrency slot, so a client that sends it slowly holds only its own
- * connection.
+ * bodies, and headers too large for NanoHTTPD's buffer. NanoHTTPD parses a
+ * connection's next request from wherever the last one stopped: where its body
+ * was left unread, or, when its headers didn't fit, back at its start. Either
+ * way the response must close the connection. And an API request's body is
+ * read before the request takes a concurrency slot, so a client that sends it
+ * slowly holds only its own connection.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -431,5 +433,93 @@ class LustroServerRequestBodyTest {
         }
         assertTrue("the tab never saw the partial body: ${tab.bodies}", tab.bodies.isEmpty())
         uncaught.assertNothingUncaught()
+    }
+
+    // Takes the request past the 8 KB NanoHTTPD reads a request's headers into,
+    // as a browser's cookies can when other local servers set large ones.
+    private val largeCookie = "Cookie: other=${"x".repeat(9_000)}"
+
+    /** A GET whose request line and headers, blank line included, take [size] bytes. */
+    private fun getWithHeadersOf(size: Int): String {
+        val unpadded = request("GET", "/tab/sample", null, "X-Pad: ")
+        return request("GET", "/tab/sample", null, "X-Pad: ${"x".repeat(size - unpadded.length)}")
+    }
+
+    private fun assertHeadersTooLarge(response: RawResponse) {
+        assertEquals(400, response.status)
+        assertEquals("close", response.headers["connection"])
+        val json = JSONObject(response.body)
+        assertEquals("bad_request", json.getString("error"))
+        assertEquals("Request headers too large", json.getString("message"))
+    }
+
+    @Test
+    fun `a request whose headers overflow 8 KB gets one 400 and its connection ends`() {
+        startServer()
+        Connection().use { connection ->
+            connection.send(request("GET", "/tab/sample", null, largeCookie))
+            // NanoHTTPD alone serves the part of the headers that fits, then
+            // parses the same bytes as the next request, answering forever.
+            assertHeadersTooLarge(connection.readResponse())
+            connection.assertEndsWithoutMore()
+        }
+        uncaught.assertNothingUncaught()
+    }
+
+    @Test
+    fun `headers that fill the 8 KB buffer exactly are served`() {
+        startServer()
+        Connection().use { connection ->
+            connection.send(getWithHeadersOf(8 * 1024))
+            val response = connection.readResponse()
+            assertEquals(200, response.status)
+            assertEquals("keep-alive", response.headers["connection"])
+
+            connection.send(getWithHeadersOf(8 * 1024 + 1))
+            assertHeadersTooLarge(connection.readResponse())
+            connection.assertEndsWithoutMore()
+        }
+    }
+
+    @Test
+    fun `an API request whose headers overflow 8 KB never reaches its tab`() {
+        startServer()
+        val raw = request("POST", "/api/v1/sample/echo", "a".repeat(1024 * 1024), auth(), largeCookie)
+        Connection().use { connection ->
+            // The token fits in the first 8 KB, and the answer goes out while the
+            // client is still sending the body.
+            val upload = thread { runCatching { connection.send(raw) } }
+            assertHeadersTooLarge(connection.readResponse())
+            connection.assertEndsWithoutMore()
+            upload.join(5_000)
+        }
+        assertTrue("no request reached the tab: ${tab.bodies.size}", tab.bodies.isEmpty())
+    }
+
+    @Test
+    fun `a request pipelined behind one that fits still gets its 400`() {
+        startServer()
+        Connection().use { connection ->
+            connection.send(request("GET", "/tab/sample") + request("GET", "/tab/sample", null, largeCookie))
+            assertEquals(200, connection.readResponse().status)
+            assertHeadersTooLarge(connection.readResponse())
+            connection.assertEndsWithoutMore()
+        }
+    }
+
+    @Test
+    fun `a large body arriving behind small headers is served`() {
+        startServer()
+        val body = "a".repeat(64 * 1024)
+        Connection().use { connection ->
+            // At routing, NanoHTTPD's buffer holds the start of the body and the
+            // socket holds the rest: neither is part of the headers.
+            connection.send(request("POST", "/api/v1/sample/echo", body, auth()) + request("GET", "/tab/sample"))
+            assertEquals(200, connection.readResponse().status)
+            val response = connection.readResponse()
+            assertEquals(200, response.status)
+            assertEquals("keep-alive", response.headers["connection"])
+        }
+        assertEquals(listOf(body), tab.bodies)
     }
 }

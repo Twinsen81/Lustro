@@ -179,6 +179,18 @@ see [DECISIONS.md](DECISIONS.md).
   waits for room as a request waits for a slot. A client that stops sending
   partway through a body now gets no response, where the tab used to get the
   truncated body.
+- **Large request headers answered forever at full CPU.** NanoHTTPD reads a
+  request's line and headers into an 8 KB buffer. When they didn't fit, it
+  served the part that did, then parsed the same bytes as the connection's next
+  request, so the server answered that one request again and again. On a Pixel
+  6 Pro, a GET with a 9 KB `Cookie` header got 2,767 responses in 2 s, and an
+  authenticated `POST pause` with one toggled capture 1,296 times. Once the
+  client left, its connection thread kept spinning at full CPU, logging a
+  failed send on every pass, until the app went to the background. It needed
+  no token, and a browser gets there on its own when other local servers set
+  large cookies on the same host, since cookies aren't isolated by port. Such a
+  request now gets an enveloped `400` without being routed, and its connection
+  closes.
 
 ### Changed
 

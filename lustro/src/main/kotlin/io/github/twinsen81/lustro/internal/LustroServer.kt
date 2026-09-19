@@ -51,6 +51,9 @@ import java.util.concurrent.TimeUnit
  *   buffered at once are capped at `maxConcurrentRequests × maxRequestBodyBytes`.
  *   A response to a request whose body wasn't read closes the connection
  *   ([IncomingBody]).
+ * - Oversized headers: a request whose line and headers don't fit NanoHTTPD's
+ *   8 KB buffer gets a 400 without being routed, and its connection closes.
+ *   NanoHTTPD alone would serve it again and again ([IncomingBody.headersFit]).
  * - Failure containment: anything a route throws, Errors included, becomes an
  *   enveloped 500, and connections run on a [ContainedAsyncRunner], so nothing
  *   reaches the host app's uncaught-exception handler.
@@ -135,7 +138,7 @@ internal class LustroServer(
         val body = IncomingBody(session)
         val response =
             try {
-                route(session, body)
+                if (body.headersFit) route(session, body) else headersTooLarge()
             } catch (_: IncomingBody.Incomplete) {
                 // The client stopped sending partway through its body, so there's
                 // no request to answer. NanoHTTPD ends a connection whose headers
@@ -236,6 +239,23 @@ internal class LustroServer(
             "/api/v1/_schema" -> handleSharedSchema()
             else -> handleApi(session, uri.removePrefix("/api/v1/"), body, cancellation)
         }
+
+    /**
+     * The enveloped 400 for a request whose headers didn't fit NanoHTTPD's 8 KB
+     * buffer ([IncomingBody.headersFit]). Only the part that fit was parsed, so
+     * the request isn't routed. Its end is unknown, so the response closes the
+     * connection.
+     */
+    private fun headersTooLarge(): Response =
+        toNanoResponse(
+            DebugResponse.error(
+                message = "Request headers too large",
+                status = 400,
+                hint =
+                    "The request line and headers must fit in 8 KB. Large cookies set on this host by other " +
+                        "local servers are the usual cause: clear them, or open the console on another host name",
+            ),
+        )
 
     /**
      * Returns an enveloped 400 when the end of the request's body can't be
