@@ -12,6 +12,8 @@ import io.github.twinsen81.lustro.MediaType
 import io.github.twinsen81.lustro.escapeForJson
 import io.github.twinsen81.lustro.escapeHtml
 import java.io.ByteArrayInputStream
+import java.io.InputStream
+import java.net.Socket
 import java.net.URI
 
 /**
@@ -44,6 +46,9 @@ import java.net.URI
  * - Failure containment: anything a route throws, Errors included, becomes an
  *   enveloped 500, and connections run on a [ContainedAsyncRunner], so nothing
  *   reaches the host app's uncaught-exception handler.
+ * - Bounded connections: the [ContainedAsyncRunner] caps open connections, and
+ *   a client that closes mid-request ends its connection
+ *   ([ShutdownOnEofInputStream]) instead of wedging its thread.
  *
  * Lifecycle binding is driven from [io.github.twinsen81.lustro.Lustro]; the
  * [beginDrain]/[shutdownLimiter] hooks below let it stop accepting new requests
@@ -73,8 +78,18 @@ internal class LustroServer(
         )
 
     init {
-        setAsyncRunner(ContainedAsyncRunner())
+        // Every request in the limiter, running or queued, holds its connection,
+        // so the cap leaves room for all of them plus page loads and idle
+        // keep-alive connections.
+        val maxConnections =
+            (maxConcurrentRequests.toLong() + requestQueueCapacity + CONNECTION_HEADROOM)
+                .coerceIn(1, Int.MAX_VALUE.toLong())
+                .toInt()
+        setAsyncRunner(ContainedAsyncRunner(maxConnections))
     }
+
+    override fun createClientHandler(finalAccept: Socket, inputStream: InputStream): ClientHandler =
+        super.createClientHandler(finalAccept, ShutdownOnEofInputStream(inputStream))
 
     /**
      * In-flight `/api/v1/` request count, including handlers still running after
@@ -697,5 +712,9 @@ $tabsHtml
         private const val DEFAULT_MAX_CONCURRENT_REQUESTS = 16
         private const val DEFAULT_REQUEST_QUEUE_CAPACITY = 64
         private const val DEFAULT_REQUEST_TIMEOUT_MS = 30_000L
+
+        // Open connections allowed beyond what the limiter can hold: a browser
+        // keeps up to 6 per host, so this covers a couple of browsers plus CLI calls.
+        private const val CONNECTION_HEADROOM = 16
     }
 }

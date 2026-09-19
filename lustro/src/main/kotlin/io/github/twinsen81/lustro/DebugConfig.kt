@@ -33,7 +33,9 @@ public class DebugConfig private constructor(
     public val maxConcurrentRequests: Int,
     /**
      * Bounded request queue capacity. Default `64`. A queued request waits at
-     * most [requestTimeoutMs] for a slot, then gets a `503`.
+     * most [requestTimeoutMs] for a slot, then gets a `503`. The server also
+     * keeps at most [maxConcurrentRequests] + [requestQueueCapacity] + 16
+     * connections open and closes any past that without a response.
      */
     public val requestQueueCapacity: Int,
     /**

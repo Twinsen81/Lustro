@@ -19,6 +19,7 @@ import java.net.Socket
 /**
  * Tests [ContainedAsyncRunner] on a bare NanoHTTPD server, where nothing in
  * `serve()` catches: whatever it throws reaches the runner's connection thread.
+ * The server allows two open connections.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -36,7 +37,7 @@ class ContainedAsyncRunnerTest {
                 } else {
                     newFixedLengthResponse("ok")
                 }
-        }.apply { setAsyncRunner(ContainedAsyncRunner()) }
+        }.apply { setAsyncRunner(ContainedAsyncRunner(maxConnections = 2)) }
 
     @After
     fun tearDown() {
@@ -55,6 +56,37 @@ class ContainedAsyncRunnerTest {
         assertThrows(IOException::class.java) { get("/error") }
         assertEquals("ok", get("/ok"))
         uncaught.assertNothingUncaught()
+    }
+
+    @Test
+    fun `connections past the cap are closed until one ends`() {
+        server.start(30_000, false)
+        val held = List(2) { Socket("127.0.0.1", server.listeningPort) }
+        try {
+            // Closed before the server reads anything, so the client sees a clean end of stream.
+            Socket("127.0.0.1", server.listeningPort).use { extra ->
+                extra.soTimeout = 5_000
+                assertEquals(-1, extra.getInputStream().read())
+            }
+
+            held[0].close()
+
+            // The freed slot takes new connections once the server sees that one end.
+            val deadline = System.currentTimeMillis() + 5_000
+            var body: String? = null
+            while (body == null && System.currentTimeMillis() < deadline) {
+                body =
+                    try {
+                        get("/ok")
+                    } catch (_: IOException) {
+                        Thread.sleep(20)
+                        null
+                    }
+            }
+            assertEquals("ok", body)
+        } finally {
+            held.forEach { it.close() }
+        }
     }
 
     @Test

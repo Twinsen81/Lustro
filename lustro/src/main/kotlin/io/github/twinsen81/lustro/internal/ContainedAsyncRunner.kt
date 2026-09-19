@@ -9,7 +9,14 @@ import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Runs each NanoHTTPD connection on its own daemon thread, like NanoHTTPD's
- * `DefaultAsyncRunner`, but never lets a throwable leave that thread.
+ * `DefaultAsyncRunner`, but caps how many are open at once and never lets a
+ * throwable leave that thread.
+ *
+ * NanoHTTPD hands a connection to the runner before reading any of its
+ * request, so neither auth nor the [RequestLimiter] can bound these threads.
+ * Uncapped, any local process could open connections until thread creation
+ * failed and the host app aborted. Past [maxConnections], a new connection is
+ * closed without a thread.
  *
  * NanoHTTPD's `ClientHandler.run()` catches only [Exception], and on Android an
  * uncaught [Error] reaches the default handler, which kills the host app.
@@ -21,11 +28,25 @@ import java.util.concurrent.atomic.AtomicLong
  * handler because Android logs every uncaught throwable as `FATAL EXCEPTION`,
  * even when the thread's own handler keeps the process alive.
  */
-internal class ContainedAsyncRunner : NanoHTTPD.AsyncRunner {
+internal class ContainedAsyncRunner(private val maxConnections: Int) : NanoHTTPD.AsyncRunner {
     private val connectionCount = AtomicLong()
     private val running: MutableSet<NanoHTTPD.ClientHandler> = ConcurrentHashMap.newKeySet()
 
+    // Logs the limit once per stretch of rejections instead of once per socket.
+    private var atLimit = false
+
     override fun exec(clientHandler: NanoHTTPD.ClientHandler) {
+        // Only NanoHTTPD's accept thread calls exec(), so nothing else can add a
+        // connection between this check and the add below.
+        if (running.size >= maxConnections) {
+            clientHandler.close()
+            if (!atLimit) {
+                atLimit = true
+                Log.w(TAG, "Debug server has $maxConnections open connections; closing new ones until some end")
+            }
+            return
+        }
+        atLimit = false
         running.add(clientHandler)
         try {
             Thread({ runContained(clientHandler) }, "lustro-http-${connectionCount.incrementAndGet()}")
