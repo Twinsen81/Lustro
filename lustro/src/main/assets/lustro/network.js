@@ -1090,8 +1090,8 @@
         debugFetch(netUrl('pause'), { method: 'POST' })
             .then(function(r) { return r.json(); })
             .then(function(data) {
-                // Mutations advance the cursor; read the new state. Pause may also
-                // be reported via the cursor envelope's state on the next poll.
+                // Read the new state here; the next poll's envelope state reports
+                // it too, even when the list is unchanged.
                 if (data && data.paused !== undefined) isPaused = !!data.paused;
                 else isPaused = !isPaused;
                 updatePauseButton();
@@ -1154,7 +1154,8 @@
     // The cursor is opaque: we echo back the last one we received (omitted on the
     // first poll). `unchanged` carries no items and is a no-op; `reset` replaces
     // the whole list; `delta` carries the authoritative current list. Any UNKNOWN
-    // status is treated as `reset`. Every mutation server-side advances the cursor.
+    // status is treated as `reset`. The cursor advances only when the list changes;
+    // `state` comes with every response, `unchanged` included.
     function pollUrl() {
         var url = netUrl('transactions');
         var params = [];

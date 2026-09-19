@@ -77,17 +77,55 @@ class NetworkTrafficStoreTest {
     }
 
     @Test
-    fun `state mutations each advance the sequence`() {
+    fun `failRequest advances the sequence`() {
         val store = store()
-        var seq = store.getSequence()
-        store.setPaused(true)
-        assertTrue(store.getSequence() > seq); seq = store.getSequence()
-        store.setOverwriteMode(true)
-        assertTrue(store.getSequence() > seq); seq = store.getSequence()
-        store.setThrottleDelayMs(500)
-        assertTrue(store.getSequence() > seq); seq = store.getSequence()
+        val id = store.beginRequest("https://example.com/a", "GET", Headers.EMPTY, null, null)
+        val after = store.getSequence()
+        store.failRequest(id, 5, "boom")
+        assertTrue(store.getSequence() > after)
+    }
+
+    @Test
+    fun `clear advances the sequence`() {
+        val store = store()
+        val before = store.getSequence()
         store.clear()
-        assertTrue(store.getSequence() > seq)
+        assertTrue(store.getSequence() > before)
+    }
+
+    @Test
+    fun `control and rule changes leave the sequence alone`() {
+        // Only the transaction list backs the cursor: control state is served with
+        // every poll, and rules through their own route.
+        val store = store()
+        store.beginRequest("https://example.com/a", "GET", Headers.EMPTY, null, null)
+        val before = store.getSequence()
+        store.setPaused(true)
+        store.setOverwriteMode(true)
+        store.setThrottleDelayMs(500)
+        store.addMockRule(rule(id = "r1"))
+        store.toggleMockRule("r1")
+        store.incrementHitCount("r1")
+        store.replaceMockRules(listOf(rule(id = "r2")))
+        store.removeMockRule("r2")
+        assertEquals(before, store.getSequence())
+    }
+
+    @Test
+    fun `responses and failures for a transaction that is gone leave the sequence alone`() {
+        // E.g. an in-flight stream that keeps reporting progress after a clear.
+        val store = store()
+        val id = store.beginRequest("https://example.com/a", "GET", Headers.EMPTY, null, null)
+        store.clear()
+        val afterClear = store.getSequence()
+        store.completeRequest(id, 200, Headers.EMPTY, captured("chunk"), 5, isMocked = false, complete = false)
+        store.failRequest(id, 5, "boom")
+        assertEquals(afterClear, store.getSequence())
+    }
+
+    @Test
+    fun `each store gets its own epoch`() {
+        assertTrue(store().epoch != store().epoch)
     }
 
 
@@ -117,6 +155,30 @@ class NetworkTrafficStoreTest {
         assertEquals(1, store.getTransactions(search = "POST").size)
         assertEquals(1, store.getTransactions(search = "needle").size)
         assertEquals(2, store.getTransactions(search = null).size)
+    }
+
+    @Test
+    fun `search ignores case in the query and the captured text`() {
+        val store = store()
+        store.beginRequest("https://example.com/Users", "get", Headers.EMPTY, captured("Ärger ÜBER"), MediaType.TEXT)
+
+        for (query in listOf("users", "USERS", "GET", "ärger", "über", "r üb")) {
+            assertEquals(query, 1, store.getTransactions(search = query).size)
+        }
+        assertEquals(0, store.getTransactions(search = "userz").size)
+    }
+
+    @Test
+    fun `search re-checks a transaction once its response arrives`() {
+        val store = store()
+        val id = store.beginRequest("https://example.com/a", "GET", Headers.EMPTY, null, null)
+        assertEquals(0, store.getTransactions(search = "needle").size)
+
+        store.completeRequest(id, 200, Headers.EMPTY, captured("a Needle"), 5, isMocked = false)
+
+        assertEquals(1, store.getTransactions(search = "needle").size)
+        assertEquals(0, store.getTransactions(search = "haystack").size)
+        assertEquals(1, store.getTransactions(search = "needle").size)
     }
 
     @Test
@@ -371,16 +433,6 @@ class NetworkTrafficStoreTest {
         store.incrementHitCount("r1")
         store.incrementHitCount("r1")
         assertEquals(2, store.getMockRules().single().hitCount)
-    }
-
-    @Test
-    fun `incrementHitCount advances the cursor so a poller observes a delta`() {
-        val store = store()
-        store.addMockRule(rule(id = "r1"))
-        val before = store.getSequence()
-        store.incrementHitCount("r1")
-        // A poller holding the prior cursor must now see a change, not "unchanged".
-        assertTrue(store.getSequence() > before)
     }
 
     @Test

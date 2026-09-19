@@ -74,19 +74,50 @@ class NetworkDebugTabTest {
     }
 
     @Test
-    fun `a mutation advances the cursor and yields a delta`() {
+    fun `a capture advances the cursor and yields a delta`() {
         val tab = tab()
-        val first = tab.handle(get("transactions"))!!.json()
-        val cursor1 = first.getString("cursor")
+        val cursor1 = tab.handle(get("transactions"))!!.json().getString("cursor")
 
-        // Toggle pause = a state mutation that advances the sequence/cursor.
-        tab.handle(post("pause", "{}"))
+        tab.captureSink.beginRequest("https://example.com/a", "GET", Headers.EMPTY, null, null)
 
         val second = tab.handle(get("transactions", "cursor" to cursor1))!!.json()
         assertEquals("delta", second.getString("status"))
-        assertTrue(second.has("items"))
+        assertEquals(1, second.getJSONArray("items").length())
         assertTrue(second.getString("cursor") != cursor1)
-        assertTrue(second.getJSONObject("state").getBoolean("paused"))
+    }
+
+    @Test
+    fun `control changes leave the cursor alone and show up in state`() {
+        val tab = tab()
+        val cursor = tab.handle(get("transactions"))!!.json().getString("cursor")
+
+        tab.handle(post("pause", "{}"))
+        tab.handle(post("overwrite-mode", "{}"))
+        tab.handle(post("throttle", """{"delayMs":250}"""))
+
+        val second = tab.handle(get("transactions", "cursor" to cursor))!!.json()
+        assertEquals("unchanged", second.getString("status"))
+        assertFalse(second.has("items"))
+        val state = second.getJSONObject("state")
+        assertTrue(state.getBoolean("paused"))
+        assertTrue(state.getBoolean("overwriteMode"))
+        assertEquals(250, state.getInt("throttleDelayMs"))
+    }
+
+    @Test
+    fun `a cursor from another tab instance gets a reset`() {
+        // Models an app restart: the new tab's sequence reaches the value of the
+        // client's old cursor with a different list.
+        val before = tab()
+        before.captureSink.beginRequest("https://example.com/old", "GET", Headers.EMPTY, null, null)
+        val staleCursor = before.handle(get("transactions"))!!.json().getString("cursor")
+
+        val after = tab()
+        after.captureSink.beginRequest("https://example.com/new", "GET", Headers.EMPTY, null, null)
+
+        val poll = after.handle(get("transactions", "cursor" to staleCursor))!!.json()
+        assertEquals("reset", poll.getString("status"))
+        assertEquals("https://example.com/new", poll.getJSONArray("items").getJSONObject(0).getString("url"))
     }
 
     @Test
@@ -270,13 +301,13 @@ class NetworkDebugTabTest {
     }
 
     @Test
-    fun `add rule echoes a redacted-safe id and persists for matching`() {
-        // Confirms the route round-trips into the store such that subsequent polls
-        // observe the new cursor (a mutation).
+    fun `rule changes leave the transactions cursor alone`() {
         val tab = tab()
         val firstCursor = tab.handle(get("transactions"))!!.json().getString("cursor")
-        tab.handle(post("rules", """{"urlPattern":"/api"}"""))
-        val delta = tab.handle(get("transactions", "cursor" to firstCursor))!!.json()
-        assertEquals("delta", delta.getString("status"))
+        val id = tab.handle(post("rules", """{"urlPattern":"/api"}"""))!!.json().getString("id")
+        tab.handle(post("rules/toggle", """{"id":"$id"}"""))
+        tab.handle(post("rules/delete", """{"id":"$id"}"""))
+        val poll = tab.handle(get("transactions", "cursor" to firstCursor))!!.json()
+        assertEquals("unchanged", poll.getString("status"))
     }
 }

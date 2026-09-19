@@ -136,21 +136,21 @@ class DebugResponseTest {
     @Test
     fun `cursorEnvelope returns reset with items when no client cursor`() {
         val res =
-            DebugResponse.cursorEnvelope(currentSequence = 7, clientCursor = null) {
+            DebugResponse.cursorEnvelope(currentSequence = 7, clientCursor = null, epoch = EPOCH) {
                 append("{\"v\":1},{\"v\":2}")
             }
         assertEquals(200, res.status)
         assertEquals(MediaType.JSON, res.contentType)
         val json = JSONObject(res.bodyString())
         assertEquals("reset", json.getString("status"))
-        assertEquals(7L, CursorCodec.decode(json.getString("cursor")))
+        assertEquals(7L, CursorCodec.decode(json.getString("cursor"), EPOCH))
         assertEquals(2, json.getJSONArray("items").length())
         assertFalse(json.has("state"))
     }
 
     @Test
     fun `cursorEnvelope returns reset for an undecodable cursor`() {
-        val res = DebugResponse.cursorEnvelope(currentSequence = 7, clientCursor = "garbage") {}
+        val res = DebugResponse.cursorEnvelope(currentSequence = 7, clientCursor = "garbage", epoch = EPOCH) {}
         val json = JSONObject(res.bodyString())
         assertEquals("reset", json.getString("status"))
         assertEquals(0, json.getJSONArray("items").length())
@@ -162,7 +162,8 @@ class DebugResponseTest {
         val res =
             DebugResponse.cursorEnvelope(
                 currentSequence = 7,
-                clientCursor = CursorCodec.encode(7),
+                clientCursor = CursorCodec.encode(7, EPOCH),
+                epoch = EPOCH,
             ) { itemsWritten = true }
         val json = JSONObject(res.bodyString())
         assertEquals("unchanged", json.getString("status"))
@@ -175,20 +176,51 @@ class DebugResponseTest {
         val res =
             DebugResponse.cursorEnvelope(
                 currentSequence = 8,
-                clientCursor = CursorCodec.encode(7),
+                clientCursor = CursorCodec.encode(7, EPOCH),
+                epoch = EPOCH,
             ) { append("{\"v\":1}") }
         val json = JSONObject(res.bodyString())
         assertEquals("delta", json.getString("status"))
         assertEquals(1, json.getJSONArray("items").length())
-        assertEquals(8L, CursorCodec.decode(json.getString("cursor")))
+        assertEquals(8L, CursorCodec.decode(json.getString("cursor"), EPOCH))
+    }
+
+    @Test
+    fun `cursorEnvelope resets a cursor from another epoch even at the same sequence`() {
+        // A restarted store whose new sequence caught up with the client's cursor.
+        val res =
+            DebugResponse.cursorEnvelope(
+                currentSequence = 7,
+                clientCursor = CursorCodec.encode(7, epoch = EPOCH + 1),
+                epoch = EPOCH,
+            ) { append("{\"v\":1}") }
+        val json = JSONObject(res.bodyString())
+        assertEquals("reset", json.getString("status"))
+        assertEquals(1, json.getJSONArray("items").length())
+    }
+
+    @Test
+    fun `cursorEnvelope resets an epoch-less cursor`() {
+        val res = DebugResponse.cursorEnvelope(7, CursorCodec.encode(7), epoch = EPOCH) {}
+        assertEquals("reset", JSONObject(res.bodyString()).getString("status"))
+    }
+
+    @Test
+    fun `cursorEnvelope without an epoch recognizes its own cursors`() {
+        val first = JSONObject(DebugResponse.cursorEnvelope(7, null) {}.bodyString())
+        val second = JSONObject(DebugResponse.cursorEnvelope(7, first.getString("cursor")) {}.bodyString())
+        assertEquals("unchanged", second.getString("status"))
+        // The default epoch still sets them apart from epoch-less tokens.
+        val legacy = JSONObject(DebugResponse.cursorEnvelope(7, CursorCodec.encode(7)) {}.bodyString())
+        assertEquals("reset", legacy.getString("status"))
     }
 
     @Test
     fun `cursorEnvelope appends state verbatim for all statuses`() {
         val state = """{"paused":true}"""
-        for (cursor in listOf(null, CursorCodec.encode(7), CursorCodec.encode(3))) {
+        for (cursor in listOf(null, CursorCodec.encode(7, EPOCH), CursorCodec.encode(3, EPOCH))) {
             val json = JSONObject(
-                DebugResponse.cursorEnvelope(7, cursor, state) {}.bodyString(),
+                DebugResponse.cursorEnvelope(7, cursor, state, EPOCH) {}.bodyString(),
             )
             assertTrue(json.getJSONObject("state").getBoolean("paused"))
         }
@@ -214,5 +246,9 @@ class DebugResponseTest {
             assertEquals("status $status", type, json.getString("error"))
             assertEquals(status, DebugResponse.error("m", status = status).status)
         }
+    }
+
+    private companion object {
+        const val EPOCH = 1234L
     }
 }

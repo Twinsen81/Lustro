@@ -11,7 +11,7 @@ the protocol a stable public contract independent of the library's Kotlin API.
   A future incompatible revision becomes `/api/v2/`, and the old major stays
   alive for at least one major release.
 - The **minor** protocol version is reported at runtime in
-  `GET /api/v1/_meta` as `_meta.protocolVersion` (currently `1.0`).
+  `GET /api/v1/_meta` as `_meta.protocolVersion` (currently `1.1`).
 
 ## Contents
 
@@ -32,8 +32,17 @@ the protocol a stable public contract independent of the library's Kotlin API.
 | Live polling cursor | observable endpoints | `{ cursor, status: "delta" \| "unchanged" \| "reset", items? }` |
 | Framework metadata | `GET /api/v1/_meta` | `{ libraryVersion, protocolVersion, tabs: [...] }` |
 
-Cursor tokens are opaque; every mutation advances the cursor; clients treat
-unknown `status` values as `reset`.
+Cursor tokens are opaque and advance when the route's list changes; clients
+treat unknown `status` values as `reset`. A cursor from before an app restart
+gets a `reset`.
+
+## Minor revisions
+
+- **1.1** — A cursor advances only when its route's list changes; in 1.0, any
+  server-side mutation advanced it. For the Network tab, pause, overwrite mode,
+  throttle, and mock-rule changes no longer re-send the transaction list; the
+  `state` object reports them on every poll response. Cursors issued before an
+  app restart now get a `reset`.
 
 ## Status
 

@@ -36,4 +36,36 @@ class CursorCodecTest {
         assertEquals("NDI=", CursorCodec.encode(42))
         assertEquals(42L, CursorCodec.decode("NDI="))
     }
+
+    @Test
+    fun `epoch cursors round-trip under the same epoch`() {
+        for (epoch in listOf(0L, 7L, -7L, Long.MIN_VALUE, Long.MAX_VALUE)) {
+            for (seq in listOf(0L, 42L, Long.MAX_VALUE)) {
+                assertEquals(seq, CursorCodec.decode(CursorCodec.encode(seq, epoch), epoch))
+            }
+        }
+    }
+
+    @Test
+    fun `decode with an epoch rejects cursors from another epoch`() {
+        assertNull(CursorCodec.decode(CursorCodec.encode(42, epoch = 1), epoch = 2))
+    }
+
+    @Test
+    fun `decode with an epoch rejects epoch-less cursors`() {
+        assertNull(CursorCodec.decode(CursorCodec.encode(42), epoch = 42))
+    }
+
+    @Test
+    fun `epoch-less decode rejects epoch cursors`() {
+        assertNull(CursorCodec.decode(CursorCodec.encode(42, epoch = 1)))
+    }
+
+    @Test
+    fun `decode with an epoch returns null for null or invalid cursors`() {
+        assertNull(CursorCodec.decode(null, epoch = 1))
+        assertNull(CursorCodec.decode("not base64!!", epoch = 1))
+        // "1:abc" base64url-encoded: right epoch, non-numeric sequence.
+        assertNull(CursorCodec.decode("MTphYmM=", epoch = 1))
+    }
 }

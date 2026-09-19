@@ -92,7 +92,8 @@ reported as `_meta.protocolVersion`.
 - **Pagination** (collection routes): `{ items: [...], nextCursor: "<opaque>" | null }`.
 - **Cursor** (observable routes): `{ cursor, status, items? }` where `status` is `delta`,
   `unchanged`, or `reset`. Echo `cursor` back on the next poll; **treat any unknown `status` as
-  `reset`** and re-sync the full list. Every server-side mutation advances the cursor.
+  `reset`** and re-sync the full list. The cursor advances when the route's list changes, and a
+  cursor from before an app restart gets a `reset`.
 
 ## Network tab operations
 
@@ -128,8 +129,10 @@ Requests to the debug server's **own** bind host:port are rejected. **Send is on
 a `NetworkSender` is configured** — if not, the route returns an enveloped `404` and the panel is
 hidden.
 
-**Mutations advance the cursor.** Capture, mock changes, pause, throttle, overwrite, and send all
-bump the transactions cursor, so a poller observing `transactions` sees the effect.
+**What advances the cursor.** Only changes to the captured list advance the transactions cursor: a
+new request, its response or streaming progress, a failure, an eviction, or `clear`. Pause,
+overwrite mode, throttle, and mock-rule changes don't. Every poll response carries the current
+`state`, `unchanged` ones included, and `GET rules` returns the rules with their hit counts.
 
 ## Common workflows
 

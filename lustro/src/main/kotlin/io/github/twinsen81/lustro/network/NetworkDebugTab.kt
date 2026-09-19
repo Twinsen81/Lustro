@@ -224,6 +224,7 @@ public class NetworkDebugTab private constructor(
             currentSequence = store.getSequence(),
             clientCursor = request.queryParam("cursor"),
             state = stateJson(),
+            epoch = store.epoch,
         ) {
             val transactions = store.getTransactions(search = search)
             transactions.forEachIndexed { index, tx ->
