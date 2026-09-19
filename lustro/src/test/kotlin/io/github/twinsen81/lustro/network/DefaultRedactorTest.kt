@@ -174,6 +174,19 @@ class DefaultRedactorTest {
     }
 
     @Test
+    fun `JSON cut off partway through a secret masks the part that arrived`() {
+        val body = "{\"items\":[{\"id\":1}],\"password\":\"hunter2-hun"
+        assertEquals("{\"items\":[{\"id\":1}],\"password\":\"[REDACTED]", redactor.redactBody(body, MediaType.JSON))
+    }
+
+    @Test
+    fun `SSE frame whose token has only partly arrived is masked`() {
+        val body = "data: {\"n\":1}\n\ndata: {\"token\":\"abc"
+        val out = redactor.redactBody(body, MediaType.parse("text/event-stream"))
+        assertEquals("data: {\"n\":1}\n\ndata: {\"token\":\"[REDACTED]", out)
+    }
+
+    @Test
     fun `XML element text and sensitive attribute are masked`() {
         val body = "<root><password>hunter2</password><node token=\"abc\" id=\"7\"/></root>"
         val out = redactor.redactBody(body, MediaType.parse("application/xml"))

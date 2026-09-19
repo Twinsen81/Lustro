@@ -3,6 +3,7 @@ package io.github.twinsen81.lustro.internal.network
 import io.github.twinsen81.lustro.Headers
 import io.github.twinsen81.lustro.MediaType
 import io.github.twinsen81.lustro.network.CapturedBody
+import io.github.twinsen81.lustro.network.DefaultRedactor
 import io.github.twinsen81.lustro.network.MockRule
 import io.github.twinsen81.lustro.network.NetworkCaptureSink
 import io.github.twinsen81.lustro.network.NoOpNetworkClassifier
@@ -36,8 +37,9 @@ import org.junit.Test
 /**
  * Tests for [LustroNetworkInterceptor]. The interceptor talks to the
  * [NetworkCaptureSink] SPI with explicit gates. We exercise it against a real
- * [NetworkTrafficStore] (identity redactor so bodies pass through verbatim) and
- * against a recording fake sink for short-circuit/throttle behaviour.
+ * [NetworkTrafficStore] (identity redactor so bodies pass through verbatim,
+ * unless a test checks redaction) and against a recording fake sink for
+ * short-circuit/throttle behaviour.
  */
 class LustroNetworkInterceptorTest {
     /** Identity redactor so body/url assertions are not perturbed by redaction. */
@@ -49,10 +51,10 @@ class LustroNetworkInterceptorTest {
         override fun redactBody(body: String, contentType: MediaType?): String = body
     }
 
-    private fun store(): NetworkTrafficStore =
+    private fun store(redactor: Redactor = IdentityRedactor): NetworkTrafficStore =
         NetworkTrafficStore(
             maxTransactions = 1000,
-            redactor = IdentityRedactor,
+            redactor = redactor,
             classifier = NoOpNetworkClassifier,
             storage = null,
         )
@@ -325,6 +327,53 @@ class LustroNetworkInterceptorTest {
         assertEquals(64L, tx.requestBodyBytes)
     }
 
+    @Test
+    fun `a secret that the body cap cuts off is redacted before it is stored`() {
+        val store = store(DefaultRedactor)
+        val prefix = "{\"id\":1,\"note\":\"${"x".repeat(20)}\",\"password\":\""
+        val content = prefix + "hunter2-hunter2-hunter2\"}"
+        val interceptor = interceptor(store, maxBodySize = prefix.length + 8L)
+        val request = Request.Builder().url("https://example.com/big").build()
+        val body = TrackingResponseBody("application/json".toMediaType(), content, chunkSize = 8_192)
+
+        interceptor.intercept(FakeChain(request, responseFor(request, body)))
+
+        val tx = store.getTransactions().single()
+        assertTrue(tx.responseBodyTruncated)
+        assertEquals(prefix + "[REDACTED]", tx.responseBody)
+    }
+
+    @Test
+    fun `an event stream secret split across reads is redacted before it is stored`() {
+        val store = store(DefaultRedactor)
+        val interceptor = interceptor(store)
+        val request = Request.Builder().url("https://example.com/events").build()
+        val firstChunk = "data: {\"token\":\"abc"
+        val body =
+            TrackingResponseBody(
+                contentType = "text/event-stream".toMediaType(),
+                content = firstChunk + "def\"}\n\n",
+                chunkSize = firstChunk.length,
+            )
+        val result = interceptor.intercept(FakeChain(request, responseFor(request, body)))
+
+        val sink = Buffer()
+        val source = result.body!!.source()
+        source.read(sink, 8_192)
+
+        // In flight, with only part of the token read: nothing of it is stored.
+        var transaction = store.getTransactions().single()
+        assertFalse(transaction.responseComplete)
+        assertEquals("data: {\"token\":\"[REDACTED]", transaction.responseBody)
+
+        while (source.read(sink, 8_192) != -1L) {
+            // Drain the stream.
+        }
+
+        transaction = store.getTransactions().single()
+        assertTrue(transaction.responseComplete)
+        assertEquals("data: {\"token\":\"[REDACTED]\"}\n\n", transaction.responseBody)
+    }
 
     private fun responseFor(request: Request, body: ResponseBody): Response =
         Response.Builder()

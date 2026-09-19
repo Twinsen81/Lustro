@@ -7,6 +7,11 @@ package io.github.twinsen81.lustro.internal.network
  * JSON cut off at the capture cap. Only the value of a key accepted by
  * [isSensitiveKey] becomes [placeholder]; every other character is kept.
  *
+ * The text can end partway through a value: a body is cut off at the capture cap,
+ * a stream is redacted each time more of it arrives, and a client can close a body
+ * early. Whatever part of a secret arrived is still secret, so a value that the end
+ * of the text cuts off is masked through to the end.
+ *
  * Four shapes are masked in order, each pass reading the previous pass's output.
  * Each pass matches what the regex in its KDoc matches under `Regex.replace`
  * (byte-for-byte on ASCII text, which TextualRedactorTest pins), but in one
@@ -21,8 +26,8 @@ internal class TextualRedactor(
     fun redact(text: String): String = maskFormPairs(maskXmlElements(maskAttributes(maskJsonPairs(text))))
 
     /**
-     * JSON-ish `"<key>": "<value>"`, masking `<value>`:
-     * `"((?:[^"\\]|\\.)*)"\s*:\s*"(?:[^"\\]|\\.)*"`.
+     * JSON-ish `"<key>": "<value>"`, masking `<value>` even when the text ends inside it:
+     * `"((?:[^"\\]|\\.)*)"\s*:\s*"(?:[^"\\]|\\.)*(?:"|\\?\z)`.
      */
     private fun maskJsonPairs(text: String): String {
         val out = Rewriter(text)
@@ -38,12 +43,13 @@ internal class TextualRedactor(
                 continue
             }
             val valueOpen = quoteAfterSeparator(text, keyClose + 1, ':')
-            val valueClose = if (valueOpen < 0) text.length else stringEnd(text, valueOpen + 1)
-            if (valueClose < text.length && text[valueClose] == '"') {
+            val valueEnd = if (valueOpen < 0) -1 else quotedValueEnd(text, valueOpen + 1)
+            if (valueEnd >= 0) {
                 if (isSensitiveKey(text.substring(keyOpen + 1, keyClose))) {
-                    out.replace(valueOpen + 1, valueClose, placeholder)
+                    out.replace(valueOpen + 1, valueEnd, placeholder)
                 }
-                pos = valueClose + 1
+                // Past the closing quote, or past the end of a value that was cut off.
+                pos = valueEnd + 1
             } else {
                 // A key opening at an escaped quote inside this key reaches the same
                 // closing quote and fails the same way, so the next distinct
@@ -54,7 +60,10 @@ internal class TextualRedactor(
         return out.result()
     }
 
-    /** Attribute `<key>="<value>"`, masking `<value>`: `([A-Za-z_][\w.\-:]*)\s*=\s*"[^"]*"`. */
+    /**
+     * Attribute `<key>="<value>"`, masking `<value>` even when the text ends inside it:
+     * `([A-Za-z_][\w.\-:]*)\s*=\s*"[^"]*(?:"|\z)`.
+     */
     private fun maskAttributes(text: String): String {
         val out = Rewriter(text)
         var pos = 0
@@ -69,30 +78,31 @@ internal class TextualRedactor(
                 pos = nameEnd
                 continue
             }
-            val valueClose = text.indexOf('"', valueOpen + 1)
-            // No quote left, so no later attribute can close either.
-            if (valueClose < 0) break
+            val valueEnd = text.indexOf('"', valueOpen + 1).let { if (it < 0) text.length else it }
             if (isSensitiveKey(text.substring(nameStart, nameEnd))) {
-                out.replace(valueOpen + 1, valueClose, placeholder)
+                out.replace(valueOpen + 1, valueEnd, placeholder)
             }
-            pos = valueClose + 1
+            pos = valueEnd + 1
         }
         return out.result()
     }
 
     /**
-     * Leaf element `<key ...>text</key>`, masking `text`:
-     * `(<([A-Za-z_][\w.\-:]*)\b[^>]*>)[^<]*</(\2)\s*>`. Like the regex, the close
-     * tag may name a prefix of the open tag's name that ends on a word boundary
-     * (`<ns:key>` closed by `</ns>`).
+     * Leaf element `<key ...>text</key>`, masking `text` even when the text ends
+     * inside it or its close tag:
+     * `(<([A-Za-z_][\w.\-:]*)\b[^>]*>)[^<]*(?:</(\2)\s*>|(?:<(?:/[\w.\-:]*\s*)?)?\z)`.
+     * Like the regex, the close tag may name a prefix of the open tag's name that
+     * ends on a word boundary (`<ns:key>` closed by `</ns>`).
      */
     private fun maskXmlElements(text: String): String {
         val out = Rewriter(text)
         var pos = 0
-        // An open tag's '>' and the close tag after it depend only on where the
-        // tag's name ends, which only moves forward. Cache both so many '<' that
-        // share one distant '>' ("<a <a <a ... >") don't rescan the same stretch.
+        // An open tag's '>' and what follows it depend only on where the tag's
+        // name ends, which only moves forward. Cache them so many '<' that share
+        // one distant '>' ("<a <a <a ... >") don't rescan the same stretch.
         var tagEnd = -1
+        var textEnd = 0 // the '<' after tagEnd, or the end of the text
+        var cutOff = false // the text ends at textEnd, or partway into a close tag that starts there
         var closeNameStart = 0
         var closeNameEnd = 0
         var elementEnd = -1 // -1 when no well-formed close tag follows tagEnd
@@ -106,17 +116,31 @@ internal class TextualRedactor(
             val nameEnd = skipWhile(text, open + 2, ::isNameChar)
             if (tagEnd < nameEnd) {
                 tagEnd = text.indexOf('>', nameEnd)
-                // No '>' or no '<' after it means no later element can match either.
+                // No '>' means no later element can match either.
                 if (tagEnd < 0) break
-                val closeOpen = text.indexOf('<', tagEnd + 1)
-                if (closeOpen < 0) break
+                textEnd = text.indexOf('<', tagEnd + 1).let { if (it < 0) text.length else it }
+                cutOff = textEnd >= text.length - 1
                 elementEnd = -1
-                if (text.getOrNull(closeOpen + 1) == '/') {
-                    closeNameStart = closeOpen + 2
+                if (text.getOrNull(textEnd + 1) == '/') {
+                    closeNameStart = textEnd + 2
                     closeNameEnd = skipWhile(text, closeNameStart, ::isNameChar)
                     val closeEnd = skipWhile(text, closeNameEnd, ::isSpace)
-                    if (closeNameEnd > closeNameStart && text.getOrNull(closeEnd) == '>') elementEnd = closeEnd + 1
+                    if (closeEnd == text.length) {
+                        cutOff = true
+                    } else if (closeNameEnd > closeNameStart && text[closeEnd] == '>') {
+                        elementEnd = closeEnd + 1
+                    }
                 }
+            }
+            if (cutOff) {
+                // No close tag to match, so the name is the longest one the regex
+                // accepts: the open tag's name up to its last word character.
+                var wordEnd = nameEnd
+                while (!isWordChar(text[wordEnd - 1])) wordEnd--
+                if (isSensitiveKey(text.substring(open + 1, wordEnd))) {
+                    out.replace(tagEnd + 1, textEnd, placeholder)
+                }
+                break
             }
             val nameLength = closeNameEnd - closeNameStart
             val openNameEnd = open + 1 + nameLength
@@ -190,6 +214,20 @@ private fun stringEnd(text: String, from: Int): Int {
         }
     }
     return text.length
+}
+
+/**
+ * Where a quoted value whose body starts at [from] ends: its closing quote, or the
+ * end of the text when that cuts the value off (even right after a backslash).
+ * -1 when a backslash before a line break stops it.
+ */
+private fun quotedValueEnd(text: String, from: Int): Int {
+    val stop = stringEnd(text, from)
+    return when {
+        stop == text.length || text[stop] == '"' -> stop
+        stop == text.length - 1 -> text.length
+        else -> -1
+    }
 }
 
 /** Index of the opening quote of `\s*<separator>\s*"` at [from], or -1. */
