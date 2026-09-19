@@ -103,6 +103,17 @@ see [DECISIONS.md](DECISIONS.md).
   actually returns, so `maxConcurrentRequests` caps what really runs and the
   drain waits for it. A queued request now waits at most the per-request
   timeout for a slot, then gets a `503`.
+- **Connections exhausting the app's threads.** The debug server started a
+  thread for every connection it accepted, before reading the request, so
+  neither auth nor the request limits applied. Any local process, or any host
+  on the network with `bindAddress = "0.0.0.0"`, could open connections until
+  thread creation failed and the app aborted (about 7,000 within 20 seconds on
+  a Pixel 6 Pro). A client that closed partway through its request headers
+  also pinned a thread at full CPU for as long as the server ran, logging a
+  failed send hundreds of times a second. The server now keeps at most
+  `maxConcurrentRequests + requestQueueCapacity + 16` connections open (96 by
+  default) and closes any past that without a response, and a connection ends
+  as soon as its client closes.
 
 ### Changed
 

@@ -19,6 +19,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowLog
+import java.net.Socket
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -27,9 +28,10 @@ import java.util.concurrent.atomic.AtomicInteger
 /**
  * End-to-end (over loopback HTTP) tests for the bounded-dispatch limits in
  * [LustroServer]: 413 (body too large), 503 (concurrency + queue saturated,
- * slots held by timed-out handlers included), and 504 (per-request timeout,
- * which cancels the request). The server is constructed directly with tiny caps
- * so the limits are reachable from a unit test.
+ * slots held by timed-out handlers included), 504 (per-request timeout,
+ * which cancels the request), and connections that end mid-request. The server
+ * is constructed directly with tiny caps so the limits are reachable from a
+ * unit test.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -215,6 +217,22 @@ class LustroServerLimitsTest {
     }
 
 
+
+    @Test
+    fun `a client that closes mid-request is not served and its connection ends`() {
+        startServer(BlockingTab())
+        Socket("127.0.0.1", port()).use { socket ->
+            socket.soTimeout = 5_000
+            socket.getOutputStream().write("GET /tab/sample HTTP/1.1\r\nHost: localhost\r\n".toByteArray())
+            socket.shutdownOutput()
+            // NanoHTTPD alone would answer the partial request, then answer it again
+            // and again on a thread that never ends.
+            assertEquals(-1, socket.getInputStream().read())
+        }
+        client.newCall(Request.Builder().url("http://127.0.0.1:${port()}/tab/sample").build()).execute().use {
+            assertEquals(200, it.code)
+        }
+    }
 
     @Test
     fun `handler exceeding the timeout yields enveloped 504`() {

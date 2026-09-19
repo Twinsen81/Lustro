@@ -187,7 +187,8 @@ Errors use the shared envelope; key statuses:
 - **`404 not_found`** — unknown route, missing transaction, or `send` with no sender configured.
 - **Connection refused / no response** — the app is backgrounded (the server only listens while
   foregrounded) or `adb forward` isn't set up. Re-check the `LustroToken` log line for the live
-  endpoint.
+  endpoint. A connection closed without a response can also mean the server is at its
+  open-connection limit (concurrency + queue + 16, 96 by default); close idle connections and retry.
 
 ## The `lustro` CLI
 
