@@ -212,6 +212,66 @@ class RequestLimiterTest {
     }
 
     @Test
+    fun `onRelease runs once, when timed-out work returns`() {
+        val limiter = limiter(maxConcurrent = 1, queueCapacity = 0, timeoutMs = 100)
+        val release = CountDownLatch(1)
+        val released = AtomicInteger(0)
+
+        val outcome = limiter.dispatch(onRelease = { released.incrementAndGet() }) { awaitIgnoringInterrupts(release) }
+
+        assertTrue(outcome is RequestLimiter.Outcome.TimedOut)
+        assertEquals("not while the work still runs", 0, released.get())
+        release.countDown()
+        awaitTrue("once the work returns") { released.get() == 1 }
+        Thread.sleep(50)
+        assertEquals("only once", 1, released.get())
+    }
+
+    @Test
+    fun `onRelease runs before dispatch returns for work that completes or throws`() {
+        val limiter = limiter(maxConcurrent = 1, queueCapacity = 0, timeoutMs = 1000)
+        val released = AtomicInteger(0)
+
+        limiter.dispatch(onRelease = { released.incrementAndGet() }) { 42 }
+        assertEquals(1, released.get())
+
+        assertThrows(IllegalStateException::class.java) {
+            limiter.dispatch(onRelease = { released.incrementAndGet() }) { error("boom") }
+        }
+        assertEquals(2, released.get())
+    }
+
+    @Test
+    fun `onRelease runs right away for a request turned away`() {
+        val released = AtomicInteger(0)
+        val onRelease = { released.incrementAndGet(); Unit }
+
+        val draining = limiter(maxConcurrent = 1, queueCapacity = 0, timeoutMs = 100)
+        draining.beginDrain()
+        assertEquals(RequestLimiter.Outcome.Rejected, draining.dispatch(onRelease) { 1 })
+        assertEquals("rejected while draining", 1, released.get())
+
+        val release = CountDownLatch(1)
+        try {
+            // No queue: turned away at once while the only permit is taken.
+            val full = limiter(maxConcurrent = 1, queueCapacity = 0, timeoutMs = 100)
+            thread { full.dispatch { awaitIgnoringInterrupts(release) } }
+            awaitTrue("the permit is taken") { full.activeCount() == 1 }
+            assertEquals(RequestLimiter.Outcome.Rejected, full.dispatch(onRelease) { 1 })
+            assertEquals("rejected with the queue full", 2, released.get())
+
+            // A queue slot: turned away after waiting the timeout for the permit.
+            val queued = limiter(maxConcurrent = 1, queueCapacity = 1, timeoutMs = 100)
+            thread { queued.dispatch { awaitIgnoringInterrupts(release) } }
+            awaitTrue("the permit is taken") { queued.activeCount() == 1 }
+            assertEquals(RequestLimiter.Outcome.Rejected, queued.dispatch(onRelease) { 1 })
+            assertEquals("rejected after waiting for the permit", 3, released.get())
+        } finally {
+            release.countDown()
+        }
+    }
+
+    @Test
     fun `beginDrain rejects new work`() {
         val limiter = limiter(maxConcurrent = 1, queueCapacity = 1, timeoutMs = 1000)
         limiter.beginDrain()

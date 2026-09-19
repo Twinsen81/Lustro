@@ -87,8 +87,9 @@ internal class LustroServer(
 
     // Bytes of authenticated request bodies buffered at once. Bodies are read
     // before their requests take a slot, so the slots no longer bound them; this
-    // keeps them to the slots' worth, and a body waits for room as a request
-    // waits for a slot. Fair, so small bodies can't starve a large one.
+    // keeps them to the slots' worth. A body waits for room as a request waits
+    // for a slot, and keeps it as long as the slot: until its handler returns.
+    // Fair, so small bodies can't starve a large one.
     private val bodyBudget =
         Semaphore(
             (maxConcurrentRequests.coerceAtLeast(1).toLong() * maxRequestBodyBytes.coerceIn(0, Int.MAX_VALUE.toLong()))
@@ -193,11 +194,17 @@ internal class LustroServer(
         val takesBody = session.method in BODY_METHODS
         val size = if (takesBody) (body.declaredLength ?: 0L).coerceAtMost(Int.MAX_VALUE.toLong()).toInt() else 0
         if (!reserveBodyBytes(size)) return busy()
-        try {
-            val bytes = if (takesBody) body.read() else null
-            return bounded { cancellation -> routeAuthenticated(session, uri, bytes, cancellation) }
-        } finally {
-            if (size > 0) bodyBudget.release(size)
+        val bytes =
+            try {
+                if (takesBody) body.read() else null
+            } catch (t: Throwable) {
+                releaseBodyBytes(size)
+                throw t
+            }
+        // The limiter frees the room when the handler returns, not at a timeout:
+        // a handler that outlives its request still holds the body.
+        return bounded(onRelease = { releaseBodyBytes(size) }) { cancellation ->
+            routeAuthenticated(session, uri, bytes, cancellation)
         }
     }
 
@@ -211,6 +218,10 @@ internal class LustroServer(
             Thread.currentThread().interrupt()
             false
         }
+    }
+
+    private fun releaseBodyBytes(size: Int) {
+        if (size > 0) bodyBudget.release(size)
     }
 
     /** Routes an authenticated `/api/v1/` request (called inside the limiter). */
@@ -263,9 +274,14 @@ internal class LustroServer(
      * Runs [block] through the [RequestLimiter], mapping a saturated
      * concurrency+queue to an enveloped 503 and a per-request timeout to an
      * enveloped 504. A handler that throws propagates out to [serve]'s 500 guard.
+     * [onRelease] runs once the request no longer holds a slot; see
+     * [RequestLimiter.dispatch].
      */
-    private inline fun bounded(crossinline block: (RequestLimiter.Cancellation) -> Response): Response =
-        when (val outcome = limiter.dispatch { block(it) }) {
+    private inline fun bounded(
+        noinline onRelease: () -> Unit = {},
+        crossinline block: (RequestLimiter.Cancellation) -> Response,
+    ): Response =
+        when (val outcome = limiter.dispatch(onRelease) { block(it) }) {
             is RequestLimiter.Outcome.Completed -> outcome.value
             RequestLimiter.Outcome.Rejected -> busy()
             RequestLimiter.Outcome.TimedOut ->

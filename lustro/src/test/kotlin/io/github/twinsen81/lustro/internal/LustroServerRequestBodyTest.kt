@@ -45,7 +45,11 @@ class LustroServerRequestBodyTest {
     private var server: LustroServer? = null
     private lateinit var token: String
 
-    /** Keeps each body it gets. A `block` request holds its slot until [release] opens. */
+    /**
+     * Keeps each body it gets. A `block` request holds its slot until [release]
+     * opens. A `stuck` one holds it past its timeout, ignoring the interrupt,
+     * until [unstick] opens.
+     */
     private class EchoTab : DebugTab() {
         override val id: String = "sample"
         override val title: String = "Sample"
@@ -54,13 +58,24 @@ class LustroServerRequestBodyTest {
         val bodies = CopyOnWriteArrayList<String>()
         val blocking = CountDownLatch(1)
         val release = CountDownLatch(1)
+        val unstick = CountDownLatch(1)
 
         override fun handle(request: DebugRequest): DebugResponse {
-            if (request.path == "block") {
-                blocking.countDown()
-                release.await(10, TimeUnit.SECONDS)
-            } else {
-                bodies += request.bodyAsString().orEmpty()
+            when (request.path) {
+                "block" -> {
+                    blocking.countDown()
+                    release.await(10, TimeUnit.SECONDS)
+                }
+                "stuck" ->
+                    while (true) {
+                        try {
+                            unstick.await()
+                            break
+                        } catch (_: InterruptedException) {
+                            // Like work that ignores its cancellation.
+                        }
+                    }
+                else -> bodies += request.bodyAsString().orEmpty()
             }
             return DebugResponse.ok("{\"ok\":true}")
         }
@@ -94,6 +109,7 @@ class LustroServerRequestBodyTest {
     @After
     fun tearDown() {
         tab.release.countDown()
+        tab.unstick.countDown()
         server?.stop()
         server?.shutdownLimiter()
     }
@@ -374,6 +390,35 @@ class LustroServerRequestBodyTest {
             assertEquals(200, connection.readResponse().status)
         }
         assertEquals(listOf("0123456789abcdef", "y"), tab.bodies)
+    }
+
+    @Test
+    fun `a handler that outlives its timeout keeps its body's room`() {
+        // Room for two 16-byte bodies. The stuck handler keeps its body after its
+        // 504, and a slow body takes the rest, so the next body finds no room.
+        startServer(maxRequestBodyBytes = 16, maxConcurrent = 2, timeoutMs = 300)
+        Connection().use { stuck ->
+            stuck.send(request("POST", "/api/v1/sample/stuck", "0123456789abcdef", auth()))
+            assertEquals(504, stuck.readResponse().status)
+        }
+        Connection().use { slow ->
+            slow.send(request("POST", "/api/v1/sample/echo", "0123", auth(), "Content-Length: 16"))
+            Thread.sleep(200)
+            Connection().use { other ->
+                other.send(request("POST", "/api/v1/sample/echo", "x", auth()))
+                assertEquals(503, other.readResponse().status)
+            }
+
+            // The room comes back once the stuck handler returns.
+            tab.unstick.countDown()
+            Connection().use { other ->
+                other.send(request("POST", "/api/v1/sample/echo", "y", auth()))
+                assertEquals(200, other.readResponse().status)
+            }
+            slow.send("456789abcdef")
+            assertEquals(200, slow.readResponse().status)
+        }
+        assertEquals(listOf("y", "0123456789abcdef"), tab.bodies)
     }
 
     @Test
