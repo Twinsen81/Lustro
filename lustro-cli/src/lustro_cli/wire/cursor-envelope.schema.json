@@ -8,7 +8,7 @@
   "properties": {
     "cursor": {
       "type": "string",
-      "description": "Opaque cursor token. Echo it back on the next poll. Every server-side mutation advances the cursor."
+      "description": "Opaque cursor token. Echo it back on the next poll. It advances when the endpoint's list changes; a cursor from before an app restart gets a reset."
     },
     "status": {
       "type": "string",

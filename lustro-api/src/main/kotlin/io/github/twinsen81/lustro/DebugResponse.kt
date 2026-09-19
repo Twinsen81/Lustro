@@ -58,13 +58,26 @@ public interface DebugResponse {
          * The `status` is derived by checking [clientCursor] — the cursor the
          * client echoed back, typically `request.queryParam("cursor")` —
          * against [currentSequence], the server's current change sequence:
-         * absent or undecodable cursor → `reset`; equal → `unchanged` (items
-         * omitted); anything else → `delta`. For `reset` and `delta`,
-         * [appendItems] writes the comma-separated JSON array elements (the
-         * enclosing `"items":[...]` is emitted by this factory); per the
-         * envelope contract the items always carry the full authoritative
-         * list. A non-null [state] must be a valid JSON value and is appended
-         * verbatim as the envelope's `state` member.
+         * absent, undecodable, or foreign cursor → `reset`; equal →
+         * `unchanged` (items omitted); anything else → `delta`. For `reset`
+         * and `delta`, [appendItems] writes the comma-separated JSON array
+         * elements (the enclosing `"items":[...]` is emitted by this factory);
+         * per the envelope contract the items always carry the full
+         * authoritative list. A non-null [state] must be a valid JSON value and
+         * is appended verbatim as the envelope's `state` member.
+         *
+         * Advance the sequence whenever the list changes, and only then: every
+         * advance re-sends the whole list to every poller. Observable state
+         * that isn't part of the list belongs in [state], which is sent with
+         * every response, `unchanged` ones included.
+         *
+         * [epoch] identifies the store that counts [currentSequence]; a cursor
+         * issued under any other epoch is foreign. That keeps a restarted store
+         * from answering `unchanged` to a client still holding a cursor from
+         * before the restart once its new sequence catches up. The default is
+         * picked once per process, which covers app restarts. A store that can
+         * be recreated within a process should pick its own when it's created,
+         * for example with `Random.nextLong()`.
          *
          * This factory implements snapshot-list semantics only. Routes with
          * append-stream semantics (e.g. a log tail, where a poll returns only
@@ -72,17 +85,19 @@ public interface DebugResponse {
          * [CursorCodec] and [json].
          */
         @JvmStatic
+        @JvmOverloads
         public fun cursorEnvelope(
             currentSequence: Long,
             clientCursor: String?,
             state: String? = null,
+            epoch: Long = CursorCodec.processEpoch,
             appendItems: StringBuilder.() -> Unit,
         ): DebugResponse =
             json {
                 append("{\"cursor\":\"")
-                append(CursorCodec.encode(currentSequence).escapeForJson())
+                append(CursorCodec.encode(currentSequence, epoch).escapeForJson())
                 append("\",")
-                val clientSequence = CursorCodec.decode(clientCursor)
+                val clientSequence = CursorCodec.decode(clientCursor, epoch)
                 when {
                     clientSequence == null -> {
                         append("\"status\":\"reset\",\"items\":[")

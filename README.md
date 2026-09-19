@@ -306,7 +306,8 @@ Lustro.builder(application)
   (`ok`, `json { ... }`, `text`, `bytes`, `notFound`, `error`). For observable list routes,
   `DebugResponse.cursorEnvelope(currentSequence, clientCursor) { /* items */ }` implements the
   cursor envelope's `reset`/`unchanged`/`delta` contract — with `CursorCodec` for the opaque
-  tokens — so tabs don't hand-roll it.
+  tokens — so tabs don't hand-roll it. Advance the sequence only when the list changes, since
+  each advance re-sends the whole list; other observable values go in its `state`.
 - `handle()` runs off the main thread and calls may be concurrent — keep mutable tab state
   thread-safe. Blocking I/O is fine; the runtime enforces a per-request timeout.
 - When a request times out, the client gets a `504` and the runtime cancels the request:
@@ -330,8 +331,8 @@ Every tab is a JSON API under `/api/v1/`. Framework routes:
 Shared shapes: a uniform **error envelope** `{ error, message, code?, field?, hint? }`, a
 **list pagination** envelope `{ items, nextCursor }`, and a live-polling **cursor envelope**
 `{ cursor, status, items? }` where `status` is `delta` / `unchanged` / `reset` (unknown values →
-`reset`) and every mutation advances the cursor. The schemas and the SemVer policy live in
-[`wire-protocol/v1/`](wire-protocol/v1/); the Network tab's contract is
+`reset`) and the cursor advances when the route's list changes. The schemas and the SemVer
+policy live in [`wire-protocol/v1/`](wire-protocol/v1/); the Network tab's contract is
 [`lustro/src/main/assets/lustro/network.openapi.json`](lustro/src/main/assets/lustro/network.openapi.json).
 
 For driving Lustro from agents, scripts, or the forthcoming `lustro` CLI, see

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Lustro Network debug tab",
-    "version": "1.0",
+    "version": "1.1",
     "description": "Capture, inspect, mock, throttle, and replay HTTP traffic. All routes are token-authenticated (Bearer header or HttpOnly cookie) and live under /api/v1/network. Errors use the shared error envelope."
   },
   "servers": [
@@ -13,7 +13,7 @@
       "get": {
         "operationId": "listTransactions",
         "summary": "Poll captured transactions with an opaque cursor.",
-        "description": "Short-polling. Send the last cursor back each call. status=reset returns the full current list; status=delta returns the current list after a change; status=unchanged omits items. Treat unknown statuses as reset. Every mutation (capture, mock, pause, throttle, overwrite, send) advances the cursor.",
+        "description": "Short-polling. Send the last cursor back each call. status=reset returns the full current list; status=delta returns the current list after a change; status=unchanged omits items. Treat unknown statuses as reset. The cursor advances when the transaction list changes: a capture, a response or streaming progress, a failure, an eviction, or clear. Pause, overwrite mode, throttle, and mock-rule changes don't advance it; state reports them on every response, unchanged ones included. A cursor from before an app restart gets a reset.",
         "parameters": [
           { "name": "cursor", "in": "query", "required": false, "schema": { "type": "string" }, "description": "Opaque cursor from the previous response. Omit on first poll." },
           { "name": "search", "in": "query", "required": false, "schema": { "type": "string" }, "description": "Case-insensitive filter over URL, method, and captured bodies." }
@@ -204,6 +204,7 @@
           "items": { "type": "array", "items": { "$ref": "#/components/schemas/Transaction" } },
           "state": {
             "type": "object",
+            "description": "Capture controls, sent with every response, unchanged ones included.",
             "properties": {
               "paused": { "type": "boolean" },
               "overwriteMode": { "type": "boolean" },

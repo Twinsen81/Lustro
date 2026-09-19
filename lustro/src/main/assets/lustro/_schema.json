@@ -26,7 +26,7 @@
       "type": "object",
       "required": ["cursor", "status"],
       "properties": {
-        "cursor": { "type": "string", "description": "Opaque cursor token; advances on every server-side mutation." },
+        "cursor": { "type": "string", "description": "Opaque cursor token; advances when the endpoint's list changes." },
         "status": {
           "type": "string",
           "enum": ["delta", "unchanged", "reset"],

@@ -114,9 +114,34 @@ see [DECISIONS.md](DECISIONS.md).
   `maxConcurrentRequests + requestQueueCapacity + 16` connections open (96 by
   default) and closes any past that without a response, and a connection ends
   as soon as its client closes.
+- **Stale traffic list after an app restart.** A polling cursor carried only a
+  change counter that starts over in every process, while the session token
+  survives restarts, so a console left open kept polling with its old cursor.
+  Once the new process's counter reached the same value, the server answered
+  `unchanged` and the console kept showing transactions that no longer
+  existed. Cursors now also carry an epoch, a random value picked per store, so
+  a cursor from before a restart gets a `reset`. `DebugResponse.cursorEnvelope`
+  takes it as a new `epoch` parameter that defaults to one per process, and
+  `CursorCodec` gains `encode(sequence, epoch)` and `decode(cursor, epoch)`.
+- **Searching the traffic list slowing down every poll.** Whenever the list had
+  changed, a poll with a search term lowercased a copy of the URL, method, and
+  both bodies of every captured transaction. With 1,000 transactions on a Pixel
+  6 Pro, that more than doubled the poll's server-side time, from 17 ms to
+  42 ms when nothing matched. The search now folds case as it scans without
+  copying, and each transaction keeps its result for the current search term
+  until it changes, so a poll only re-checks new and updated transactions.
+  That poll now takes under 1 ms, and a new search term takes 19 ms.
 
 ### Changed
 
+- **Wire protocol 1.1: the transactions cursor advances only when the list
+  changes.** It used to advance on every server-side mutation, so pausing,
+  changing overwrite mode or the throttle, editing mock rules, and every
+  mock-rule hit re-sent the whole list, up to 1,000 transactions, to every
+  poller. Every poll response still carries `state`, `unchanged` ones
+  included, and `GET rules` returns the rules with their hit counts, so
+  clients lose no information. A client that watched the cursor for control
+  or rule changes should read `state` or `GET rules` instead.
 - **Console redesign — terminal theme.** The web console now uses a dark-first,
   mono-spaced terminal design: one blue accent, semantic color tokens for
   methods/statuses/levels/types/categories, flat surfaces with 1px separators,

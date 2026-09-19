@@ -15,6 +15,7 @@ import java.util.concurrent.ConcurrentLinkedDeque
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
+import kotlin.random.Random
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
 /**
@@ -28,7 +29,9 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
  * - The transaction ring cap comes from `DebugConfig.maxCaptureTransactions`.
  * - The [Redactor] is applied at capture time so stored values are
  *   pre-redacted; URLs are classified via the injected [NetworkClassifier].
- * - A monotonic [sequence] backs the opaque polling cursor.
+ * - The polling cursor pairs the transaction list's change [sequence] with
+ *   this store's random [epoch]. Only list changes advance the sequence:
+ *   control state goes out with every poll, and rules have their own route.
  *
  * Uses ConcurrentHashMap for O(1) lookups/updates and a ConcurrentLinkedDeque
  * for reverse-chronological ordering. Updates via computeIfPresent preserve
@@ -52,6 +55,10 @@ internal class NetworkTrafficStore(
     // smaller budget evicts on the next capture (see [trimToBudget]).
     @Volatile
     var captureBudgetBytes: Long = captureBudgetBytes
+
+    /** Tells this store's polling cursors apart from those of earlier stores, e.g. before an app restart. */
+    val epoch: Long = Random.nextLong()
+
     private val transactionMap = ConcurrentHashMap<String, NetworkTransaction>()
     private val insertionOrder = ConcurrentLinkedDeque<String>()
     private val mockRules = ConcurrentHashMap<String, MockRuleImpl>()
@@ -206,34 +213,38 @@ internal class NetworkTrafficStore(
         responseComplete: Boolean = true,
         isMocked: Boolean = false,
     ) {
-        transactionMap.computeIfPresent(id) { _, tx ->
-            val updated =
-                tx.copy(
-                    statusCode = statusCode,
-                    durationMs = durationMs,
-                    requestHeaders = requestHeaders.ifEmpty { tx.requestHeaders },
-                    responseHeaders = responseHeaders,
-                    responseBody = responseBody,
-                    responseBodyTruncated = responseBodyTruncated,
-                    responseContentType = responseContentType,
-                    responseBodyBytes = responseBodyBytes,
-                    responseComplete = responseComplete,
-                    isMocked = isMocked,
-                )
-            // The response body now counts toward the budget; reconcile the delta
-            // atomically inside computeIfPresent so concurrent updates can't race.
-            capturedBytes.addAndGet(transactionBytes(updated) - transactionBytes(tx))
-            updated
-        }
-        trimToBudget()
-        sequence.incrementAndGet()
+        val updated =
+            transactionMap.computeIfPresent(id) { _, tx ->
+                val updated =
+                    tx.copy(
+                        statusCode = statusCode,
+                        durationMs = durationMs,
+                        requestHeaders = requestHeaders.ifEmpty { tx.requestHeaders },
+                        responseHeaders = responseHeaders,
+                        responseBody = responseBody,
+                        responseBodyTruncated = responseBodyTruncated,
+                        responseContentType = responseContentType,
+                        responseBodyBytes = responseBodyBytes,
+                        responseComplete = responseComplete,
+                        isMocked = isMocked,
+                    )
+                // The response body now counts toward the budget; reconcile the delta
+                // atomically inside computeIfPresent so concurrent updates can't race.
+                capturedBytes.addAndGet(transactionBytes(updated) - transactionBytes(tx))
+                updated
+            }
+        // A response can still arrive for a transaction that was cleared or
+        // evicted, e.g. every chunk of a long stream; that changes nothing.
+        val evicted = trimToBudget()
+        if (updated != null || evicted) sequence.incrementAndGet()
     }
 
     fun updateWithError(id: String, durationMs: Long, error: String) {
-        transactionMap.computeIfPresent(id) { _, tx ->
-            tx.copy(durationMs = durationMs, responseComplete = true, error = error)
-        }
-        sequence.incrementAndGet()
+        val updated =
+            transactionMap.computeIfPresent(id) { _, tx ->
+                tx.copy(durationMs = durationMs, responseComplete = true, error = error)
+            }
+        if (updated != null) sequence.incrementAndGet()
     }
 
     private fun redactHeaders(headers: Headers): Map<String, String> {
@@ -255,20 +266,10 @@ internal class NetworkTrafficStore(
         }
 
     fun getTransactions(search: String? = null): List<NetworkTransaction> {
-        var result: Sequence<NetworkTransaction> =
-            insertionOrder.asSequence()
-                .mapNotNull { transactionMap[it] }
-        if (!search.isNullOrBlank()) {
-            val lower = search.lowercase()
-            result =
-                result.filter { tx ->
-                    tx.url.lowercase().contains(lower) ||
-                        tx.method.lowercase().contains(lower) ||
-                        tx.requestBody?.lowercase()?.contains(lower) == true ||
-                        tx.responseBody?.lowercase()?.contains(lower) == true
-                }
-        }
-        return result.toList()
+        val transactions = insertionOrder.mapNotNull { transactionMap[it] }
+        if (search.isNullOrBlank()) return transactions
+        val needle = search.foldCase()
+        return transactions.filter { it.matchesSearch(needle) }
     }
 
     fun getTransaction(id: String): NetworkTransaction? = transactionMap[id]
@@ -276,19 +277,16 @@ internal class NetworkTrafficStore(
     fun addMockRule(rule: MockRuleImpl) {
         mockRules[rule.id] = rule
         persistRules()
-        sequence.incrementAndGet()
     }
 
     fun removeMockRule(id: String) {
         mockRules.remove(id)
         persistRules()
-        sequence.incrementAndGet()
     }
 
     fun toggleMockRule(id: String) {
         mockRules.computeIfPresent(id) { _, rule -> rule.copy(enabled = !rule.enabled) }
         persistRules()
-        sequence.incrementAndGet()
     }
 
     fun replaceMockRules(rules: List<MockRuleImpl>) {
@@ -300,7 +298,6 @@ internal class NetworkTrafficStore(
         mockRules.putAll(newRules)
         mockRules.keys.retainAll(newRules.keys)
         persistRules()
-        sequence.incrementAndGet()
     }
 
     fun getMockRules(): List<MockRuleImpl> = mockRules.values.toList()
@@ -309,7 +306,6 @@ internal class NetworkTrafficStore(
         mockRules.computeIfPresent(ruleId) { _, rule ->
             rule.copy(hitCount = rule.hitCount + 1)
         }
-        sequence.incrementAndGet()
     }
 
     private fun persistRules() {
@@ -320,21 +316,18 @@ internal class NetworkTrafficStore(
 
     fun setPaused(value: Boolean) {
         paused.set(value)
-        sequence.incrementAndGet()
     }
 
     fun isOverwriteMode(): Boolean = overwriteMode.get()
 
     fun setOverwriteMode(value: Boolean) {
         overwriteMode.set(value)
-        sequence.incrementAndGet()
     }
 
     fun getThrottleDelayMs(): Int = throttleDelayMs.get()
 
     fun setThrottleDelayMs(value: Int) {
         throttleDelayMs.set(value.coerceAtLeast(0))
-        sequence.incrementAndGet()
     }
 
     fun getSequence(): Long = sequence.get()
@@ -361,13 +354,17 @@ internal class NetworkTrafficStore(
      * Serialized under [captureLock] so two concurrent captures cannot both walk
      * the deque and over-evict. We keep at least one transaction so a single body
      * larger than the whole budget still appears (truncation already bounds it).
+     * Returns whether anything was evicted.
      */
-    private fun trimToBudget() {
+    private fun trimToBudget(): Boolean {
+        var evicted = false
         synchronized(captureLock) {
             while (capturedBytes.get() > captureBudgetBytes && insertionOrder.size > 1) {
                 if (evictOneOldest() == null) break
+                evicted = true
             }
         }
+        return evicted
     }
 
     /**
