@@ -142,6 +142,16 @@ see [DECISIONS.md](DECISIONS.md).
   captured text cuts off is now masked through to the end. The `Redactor` KDoc
   now notes that bodies can end partway through a value, since custom
   redactors get them too.
+- **Numbers, objects, and arrays under sensitive keys stored raw.** When a body
+  parses as JSON, `DefaultRedactor` masks a sensitive key's whole value, whatever
+  its type. Bodies that don't parse take a textual fallback: every JSON body cut
+  off at the 256 KB capture cap, NDJSON, and JSON in SSE frames. That fallback
+  masked only string values, so a numeric API key or PIN, a `session` or `auth`
+  object, or an array of keys was stored raw, served by the API, and copied into
+  exports. XML had the same gap: a sensitive element's text was masked, but not
+  its child elements. The fallback now masks those values as `"[REDACTED]"`, as
+  the structured path does, and everything inside a sensitive XML element. It
+  also no longer misses a key that follows a string such as `":"` in an array.
 
 ### Changed
 

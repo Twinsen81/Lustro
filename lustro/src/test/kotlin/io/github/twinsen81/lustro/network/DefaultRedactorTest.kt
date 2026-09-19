@@ -1,7 +1,11 @@
 package io.github.twinsen81.lustro.network
 
 import io.github.twinsen81.lustro.MediaType
+import java.math.BigDecimal
+import kotlin.random.Random
+import org.json.JSONArray
 import org.json.JSONObject
+import org.json.JSONTokener
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -31,6 +35,15 @@ class DefaultRedactorTest {
         assertEquals("[REDACTED]", redactor.redactHeaderValue("X-Api-Key", "abc123"))
         assertEquals("[REDACTED]", redactor.redactHeaderValue("X-Auth-Token", "t.t.t"))
         assertEquals("[REDACTED]", redactor.redactHeaderValue("X-Session-Id", "s"))
+    }
+
+    @Test
+    fun `sensitive names match in any case`() {
+        assertEquals("[REDACTED]", redactor.redactHeaderValue("X-API-KEY", "v"))
+        assertEquals("[REDACTED]", redactor.redactHeaderValue("x-SeSsIoN-id", "v"))
+        // Lowercasing turns the Kelvin sign into "k".
+        assertEquals("[REDACTED]", redactor.redactHeaderValue("X-\u212Aey", "v"))
+        assertEquals("v", redactor.redactHeaderValue("X-Request-Id", "v"))
     }
 
     @Test
@@ -187,6 +200,59 @@ class DefaultRedactorTest {
     }
 
     @Test
+    fun `JSON cut off at the cap masks every sensitive value, whatever its type`() {
+        val body = "{\"session\":{\"id\":\"abc123\",\"user\":\"bob\"},\"api_key\":12345,\"keys\":[\"k1\",\"k2\"],\"n\":"
+        assertEquals(
+            "{\"session\":\"[REDACTED]\",\"api_key\":\"[REDACTED]\",\"keys\":\"[REDACTED]\",\"n\":",
+            redactor.redactBody(body, MediaType.JSON),
+        )
+    }
+
+    @Test
+    fun `NDJSON and SSE frames mask numbers and objects under sensitive keys`() {
+        assertEquals(
+            "{\"api_key\":\"[REDACTED]\"}\n{\"n\":1}",
+            redactor.redactBody("{\"api_key\":12345}\n{\"n\":1}", MediaType.JSON),
+        )
+        assertEquals(
+            "data: {\"auth\":\"[REDACTED]\"}\n\n",
+            redactor.redactBody("data: {\"auth\":{\"code\":\"xyz\"}}\n\n", EVENT_STREAM),
+        )
+    }
+
+    @Test
+    fun `JSON that takes the textual path is masked like JSON that parses`() {
+        val random = Random(20260919)
+        repeat(JSON_DOCUMENTS) {
+            val (json, masked) = JsonGenerator(random).document()
+            // The generator masks what the structured path masks.
+            assertSimilarJson(json, masked, redactor.redactBody(json, MediaType.JSON))
+            // Two NDJSON lines or SSE frames don't parse as one value.
+            assertEquals(json, "$masked\n$masked", redactor.redactBody("$json\n$json", MediaType.JSON))
+            assertEquals(json, "data: $masked\n\n", redactor.redactBody("data: $json\n\n", EVENT_STREAM))
+            // Cut off anywhere, as at the capture cap, it shows no more than the whole.
+            for (end in 1 until json.length) {
+                val prefix = json.substring(0, end)
+                val out = redactor.redactBody(prefix, MediaType.JSON)
+                assertTrue(
+                    "prefix: $prefix, out: $out, whole: $masked",
+                    masked.startsWith(out) && out.length >= prefix.commonPrefixWith(masked).length,
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `XML masks a sensitive element's children`() {
+        val xml = MediaType.parse("application/xml")
+        assertEquals("<session>[REDACTED]</session>", redactor.redactBody("<session><id>abc123</id></session>", xml))
+        assertEquals(
+            "<credentials>[REDACTED]</credentials><n>1</n>",
+            redactor.redactBody("<credentials><user>bob</user><pin>1234</pin></credentials><n>1</n>", xml),
+        )
+    }
+
+    @Test
     fun `XML element text and sensitive attribute are masked`() {
         val body = "<root><password>hunter2</password><node token=\"abc\" id=\"7\"/></root>"
         val out = redactor.redactBody(body, MediaType.parse("application/xml"))
@@ -225,6 +291,25 @@ class DefaultRedactorTest {
     }
 
     @Test(timeout = 10_000)
+    fun `nested sensitive values at the capture cap redact quickly`() {
+        val size = 256 * 1024
+        // Framed as SSE, so the JSON bodies take the textual path.
+        listOf(
+            "data: {\"token\":" + "{".repeat(size) to "data: {\"token\":\"[REDACTED]\"",
+            "data: {\"token\":[" + "\"\\\"]\",".repeat(size / 6) to "data: {\"token\":\"[REDACTED]\"",
+            "<token>" + "<token>".repeat(size / 7) to "<token>[REDACTED]",
+            "<token>" + "<token ".repeat(size / 7) to "<token>[REDACTED]",
+        ).forEach { (body, expected) -> assertEquals(expected, redactor.redactBody(body, EVENT_STREAM)) }
+        listOf(
+            "data: " + "{\"a\":".repeat(size / 5),
+            "data: [" + "\"x\",\":\",".repeat(size / 8),
+            "<token></tok".repeat(size / 12),
+            "<a><b>".repeat(size / 6),
+            "<a/>".repeat(size / 4),
+        ).forEach { body -> redactor.redactBody(body, EVENT_STREAM) }
+    }
+
+    @Test(timeout = 10_000)
     fun `JSON truncated at the capture cap is masked quickly`() {
         // A base64url blob reads as one long identifier run.
         val blob = "aGVsbG8_d29ybGQ-".repeat(4 * 1024)
@@ -238,5 +323,83 @@ class DefaultRedactorTest {
         val out = redactor.redactBody(body, MediaType.JSON)
         assertTrue("every token masked", !out.contains("tok-"))
         assertTrue("masked in place", out.startsWith("{\"items\":[{\"id\":0,\"access_token\":\"[REDACTED]\",\"thumb\":\"$blob\"},"))
+    }
+
+    private fun assertSimilarJson(input: String, expected: String, actual: String) {
+        assertEquals("input: $input", parsed(expected), parsed(actual))
+    }
+
+    // Keys in any order, numbers by value: the structured path reorders and reformats them.
+    private fun parsed(json: String): Any? = canonical(JSONTokener(json).nextValue())
+
+    private fun canonical(value: Any?): Any? =
+        when (value) {
+            is JSONObject -> value.keys().asSequence().associateWith { canonical(value.get(it)) }
+            is JSONArray -> List(value.length()) { canonical(value.get(it)) }
+            is Number -> BigDecimal(value.toString()).stripTrailingZeros()
+            else -> value
+        }
+
+    /** Random JSON documents, each paired with what the redactor turns it into. */
+    private class JsonGenerator(private val random: Random) {
+        fun document(): Pair<String, String> = if (random.nextBoolean()) obj(0) else array(0)
+
+        private fun value(depth: Int): Pair<String, String> =
+            when (random.nextInt(if (depth < 3) 4 else 2)) {
+                0 -> STRINGS.random(random).let { it to it }
+                1 -> SCALARS.random(random).let { it to it }
+                2 -> obj(depth + 1)
+                else -> array(depth + 1)
+            }
+
+        private fun obj(depth: Int): Pair<String, String> {
+            val json = StringBuilder("{")
+            val masked = StringBuilder("{")
+            (SENSITIVE_KEYS + KEYS).shuffled(random).take(random.nextInt(5)).forEachIndexed { i, key ->
+                val head = (if (i > 0) "," else "") + space() + "\"$key\"" + space() + ":" + space()
+                val (value, maskedValue) = value(depth)
+                json.append(head).append(value)
+                masked.append(head).append(if (key in SENSITIVE_KEYS) "\"[REDACTED]\"" else maskedValue)
+            }
+            val tail = space() + "}"
+            return json.append(tail).toString() to masked.append(tail).toString()
+        }
+
+        private fun array(depth: Int): Pair<String, String> {
+            val json = StringBuilder("[")
+            val masked = StringBuilder("[")
+            repeat(random.nextInt(4)) { i ->
+                val head = (if (i > 0) "," else "") + space()
+                val (value, maskedValue) = value(depth)
+                json.append(head).append(value)
+                masked.append(head).append(maskedValue)
+            }
+            val tail = space() + "]"
+            return json.append(tail).toString() to masked.append(tail).toString()
+        }
+
+        private fun space(): String = SPACES.random(random)
+
+        private companion object {
+            val SENSITIVE_KEYS = listOf("token", "api_key", "session", "Authorization", "password", "keys", "sig")
+            val KEYS = listOf("id", "name", "n", "items", "note", "data", "value")
+
+            // Strings that look like keys, brackets, or separators, and escapes. No
+            // `=` or `<`: the form, attribute, and XML passes would mask those in
+            // strings, where the structured path keeps them.
+            val STRINGS =
+                listOf(
+                    """""""", """"abc"""", """"token"""", """":"""", """" : """", """"}]{[,"""",
+                    """"a\"b"""", """"back\\slash"""", """"line\nbreak"""", """"\u00e9t\u00e9"""",
+                    """"\"token\": 1"""", """"x: {"""", """"a\/b"""", """"api_key"""",
+                )
+            val SCALARS = listOf("0", "-1", "12.5", "1e3", "-2.5E-3", "true", "false", "null", "12345678901234")
+            val SPACES = listOf("", "", " ", "\n  ", "\t")
+        }
+    }
+
+    private companion object {
+        const val JSON_DOCUMENTS = 500
+        val EVENT_STREAM = MediaType.parse("text/event-stream")
     }
 }

@@ -26,7 +26,9 @@ import org.json.JSONTokener
  * - Sensitive values in any other captured text body — SSE, XML, plain text, and
  *   JSON that does not parse as a single object/array (NDJSON / concatenated
  *   frames) — via a framing-agnostic, key-name-based fallback so no captured
- *   value is ever stored raw.
+ *   value is ever stored raw. As on the structured path, a sensitive key's whole
+ *   value is masked, whether a string, a number, or a nested object or array, and
+ *   so is everything inside a sensitive XML element.
  *
  * A captured body can end partway through a value, when it's cut off at the
  * capture cap or captured while a stream is still arriving. A sensitive value
@@ -138,10 +140,28 @@ public object DefaultRedactor : Redactor {
         return trimmed.startsWith("{") || trimmed.startsWith("[")
     }
 
+    // Runs for every key and element name in a captured body, so an ASCII name is
+    // matched without allocating a lowercase copy. Other names still go through
+    // lowercase(), which can turn one char into several.
     private fun isSensitiveKey(name: String): Boolean {
-        val lower = name.lowercase()
-        return SENSITIVE_KEY_FRAGMENTS.any { lower.contains(it) }
+        if (name.any { it >= '\u0080' }) {
+            val lower = name.lowercase()
+            return SENSITIVE_KEY_FRAGMENTS.any { lower.contains(it) }
+        }
+        return SENSITIVE_KEY_FRAGMENTS.any { name.containsIgnoringAsciiCase(it) }
     }
+
+    /** Whether this ASCII text contains the lowercase [fragment], in any case. */
+    private fun String.containsIgnoringAsciiCase(fragment: String): Boolean {
+        for (start in 0..length - fragment.length) {
+            var matched = 0
+            while (matched < fragment.length && this[start + matched].lowercaseAscii() == fragment[matched]) matched++
+            if (matched == fragment.length) return true
+        }
+        return false
+    }
+
+    private fun Char.lowercaseAscii(): Char = if (this in 'A'..'Z') this + ('a' - 'A') else this
 
     /**
      * Structured-JSON redaction. Returns the redacted JSON string, or `null` when
@@ -202,9 +222,10 @@ public object DefaultRedactor : Redactor {
      * never stored raw. It is deliberately CONSERVATIVE: only the value of a
      * sensitive key (per [isSensitiveKey]) is replaced; every other byte is left
      * untouched. Covers four shapes, case-insensitively:
-     * - JSON-ish `"<key>": "<value>"` / `"<key>":"<value>"`,
+     * - JSON-ish `"<key>": <value>`, where the value is a string, a number, a
+     *   literal, or a whole object or array,
      * - form/query-ish `<key>=<value>`,
-     * - XML element text `<key>...</key>`,
+     * - XML elements `<key>...</key>`, children included,
      * - XML / HTML attributes `<key>="..."` (and `name="..."`-style attributes).
      *
      * Linear in the body size (see [TextualRedactor]): it runs on the app's own
