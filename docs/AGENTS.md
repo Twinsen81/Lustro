@@ -184,7 +184,10 @@ Errors use the shared envelope; key statuses:
 - **`403 forbidden`** — Origin / `Sec-Fetch-Site` rejected (a cross-origin, non-allowed Origin;
   only the server's own origin and configured `allowedOrigins` pass). Missing Origin/`Sec-Fetch-Site`
   headers are accepted, so plain CLI clients are unaffected.
-- **`413 payload_too_large`** — request body exceeds the configured max (1 MB by default).
+- **`400 bad_request`** — invalid input. Also a body sent with a `Transfer-Encoding` or a malformed
+  `Content-Length`: chunked request bodies are not supported.
+- **`413 payload_too_large`** — request body exceeds the configured max (1 MB by default; 1 KB for
+  `POST /api/v1/_auth`).
 - **`503 unavailable`** — the server is at its concurrency + queue limit; back off and retry.
 - **`504 timeout`** — a handler (e.g. a slow `send`) exceeded the per-request timeout.
 - **`404 not_found`** — unknown route, missing transaction, or `send` with no sender configured.

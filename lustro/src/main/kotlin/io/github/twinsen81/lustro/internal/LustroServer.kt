@@ -15,6 +15,8 @@ import java.io.ByteArrayInputStream
 import java.io.InputStream
 import java.net.Socket
 import java.net.URI
+import java.util.concurrent.Semaphore
+import java.util.concurrent.TimeUnit
 
 /**
  * Internal NanoHTTPD-backed HTTP server. The NanoHTTPD subclass stays fully
@@ -43,6 +45,12 @@ import java.net.URI
  *   [DebugRequest] and interrupts the handler; a handler that keeps running
  *   keeps its concurrency slot). The chrome/asset routes are exempt; only the
  *   `/api/v1/` surface flows through the limiter.
+ * - Request bodies: an API request's body is read on its connection thread,
+ *   after the checks that need only headers and before the limiter, so a slow
+ *   body holds a connection but no concurrency slot. Authenticated bodies
+ *   buffered at once are capped at `maxConcurrentRequests × maxRequestBodyBytes`.
+ *   A response to a request whose body wasn't read closes the connection
+ *   ([IncomingBody]).
  * - Failure containment: anything a route throws, Errors included, becomes an
  *   enveloped 500, and connections run on a [ContainedAsyncRunner], so nothing
  *   reaches the host app's uncaught-exception handler.
@@ -65,7 +73,7 @@ internal class LustroServer(
     private val maxRequestBodyBytes: Long = DEFAULT_MAX_REQUEST_BODY_BYTES,
     maxConcurrentRequests: Int = DEFAULT_MAX_CONCURRENT_REQUESTS,
     requestQueueCapacity: Int = DEFAULT_REQUEST_QUEUE_CAPACITY,
-    requestTimeoutMs: Long = DEFAULT_REQUEST_TIMEOUT_MS,
+    private val requestTimeoutMs: Long = DEFAULT_REQUEST_TIMEOUT_MS,
 ) : NanoHTTPD(hostname, port) {
 
     // Bounds concurrency, the wait queue, and the per-request timeout for the
@@ -75,6 +83,18 @@ internal class LustroServer(
             maxConcurrent = maxConcurrentRequests,
             queueCapacity = requestQueueCapacity,
             timeoutMs = requestTimeoutMs,
+        )
+
+    // Bytes of authenticated request bodies buffered at once. Bodies are read
+    // before their requests take a slot, so the slots no longer bound them; this
+    // keeps them to the slots' worth, and a body waits for room as a request
+    // waits for a slot. Fair, so small bodies can't starve a large one.
+    private val bodyBudget =
+        Semaphore(
+            (maxConcurrentRequests.coerceAtLeast(1).toLong() * maxRequestBodyBytes.coerceIn(0, Int.MAX_VALUE.toLong()))
+                .coerceAtMost(Int.MAX_VALUE.toLong())
+                .toInt(),
+            /* fair = */ true,
         )
 
     init {
@@ -110,19 +130,35 @@ internal class LustroServer(
         limiter.shutdown()
     }
 
-    override fun serve(session: IHTTPSession): Response =
-        try {
-            withSecurityHeaders(route(session))
-        } catch (t: Throwable) {
-            // Nothing a route throws may escape into the host app, Errors included:
-            // NanoHTTPD catches only Exception, and an uncaught Error on its thread
-            // kills the app. A 500 beats a crash even for an OutOfMemoryError: the
-            // failed request's allocations are unreachable once it unwinds.
-            Log.w(TAG, "Error serving request: ${session.uri}", t)
-            withSecurityHeaders(toNanoResponse(DebugResponse.error("Internal error", status = 500)))
+    override fun serve(session: IHTTPSession): Response {
+        val body = IncomingBody(session)
+        val response =
+            try {
+                route(session, body)
+            } catch (_: IncomingBody.Incomplete) {
+                // The client stopped sending partway through its body, so there's
+                // no request to answer. NanoHTTPD ends a connection whose headers
+                // never finish the same way.
+                throw connectionEnd()
+            } catch (t: Throwable) {
+                // Nothing a route throws may escape into the host app, Errors included:
+                // NanoHTTPD catches only Exception, and an uncaught Error on its thread
+                // kills the app. A 500 beats a crash even for an OutOfMemoryError: the
+                // failed request's allocations are unreachable once it unwinds.
+                Log.w(TAG, "Error serving request: ${session.uri}", t)
+                toNanoResponse(DebugResponse.error("Internal error", status = 500))
+            }
+        // NanoHTTPD would parse whatever is left of the body as the start of this
+        // connection's next request, so end the connection instead, once the
+        // response is out and the rest of the body dropped.
+        if (!body.isConsumed) {
+            response.closeConnection(true)
+            response.data = body.discardAfterSending(response.data)
         }
+        return withSecurityHeaders(response)
+    }
 
-    private fun route(session: IHTTPSession): Response {
+    private fun route(session: IHTTPSession, body: IncomingBody): Response {
         val uri = session.uri ?: "/"
         return when {
             uri == "/" -> handleRoot()
@@ -133,41 +169,92 @@ internal class LustroServer(
             uri.startsWith("/tab/") -> handleTabPage(uri.removePrefix("/tab/").substringBefore('/'))
             // The debug API flows through the bounded dispatcher (concurrency,
             // queue, timeout). Chrome/asset routes above are intentionally exempt.
-            uri.startsWith("/api/v1/") -> bounded { cancellation -> routeApi(session, uri, cancellation) }
+            uri.startsWith("/api/v1/") -> routeApi(session, uri, body)
             else -> toNanoResponse(DebugResponse.notFound("Not found"))
         }
     }
 
-    /** Routes the authenticated `/api/v1/` surface (called inside the limiter). */
-    private fun routeApi(
-        session: IHTTPSession,
-        uri: String,
-        cancellation: RequestLimiter.Cancellation,
-    ): Response {
+    /**
+     * Routes the `/api/v1/` surface. The checks that need only headers run first,
+     * then the body is read, both on the connection thread: a request enters the
+     * limiter only once its body has arrived, so a client that sends one slowly
+     * doesn't hold a slot other requests need. Apart from `_auth`'s token, no
+     * body is read before its request passes auth.
+     */
+    private fun routeApi(session: IHTTPSession, uri: String, body: IncomingBody): Response {
+        framingRejection(body)?.let { return it }
+        if (uri == "/api/v1/_auth") return routeAuth(session, body)
         // Reject oversize bodies BEFORE reading/allocating them (413). The
         // in-process server has no isolation, so we never buffer an over-cap body.
-        oversizeRejection(session)?.let { return it }
-        return when {
-            uri == "/api/v1/_auth" -> handleAuth(session)
-            uri == "/api/v1/_meta" -> requireAuth(session) { handleMeta() }
-            uri == "/api/v1/_schema" -> requireAuth(session) { handleSharedSchema() }
-            else -> requireAuth(session) { handleApi(session, uri.removePrefix("/api/v1/"), cancellation) }
+        oversizeRejection(body, maxRequestBodyBytes)?.let { return it }
+        if (!isAuthenticated(session)) return unauthorized()
+        // State-changing requests must pass the origin gate.
+        if (session.method == Method.POST) originRejection(session)?.let { return it }
+        val takesBody = session.method in BODY_METHODS
+        val size = if (takesBody) (body.declaredLength ?: 0L).coerceAtMost(Int.MAX_VALUE.toLong()).toInt() else 0
+        if (!reserveBodyBytes(size)) return busy()
+        try {
+            val bytes = if (takesBody) body.read() else null
+            return bounded { cancellation -> routeAuthenticated(session, uri, bytes, cancellation) }
+        } finally {
+            if (size > 0) bodyBudget.release(size)
         }
+    }
+
+    /** Waits up to the request timeout for room to buffer [size] bytes of body. */
+    private fun reserveBodyBytes(size: Int): Boolean {
+        // Even a zero-byte acquire queues behind waiters on a fair semaphore.
+        if (size == 0) return true
+        return try {
+            bodyBudget.tryAcquire(size, requestTimeoutMs, TimeUnit.MILLISECONDS)
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+            false
+        }
+    }
+
+    /** Routes an authenticated `/api/v1/` request (called inside the limiter). */
+    private fun routeAuthenticated(
+        session: IHTTPSession,
+        uri: String,
+        body: ByteArray?,
+        cancellation: RequestLimiter.Cancellation,
+    ): Response =
+        when (uri) {
+            "/api/v1/_meta" -> handleMeta()
+            "/api/v1/_schema" -> handleSharedSchema()
+            else -> handleApi(session, uri.removePrefix("/api/v1/"), body, cancellation)
+        }
+
+    /**
+     * Returns an enveloped 400 when the end of the request's body can't be
+     * found, or `null` otherwise. Dispatching such a request without its body
+     * would act on a request the client didn't send.
+     */
+    private fun framingRejection(body: IncomingBody): Response? {
+        if (body.isFramed) return null
+        return toNanoResponse(
+            DebugResponse.error(
+                message = "Unsupported request body framing",
+                status = 400,
+                hint = "Send the body with a valid Content-Length; chunked request bodies are not supported",
+            ),
+        )
     }
 
     /**
      * Returns an enveloped 413 when the declared `Content-Length` exceeds
-     * [maxRequestBodyBytes], or `null` otherwise. Checked before any body bytes
-     * are read so an over-cap request never allocates a buffer.
+     * [maxBytes], or `null` otherwise. Checked before any body bytes are read so
+     * an over-cap request never allocates a buffer.
      */
-    private fun oversizeRejection(session: IHTTPSession): Response? {
-        val declared = session.headers?.get("content-length")?.toLongOrNull() ?: return null
-        if (declared <= maxRequestBodyBytes) return null
+    private fun oversizeRejection(body: IncomingBody, maxBytes: Long): Response? {
+        val declared = body.declaredLength ?: return null
+        if (declared <= maxBytes) return null
         return toNanoResponse(
             DebugResponse.error(
                 message = "Request body too large",
                 status = 413,
-                hint = "Maximum request body is $maxRequestBodyBytes bytes",
+                hint = "Maximum request body is $maxBytes bytes",
             ),
         )
     }
@@ -180,34 +267,29 @@ internal class LustroServer(
     private inline fun bounded(crossinline block: (RequestLimiter.Cancellation) -> Response): Response =
         when (val outcome = limiter.dispatch { block(it) }) {
             is RequestLimiter.Outcome.Completed -> outcome.value
-            RequestLimiter.Outcome.Rejected ->
-                toNanoResponse(
-                    DebugResponse.error(
-                        message = "Server busy",
-                        status = 503,
-                        hint = "Too many concurrent debug requests; retry shortly",
-                    ),
-                )
+            RequestLimiter.Outcome.Rejected -> busy()
             RequestLimiter.Outcome.TimedOut ->
                 toNanoResponse(DebugResponse.error(message = "Request timed out", status = 504))
         }
 
-    /**
-     * Runs [block] only when the request carries a valid Bearer token OR a valid
-     * `lustro_token` cookie. Otherwise short-circuits to an enveloped 401.
-     */
-    private inline fun requireAuth(session: IHTTPSession, block: () -> Response): Response {
-        if (!isAuthenticated(session)) {
-            return toNanoResponse(
-                DebugResponse.error(
-                    message = "Authentication required",
-                    status = 401,
-                    hint = "Send Authorization: Bearer <token> or authenticate via POST /api/v1/_auth",
-                ),
-            )
-        }
-        return block()
-    }
+    private fun busy(): Response =
+        toNanoResponse(
+            DebugResponse.error(
+                message = "Server busy",
+                status = 503,
+                hint = "Too many concurrent debug requests; retry shortly",
+            ),
+        )
+
+    /** The enveloped 401 for a request without a valid Bearer token or `lustro_token` cookie. */
+    private fun unauthorized(): Response =
+        toNanoResponse(
+            DebugResponse.error(
+                message = "Authentication required",
+                status = 401,
+                hint = "Send Authorization: Bearer <token> or authenticate via POST /api/v1/_auth",
+            ),
+        )
 
     /** True when a valid Bearer header OR a valid `lustro_token` cookie is present. */
     private fun isAuthenticated(session: IHTTPSession): Boolean {
@@ -240,16 +322,22 @@ internal class LustroServer(
     /**
      * `POST /api/v1/_auth` with body `{"token":"<t>"}`. On a match: 200 plus a
      * `Set-Cookie: lustro_token=<t>; HttpOnly; SameSite=Strict; Path=/`. Else 401.
-     * Unauthenticated by itself (it is how a browser becomes authenticated).
+     * Unauthenticated by itself (it is how a browser becomes authenticated), so
+     * it reads at most [MAX_AUTH_BODY_BYTES] of body.
      */
-    private fun handleAuth(session: IHTTPSession): Response {
+    private fun routeAuth(session: IHTTPSession, body: IncomingBody): Response {
         if (session.method != Method.POST) {
             return toNanoResponse(DebugResponse.error("Method not allowed", status = 405))
         }
         // State-changing endpoint: still subject to the origin gate.
         originRejection(session)?.let { return it }
-        val body = readRawBody(session)?.toString(Charsets.UTF_8).orEmpty()
-        val provided = extractJsonToken(body)
+        oversizeRejection(body, minOf(maxRequestBodyBytes, MAX_AUTH_BODY_BYTES))?.let { return it }
+        val bytes = body.read()
+        return bounded { handleAuth(bytes) }
+    }
+
+    private fun handleAuth(body: ByteArray?): Response {
+        val provided = extractJsonToken(body?.toString(Charsets.UTF_8).orEmpty())
         val expected = tokenStore.token()
         if (provided == null || !constantTimeEquals(provided, expected)) {
             return toNanoResponse(DebugResponse.error("Invalid token", status = 401))
@@ -513,6 +601,7 @@ $tabsHtml
     private fun handleApi(
         session: IHTTPSession,
         remainder: String,
+        body: ByteArray?,
         cancellation: RequestLimiter.Cancellation,
     ): Response {
         val parts = remainder.split("/", limit = 2)
@@ -525,7 +614,7 @@ $tabsHtml
             "_view" -> serveViewContent(tab)
             "_view.js" -> serveView(tab, isCss = false)
             "_view.css" -> serveView(tab, isCss = true)
-            else -> dispatchToTab(session, tab, subPath, cancellation)
+            else -> dispatchToTab(session, tab, subPath, body, cancellation)
         }
     }
 
@@ -550,13 +639,10 @@ $tabsHtml
         session: IHTTPSession,
         tab: DebugTab,
         subPath: String,
+        body: ByteArray?,
         cancellation: RequestLimiter.Cancellation,
     ): Response {
-        // State-changing requests must pass the origin gate.
-        if (session.method == Method.POST) {
-            originRejection(session)?.let { return it }
-        }
-        val request = buildDebugRequest(session, subPath)
+        val request = buildDebugRequest(session, subPath, body)
         cancellation.onCancel { cancelRequest(tab, request) }
         val response =
             try {
@@ -577,7 +663,13 @@ $tabsHtml
         }
     }
 
-    private fun buildDebugRequest(session: IHTTPSession, subPath: String): DebugRequest {
+    /**
+     * [body] is the raw bytes rather than NanoHTTPD's `parseBody` output, which
+     * decodes with US-ASCII when the Content-Type carries no `charset=` (the
+     * common case for `application/json` from `fetch`) and mangles multi-byte
+     * chars. The consumer decodes as UTF-8 via [DebugRequest.bodyAsString].
+     */
+    private fun buildDebugRequest(session: IHTTPSession, subPath: String, body: ByteArray?): DebugRequest {
         val method = session.method.name
         val queryParams: Map<String, List<String>> =
             session.parameters?.mapValues { (_, v) -> v.toList() } ?: emptyMap()
@@ -585,7 +677,6 @@ $tabsHtml
             Headers.from((session.headers ?: emptyMap()).filterKeys { it.lowercase() !in CREDENTIAL_HEADERS })
         val contentTypeHeader = session.headers?.get("content-type")
         val contentType = contentTypeHeader?.let { MediaType.parse(it) }
-        val body = readRawBody(session)
         return DebugRequest(
             path = subPath,
             method = method,
@@ -594,52 +685,6 @@ $tabsHtml
             body = body,
             contentType = contentType,
         )
-    }
-
-    /**
-     * Reads the raw request body bytes. Works around a NanoHTTPD limitation:
-     * NanoHTTPD's `parseBody` decodes with US-ASCII when the Content-Type carries
-     * no `charset=` (the common case for `application/json` from `fetch`), which
-     * mangles multi-byte chars before we ever see them. We read the bytes
-     * ourselves so the consumer decodes as UTF-8 via [DebugRequest.bodyAsString].
-     *
-     * Form-encoded bodies are parsed via NanoHTTPD so their params populate the
-     * query map; we still return the raw bytes for those too. Over-cap requests
-     * are already rejected with a 413 in [oversizeRejection] before we get here;
-     * this cap is a defensive backstop so a lying `Content-Length` cannot OOM.
-     */
-    private fun readRawBody(session: IHTTPSession): ByteArray? {
-        val method = session.method.name
-        if (method != "POST" && method != "PUT" && method != "PATCH" && method != "DELETE") {
-            return null
-        }
-        val length = session.headers?.get("content-length")?.toIntOrNull() ?: return null
-        if (length <= 0) return null
-        val maxBytes = maxRequestBodyBytes.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
-        val capped = minOf(length, maxBytes)
-        val buffer = ByteArray(capped)
-        var read = 0
-        return try {
-            val input = session.inputStream
-            while (read < capped) {
-                val n = input.read(buffer, read, capped - read)
-                if (n < 0) break
-                read += n
-            }
-            // Drain any remainder beyond the cap so the socket stream is consumed.
-            if (length > capped) {
-                val skipBuf = ByteArray(8 * 1024)
-                var remaining = length - capped
-                while (remaining > 0) {
-                    val n = input.read(skipBuf, 0, minOf(skipBuf.size, remaining))
-                    if (n < 0) break
-                    remaining -= n
-                }
-            }
-            if (read == capped) buffer else buffer.copyOf(read)
-        } catch (_: Exception) {
-            if (read > 0) buffer.copyOf(read) else null
-        }
     }
 
     private fun redirectTo(location: String): Response {
@@ -705,6 +750,14 @@ $tabsHtml
 
         // Matches the "token" string value in a small {"token":"..."} JSON body.
         private val TOKEN_JSON_REGEX = Regex("\"token\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"")
+
+        // A {"token":"..."} body is about 60 bytes. The cap keeps what anyone
+        // without the token can make the server buffer small.
+        private const val MAX_AUTH_BODY_BYTES = 1024L
+
+        // Only these methods hand a body to tabs; any other request that sends one
+        // closes its connection.
+        private val BODY_METHODS = setOf(Method.POST, Method.PUT, Method.PATCH, Method.DELETE)
 
         // Defaults mirroring DebugConfig so direct LustroServer construction (tests,
         // and any non-runtime caller) gets the same bounds the runtime injects.
