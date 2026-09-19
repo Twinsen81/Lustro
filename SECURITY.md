@@ -63,8 +63,10 @@ build, and that even in debug builds it stays bound to the local device.
 - **Content Security Policy.** Chrome and tab views are served with
   `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';
   connect-src 'self'; img-src 'self' data:; form-action 'self'; object-src
-  'none'; base-uri 'none'`. Origin / `Sec-Fetch-Site` checks are driven by
-  `DebugConfig.allowedOrigins`.
+  'none'; base-uri 'none'`. Every API request, whatever its method, passes an
+  Origin / `Sec-Fetch-Site` check driven by `DebugConfig.allowedOrigins`. A
+  browser can still send a cross-origin `GET` with neither header, so tabs must
+  not change state on `GET` or `HEAD`.
 - **Capture-time redaction.** A `Redactor` SPI redacts sensitive headers,
   URL/query parameters, JSON body fields, and form fields **at capture time**.
   Redacted values never enter the in-memory capture store, so they cannot leak

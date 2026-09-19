@@ -35,9 +35,9 @@ public class DebugConfig private constructor(
     /** Per-request timeout in milliseconds (enforced by the :lustro runtime). Default `30000`. */
     public val requestTimeoutMs: Long,
     /**
-     * Extra `Origin`s permitted on state-changing requests; the server's own
-     * origin is always allowed (other localhost ports are not). Enforced by the
-     * :lustro runtime. Default empty.
+     * Extra `Origin`s permitted to call the debug API, on any method; the
+     * server's own origin is always allowed (other localhost ports are not).
+     * Enforced by the :lustro runtime. Default empty.
      */
     public val allowedOrigins: List<String>,
 ) {

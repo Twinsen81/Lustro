@@ -206,10 +206,10 @@ Lustro deliberately surfaces app internals, so its defaults are conservative. Se
   'self'; style-src 'self' 'unsafe-inline'; ...`) plus `X-Content-Type-Options: nosniff`.
   **Scripts are `'self'`-only — no inline scripts**, so tab JS loads as an external same-origin
   resource and there are no inline handlers; **styles allow `'unsafe-inline'`** so tabs can use
-  inline `style=` attributes and `<style>` blocks. State-changing requests pass an Origin /
-  `Sec-Fetch-Site` check: the server's own origin is always allowed, and any other cross-origin
-  caller must be listed in `DebugConfig.allowedOrigins` (other localhost ports are not trusted by
-  default).
+  inline `style=` attributes and `<style>` blocks. Every API request, whatever its method, passes
+  an Origin / `Sec-Fetch-Site` check: the server's own origin is always allowed, and any other
+  cross-origin caller must be listed in `DebugConfig.allowedOrigins` (other localhost ports are not
+  trusted by default).
 - **Capture-time redaction.** A `Redactor` removes sensitive headers, URL/query params, and
   JSON/form body fields **before** anything is stored, so redacted values never reach the API,
   UI, or fixtures.
@@ -308,6 +308,12 @@ Lustro.builder(application)
   cursor envelope's `reset`/`unchanged`/`delta` contract — with `CursorCodec` for the opaque
   tokens — so tabs don't hand-roll it. Advance the sequence only when the list changes, since
   each advance re-sends the whole list; other observable values go in its `state`.
+- **Change state only on `POST`, `PUT`, `PATCH`, or `DELETE`, never on `GET` or `HEAD`.** The
+  runtime rejects browser requests from other origins on every method, but for a `GET` or `HEAD`
+  it can go only by `Sec-Fetch-Site`, which browsers send only to loopback and HTTPS addresses,
+  and older ones not at all. Without that header, an `<img>` on a page from another port of the
+  same host sends a `GET` the runtime can't tell from the console's own, and it carries the
+  console's cookie, since cookies aren't isolated by port.
 - `handle()` runs off the main thread and calls may be concurrent — keep mutable tab state
   thread-safe. Blocking I/O is fine; the runtime enforces a per-request timeout.
 - When a request times out, the client gets a `504` and the runtime cancels the request:
