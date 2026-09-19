@@ -28,6 +28,10 @@ import org.json.JSONTokener
  *   frames) — via a framing-agnostic, key-name-based fallback so no captured
  *   value is ever stored raw.
  *
+ * A captured body can end partway through a value, when it's cut off at the
+ * capture cap or captured while a stream is still arriving. A sensitive value
+ * cut off that way is masked through to the end of the body.
+ *
  * Redacted values are never stored.
  */
 public object DefaultRedactor : Redactor {

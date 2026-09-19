@@ -36,7 +36,38 @@ class TextualRedactorTest {
             "<token>a<b>c</b></token>",
             "a=1&token=2;key=3 password=\"x\" pwd= sig=",
             "x.token=1&a-key=2&1token=3&b_key=4",
+            "\"id\":\"1\",\"token\":\"abc",
+            "\"token\" : \"ab\\",
+            "\"token\":\"ab\\\n",
+            "\"a\":\"x\\\n\", \"token\":\"s",
+            "<n id=\"1\" token=\"abc",
+            "<token>abc",
+            "<token>abc<",
+            "<token>abc</tok",
+            "<token>abc</token \n",
+            "<token>abc<b",
+            "<a:token>v</a",
+            "<token->x",
+            "<a <token>s",
+            "a=1&token=ab",
         ).forEach(::assertMatchesReference)
+    }
+
+    @Test
+    fun `a value cut off by the end of the text is masked through to the end`() {
+        assertEquals("{\"id\":1,\"token\":\"[R]", redactor.redact("{\"id\":1,\"token\":\"abc"))
+        assertEquals("\"token\": \"[R]", redactor.redact("\"token\": \"ab\\"))
+        assertEquals("<node id=\"1\" token=\"[R]", redactor.redact("<node id=\"1\" token=\"abc"))
+        assertEquals("<token>[R]", redactor.redact("<token>abc"))
+        assertEquals("<token>[R]</tok", redactor.redact("<token>abc</tok"))
+        assertEquals("id=1&token=[R]", redactor.redact("id=1&token=ab"))
+    }
+
+    @Test
+    fun `a cut-off value of a key that isn't sensitive is kept`() {
+        assertEquals("{\"token\":\"[R]\",\"id\":\"abc", redactor.redact("{\"token\":\"s\",\"id\":\"abc"))
+        assertEquals("<id>abc</i", redactor.redact("<id>abc</i"))
+        assertEquals("<node id=\"abc", redactor.redact("<node id=\"abc"))
     }
 
     @Test
@@ -57,7 +88,7 @@ class TextualRedactorTest {
 
     private fun String.escaped(): String = replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
 
-    /** The regex formulation of [TextualRedactor]'s four passes. */
+    /** The regex formulation of [TextualRedactor]'s four passes. A value may run to the end of the text. */
     private class RegexReference(
         private val isSensitiveKey: (String) -> Boolean,
         private val placeholder: String,
@@ -65,13 +96,17 @@ class TextualRedactorTest {
         fun redact(body: String): String {
             var out = body
             out = JSON_KV.replace(out) { m ->
-                if (isSensitiveKey(m.groupValues[2])) "${m.groupValues[1]}$placeholder\"" else m.value
+                if (isSensitiveKey(m.groupValues[2])) "${m.groupValues[1]}$placeholder${m.groupValues[3]}" else m.value
             }
             out = ATTRIBUTE.replace(out) { m ->
-                if (isSensitiveKey(m.groupValues[2])) "${m.groupValues[1]}$placeholder\"" else m.value
+                if (isSensitiveKey(m.groupValues[2])) "${m.groupValues[1]}$placeholder${m.groupValues[3]}" else m.value
             }
             out = XML_ELEMENT.replace(out) { m ->
-                if (isSensitiveKey(m.groupValues[2])) "${m.groupValues[1]}$placeholder</${m.groupValues[3]}>" else m.value
+                when {
+                    !isSensitiveKey(m.groupValues[2]) -> m.value
+                    m.groups[3] != null -> "${m.groupValues[1]}$placeholder</${m.groupValues[3]}>"
+                    else -> "${m.groupValues[1]}$placeholder${m.groupValues[4]}"
+                }
             }
             out = FORM_KV.replace(out) { m ->
                 if (isSensitiveKey(m.groupValues[1])) "${m.groupValues[1]}=$placeholder" else m.value
@@ -80,9 +115,9 @@ class TextualRedactorTest {
         }
 
         private companion object {
-            val JSON_KV = Regex("(\"((?:[^\"\\\\]|\\\\.)*)\"\\s*:\\s*\")(?:[^\"\\\\]|\\\\.)*\"")
-            val ATTRIBUTE = Regex("(([A-Za-z_][\\w.\\-:]*)\\s*=\\s*\")[^\"]*\"")
-            val XML_ELEMENT = Regex("(<([A-Za-z_][\\w.\\-:]*)\\b[^>]*>)[^<]*</(\\2)\\s*>")
+            val JSON_KV = Regex("(\"((?:[^\"\\\\]|\\\\.)*)\"\\s*:\\s*\")(?:[^\"\\\\]|\\\\.)*(?:(\")|\\\\?\\z)")
+            val ATTRIBUTE = Regex("(([A-Za-z_][\\w.\\-:]*)\\s*=\\s*\")[^\"]*(?:(\")|\\z)")
+            val XML_ELEMENT = Regex("(<([A-Za-z_][\\w.\\-:]*)\\b[^>]*>)[^<]*(?:</(\\2)\\s*>|(<(?:/[\\w.\\-:]*\\s*)?)?\\z)")
             val FORM_KV = Regex("\\b([A-Za-z_][\\w.\\-]*)=(?!\")([^&;\\s]*)")
         }
     }

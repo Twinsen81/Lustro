@@ -22,6 +22,10 @@ public interface Redactor {
     /**
      * Returns [body] with sensitive fields redacted, using [contentType] to
      * decide how to parse it (e.g. JSON vs. form-encoded), or `null` if unknown.
+     *
+     * [body] can end partway through a value: a body larger than the capture cap
+     * is cut off there, and an event stream is redacted again each time more of
+     * it arrives. A sensitive value needs masking even when its end is missing.
      */
     public fun redactBody(body: String, contentType: MediaType?): String
 }

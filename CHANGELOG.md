@@ -131,6 +131,17 @@ see [DECISIONS.md](DECISIONS.md).
   copying, and each transaction keeps its result for the current search term
   until it changes, so a poll only re-checks new and updated transactions.
   That poll now takes under 1 ms, and a new search term takes 19 ms.
+- **Secrets stored raw where a captured body ends.** A captured body can stop
+  partway through a value: at the 256 KB capture cap, while an event stream is
+  still arriving, or where a client closed the body early. `DefaultRedactor`
+  masked a value only once its closing quote or close tag was captured, so the
+  part of a secret before the cut was stored, served by the API, and copied
+  into exports. A `password` that the cap cut through stayed in the capture for
+  good, and a `token` split across two reads of an event stream showed in the
+  Network tab until the rest arrived. A sensitive value that the end of the
+  captured text cuts off is now masked through to the end. The `Redactor` KDoc
+  now notes that bodies can end partway through a value, since custom
+  redactors get them too.
 
 ### Changed
 
