@@ -5,7 +5,8 @@ package io.github.twinsen81.lustro.internal.network
  * falls back to this for any captured body that isn't a single JSON value or a
  * form: NDJSON / concatenated JSON, SSE `data:` frames, XML, `text/plain`, and
  * JSON cut off at the capture cap. Only the value of a key accepted by
- * [isSensitiveKey] becomes [placeholder]; every other character is kept.
+ * [isSensitiveKey] becomes [placeholder], quoted where the value is a JSON number,
+ * literal, object, or array; every other character is kept.
  *
  * The text can end partway through a value: a body is cut off at the capture cap,
  * a stream is redacted each time more of it arrives, and a client can close a body
@@ -13,21 +14,33 @@ package io.github.twinsen81.lustro.internal.network
  * of the text cuts off is masked through to the end.
  *
  * Four shapes are masked in order, each pass reading the previous pass's output.
- * Each pass matches what the regex in its KDoc matches under `Regex.replace`
- * (byte-for-byte on ASCII text, which TextualRedactorTest pins), but in one
- * forward scan that never re-examines text it has already rejected. Redaction
- * runs on the app's own HTTP thread, and those regexes backtrack quadratically
- * on long identifier runs, unterminated strings, and `<`-heavy text.
+ * Each pass follows the regex in its KDoc under `Regex.replace`, extended where a
+ * regex can't follow nesting: a JSON object or array runs to its matching
+ * bracket, and an XML element with children to its matching close tag.
+ * TextualRedactorTest pins each pass byte-for-byte on ASCII text to a reference
+ * built from those regexes. The passes themselves are forward scans that read
+ * each character a bounded number of times. Redaction runs on the app's own HTTP
+ * thread, and those regexes backtrack quadratically on long identifier runs,
+ * unterminated strings, and `<`-heavy text.
  */
 internal class TextualRedactor(
     private val isSensitiveKey: (String) -> Boolean,
     private val placeholder: String,
 ) {
+    private val quotedPlaceholder = "\"$placeholder\""
+
     fun redact(text: String): String = maskFormPairs(maskXmlElements(maskAttributes(maskJsonPairs(text))))
 
     /**
-     * JSON-ish `"<key>": "<value>"`, masking `<value>` even when the text ends inside it:
+     * JSON-ish `"<key>": <value>`. A string value is masked between its quotes, even
+     * when the text ends inside it:
      * `"((?:[^"\\]|\\.)*)"\s*:\s*"(?:[^"\\]|\\.)*(?:"|\\?\z)`.
+     * Any other value becomes a quoted placeholder, as the structured JSON path
+     * masks it: a scalar `[^\s,}\]"]+` (a number, `true`, `false`, or `null`), or an
+     * object or array through its matching bracket, or through to the end of the
+     * text when that cuts it off. The scan goes on inside an object or array that
+     * isn't masked, so the sensitive keys nested in it still are, and from the
+     * opening quote of a string value that isn't masked.
      */
     private fun maskJsonPairs(text: String): String {
         val out = Rewriter(text)
@@ -42,22 +55,51 @@ internal class TextualRedactor(
                 pos = keyClose
                 continue
             }
-            val valueOpen = quoteAfterSeparator(text, keyClose + 1, ':')
-            val valueEnd = if (valueOpen < 0) -1 else quotedValueEnd(text, valueOpen + 1)
-            if (valueEnd >= 0) {
-                if (isSensitiveKey(text.substring(keyOpen + 1, keyClose))) {
-                    out.replace(valueOpen + 1, valueEnd, placeholder)
-                }
-                // Past the closing quote, or past the end of a value that was cut off.
-                pos = valueEnd + 1
-            } else {
-                // A key opening at an escaped quote inside this key reaches the same
-                // closing quote and fails the same way, so the next distinct
-                // candidate is that closing quote.
-                pos = keyClose
-            }
+            val valueStart = afterSeparator(text, keyClose + 1, ':')
+            val next = if (valueStart < 0) -1 else maskJsonValue(text, out, keyOpen + 1, keyClose, valueStart)
+            // Without a value, a key opening at an escaped quote inside this key
+            // reaches the same closing quote and fails the same way, so the next
+            // distinct candidate is that closing quote.
+            pos = if (next < 0) keyClose else next
         }
         return out.result()
+    }
+
+    /**
+     * Masks the value at [start] when the key from [keyStart] until [keyEnd] is
+     * sensitive. Returns where the scan goes on, or -1 when no value starts there.
+     */
+    private fun maskJsonValue(text: String, out: Rewriter, keyStart: Int, keyEnd: Int, start: Int): Int {
+        if (start == text.length) return -1
+        val first = text[start]
+        return when {
+            first == '"' -> {
+                val end = quotedValueEnd(text, start + 1)
+                when {
+                    end < 0 -> -1
+                    isSensitiveKey(text.substring(keyStart, keyEnd)) -> {
+                        out.replace(start + 1, end, placeholder)
+                        // Past the closing quote, or past the end of a value that was cut off.
+                        end + 1
+                    }
+                    // A key and value that aren't masked can be misread from the gaps
+                    // between strings: `,` and `],` in `["x",":"],"token":"s"`. Going on
+                    // past that value would skip the quote that opens "token".
+                    else -> start
+                }
+            }
+            first == '{' || first == '[' ->
+                if (isSensitiveKey(text.substring(keyStart, keyEnd))) {
+                    containerEnd(text, start).also { out.replace(start, it, quotedPlaceholder) }
+                } else {
+                    start + 1
+                }
+            isValueDelimiter(first) -> -1
+            else ->
+                skipWhile(text, start + 1) { !isValueDelimiter(it) }.also { end ->
+                    if (isSensitiveKey(text.substring(keyStart, keyEnd))) out.replace(start, end, quotedPlaceholder)
+                }
+        }
     }
 
     /**
@@ -88,11 +130,16 @@ internal class TextualRedactor(
     }
 
     /**
-     * Leaf element `<key ...>text</key>`, masking `text` even when the text ends
-     * inside it or its close tag:
+     * Element `<key ...>content</key>`, masking `content`. A leaf's text is masked
+     * even when the text ends inside it or its close tag:
      * `(<([A-Za-z_][\w.\-:]*)\b[^>]*>)[^<]*(?:</(\2)\s*>|(?:<(?:/[\w.\-:]*\s*)?)?\z)`.
      * Like the regex, the close tag may name a prefix of the open tag's name that
      * ends on a word boundary (`<ns:key>` closed by `</ns>`).
+     *
+     * Where that doesn't match, an open tag `<([A-Za-z_][\w.\-:]*)[^>]*>` that
+     * doesn't end in `/>` has everything up to its close tag masked: the next
+     * `</key>` with exactly its name that isn't closing a nested `<key>`, or the end
+     * of the text when none follows.
      */
     private fun maskXmlElements(text: String): String {
         val out = Rewriter(text)
@@ -153,6 +200,15 @@ internal class TextualRedactor(
                 val name = text.substring(closeNameStart, closeNameEnd)
                 if (isSensitiveKey(name)) out.replace(tagEnd + 1, elementEnd, "$placeholder</$name>")
                 pos = elementEnd
+            } else if (text[tagEnd - 1] != '/' && isSensitiveKey(text.substring(open + 1, nameEnd))) {
+                val close = closeTagStart(text, open + 1, nameEnd, tagEnd + 1)
+                if (close < 0) {
+                    out.replace(tagEnd + 1, text.length, placeholder)
+                    break
+                }
+                out.replace(tagEnd + 1, close, placeholder)
+                // Past the close tag: "</", the name, spaces, and '>'.
+                pos = skipWhile(text, close + 2 + (nameEnd - open - 1), ::isSpace) + 1
             } else {
                 pos = open + 1
             }
@@ -230,12 +286,69 @@ private fun quotedValueEnd(text: String, from: Int): Int {
     }
 }
 
+/** Index just past `\s*<separator>\s*` at [from], or -1. */
+private fun afterSeparator(text: String, from: Int, separator: Char): Int {
+    val i = skipWhile(text, from, ::isSpace)
+    return if (i < text.length && text[i] == separator) skipWhile(text, i + 1, ::isSpace) else -1
+}
+
 /** Index of the opening quote of `\s*<separator>\s*"` at [from], or -1. */
 private fun quoteAfterSeparator(text: String, from: Int, separator: Char): Int {
-    var i = skipWhile(text, from, ::isSpace)
-    if (i == text.length || text[i] != separator) return -1
-    i = skipWhile(text, i + 1, ::isSpace)
-    return if (i < text.length && text[i] == '"') i else -1
+    val i = afterSeparator(text, from, separator)
+    return if (i >= 0 && i < text.length && text[i] == '"') i else -1
+}
+
+/**
+ * Index just past the bracket that closes the JSON object or array opening at
+ * [from], or the end of the text when that cuts it off. Brackets in strings
+ * don't count.
+ */
+private fun containerEnd(text: String, from: Int): Int {
+    var depth = 0
+    var i = from
+    while (i < text.length) {
+        when (text[i]) {
+            '{', '[' -> depth++
+            '}', ']' -> if (--depth == 0) return i + 1
+            '"' -> {
+                i++
+                while (i < text.length && text[i] != '"') i += if (text[i] == '\\') 2 else 1
+            }
+        }
+        i++
+    }
+    return text.length
+}
+
+/**
+ * Index of the `<` of the tag closing the element named from [nameStart] until
+ * [nameEnd], whose content starts at [from], or -1 when the text ends first.
+ * Nested elements of the same name open and close in between.
+ */
+private fun closeTagStart(text: String, nameStart: Int, nameEnd: Int, from: Int): Int {
+    val nameLength = nameEnd - nameStart
+    var depth = 1
+    var i = from
+    while (true) {
+        val open = text.indexOf('<', i)
+        if (open < 0) return -1
+        val closing = text.getOrNull(open + 1) == '/'
+        val start = if (closing) open + 2 else open + 1
+        val end = start + nameLength
+        i = open + 1
+        if (!text.regionMatches(start, text, nameStart, nameLength) || (end < text.length && isNameChar(text[end]))) {
+            continue
+        }
+        if (closing) {
+            val tagEnd = skipWhile(text, end, ::isSpace)
+            if (tagEnd < text.length && text[tagEnd] == '>' && --depth == 0) return open
+        } else {
+            val tagEnd = text.indexOf('>', end)
+            if (tagEnd < 0) return -1
+            if (text[tagEnd - 1] != '/') depth++
+            i = tagEnd + 1
+        }
+    }
 }
 
 private fun indexOfNameStart(text: String, from: Int): Int {
@@ -268,6 +381,8 @@ private fun isSpace(c: Char): Boolean = c == ' ' || c in '\t'..'\r' || (c >= '\u
 private fun isNameChar(c: Char): Boolean = isWordChar(c) || c == '.' || c == '-' || c == ':'
 
 private fun isKeyChar(c: Char): Boolean = isWordChar(c) || c == '.' || c == '-'
+
+private fun isValueDelimiter(c: Char): Boolean = isSpace(c) || c == ',' || c == '}' || c == ']' || c == '"'
 
 private fun isLineTerminator(c: Char): Boolean =
     c == '\n' || c == '\r' || c == '\u0085' || c == '\u2028' || c == '\u2029'
