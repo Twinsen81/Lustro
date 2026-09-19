@@ -116,15 +116,20 @@ internal class RequestLimiter(
      * waiting for it. The caller maps each non-[Outcome.Completed] outcome to its
      * enveloped error response. Whatever [work] throws, Errors included, is
      * rethrown on the calling thread, so the caller must catch [Throwable].
+     *
+     * [onRelease] runs exactly once, when the request no longer holds a permit:
+     * right away if it's turned away before [work] runs, otherwise once [work]
+     * returns, which can be after a timeout. Callers use it to free what the
+     * request holds for as long as its permit.
      */
-    fun <T> dispatch(work: (Cancellation) -> T): Outcome<T> {
-        if (shuttingDown) return Outcome.Rejected
+    fun <T> dispatch(onRelease: () -> Unit = {}, work: (Cancellation) -> T): Outcome<T> {
+        if (shuttingDown) return rejected(onRelease)
 
         // Reserve a queue slot. We may take a permit immediately (no real wait),
         // but reserving up-front lets us reject the moment the queue is full
         // without blocking. The reservation is released as soon as we either get
         // a permit or bail out.
-        val reserved = reserveQueueSlot() ?: return Outcome.Rejected
+        val reserved = reserveQueueSlot() ?: return rejected(onRelease)
         val permitAcquired =
             try {
                 permits.tryAcquire(timeoutMs, TimeUnit.MILLISECONDS)
@@ -135,11 +140,11 @@ internal class RequestLimiter(
                 // Once past acquire() (or interrupted), we are no longer waiting.
                 if (reserved) waiting.decrementAndGet()
             }
-        if (!permitAcquired) return Outcome.Rejected
+        if (!permitAcquired) return rejected(onRelease)
 
         active.incrementAndGet()
         val cancellation = Cancellation()
-        val task = Task(cancellation, Callable { work(cancellation) })
+        val task = Task(cancellation, Callable { work(cancellation) }, onRelease)
         running.add(task)
         var submitted = false
         try {
@@ -152,6 +157,11 @@ internal class RequestLimiter(
             if (!submitted) task.release()
         }
         return await(task)
+    }
+
+    private fun rejected(onRelease: () -> Unit): Outcome<Nothing> {
+        onRelease()
+        return Outcome.Rejected
     }
 
     /**
@@ -245,6 +255,7 @@ internal class RequestLimiter(
     private inner class Task<T>(
         val cancellation: Cancellation,
         work: Callable<T>,
+        private val onRelease: () -> Unit,
     ) : FutureTask<T>(work) {
         private val released = AtomicBoolean(false)
 
@@ -261,6 +272,7 @@ internal class RequestLimiter(
             running.remove(this)
             active.decrementAndGet()
             permits.release()
+            onRelease()
         }
     }
 

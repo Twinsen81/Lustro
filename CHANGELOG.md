@@ -152,6 +152,33 @@ see [DECISIONS.md](DECISIONS.md).
   its child elements. The fallback now masks those values as `"[REDACTED]"`, as
   the structured path does, and everything inside a sensitive XML element. It
   also no longer misses a key that follows a string such as `":"` in an array.
+- **Rejected requests corrupting the next request on their connection.** The
+  server read a request's body only when a route used it, and NanoHTTPD never
+  skips a body that's left unread. A `401`, `403`, `404`, `413`, or `503`, or
+  any POST outside the API, left its body in the stream, and the next request
+  on that keep-alive connection was parsed with the body in front of it. A
+  browser console whose cookie went stale got a plain-text `400` for the
+  request after each rejected POST, and a body that was itself a complete
+  request was run and answered. A response now closes the connection whenever
+  its request's body wasn't read. It first reads and drops up to 4 MB of what
+  the client is still sending, so a client that's still uploading gets the
+  response rather than a reset. An authenticated API request's body is read
+  before routing, so a `404` or `503` keeps its connection. API requests with a
+  chunked body, which the server can't read, get a `400`.
+- **Slow request bodies starving the debug API.** An API request's body was
+  read while it held a concurrency slot, including `POST /api/v1/_auth`'s,
+  which needs no token. A client that sent its body a byte every few seconds
+  kept the slot for as long as it kept sending, even after its own request got
+  a `504`: a blocked socket read ignores the timeout's interrupt, and the
+  socket's read timeout restarts with every byte. On a Pixel 6 Pro, 16 such
+  connections made every authenticated request wait 30 s and then get a `503`.
+  The body is now read before the request takes a slot, after the checks that
+  need only headers, so a slow body holds only its own connection, and
+  `_auth` accepts at most 1 KB. The bodies buffered at once stay within what
+  the slots allowed, `maxConcurrentRequests × maxRequestBodyBytes`: a body
+  waits for room as a request waits for a slot. A client that stops sending
+  partway through a body now gets no response, where the tab used to get the
+  truncated body.
 
 ### Changed
 

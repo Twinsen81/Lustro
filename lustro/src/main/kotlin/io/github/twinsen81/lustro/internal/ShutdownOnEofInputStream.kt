@@ -20,11 +20,14 @@ import java.net.SocketException
  * only the read past the last one throws.
  */
 internal class ShutdownOnEofInputStream(input: InputStream) : FilterInputStream(input) {
-    override fun read(): Int = super.read().also { if (it < 0) throw clientClosed() }
+    override fun read(): Int = super.read().also { if (it < 0) throw connectionEnd() }
 
     override fun read(b: ByteArray, off: Int, len: Int): Int =
-        super.read(b, off, len).also { if (it < 0) throw clientClosed() }
-
-    // NanoHTTPD closes the connection without logging for exactly this message.
-    private fun clientClosed() = SocketException("NanoHttpd Shutdown")
+        super.read(b, off, len).also { if (it < 0) throw connectionEnd() }
 }
+
+/**
+ * Thrown on a connection's thread, ends the connection without a response:
+ * NanoHTTPD closes it without logging for exactly this message.
+ */
+internal fun connectionEnd(): SocketException = SocketException("NanoHttpd Shutdown")
