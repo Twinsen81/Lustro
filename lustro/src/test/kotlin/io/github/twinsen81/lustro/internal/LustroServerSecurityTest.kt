@@ -137,6 +137,28 @@ class LustroServerSecurityTest {
         return client.newCall(builder.build()).execute()
     }
 
+    private fun call(
+        method: String,
+        path: String,
+        cookie: String,
+        origin: String,
+        secFetchSite: String,
+    ): Response {
+        val body = if (method in setOf("POST", "PUT", "PATCH")) "{}".toRequestBody() else null
+        val request =
+            Request.Builder()
+                .url(url(path))
+                .method(method, body)
+                .header("Cookie", cookie)
+                .header("Origin", origin)
+                .header("Sec-Fetch-Site", secFetchSite)
+                // NanoHTTPD sends a body even with a HEAD response, which would be
+                // read as the next response on a reused connection.
+                .header("Connection", "close")
+                .build()
+        return client.newCall(request).execute()
+    }
+
 
     @Test
     fun `unauthenticated api route returns enveloped 401`() {
@@ -396,6 +418,55 @@ class LustroServerSecurityTest {
         post("/api/v1/sample/clear", "{}", bearer = token).use {
             assertEquals(200, it.code)
         }
+    }
+
+    @Test
+    fun `a GET from a page on another localhost port never reaches the tab`() {
+        // What a browser sends for an <img> on a page from another local port: the
+        // console's cookie, since ports share it, and Sec-Fetch-Site but no Origin.
+        get(
+            "/api/v1/recorder/delete-everything",
+            cookie = "lustro_token=${tokenStore.token()}",
+            secFetchSite = "same-site",
+        ).use { resp ->
+            assertEquals(403, resp.code)
+            assertEquals("forbidden", JSONObject(resp.body!!.string()).getString("error"))
+        }
+        assertNull(recordingTab.lastRequest.get())
+    }
+
+    @Test
+    fun `every method is origin checked`() {
+        val cookie = "lustro_token=${tokenStore.token()}"
+        listOf("GET", "HEAD", "POST", "PUT", "PATCH", "DELETE").forEach { method ->
+            call(method, "/api/v1/recorder/state", cookie, "http://127.0.0.1:${port + 1}", "same-site").use {
+                assertEquals(method, 403, it.code)
+            }
+        }
+        assertNull(recordingTab.lastRequest.get())
+    }
+
+    @Test
+    fun `framework api routes are origin checked`() {
+        val cookie = "lustro_token=${tokenStore.token()}"
+        listOf("/api/v1/_meta", "/api/v1/_schema", "/api/v1/sample/_view", "/api/v1/sample/_view.js").forEach { path ->
+            call("GET", path, cookie, "http://127.0.0.1:${port + 1}", "same-site").use {
+                assertEquals(path, 403, it.code)
+            }
+        }
+    }
+
+    @Test
+    fun `the console's own GETs are accepted`() {
+        val cookie = "lustro_token=${tokenStore.token()}"
+        // same-origin: the console's fetches and the tab assets it loads; none: a
+        // URL typed into the address bar.
+        listOf("same-origin", "none").forEach { site ->
+            get("/api/v1/recorder/state", cookie = cookie, secFetchSite = site).use {
+                assertEquals(site, 200, it.code)
+            }
+        }
+        assertNotNull(recordingTab.lastRequest.get())
     }
 
 }

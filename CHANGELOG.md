@@ -224,5 +224,21 @@ see [DECISIONS.md](DECISIONS.md).
   `Authorization` and `Cookie` from the `DebugRequest` before dispatch. Tabs no
   longer see any cookies: browsers don't isolate cookies by port, so the header
   can also carry other local services' sessions.
+- **Pages on other local ports reaching tabs with the console's session.** The
+  origin check ran only on `POST` requests. Cookies aren't isolated by port,
+  and `SameSite` treats other ports of the same host as the same site, so a
+  page from another local server, such as a dev server on `localhost:3000`,
+  gets the console's `lustro_token` cookie sent with its requests to the debug
+  server. Its `GET`s reached tabs as authenticated requests: against the
+  sample app on a Pixel 6 Pro, an `<img>`, a no-cors `fetch`, and a CORS
+  `fetch` from such a page in desktop Chrome each got a `200` from
+  `GET transactions`. The page can't read those responses, and the built-in
+  tabs change state only on `POST`, but a custom tab that changed state on a
+  `GET` could be driven from it. `PUT`, `PATCH`, and `DELETE` went unchecked
+  too, held back only by the CORS preflight the server never answers. Every
+  API request is now origin-checked, whatever its method, and `DebugTab.handle`
+  now requires tabs to change state only on `POST`, `PUT`, `PATCH`, or
+  `DELETE`: browsers send `Sec-Fetch-Site` only to loopback and HTTPS
+  addresses, and a cross-origin `GET` without it carries no `Origin` either.
 
 [Unreleased]: https://github.com/Twinsen81/Lustro/compare/HEAD
