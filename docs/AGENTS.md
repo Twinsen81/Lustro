@@ -185,7 +185,9 @@ Errors use the shared envelope; key statuses:
   only the server's own origin and configured `allowedOrigins` pass). Missing Origin/`Sec-Fetch-Site`
   headers are accepted, so plain CLI clients are unaffected.
 - **`400 bad_request`** — invalid input. Also a body sent with a `Transfer-Encoding` or a malformed
-  `Content-Length`: chunked request bodies are not supported.
+  `Content-Length`: chunked request bodies are not supported. Also any request, on any route, whose
+  request line and headers exceed 8 KB (`Request headers too large`); its connection then closes.
+  Browsers get there with large cookies that other local servers set on the same host.
 - **`413 payload_too_large`** — request body exceeds the configured max (1 MB by default; 1 KB for
   `POST /api/v1/_auth`).
 - **`503 unavailable`** — the server is at its concurrency + queue limit; back off and retry.
