@@ -69,6 +69,12 @@ public abstract class DebugTab {
      * The runtime authenticates the request before calling this and does not
      * pass the credentials on: [DebugRequest.headers] never contains
      * `Authorization` or `Cookie`.
+     *
+     * The runtime also rejects browser requests from other origins, whatever the
+     * method. For a `GET` or `HEAD`, though, it can go only by `Sec-Fetch-Site`,
+     * which browsers send only to loopback and HTTPS addresses, and older ones
+     * not at all. So `GET` and `HEAD` must not change state: use `POST`, `PUT`,
+     * `PATCH`, or `DELETE` for anything that does.
      */
     public open fun handle(request: DebugRequest): DebugResponse? = null
 

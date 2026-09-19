@@ -37,7 +37,8 @@ import java.util.concurrent.TimeUnit
  * - The `Authorization` and `Cookie` headers are stripped from the
  *   [DebugRequest] handed to a tab, so tab code never sees the credentials.
  * - CSP + `X-Content-Type-Options: nosniff` attached to all responses.
- * - Origin / `Sec-Fetch-Site` validation on state-changing POST `/api/v1/` requests.
+ * - Origin / `Sec-Fetch-Site` validation on every `/api/v1/` request, whatever
+ *   its method.
  *
  * Also implemented here:
  * - Bounded dispatch: max request body (413 before allocating), bounded
@@ -192,8 +193,9 @@ internal class LustroServer(
         // in-process server has no isolation, so we never buffer an over-cap body.
         oversizeRejection(body, maxRequestBodyBytes)?.let { return it }
         if (!isAuthenticated(session)) return unauthorized()
-        // State-changing requests must pass the origin gate.
-        if (session.method == Method.POST) originRejection(session)?.let { return it }
+        // Every method, not just POST: a page on another localhost port gets the
+        // cookie sent with its GETs too, and a tab may act on any method.
+        originRejection(session)?.let { return it }
         val takesBody = session.method in BODY_METHODS
         val size = if (takesBody) (body.declaredLength ?: 0L).coerceAtMost(Int.MAX_VALUE.toLong()).toInt() else 0
         if (!reserveBodyBytes(size)) return busy()
@@ -416,7 +418,7 @@ internal class LustroServer(
      * the request must be rejected, or `null` when it is allowed (including when
      * the headers are missing — older clients / CLI are accepted).
      *
-     * Applied to state-changing (`POST`) `/api/v1/` requests.
+     * Applied to every `/api/v1/` request, whatever its method.
      */
     private fun originRejection(session: IHTTPSession): Response? =
         if (isOriginAllowed(session)) {
@@ -434,7 +436,9 @@ internal class LustroServer(
         val headers = session.headers ?: return true
         val secFetchSite = headers["sec-fetch-site"]
         val origin = headers["origin"]
-        // MISSING headers are accepted (older clients / CLI send neither).
+        // MISSING headers are accepted (older clients / CLI send neither). So is a
+        // browser's cross-origin GET wherever it sends no Sec-Fetch-Site, which is
+        // why DebugTab.handle requires GET and HEAD to leave state alone.
         if (secFetchSite == null && origin == null) return true
         // Sec-Fetch-Site same-origin/none is always allowed: the browser vouches
         // that the request did not originate from another site.

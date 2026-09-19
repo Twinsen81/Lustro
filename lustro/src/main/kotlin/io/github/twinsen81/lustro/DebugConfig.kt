@@ -44,8 +44,9 @@ public class DebugConfig private constructor(
      */
     public val requestTimeoutMs: Long,
     /**
-     * Extra `Origin`s permitted on state-changing requests; the server's own
-     * origin is always allowed (other localhost ports are not). Default empty.
+     * Extra `Origin`s permitted to call the debug API, on any method; the
+     * server's own origin is always allowed (other localhost ports are not).
+     * Default empty.
      */
     public val allowedOrigins: List<String>,
 ) {

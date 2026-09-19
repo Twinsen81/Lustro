@@ -181,9 +181,9 @@ curl -s -X POST "$BASE/api/v1/network/rules/_/sync" \
 Errors use the shared envelope; key statuses:
 
 - **`401 unauthorized`** — missing/invalid token. Send `Authorization: Bearer <token>`.
-- **`403 forbidden`** — Origin / `Sec-Fetch-Site` rejected (a cross-origin, non-allowed Origin;
-  only the server's own origin and configured `allowedOrigins` pass). Missing Origin/`Sec-Fetch-Site`
-  headers are accepted, so plain CLI clients are unaffected.
+- **`403 forbidden`** — Origin / `Sec-Fetch-Site` rejected, on any method (a cross-origin,
+  non-allowed Origin; only the server's own origin and configured `allowedOrigins` pass). Missing
+  Origin/`Sec-Fetch-Site` headers are accepted, so plain CLI clients are unaffected.
 - **`400 bad_request`** — invalid input. Also a body sent with a `Transfer-Encoding` or a malformed
   `Content-Length`: chunked request bodies are not supported. Also any request, on any route, whose
   request line and headers exceed 8 KB (`Request headers too large`); its connection then closes.
