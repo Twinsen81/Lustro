@@ -78,6 +78,10 @@ internal class NetworkTrafficStore(
     private val capturedBytes = AtomicLong(0)
     private val captureLock = Any()
 
+    // Hands out NetworkTransaction.startOrder, so captures stored out of order
+    // can still be told apart by which request started first.
+    private val startOrder = AtomicLong(0)
+
     // Bumped by clear() under captureLock, so a request that started before a
     // clear is never stored after it.
     @Volatile
@@ -104,6 +108,7 @@ internal class NetworkTrafficStore(
     ): TransactionId {
         val id = UUID.randomUUID().toString()
         val timestamp = System.currentTimeMillis()
+        val order = startOrder.incrementAndGet()
         val clears = clearCount
         worker.submit(id, requestBody?.text?.length?.toLong() ?: 0L) {
             val redactedUrl = redactor.redactUrl(url)
@@ -111,6 +116,7 @@ internal class NetworkTrafficStore(
                 NetworkTransaction(
                     id = id,
                     timestamp = timestamp,
+                    startOrder = order,
                     method = method,
                     url = redactedUrl,
                     categories = safeClassify(redactedUrl),
@@ -187,6 +193,10 @@ internal class NetworkTrafficStore(
 
     fun recordRequest(transaction: NetworkTransaction) {
         if (overwriteMode.get()) {
+            // A capture taken on the calling thread is stored while an earlier one is
+            // still waiting for the capture thread. Overwrite mode keeps the request
+            // that started last, so this one is stale and isn't stored at all.
+            if (supersededSamePath(transaction)) return
             evictPriorCompletedSamePath(transaction)
         }
         transactionMap[transaction.id] = transaction
@@ -197,16 +207,30 @@ internal class NetworkTrafficStore(
         sequence.incrementAndGet()
     }
 
+    /** Whether a completed capture of the same method and path started after [incoming]. */
+    private fun supersededSamePath(incoming: NetworkTransaction): Boolean {
+        val identity = identityKey(incoming.method, incoming.url)
+        return transactionMap.values.any { existing ->
+            (existing.responseComplete || existing.error != null) &&
+                existing.startOrder > incoming.startOrder &&
+                identityKey(existing.method, existing.url) == identity
+        }
+    }
+
     private fun evictPriorCompletedSamePath(incoming: NetworkTransaction) {
         val identity = identityKey(incoming.method, incoming.url)
         // Snapshot the matching entries first so we don't mutate the map while
         // iterating it. We evict every completed match, not just the first — when
         // overwrite mode is toggled on after duplicates have already piled up, a
         // single eviction would leave older copies behind on the next request.
+        // Only requests that started EARLIER are evicted: a capture taken on the
+        // calling thread while the capture thread is behind is stored before
+        // earlier ones, and must not drop the newer request it finds there.
         val victims =
             transactionMap.values
                 .filter { existing ->
                     (existing.responseComplete || existing.error != null) &&
+                        existing.startOrder < incoming.startOrder &&
                         identityKey(existing.method, existing.url) == identity
                 }
         for (victim in victims) {

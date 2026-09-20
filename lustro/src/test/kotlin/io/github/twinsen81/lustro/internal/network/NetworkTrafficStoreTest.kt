@@ -318,6 +318,28 @@ class NetworkTrafficStoreTest {
     }
 
     @Test
+    fun `overwrite mode keeps the newest request when an earlier capture is still queued`() {
+        val executor = ManualExecutor()
+        val store = store(worker = CaptureWorker(executor, maxBacklogChars = 10_000))
+        store.setOverwriteMode(true)
+
+        // The earlier request's capture waits on the worker, its body filling the backlog...
+        val earlier = store.beginRequest("https://example.com/sync?seq=1", "GET", Headers.EMPTY, captured("x".repeat(9_000)), MediaType.TEXT)
+        // ...while the next one is captured on the caller's thread and completes.
+        val newest = store.beginRequest("https://example.com/sync?seq=2", "GET", Headers.EMPTY, null, null)
+        store.completeRequest(newest, 200, Headers.EMPTY, captured("ok"), 5, isMocked = false)
+        store.completeRequest(earlier, 200, Headers.EMPTY, captured("ok"), 5, isMocked = false)
+        executor.runAll()
+
+        // Overwrite mode still keeps exactly one row for the path, the request that started last.
+        assertEquals(
+            "overwrite must keep the request that started last",
+            listOf(newest.value),
+            store.getTransactions().map { it.id },
+        )
+    }
+
+    @Test
     fun `overwrite mode does not evict in-flight requests`() {
         val store = store()
         store.setOverwriteMode(true)
