@@ -191,6 +191,22 @@ see [DECISIONS.md](DECISIONS.md).
   large cookies on the same host, since cookies aren't isolated by port. Such a
   request now gets an enveloped `400` without being routed, and its connection
   closes.
+- **Capture slowing the app's own HTTP calls.** The interceptor redacted, classified,
+  and stored every capture on the thread making the call, before handing back the
+  response. For JSON, redaction parses and re-serializes the whole body. On a Pixel
+  6 Pro, capture took a call with a 200 KB JSON response from 3 ms to 32 ms, and one
+  with a 200 KB JSON request body from 2 ms to 30 ms. That work now runs on a
+  background capture thread, and a transaction is still stored only once it's
+  redacted. Those calls now take 5.5 ms and 3.1 ms. `HttpURLConnection` capture and
+  event-stream progress go through the same thread, and progress updates that arrive
+  while one is waiting are merged into it. Once about 4 MB of captured text is
+  waiting, calls capture on their own thread again until it catches up, so a burst
+  can't queue unbounded text. Custom `Redactor` and `NetworkClassifier`
+  implementations run on that thread too, and on the calling thread when it falls
+  behind. A `Redactor` or `NetworkClassifier` that throws no longer fails the app's
+  call: a body the redactor can't handle is left out of its capture, and a header is
+  masked. JSON nested 20,000 levels deep used to throw `StackOverflowError` from the
+  call itself.
 
 ### Changed
 

@@ -10,6 +10,10 @@ import io.github.twinsen81.lustro.MediaType
  * the lifecycle of a request: [beginRequest] on dispatch, then one or more
  * [completeRequest] calls (progressive for event streams) or a single
  * [failRequest].
+ *
+ * The built-in sink returns from each call right away and records the
+ * transaction on a background thread once it's redacted, so a transaction can
+ * take a moment to show up.
  */
 public interface NetworkCaptureSink {
     /**

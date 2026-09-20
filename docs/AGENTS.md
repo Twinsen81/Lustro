@@ -157,6 +157,10 @@ Reusing the same `id` updates the rule in place (idempotent). Remove it with
    re-read `items`.
 3. Fetch `GET transactions/<id>` for full headers and bodies (values are already redacted).
 
+A request is listed once its capture is redacted, which happens off the app's call: usually
+milliseconds after the call returns, longer for large bodies. Right after making a request, keep
+polling rather than reading the list once.
+
 **Replay a request**
 
 ```bash

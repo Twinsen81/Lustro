@@ -38,8 +38,9 @@ import org.junit.Test
  * Tests for [LustroNetworkInterceptor]. The interceptor talks to the
  * [NetworkCaptureSink] SPI with explicit gates. We exercise it against a real
  * [NetworkTrafficStore] (identity redactor so bodies pass through verbatim,
- * unless a test checks redaction) and against a recording fake sink for
- * short-circuit/throttle behaviour.
+ * unless a test checks redaction; capture work inline unless a test checks the
+ * hand-off) and against a recording fake sink for short-circuit/throttle
+ * behaviour.
  */
 class LustroNetworkInterceptorTest {
     /** Identity redactor so body/url assertions are not perturbed by redaction. */
@@ -51,12 +52,16 @@ class LustroNetworkInterceptorTest {
         override fun redactBody(body: String, contentType: MediaType?): String = body
     }
 
-    private fun store(redactor: Redactor = IdentityRedactor): NetworkTrafficStore =
+    private fun store(
+        redactor: Redactor = IdentityRedactor,
+        worker: CaptureWorker = inlineCaptureWorker(),
+    ): NetworkTrafficStore =
         NetworkTrafficStore(
             maxTransactions = 1000,
             redactor = redactor,
             classifier = NoOpNetworkClassifier,
             storage = null,
+            worker = worker,
         )
 
     private fun interceptor(
@@ -141,6 +146,30 @@ class LustroNetworkInterceptorTest {
         assertEquals("ok", transaction.responseBody)
         assertEquals(2L, transaction.responseBodyBytes)
         assertTrue(transaction.responseComplete)
+    }
+
+    @Test
+    fun `the call returns before its capture is redacted`() {
+        val executor = ManualExecutor()
+        val redactor = CountingRedactor()
+        val store = store(redactor = redactor, worker = CaptureWorker(executor))
+        val interceptor = interceptor(store)
+        val reqBody = """{"password":"hunter2"}""".toRequestBody("application/json".toMediaType())
+        val request = Request.Builder().url("https://example.com/login").post(reqBody).build()
+        val body = TrackingResponseBody("application/json".toMediaType(), """{"token":"abc"}""", chunkSize = 8_192)
+
+        val result = interceptor.intercept(FakeChain(request, responseFor(request, body)))
+
+        assertEquals("""{"token":"abc"}""", result.body!!.string())
+        assertEquals(0, redactor.bodies)
+        assertTrue(store.getTransactions().isEmpty())
+
+        executor.runAll()
+
+        val tx = store.getTransactions().single()
+        assertEquals("""{"password":"[REDACTED]"}""", tx.requestBody)
+        assertEquals("""{"token":"[REDACTED]"}""", tx.responseBody)
+        assertTrue(tx.responseComplete)
     }
 
     @Test

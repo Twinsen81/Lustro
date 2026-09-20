@@ -1,3 +1,5 @@
+@file:Suppress("TooGenericExceptionCaught")
+
 package io.github.twinsen81.lustro.internal.network
 
 import io.github.twinsen81.lustro.Headers
@@ -27,8 +29,9 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
  * - Mock rules persist through an injected [MockRuleStorage] instead of
  *   direct SharedPreferences.
  * - The transaction ring cap comes from `DebugConfig.maxCaptureTransactions`.
- * - The [Redactor] is applied at capture time so stored values are
- *   pre-redacted; URLs are classified via the injected [NetworkClassifier].
+ * - Capture calls return right away: redaction with the [Redactor],
+ *   classification with the [NetworkClassifier], and storing run later on a
+ *   [CaptureWorker]. A transaction is stored only once it's redacted.
  * - The polling cursor pairs the transaction list's change [sequence] with
  *   this store's random [epoch]. Only list changes advance the sequence:
  *   control state goes out with every poll, and rules have their own route.
@@ -43,6 +46,7 @@ internal class NetworkTrafficStore(
     private val classifier: NetworkClassifier,
     private val storage: MockRuleStorage?,
     captureBudgetBytes: Long = DEFAULT_CAPTURE_BUDGET_BYTES,
+    private val worker: CaptureWorker = CaptureWorker(),
 ) : NetworkCaptureSink {
     // Mutable so the runtime can push DebugConfig.maxCaptureTransactions into the
     // tab's store after construction (the built-in default is set by the factory).
@@ -74,6 +78,14 @@ internal class NetworkTrafficStore(
     private val capturedBytes = AtomicLong(0)
     private val captureLock = Any()
 
+    // Bumped by clear() under captureLock, so a request that started before a
+    // clear is never stored after it.
+    @Volatile
+    private var clearCount = 0L
+
+    // Stream progress still waiting for the worker, by transaction id.
+    private val pendingProgress = ConcurrentHashMap<String, CapturedResponse>()
+
     init {
         storage?.load()?.forEach { rule -> mockRules[rule.id] = rule.toImpl() }
     }
@@ -91,24 +103,29 @@ internal class NetworkTrafficStore(
         contentType: MediaType?,
     ): TransactionId {
         val id = UUID.randomUUID().toString()
-        val redactedUrl = redactor.redactUrl(url)
-        // Redact the captured text in place; truncation/byte-size flags are
-        // preserved verbatim from the CapturedBody so badges/sizes stay accurate.
-        val bodyText = requestBody?.text?.let { redactor.redactBody(it, contentType) }
-        val transaction =
-            NetworkTransaction(
-                id = id,
-                timestamp = System.currentTimeMillis(),
-                method = method,
-                url = redactedUrl,
-                categories = safeClassify(redactedUrl),
-                requestHeaders = redactHeaders(headers),
-                requestBody = bodyText,
-                requestBodyTruncated = requestBody?.truncated ?: false,
-                requestContentType = contentType?.toString(),
-                requestBodyBytes = requestBody?.byteSize,
-            )
-        recordRequest(transaction)
+        val timestamp = System.currentTimeMillis()
+        val clears = clearCount
+        worker.submit(id, requestBody?.text?.length?.toLong() ?: 0L) {
+            val redactedUrl = redactor.redactUrl(url)
+            val transaction =
+                NetworkTransaction(
+                    id = id,
+                    timestamp = timestamp,
+                    method = method,
+                    url = redactedUrl,
+                    categories = safeClassify(redactedUrl),
+                    requestHeaders = redactHeaders(headers),
+                    // Redact the captured text in place; truncation/byte-size flags are
+                    // preserved verbatim from the CapturedBody so badges/sizes stay accurate.
+                    requestBody = requestBody?.text?.let { redactBody(it, contentType) },
+                    requestBodyTruncated = requestBody?.truncated ?: false,
+                    requestContentType = contentType?.toString(),
+                    requestBodyBytes = requestBody?.byteSize,
+                )
+            synchronized(captureLock) {
+                if (clearCount == clears) recordRequest(transaction)
+            }
+        }
         return TransactionId(id)
     }
 
@@ -125,25 +142,47 @@ internal class NetworkTrafficStore(
         isMocked: Boolean,
         complete: Boolean,
     ) {
-        val contentType = MediaType.parse(responseHeaders.get("Content-Type").orEmpty())
-        val bodyText = responseBody?.text?.let { redactor.redactBody(it, contentType) }
-        updateWithResponse(
-            id = id.value,
-            statusCode = statusCode,
-            durationMs = durationMs,
-            responseHeaders = redactHeaders(responseHeaders),
-            responseBody = bodyText,
-            responseBodyTruncated = responseBody?.truncated ?: false,
-            responseContentType = contentType?.toString(),
-            responseBodyBytes = responseBody?.byteSize,
-            responseComplete = complete,
-            isMocked = isMocked,
-        )
+        val key = id.value
+        val response = CapturedResponse(statusCode, responseHeaders, responseBody, durationMs, isMocked, complete)
+        if (complete) {
+            // Supersedes any stream progress still waiting to be recorded.
+            pendingProgress.remove(key)
+            submitResponse(key, response) { response }
+        } else if (pendingProgress.put(key, response) == null) {
+            // A stream reports progress on every read. The queued update records
+            // whatever progress is latest when it runs, so at most one waits per stream.
+            submitResponse(key, response) { pendingProgress.remove(key) }
+        }
     }
 
     @Suppress("RestrictedApi") // id.value is @RestrictTo(LIBRARY_GROUP); same-group call (see beginRequest).
     override fun failRequest(id: TransactionId, durationMs: Long, error: String) {
-        updateWithError(id.value, durationMs, error)
+        worker.submit(id.value, 0L) { updateWithError(id.value, durationMs, error) }
+    }
+
+    /** Waits up to [timeoutMs] until the captures reported so far are stored. For tests. */
+    fun awaitCaptures(timeoutMs: Long = 5_000L): Boolean = worker.awaitIdle(timeoutMs)
+
+    private fun submitResponse(id: String, response: CapturedResponse, take: () -> CapturedResponse?) {
+        worker.submit(id, response.body?.text?.length?.toLong() ?: 0L) {
+            take()?.let { recordResponse(id, it) }
+        }
+    }
+
+    private fun recordResponse(id: String, response: CapturedResponse) {
+        val contentType = MediaType.parse(response.headers.get("Content-Type").orEmpty())
+        updateWithResponse(
+            id = id,
+            statusCode = response.statusCode,
+            durationMs = response.durationMs,
+            responseHeaders = redactHeaders(response.headers),
+            responseBody = response.body?.text?.let { redactBody(it, contentType) },
+            responseBodyTruncated = response.body?.truncated ?: false,
+            responseContentType = contentType?.toString(),
+            responseBodyBytes = response.body?.byteSize,
+            responseComplete = response.complete,
+            isMocked = response.isMocked,
+        )
     }
 
     fun recordRequest(transaction: NetworkTransaction) {
@@ -247,10 +286,29 @@ internal class NetworkTrafficStore(
         if (updated != null) sequence.incrementAndGet()
     }
 
+    // A body the redactor fails on, such as JSON nested deeper than the stack
+    // allows, is dropped: never stored unredacted, and the rest of its capture kept.
+    private fun redactBody(text: String, contentType: MediaType?): String? =
+        try {
+            redactor.redactBody(text, contentType)
+        } catch (t: Throwable) {
+            logCaptureFailure("Could not redact a captured body; dropped it", t)
+            null
+        }
+
+    // A header the redactor fails on is masked, not stored as it is.
+    private fun redactHeaderValue(name: String, value: String): String =
+        try {
+            redactor.redactHeaderValue(name, value)
+        } catch (t: Throwable) {
+            logCaptureFailure("Could not redact a captured header; masked it", t)
+            PLACEHOLDER
+        }
+
     private fun redactHeaders(headers: Headers): Map<String, String> {
         val out = LinkedHashMap<String, String>()
         headers.forEach { name, value ->
-            val redacted = redactor.redactHeaderValue(name, value)
+            val redacted = redactHeaderValue(name, value)
             // Join duplicate header values (e.g. multiple Set-Cookie).
             val existing = out[name]
             out[name] = if (existing != null) "$existing, $redacted" else redacted
@@ -261,7 +319,7 @@ internal class NetworkTrafficStore(
     private fun safeClassify(url: String): List<String> =
         try {
             classifier.classify(url)
-        } catch (_: Exception) {
+        } catch (_: Throwable) {
             emptyList()
         }
 
@@ -333,9 +391,12 @@ internal class NetworkTrafficStore(
     fun getSequence(): Long = sequence.get()
 
     fun clear() {
-        transactionMap.clear()
-        insertionOrder.clear()
-        capturedBytes.set(0)
+        synchronized(captureLock) {
+            clearCount++
+            transactionMap.clear()
+            insertionOrder.clear()
+            capturedBytes.set(0)
+        }
         sequence.incrementAndGet()
     }
 
@@ -408,7 +469,19 @@ internal class NetworkTrafficStore(
                 hitCount = hitCount,
             )
 
+    /** A response update as a capture adapter reported it, before redaction. */
+    private class CapturedResponse(
+        val statusCode: Int,
+        val headers: Headers,
+        val body: CapturedBody?,
+        val durationMs: Long,
+        val isMocked: Boolean,
+        val complete: Boolean,
+    )
+
     private companion object {
+        private const val PLACEHOLDER = "[REDACTED]"
+
         // The built-in default; the runtime overrides this with DebugConfig
         // .captureBudgetBytes via applyConfig so create() works standalone.
         private const val DEFAULT_CAPTURE_BUDGET_BYTES = 50L * 1024 * 1024
