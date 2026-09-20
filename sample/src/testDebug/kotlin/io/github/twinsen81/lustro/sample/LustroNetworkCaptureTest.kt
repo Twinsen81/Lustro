@@ -108,7 +108,7 @@ class LustroNetworkCaptureTest {
         assertEquals("""{"hello":"world"}""", second.body.readUtf8())
 
         // And both must be captured: query the Network tab's transactions route.
-        val envelope = JSONObject(transactionsJson())
+        val envelope = awaitTransactions(count = 2)
         assertEquals("reset", envelope.getString("status"))
         assertTrue("expected a cursor token", envelope.getString("cursor").isNotEmpty())
         assertNotNull("first poll returns the current item list", envelope.optJSONArray("items"))
@@ -132,6 +132,22 @@ class LustroNetworkCaptureTest {
         assertTrue(state.has("paused"))
         assertTrue(state.has("throttleDelayMs"))
         assertTrue(state.has("overwriteMode"))
+    }
+
+    /**
+     * Polls the transactions route until it lists [count] completed captures.
+     * Capture is recorded off the app's calls, so a request shows up shortly
+     * after it returns.
+     */
+    private fun awaitTransactions(count: Int): JSONObject {
+        val deadline = System.currentTimeMillis() + 5_000
+        while (true) {
+            val envelope = JSONObject(transactionsJson())
+            val items = envelope.optJSONArray("items")
+            val completed = (0 until (items?.length() ?: 0)).count { items!!.getJSONObject(it).getBoolean("responseComplete") }
+            if (completed >= count || System.currentTimeMillis() > deadline) return envelope
+            Thread.sleep(10)
+        }
     }
 
     /** Drives the public `GET transactions` route on the Network tab. */

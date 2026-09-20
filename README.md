@@ -150,6 +150,12 @@ see the final application-level request. (As an application interceptor it does 
 OkHttp's automatic retries or redirects the way a network interceptor would — that is the
 intended trade-off.)
 
+**Capture doesn't hold up the call.** The interceptor copies what it captures and returns;
+redaction, classification, and storing run on a background thread, so a request shows up in the
+Network tab a moment after it completes. During a burst of large bodies, once about 4 MB of
+captured text is waiting, calls capture on their own thread until that one catches up, which
+keeps memory bounded.
+
 ## Send Request
 
 The Network tab's **Send Request** panel dispatches an arbitrary request through a configured

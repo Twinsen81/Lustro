@@ -6,6 +6,9 @@ package io.github.twinsen81.lustro.network
  * A host-supplied SPI for tagging captured traffic with category labels, so
  * apps can classify requests (e.g. `"sync"`, `"media"`) however they like. Use
  * [NoOpNetworkClassifier] for the default behaviour of no categories.
+ *
+ * Called on the same threads as [Redactor]: a background capture thread, or
+ * the app's HTTP threads when capture falls behind. Keep it thread-safe.
  */
 public fun interface NetworkClassifier {
     /** Returns the category labels for [url]; may be empty. */

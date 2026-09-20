@@ -129,6 +129,7 @@ class OkHttpSenderTest {
         val result = OkHttpSender(capturingClient, maxResponseBodyBytes = 1024, callTimeoutMs = 0).send(get("/sse"))
 
         assertEquals(1024, result.body?.size)
+        assertTrue(store.awaitCaptures())
         assertTrue(store.getTransactions().single().responseBodyTruncated)
     }
 

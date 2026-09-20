@@ -8,6 +8,10 @@ import io.github.twinsen81.lustro.MediaType
  * Applied at capture time so redacted values are never persisted. The default
  * implementation (covering auth/cookie headers; token/key/secret/password/
  * auth-like URL query params, JSON fields, and form fields) lives in `:lustro`.
+ *
+ * Lustro calls it on a background capture thread, so the app's HTTP calls
+ * don't wait for it. When capture falls behind, the threads making those calls
+ * run it instead, so an implementation must be thread-safe.
  */
 public interface Redactor {
     /** Returns [url] with sensitive query parameters redacted. */

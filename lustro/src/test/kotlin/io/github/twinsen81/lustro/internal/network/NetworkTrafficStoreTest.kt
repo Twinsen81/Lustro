@@ -19,9 +19,11 @@ import org.junit.Test
 /**
  * Tests for the internal [NetworkTrafficStore]: mock-rule CRUD/sync, overwrite
  * eviction, pause (capture-only), throttle/pause state, classifier categories,
- * redaction-at-capture, and the monotonic sequence that backs the polling cursor.
+ * redaction-at-capture, the capture worker hand-off, and the monotonic sequence
+ * that backs the polling cursor.
  *
- * Pure JVM (no Base64/SharedPrefs), so plain JUnit4.
+ * Pure JVM (no Base64/SharedPrefs), so plain JUnit4. Capture work runs inline
+ * unless a test hands the store a [ManualExecutor].
  */
 class NetworkTrafficStoreTest {
     private object IdentityRedactor : Redactor {
@@ -38,6 +40,7 @@ class NetworkTrafficStoreTest {
         maxTransactions: Int = 1000,
         storage: MockRuleStorage? = null,
         captureBudgetBytes: Long = 50L * 1024 * 1024,
+        worker: CaptureWorker = inlineCaptureWorker(),
     ): NetworkTrafficStore =
         NetworkTrafficStore(
             maxTransactions = maxTransactions,
@@ -45,6 +48,7 @@ class NetworkTrafficStoreTest {
             classifier = classifier,
             storage = storage,
             captureBudgetBytes = captureBudgetBytes,
+            worker = worker,
         )
 
     /** Helper: wrap a text body in a [CapturedBody] (full size = its UTF-8 bytes). */
@@ -314,6 +318,28 @@ class NetworkTrafficStoreTest {
     }
 
     @Test
+    fun `overwrite mode keeps the newest request when an earlier capture is still queued`() {
+        val executor = ManualExecutor()
+        val store = store(worker = CaptureWorker(executor, maxBacklogChars = 10_000))
+        store.setOverwriteMode(true)
+
+        // The earlier request's capture waits on the worker, its body filling the backlog...
+        val earlier = store.beginRequest("https://example.com/sync?seq=1", "GET", Headers.EMPTY, captured("x".repeat(9_000)), MediaType.TEXT)
+        // ...while the next one is captured on the caller's thread and completes.
+        val newest = store.beginRequest("https://example.com/sync?seq=2", "GET", Headers.EMPTY, null, null)
+        store.completeRequest(newest, 200, Headers.EMPTY, captured("ok"), 5, isMocked = false)
+        store.completeRequest(earlier, 200, Headers.EMPTY, captured("ok"), 5, isMocked = false)
+        executor.runAll()
+
+        // Overwrite mode still keeps exactly one row for the path, the request that started last.
+        assertEquals(
+            "overwrite must keep the request that started last",
+            listOf(newest.value),
+            store.getTransactions().map { it.id },
+        )
+    }
+
+    @Test
     fun `overwrite mode does not evict in-flight requests`() {
         val store = store()
         store.setOverwriteMode(true)
@@ -476,6 +502,13 @@ class NetworkTrafficStoreTest {
     }
 
     @Test
+    fun `a classifier that throws an Error yields no categories`() {
+        val store = store(classifier = { TODO() })
+        store.beginRequest("https://example.com/x", "GET", Headers.EMPTY, null, null)
+        assertEquals(emptyList<String>(), store.getTransactions().single().categories)
+    }
+
+    @Test
     fun `redaction is applied at capture - stored values are already redacted`() {
         // Real DefaultRedactor wired into the store.
         val store = store(redactor = DefaultRedactor)
@@ -521,6 +554,206 @@ class NetworkTrafficStoreTest {
         assertFalse(responseBody.contains("RESPSECRET"))
     }
 
+
+    @Test
+    fun `capture calls return before redaction and nothing shows until it's redacted`() {
+        val executor = ManualExecutor()
+        val redactor = CountingRedactor()
+        val store = store(redactor = redactor, worker = CaptureWorker(executor))
+        val before = store.getSequence()
+
+        val id =
+            store.beginRequest(
+                url = "https://example.com/login?access_token=LEAKED",
+                method = "POST",
+                headers = Headers.of("Authorization" to "Bearer secret"),
+                requestBody = captured("""{"password":"hunter2"}"""),
+                contentType = MediaType.JSON,
+            )
+        store.completeRequest(id, 200, Headers.of("Content-Type" to "application/json"), captured("""{"token":"RESP"}"""), 5, isMocked = false)
+
+        assertEquals(0, redactor.bodies)
+        assertNull(store.getTransaction(id.value))
+        assertTrue(store.getTransactions().isEmpty())
+        assertEquals(before, store.getSequence())
+
+        executor.runAll()
+
+        val tx = store.getTransaction(id.value)!!
+        assertEquals(2, redactor.bodies)
+        assertFalse(tx.url.contains("LEAKED"))
+        assertEquals("[REDACTED]", tx.requestHeaders["Authorization"])
+        assertFalse(tx.requestBody!!.contains("hunter2"))
+        assertFalse(tx.responseBody!!.contains("RESP"))
+        assertEquals(200, tx.statusCode)
+        assertTrue(tx.responseComplete)
+    }
+
+    @Test
+    fun `transactions keep the order their requests started in`() {
+        val executor = ManualExecutor()
+        val store = store(worker = CaptureWorker(executor))
+
+        store.beginRequest("https://example.com/first", "POST", Headers.EMPTY, captured("x".repeat(10_000)), MediaType.TEXT)
+        store.beginRequest("https://example.com/second", "GET", Headers.EMPTY, null, null)
+        executor.runAll()
+
+        assertEquals(listOf("https://example.com/second", "https://example.com/first"), store.getTransactions().map { it.url })
+    }
+
+    @Test
+    fun `queued stream progress is redacted once, with the latest text`() {
+        val executor = ManualExecutor()
+        val redactor = CountingRedactor()
+        val store = store(redactor = redactor, worker = CaptureWorker(executor))
+        val sse = Headers.of("Content-Type" to "text/event-stream")
+        val id = store.beginRequest("https://example.com/events", "GET", Headers.EMPTY, null, null)
+
+        store.completeRequest(id, 200, sse, captured("data: 1\n"), 1, isMocked = false, complete = false)
+        store.completeRequest(id, 200, sse, captured("data: 1\ndata: 2\n"), 2, isMocked = false, complete = false)
+        store.completeRequest(id, 200, sse, captured("data: 1\ndata: 2\ndata: 3\n"), 3, isMocked = false, complete = false)
+        executor.runAll()
+
+        assertEquals(1, redactor.bodies)
+        val tx = store.getTransaction(id.value)!!
+        assertEquals("data: 1\ndata: 2\ndata: 3\n", tx.responseBody)
+        assertEquals(3L, tx.durationMs)
+        assertFalse(tx.responseComplete)
+    }
+
+    @Test
+    fun `a final response replaces stream progress still waiting`() {
+        val executor = ManualExecutor()
+        val redactor = CountingRedactor()
+        val store = store(redactor = redactor, worker = CaptureWorker(executor))
+        val sse = Headers.of("Content-Type" to "text/event-stream")
+        val id = store.beginRequest("https://example.com/events", "GET", Headers.EMPTY, null, null)
+
+        store.completeRequest(id, 200, sse, captured("data: 1\n"), 1, isMocked = false, complete = false)
+        store.completeRequest(id, 200, sse, captured("data: 1\ndata: 2\n"), 2, isMocked = false, complete = true)
+        executor.runAll()
+
+        assertEquals(1, redactor.bodies)
+        val tx = store.getTransaction(id.value)!!
+        assertEquals("data: 1\ndata: 2\n", tx.responseBody)
+        assertTrue(tx.responseComplete)
+    }
+
+    @Test
+    fun `progress reported after the worker took the last update is recorded after it`() {
+        val executor = ManualExecutor()
+        val store = store(worker = CaptureWorker(executor))
+        val sse = Headers.of("Content-Type" to "text/event-stream")
+        val id = store.beginRequest("https://example.com/events", "GET", Headers.EMPTY, null, null)
+        store.completeRequest(id, 200, sse, captured("data: 1\n"), 1, isMocked = false, complete = false)
+        executor.runAll()
+
+        store.completeRequest(id, 200, sse, captured("data: 1\ndata: 2\n"), 2, isMocked = false, complete = false)
+        executor.runAll()
+
+        assertEquals("data: 1\ndata: 2\n", store.getTransaction(id.value)!!.responseBody)
+    }
+
+    @Test
+    fun `a request that starts while capture is behind is captured on the caller's thread`() {
+        val executor = ManualExecutor()
+        val store = store(worker = CaptureWorker(executor, maxBacklogChars = 10_000))
+        store.beginRequest("https://example.com/upload", "POST", Headers.EMPTY, captured("x".repeat(9_000)), MediaType.TEXT)
+
+        val id = store.beginRequest("https://example.com/next", "GET", Headers.EMPTY, null, null)
+
+        assertNotNull(store.getTransaction(id.value))
+        executor.runAll()
+        assertEquals(setOf("https://example.com/upload", "https://example.com/next"), store.getTransactions().map { it.url }.toSet())
+    }
+
+    @Test
+    fun `stream progress stays merged while capture is behind`() {
+        val executor = ManualExecutor()
+        val redactor = CountingRedactor()
+        val store = store(redactor = redactor, worker = CaptureWorker(executor, maxBacklogChars = 20_000))
+        val sse = Headers.of("Content-Type" to "text/event-stream")
+        val id = store.beginRequest("https://example.com/events", "GET", Headers.EMPTY, null, null)
+        store.beginRequest("https://example.com/upload", "POST", Headers.EMPTY, captured("x".repeat(8_000)), MediaType.TEXT)
+
+        for (events in 1..3) {
+            store.completeRequest(id, 200, sse, captured("data: x\n".repeat(1_500 * events)), events.toLong(), isMocked = false, complete = false)
+        }
+        assertEquals(0, redactor.bodies)
+        executor.runAll()
+
+        assertEquals(2, redactor.bodies)
+        assertEquals("data: x\n".repeat(4_500), store.getTransaction(id.value)!!.responseBody)
+    }
+
+    @Test
+    fun `clear drops captures of requests that started before it`() {
+        val executor = ManualExecutor()
+        val store = store(worker = CaptureWorker(executor))
+
+        val before = store.beginRequest("https://example.com/before", "GET", Headers.EMPTY, null, null)
+        store.clear()
+        store.completeRequest(before, 200, Headers.EMPTY, captured("late"), 5, isMocked = false)
+        store.beginRequest("https://example.com/after", "GET", Headers.EMPTY, null, null)
+        executor.runAll()
+
+        assertEquals(listOf("https://example.com/after"), store.getTransactions().map { it.url })
+        assertEquals(0L, store.capturedBytes())
+    }
+
+    @Test
+    fun `a body the redactor fails on is dropped and the rest of the capture kept`() {
+        // DefaultRedactor overflows the stack on JSON nested thousands deep on Android.
+        val failing =
+            object : Redactor by DefaultRedactor {
+                override fun redactBody(body: String, contentType: MediaType?): String = throw StackOverflowError()
+            }
+        val store = store(redactor = failing)
+
+        val id = store.beginRequest("https://example.com/deep", "POST", Headers.EMPTY, captured("[[[]]]"), MediaType.JSON)
+        store.completeRequest(id, 200, Headers.EMPTY, captured("[[[]]]"), 5, isMocked = false)
+
+        val tx = store.getTransaction(id.value)!!
+        assertNull(tx.requestBody)
+        assertEquals(6L, tx.requestBodyBytes)
+        assertNull(tx.responseBody)
+        assertEquals(200, tx.statusCode)
+        assertTrue(tx.responseComplete)
+    }
+
+    @Test
+    fun `a header the redactor fails on is masked`() {
+        val failing =
+            object : Redactor by DefaultRedactor {
+                override fun redactHeaderValue(name: String, value: String): String =
+                    if (name == "X-Odd") error("redactor bug") else DefaultRedactor.redactHeaderValue(name, value)
+            }
+        val store = store(redactor = failing)
+
+        val id = store.beginRequest("https://example.com/x", "GET", Headers.of("X-Odd" to "secret", "Accept" to "*/*"), null, null)
+        store.completeRequest(id, 200, Headers.of("X-Odd" to "secret"), captured("ok"), 5, isMocked = false)
+
+        val tx = store.getTransaction(id.value)!!
+        assertEquals("[REDACTED]", tx.requestHeaders["X-Odd"])
+        assertEquals("*/*", tx.requestHeaders["Accept"])
+        assertEquals("[REDACTED]", tx.responseHeaders!!["X-Odd"])
+        assertTrue(tx.responseComplete)
+    }
+
+    @Test
+    fun `a redactor that throws never reaches the capturing call`() {
+        val failing =
+            object : Redactor by DefaultRedactor {
+                override fun redactUrl(url: String): String = error("redactor bug")
+            }
+        val store = store(redactor = failing)
+
+        val id = store.beginRequest("https://example.com/x", "GET", Headers.EMPTY, null, null)
+        store.completeRequest(id, 200, Headers.EMPTY, captured("ok"), 5, isMocked = false)
+        store.failRequest(id, 5, "boom")
+
+        assertTrue(store.getTransactions().isEmpty())
+    }
 
     /** Simple in-memory [MockRuleStorage] fake. */
     private class InMemoryMockRuleStorage : MockRuleStorage {

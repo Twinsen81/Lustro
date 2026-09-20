@@ -4,6 +4,7 @@ import io.github.twinsen81.lustro.DebugRequest
 import io.github.twinsen81.lustro.DebugResponse
 import io.github.twinsen81.lustro.Headers
 import io.github.twinsen81.lustro.MediaType
+import io.github.twinsen81.lustro.internal.network.NetworkTrafficStore
 import java.util.concurrent.TimeUnit
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
@@ -46,6 +47,11 @@ class NetworkDebugTabTest {
 
     private fun DebugResponse.json(): JSONObject = JSONObject(body.toString(Charsets.UTF_8))
 
+    private fun NetworkDebugTab.capture(url: String) {
+        captureSink.beginRequest(url, "GET", Headers.EMPTY, null, null)
+        assertTrue((captureSink as NetworkTrafficStore).awaitCaptures())
+    }
+
     @Test
     fun `first poll returns reset with items and state`() {
         val tab = tab()
@@ -78,7 +84,7 @@ class NetworkDebugTabTest {
         val tab = tab()
         val cursor1 = tab.handle(get("transactions"))!!.json().getString("cursor")
 
-        tab.captureSink.beginRequest("https://example.com/a", "GET", Headers.EMPTY, null, null)
+        tab.capture("https://example.com/a")
 
         val second = tab.handle(get("transactions", "cursor" to cursor1))!!.json()
         assertEquals("delta", second.getString("status"))
@@ -109,11 +115,11 @@ class NetworkDebugTabTest {
         // Models an app restart: the new tab's sequence reaches the value of the
         // client's old cursor with a different list.
         val before = tab()
-        before.captureSink.beginRequest("https://example.com/old", "GET", Headers.EMPTY, null, null)
+        before.capture("https://example.com/old")
         val staleCursor = before.handle(get("transactions"))!!.json().getString("cursor")
 
         val after = tab()
-        after.captureSink.beginRequest("https://example.com/new", "GET", Headers.EMPTY, null, null)
+        after.capture("https://example.com/new")
 
         val poll = after.handle(get("transactions", "cursor" to staleCursor))!!.json()
         assertEquals("reset", poll.getString("status"))

@@ -228,8 +228,8 @@ public object DefaultRedactor : Redactor {
      * - XML elements `<key>...</key>`, children included,
      * - XML / HTML attributes `<key>="..."` (and `name="..."`-style attributes).
      *
-     * Linear in the body size (see [TextualRedactor]): it runs on the app's own
-     * HTTP thread, on bodies up to the capture cap.
+     * Linear in the body size (see [TextualRedactor]): it runs on bodies up to
+     * the capture cap, and on the app's own HTTP thread when capture falls behind.
      */
     private fun redactTextually(body: String): String = textualRedactor.redact(body)
 

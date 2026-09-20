@@ -2,6 +2,7 @@ package io.github.twinsen81.lustro
 
 import android.app.Application
 import androidx.test.core.app.ApplicationProvider
+import io.github.twinsen81.lustro.internal.network.NetworkTrafficStore
 import io.github.twinsen81.lustro.network.NetworkDebugTab
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -41,6 +42,7 @@ class LustroNetworkWiringTest {
             val client = OkHttpClient.Builder().addInterceptor(lustro.networkInterceptor()).build()
             val url = mockServer.url("/wiring-check").toString()
             client.newCall(Request.Builder().url(url).build()).execute().use { it.body?.string() }
+            assertTrue((tab.captureSink as NetworkTrafficStore).awaitCaptures())
 
             // The tab's store must now hold the captured transaction (cursor envelope).
             val response = tab.handle(DebugRequest(path = "transactions", method = "GET"))
