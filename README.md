@@ -174,6 +174,31 @@ The panel reports only the status and outcome, so the sender reads at most
 download or an endless stream cannot exhaust the app's heap. A send still running when the
 per-request timeout answers `504` has its call cancelled right after.
 
+## Mock rules
+
+The Network tab's **Mock Rules** panel short-circuits matching requests with a synthetic
+response: the interceptor answers from the rule and the request never leaves the device.
+`urlPattern` is a substring match, or a regular expression when prefixed with `regex:`.
+
+**Rules live in the app, not in the browser.** They are kept in memory unless you pass a
+`MockRuleStorage` to `NetworkDebugTab.create(...)`, so without one they are gone when the process
+dies:
+
+```kotlin
+NetworkDebugTab.create(
+    senderClient = client,
+    mockRuleStorage = SharedPreferencesMockRuleStorage(
+        context.getSharedPreferences("my_app_mocks", Context.MODE_PRIVATE),
+    ),
+)
+```
+
+**A rule must be one the interceptor can serve.** Its `statusCode` has to be within 100–599, its
+`responseHeaders` have to be header names and values OkHttp accepts, and a `Content-Type` among
+them has to parse as a media type. A rule that isn't is rejected with an enveloped `400` naming
+the offending `field`, and one already stored is dropped when it is loaded — an unservable rule
+would otherwise throw inside your own HTTP call, on every request it matched.
+
 ## Platform `HttpURLConnection` capture
 
 OkHttp capture is the default and needs no opt-in. To **also** capture platform
@@ -221,7 +246,8 @@ Lustro deliberately surfaces app internals, so its defaults are conservative. Se
   UI, or fixtures.
 - **Nothing persisted to disk except mock rules.** Captured traffic lives only in a bounded
   in-memory ring buffer and is lost when the process dies; the sole persisted state is your mock
-  rules.
+  rules, and only when you give the tab a `MockRuleStorage` (see [Mock rules](#mock-rules)). The
+  browser keeps no copy of them.
 - **Release builds are inert.** Release variants depend on `:lustro-noop`, whose runtime bodies
   are empty — no server ships to production.
 

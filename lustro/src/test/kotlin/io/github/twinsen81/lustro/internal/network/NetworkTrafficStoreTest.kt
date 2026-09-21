@@ -483,7 +483,22 @@ class NetworkTrafficStoreTest {
         assertEquals(listOf("persisted"), store.getMockRules().map { it.id })
     }
 
+    @Test
+    fun `a rule from storage that cannot be served is not installed`() {
+        // Any MockRuleStorage can hand back such a rule, not just the built-in
+        // one; the interceptor would throw on every request it matched.
+        val storage = InMemoryMockRuleStorage()
+        storage.saved =
+            listOf(
+                rule(id = "good"),
+                rule(id = "bad-type").copy(
+                    responseHeaders = Headers.of("Content-Type" to "not a media type"),
+                ),
+                rule(id = "bad-status").copy(statusCode = -1),
+            )
 
+        assertEquals(listOf("good"), store(storage = storage).getMockRules().map { it.id })
+    }
 
     @Test
     fun `classifier categories are applied to captured transactions`() {

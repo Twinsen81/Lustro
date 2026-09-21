@@ -260,10 +260,10 @@
           "name": { "type": "string" },
           "urlPattern": { "type": "string" },
           "method": { "type": ["string", "null"] },
-          "statusCode": { "type": "integer", "default": 200 },
-          "responseHeaders": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Headers applied to the mocked response (e.g. Content-Type)." },
+          "statusCode": { "type": "integer", "default": 200, "minimum": 100, "maximum": 599, "description": "Rejected with 400 outside 100-599." },
+          "responseHeaders": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Headers applied to the mocked response (e.g. Content-Type). Names and values must be ones OkHttp accepts and a Content-Type must parse as a media type; otherwise 400. Replaced wholesale, so send them again when editing a rule by id." },
           "responseBody": { "type": "string" },
-          "enabled": { "type": "boolean", "default": true }
+          "enabled": { "type": "boolean", "default": true, "description": "Replaced wholesale, so send it again when editing a rule by id or the rule comes back enabled." }
         }
       }
     }

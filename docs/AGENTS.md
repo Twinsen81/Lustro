@@ -119,6 +119,14 @@ below summarizes it. All routes are token-authenticated and use the shared error
 with `regex:`. `method` is `null` to match any method. `hitCount` is a runtime-only counter (not
 persisted).
 
+**Rules are validated on the way in.** `statusCode` must be within 100–599, `responseHeaders` must
+be header names and values OkHttp accepts, and a `Content-Type` among them must parse as a media
+type — the interceptor builds a real response from the rule inside the app's own call. A rule that
+fails any of these gets an enveloped `400` whose `field` names what to fix (`urlPattern`, `id`,
+`statusCode`, or `responseHeaders`); for `rules/_/sync` the message also carries the array index,
+and the whole batch is rejected. `POST rules` replaces a rule with the same `id` wholesale, so send
+`enabled` and `responseHeaders` when editing one or they fall back to `true` and empty.
+
 **Send request semantics.** Body `{ url, method?="GET", headers?, body? }`. Blocks until the
 sender returns, within the per-request timeout. Relative URLs resolve against the app server base
 the developer configured (rejected if unset). The response is `{ transactionId?, statusCode?,

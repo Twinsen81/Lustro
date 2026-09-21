@@ -1,10 +1,10 @@
 package io.github.twinsen81.lustro.network
 
 import android.content.SharedPreferences
-import io.github.twinsen81.lustro.Headers
-import io.github.twinsen81.lustro.internal.network.MockRuleImpl
+import android.util.Log
+import io.github.twinsen81.lustro.internal.network.MockRuleCodec
+import io.github.twinsen81.lustro.internal.network.MockRuleParseResult
 import org.json.JSONArray
-import org.json.JSONObject
 
 /**
  * Persistence seam for network [MockRule]s.
@@ -31,14 +31,26 @@ public interface MockRuleStorage {
 public class SharedPreferencesMockRuleStorage(
     private val prefs: SharedPreferences,
 ) : MockRuleStorage {
-    /** Loads the persisted rules; corrupt data yields an empty list. */
+    /**
+     * Loads the persisted rules; corrupt data yields an empty list, and a rule
+     * the interceptor could not turn into a response is dropped.
+     *
+     * Dropping is what breaks the loop a rule stored before this check creates:
+     * it would otherwise crash the app on every request it matched, restart
+     * after restart.
+     */
     override fun load(): List<MockRule> {
         val raw = prefs.getString(PREF_RULES_KEY, null) ?: return emptyList()
         return try {
             val arr = JSONArray(raw)
             buildList {
                 for (i in 0 until arr.length()) {
-                    arr.optJSONObject(i)?.let(::ruleFromJsonOrNull)?.let(::add)
+                    val obj = arr.optJSONObject(i) ?: continue
+                    when (val parsed = MockRuleCodec.parse(obj, generateMissingId = false)) {
+                        is MockRuleParseResult.Valid -> add(parsed.rule)
+                        is MockRuleParseResult.Invalid ->
+                            Log.w(TAG, "Dropping stored mock rule at index $i: ${parsed.message}")
+                    }
                 }
             }
         } catch (_: Exception) {
@@ -55,56 +67,11 @@ public class SharedPreferencesMockRuleStorage(
     /** Persists [rules] synchronously (commit, not apply — see code comment). */
     @Suppress("ApplySharedPref")
     override fun save(rules: List<MockRule>) {
-        val arr = JSONArray()
-        for (rule in rules) {
-            val obj = JSONObject()
-            obj.put("id", rule.id)
-            obj.put("enabled", rule.enabled)
-            obj.put("name", rule.name)
-            obj.put("urlPattern", rule.urlPattern)
-            obj.put("method", rule.method ?: JSONObject.NULL)
-            obj.put("statusCode", rule.statusCode)
-            if (!rule.responseHeaders.isEmpty()) {
-                val headersObj = JSONObject()
-                rule.responseHeaders.forEach { name, value -> headersObj.put(name, value) }
-                obj.put("responseHeaders", headersObj)
-            }
-            obj.put("responseBody", rule.responseBody)
-            arr.put(obj)
-        }
-        prefs.edit().putString(PREF_RULES_KEY, arr.toString()).commit()
-    }
-
-    private fun ruleFromJsonOrNull(obj: JSONObject): MockRule? {
-        val id = obj.optString("id")
-        if (id.isBlank()) return null
-        // Reject an empty pattern — MockRule.matches() falls back to substring match,
-        // so `url.contains("")` would silently mock every request if the prefs file
-        // were corrupted or partially written.
-        val urlPattern = obj.optString("urlPattern", "")
-        if (urlPattern.isBlank()) return null
-        return MockRuleImpl(
-            id = id,
-            enabled = obj.optBoolean("enabled", true),
-            name = obj.optString("name", ""),
-            urlPattern = urlPattern,
-            method = if (obj.isNull("method")) null else obj.optString("method").ifBlank { null },
-            statusCode = obj.optInt("statusCode", DEFAULT_MOCK_STATUS),
-            responseHeaders = obj.optJSONObject("responseHeaders").toHeaders(),
-            responseBody = obj.optString("responseBody", ""),
-            // hitCount intentionally not persisted; runtime-only counter.
-        )
-    }
-
-    private fun JSONObject?.toHeaders(): Headers {
-        if (this == null) return Headers.EMPTY
-        val builder = Headers.Builder()
-        keys().forEach { key -> builder.add(key, optString(key)) }
-        return builder.build()
+        prefs.edit().putString(PREF_RULES_KEY, MockRuleCodec.toJsonArray(rules)).commit()
     }
 
     private companion object {
         private const val PREF_RULES_KEY = "rules"
-        private const val DEFAULT_MOCK_STATUS = 200
+        private const val TAG = "Lustro"
     }
 }

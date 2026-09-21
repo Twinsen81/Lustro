@@ -108,7 +108,7 @@ see [DECISIONS.md](DECISIONS.md).
   neither auth nor the request limits applied. Any local process, or any host
   on the network with `bindAddress = "0.0.0.0"`, could open connections until
   thread creation failed and the app aborted (about 7,000 within 20 seconds on
-  a Pixel 6 Pro). A client that closed partway through its request headers
+  a physical device). A client that closed partway through its request headers
   also pinned a thread at full CPU for as long as the server ran, logging a
   failed send hundreds of times a second. The server now keeps at most
   `maxConcurrentRequests + requestQueueCapacity + 16` connections open (96 by
@@ -125,9 +125,9 @@ see [DECISIONS.md](DECISIONS.md).
   `CursorCodec` gains `encode(sequence, epoch)` and `decode(cursor, epoch)`.
 - **Searching the traffic list slowing down every poll.** Whenever the list had
   changed, a poll with a search term lowercased a copy of the URL, method, and
-  both bodies of every captured transaction. With 1,000 transactions on a Pixel
-  6 Pro, that more than doubled the poll's server-side time, from 17 ms to
-  42 ms when nothing matched. The search now folds case as it scans without
+  both bodies of every captured transaction. With 1,000 transactions on a
+  physical device, that more than doubled the poll's server-side time, from
+  17 ms to 42 ms when nothing matched. The search now folds case as it scans without
   copying, and each transaction keeps its result for the current search term
   until it changes, so a poll only re-checks new and updated transactions.
   That poll now takes under 1 ms, and a new search term takes 19 ms.
@@ -170,7 +170,7 @@ see [DECISIONS.md](DECISIONS.md).
   which needs no token. A client that sent its body a byte every few seconds
   kept the slot for as long as it kept sending, even after its own request got
   a `504`: a blocked socket read ignores the timeout's interrupt, and the
-  socket's read timeout restarts with every byte. On a Pixel 6 Pro, 16 such
+  socket's read timeout restarts with every byte. On a physical device, 16 such
   connections made every authenticated request wait 30 s and then get a `503`.
   The body is now read before the request takes a slot, after the checks that
   need only headers, so a slow body holds only its own connection, and
@@ -182,8 +182,9 @@ see [DECISIONS.md](DECISIONS.md).
 - **Large request headers answered forever at full CPU.** NanoHTTPD reads a
   request's line and headers into an 8 KB buffer. When they didn't fit, it
   served the part that did, then parsed the same bytes as the connection's next
-  request, so the server answered that one request again and again. On a Pixel
-  6 Pro, a GET with a 9 KB `Cookie` header got 2,767 responses in 2 s, and an
+  request, so the server answered that one request again and again. On a
+  physical device, a GET with a 9 KB `Cookie` header got 2,767 responses in 2 s,
+  and an
   authenticated `POST pause` with one toggled capture 1,296 times. Once the
   client left, its connection thread kept spinning at full CPU, logging a
   failed send on every pass, until the app went to the background. It needed
@@ -193,9 +194,9 @@ see [DECISIONS.md](DECISIONS.md).
   closes.
 - **Capture slowing the app's own HTTP calls.** The interceptor redacted, classified,
   and stored every capture on the thread making the call, before handing back the
-  response. For JSON, redaction parses and re-serializes the whole body. On a Pixel
-  6 Pro, capture took a call with a 200 KB JSON response from 3 ms to 32 ms, and one
-  with a 200 KB JSON request body from 2 ms to 30 ms. That work now runs on a
+  response. For JSON, redaction parses and re-serializes the whole body. On a
+  physical device, capture took a call with a 200 KB JSON response from 3 ms to
+  32 ms, and one with a 200 KB JSON request body from 2 ms to 30 ms. That work now runs on a
   background capture thread, and a transaction is still stored only once it's
   redacted. Those calls now take 5.5 ms and 3.1 ms. `HttpURLConnection` capture and
   event-stream progress go through the same thread, and progress updates that arrive
@@ -207,6 +208,30 @@ see [DECISIONS.md](DECISIONS.md).
   call: a body the redactor can't handle is left out of its capture, and a header is
   masked. JSON nested 20,000 levels deep used to throw `StackOverflowError` from the
   call itself.
+- **A mock rule that crashed the app on every request it matched.** The rule routes
+  stored whatever they were given, and the interceptor then built a real OkHttp
+  response from it inside the app's own call. A `Content-Type` that isn't a media
+  type, a header name or value OkHttp rejects, or a status outside 100–599 threw
+  there: on a physical device, a rule with `Content-Type: not a media type` killed
+  the process on the first matching request, and again after every restart, since
+  the rule was persisted. Rules are now checked wherever they enter — `POST
+  rules`, `POST rules/_/sync`, and rule storage — with an enveloped `400` naming the
+  `field`, and a stored rule that fails is dropped when it's loaded, which also frees
+  an app already looping on one. Should a rule still fail to build, the call gets an
+  `IOException` like any network failure, the transaction is listed as failed, and no
+  `RuntimeException` escapes into the app.
+- **Mock rules coming back from the browser's storage.** The console mirrored the
+  rule list into `localStorage` and posted it back whenever it found the app's list
+  empty. That storage is per browser origin, so every app reached through the same
+  `host:port` shared one list: rules from one app installed themselves in the next,
+  and a rule deleted over the API or the CLI returned on the following page load. The
+  console no longer keeps a copy; the app's `MockRuleStorage` is what makes rules
+  outlive a restart, and rules are in-memory without one.
+- **Editing a rule re-enabling it and dropping its response headers.** The console's
+  rule form sends neither `enabled` nor `responseHeaders`, and an add replaces the
+  rule with the same id wholesale, so saving an edit to a disabled rule turned it
+  back on and left it with no headers. The form now sends both fields from the rule
+  it is editing.
 
 ### Changed
 
@@ -246,7 +271,7 @@ see [DECISIONS.md](DECISIONS.md).
   page from another local server, such as a dev server on `localhost:3000`,
   gets the console's `lustro_token` cookie sent with its requests to the debug
   server. Its `GET`s reached tabs as authenticated requests: against the
-  sample app on a Pixel 6 Pro, an `<img>`, a no-cors `fetch`, and a CORS
+  sample app on a physical device, an `<img>`, a no-cors `fetch`, and a CORS
   `fetch` from such a page in desktop Chrome each got a `200` from
   `GET transactions`. The page can't read those responses, and the built-in
   tabs change state only on `POST`, but a custom tab that changed state on a
