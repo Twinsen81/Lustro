@@ -449,7 +449,14 @@ document.addEventListener('keydown', function(e) {
 window.debugFetch = async function(url, options) {
     try {
         var resp = await fetch(url, options || {});
-        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        if (!resp.ok) {
+            // Carry the response along: a rejected request answers with the error
+            // envelope, and a caller can show what it says instead of the status.
+            var err = new Error('HTTP ' + resp.status);
+            err.status = resp.status;
+            err.response = resp;
+            throw err;
+        }
         window.debugSetStatus('connected');
         return resp;
     } catch(e) {

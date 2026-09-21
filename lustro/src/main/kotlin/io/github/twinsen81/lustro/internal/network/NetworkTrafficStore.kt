@@ -2,6 +2,7 @@
 
 package io.github.twinsen81.lustro.internal.network
 
+import android.util.Log
 import io.github.twinsen81.lustro.Headers
 import io.github.twinsen81.lustro.MediaType
 import io.github.twinsen81.lustro.network.CapturedBody
@@ -91,7 +92,17 @@ internal class NetworkTrafficStore(
     private val pendingProgress = ConcurrentHashMap<String, CapturedResponse>()
 
     init {
-        storage?.load()?.forEach { rule -> mockRules[rule.id] = rule.toImpl() }
+        // A stored rule is checked again on the way in: any MockRuleStorage can
+        // hand back a rule the interceptor could not build a response from, and
+        // such a rule would throw inside the app's own call every time it matched.
+        storage?.load()?.forEach { rule ->
+            val rejection = MockRuleCodec.validate(rule)
+            if (rejection == null) {
+                mockRules[rule.id] = rule.toImpl()
+            } else {
+                Log.w(TAG, "Ignoring stored mock rule '${rule.id}': ${rejection.message}")
+            }
+        }
     }
 
     // TransactionId's constructor/value are @RestrictTo(LIBRARY_GROUP); :lustro and
@@ -504,6 +515,7 @@ internal class NetworkTrafficStore(
     )
 
     private companion object {
+        private const val TAG = "Lustro"
         private const val PLACEHOLDER = "[REDACTED]"
 
         // The built-in default; the runtime overrides this with DebugConfig

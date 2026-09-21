@@ -81,6 +81,28 @@ class SharedPreferencesMockRuleStorageTest {
     }
 
     @Test
+    fun `a stored rule the interceptor could not serve is dropped on load`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val prefs = context.getSharedPreferences("lustro-test-rules", Context.MODE_PRIVATE)
+        prefs.edit().clear().commit()
+        // What an app crash-looping on a bad rule has on disk: written before the
+        // rules were checked, it would throw in the interceptor on every match.
+        prefs.edit().putString(
+            "rules",
+            """
+            [{"id":"bad-type","urlPattern":"/get","responseHeaders":{"Content-Type":"not a media type"}},
+             {"id":"bad-status","urlPattern":"/get","statusCode":-1},
+             {"id":"bad-header","urlPattern":"/get","responseHeaders":{"Bad Name":"v"}},
+             {"id":"good","urlPattern":"/get","statusCode":200}]
+            """.trimIndent(),
+        ).commit()
+
+        val loaded = SharedPreferencesMockRuleStorage(prefs).load()
+
+        assertEquals(listOf("good"), loaded.map { it.id })
+    }
+
+    @Test
     fun `save replaces previously stored rules`() {
         val storage = storage()
         storage.save(listOf(MockRuleImpl(id = "a", name = "a", urlPattern = "/a")))

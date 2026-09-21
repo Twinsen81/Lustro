@@ -220,6 +220,36 @@ class LustroNetworkInterceptorTest {
     }
 
     @Test
+    fun `a rule that cannot be served fails the call with an IOException`() {
+        // A rule stored by an older build, or by a MockRuleStorage of the app's
+        // own: whatever it does, it must not throw a RuntimeException out of the
+        // app's own call, which for an enqueued call kills the process.
+        val rule =
+            MockRuleImpl(
+                id = "rule-bad",
+                name = "unbuildable",
+                urlPattern = "example.com/mocked",
+                responseHeaders = Headers.of("Content-Type" to "not a media type"),
+                responseBody = "{}",
+            )
+        var hitId: String? = null
+        val sink = RecordingSink(mockRule = rule)
+        val interceptor = interceptor(sink, onMockHit = { hitId = it })
+
+        val request = Request.Builder().url("https://example.com/mocked/x").build()
+        val proceedResponse = responseFor(request, TrackingResponseBody("text/plain".toMediaType(), "real", 4))
+        val chain = FakeChain(request, proceedResponse)
+
+        val failure = assertThrows(IOException::class.java) { interceptor.intercept(chain) }
+
+        assertTrue(failure.message!!, "rule-bad" in failure.message!!)
+        assertEquals(0, chain.proceedCount) // the real request is not sent in its place
+        assertNull(hitId) // a rule that never produced a response did not hit
+        assertTrue(sink.completions.isEmpty())
+        assertEquals(1, sink.failures.size)
+    }
+
+    @Test
     fun `throttle sleeps before proceeding`() {
         val store = store()
         val interceptor = interceptor(store, throttleDelayMs = 120)

@@ -689,69 +689,24 @@
         if (tab === 'send') ensureSendForm();
     };
 
-    var RULES_STORAGE_KEY = 'debug-network-mock-rules';
-
-    function readLocalRules() {
-        try {
-            var raw = localStorage.getItem(RULES_STORAGE_KEY);
-            return raw ? JSON.parse(raw) : [];
-        } catch(e) {
-            return [];
-        }
-    }
-    function writeLocalRules(rules) {
-        try { localStorage.setItem(RULES_STORAGE_KEY, JSON.stringify(rules || [])); } catch(e) {}
-    }
-
-    // The rules endpoint may return either a bare array or a pagination envelope
-    // ({ items: [...] }). Normalize to an array defensively.
+    // The app owns the rules: the list route is the only source, and the app's
+    // MockRuleStorage is what makes them outlive a restart. The browser keeps no
+    // copy — localStorage is per origin, so every app reached through the same
+    // host:port would share one, and a rule deleted in the app or over the API
+    // would come back on the next page load.
     function rulesFromResponse(data) {
-        if (Array.isArray(data)) return data;
-        if (data && Array.isArray(data.items)) return data.items;
-        return [];
+        return (data && Array.isArray(data.items)) ? data.items : [];
     }
 
-    var rulesInitialLoadDone = false;
+    // Drop the copy earlier versions kept here. It can hold response bodies, and
+    // nothing reads it any more.
+    try { localStorage.removeItem('debug-network-mock-rules'); } catch(e) {}
 
     function loadRules() {
         debugFetch(netUrl('rules'))
             .then(function(r) { return r.json(); })
-            .then(function(data) {
-                var rules = rulesFromResponse(data);
-                // Only auto-restore from localStorage on the *first* load — i.e. the
-                // user just opened the page and the server-side storage was wiped (app
-                // reinstall, Clear Data). After that, an empty server state is the
-                // legitimate result of the user deleting their last rule, and
-                // restoring from cache would resurrect it on the very next refresh.
-                if (!rulesInitialLoadDone &&
-                    rules.length === 0 &&
-                    readLocalRules().length > 0) {
-                    rulesInitialLoadDone = true;
-                    syncLocalRulesToServer();
-                } else {
-                    rulesInitialLoadDone = true;
-                    renderRules(rules);
-                    writeLocalRules(rules);
-                }
-            })
+            .then(function(data) { renderRules(rulesFromResponse(data)); })
             .catch(function(e) { debugToast('Failed to load rules: ' + e.message, 'error'); });
-    }
-
-    function syncLocalRulesToServer() {
-        var local = readLocalRules();
-        // Versioned atomic-replace route is rules/_/sync.
-        debugFetch(netUrl('rules/_/sync'), {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(local),
-        }).then(function() {
-            debugToast('Restored ' + local.length + ' rule(s) from browser storage', 'info');
-            return debugFetch(netUrl('rules')).then(function(r) { return r.json(); });
-        }).then(function(data) {
-            var rules = rulesFromResponse(data);
-            renderRules(rules);
-            writeLocalRules(rules);
-        }).catch(function(e) { debugToast('Failed to sync rules: ' + e.message, 'error'); });
     }
 
     var loadedRules = [];
@@ -811,7 +766,7 @@
         var submitText = isEdit ? 'Update Rule' : 'Add Rule';
         var submitTooltip = isEdit
             ? 'Save changes to this rule. Future matching requests use the updated response.'
-            : 'Save this rule. Future matching requests get the synthetic response. Rules persist across app restarts.';
+            : 'Save this rule. Future matching requests get the synthetic response. Rules live in the app, and survive a restart when it gives Lustro a rule storage.';
         formEl.innerHTML = '<div class="net-rule-form">'
             + '<h4>' + heading + (isEdit ? ' <button class="debug-btn-icon" data-action="cancelEditRule" title="Cancel editing and return to the empty Add form.">✕</button>' : '') + '</h4>'
             + '<input type="hidden" id="rf-id" name="id" value="' + debugEscapeHtml(prefill.id || '') + '">'
@@ -1018,6 +973,14 @@
         };
         if (!rule.urlPattern) { debugToast('URL pattern is required', 'warning'); return; }
         var wasEdit = !!rule.id;
+        // An add replaces the whole rule, and the form holds only part of it.
+        // Carry the fields it doesn't show over from the rule being edited, or a
+        // disabled rule would come back enabled and lose its response headers.
+        var edited = wasEdit ? loadedRules.find(function(r) { return r.id === rule.id; }) : null;
+        if (edited) {
+            rule.enabled = edited.enabled !== false;
+            rule.responseHeaders = edited.responseHeaders || {};
+        }
         debugFetch(netUrl('rules'), {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
@@ -1027,8 +990,21 @@
             editingRuleId = null;
             renderRuleForm();
             loadRules();
-        }).catch(function(e) { debugToast('Failed to save rule: ' + e.message, 'error'); });
+        }).catch(reportRuleSaveFailure);
     };
+
+    // A rule the app won't serve — a status out of range, say — comes back as the
+    // error envelope. Show what it says; "HTTP 400" alone leaves nothing to fix.
+    function reportRuleSaveFailure(e) {
+        var fallback = function() { debugToast('Failed to save rule: ' + e.message, 'error'); };
+        if (!e || !e.response) { fallback(); return; }
+        e.response.json()
+            .then(function(body) {
+                if (body && body.message) debugToast('Failed to save rule: ' + body.message, 'error');
+                else fallback();
+            })
+            .catch(fallback);
+    }
 
     window.toggleRule = function(id) {
         debugFetch(netUrl('rules/toggle'), {

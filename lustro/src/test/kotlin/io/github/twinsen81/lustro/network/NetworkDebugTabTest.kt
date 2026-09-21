@@ -159,6 +159,61 @@ class NetworkDebugTabTest {
     }
 
     @Test
+    fun `add rule rejects a response the interceptor could not build`() {
+        val tab = tab()
+        val badType =
+            tab.handle(
+                post("rules", """{"urlPattern":"/x","responseHeaders":{"Content-Type":"not a media type"}}"""),
+            )!!
+        assertEquals(400, badType.status)
+        assertEquals("responseHeaders", badType.json().getString("field"))
+
+        val badStatus = tab.handle(post("rules", """{"urlPattern":"/x","statusCode":-1}"""))!!
+        assertEquals(400, badStatus.status)
+        assertEquals("statusCode", badStatus.json().getString("field"))
+
+        val badHeader =
+            tab.handle(post("rules", """{"urlPattern":"/x","responseHeaders":{"Bad Name":"v"}}"""))!!
+        assertEquals(400, badHeader.status)
+        assertEquals("responseHeaders", badHeader.json().getString("field"))
+
+        assertEquals(0, tab.handle(get("rules"))!!.json().getJSONArray("items").length())
+    }
+
+    @Test
+    fun `sync rejects a rule the interceptor could not build and keeps the set`() {
+        val tab = tab()
+        tab.handle(post("rules", """{"urlPattern":"/keep"}"""))
+        val res =
+            tab.handle(
+                post(
+                    "rules/_/sync",
+                    """[{"urlPattern":"/a"},{"urlPattern":"/b","statusCode":900}]""",
+                ),
+            )!!
+        assertEquals(400, res.status)
+        assertEquals("statusCode", res.json().getString("field"))
+        val items = tab.handle(get("rules"))!!.json().getJSONArray("items")
+        assertEquals(1, items.length())
+        assertEquals("/keep", items.getJSONObject(0).getString("urlPattern"))
+    }
+
+    @Test
+    fun `a rule keeps its response headers and disabled state through the API`() {
+        val tab = tab()
+        tab.handle(
+            post(
+                "rules",
+                """{"id":"r","urlPattern":"/x","responseHeaders":{"X-Custom":"v"},"enabled":false}""",
+            ),
+        )
+        val rule = tab.handle(get("rules"))!!.json().getJSONArray("items").getJSONObject(0)
+
+        assertFalse(rule.getBoolean("enabled"))
+        assertEquals("v", rule.getJSONObject("responseHeaders").getString("X-Custom"))
+    }
+
+    @Test
     fun `sync replaces the whole rule set`() {
         val tab = tab()
         tab.handle(post("rules", """{"urlPattern":"/old"}"""))

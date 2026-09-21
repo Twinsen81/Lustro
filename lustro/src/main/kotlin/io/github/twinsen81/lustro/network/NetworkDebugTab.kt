@@ -10,14 +10,15 @@ import io.github.twinsen81.lustro.MediaType
 import io.github.twinsen81.lustro.escapeForJson
 import io.github.twinsen81.lustro.internal.network.HttpUrlConnectionCapture
 import io.github.twinsen81.lustro.internal.network.LustroNetworkInterceptor
+import io.github.twinsen81.lustro.internal.network.MockRuleCodec
 import io.github.twinsen81.lustro.internal.network.MockRuleImpl
+import io.github.twinsen81.lustro.internal.network.MockRuleParseResult
 import io.github.twinsen81.lustro.internal.network.NetworkCaptureProvider
 import io.github.twinsen81.lustro.internal.network.NetworkSendRequestImpl
 import io.github.twinsen81.lustro.internal.network.NetworkTrafficStore
 import io.github.twinsen81.lustro.internal.network.NetworkTransaction
 import io.github.twinsen81.lustro.internal.toDebugTimestamp
 import io.github.twinsen81.lustro.DebugTab
-import java.util.UUID
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import org.json.JSONArray
@@ -167,7 +168,7 @@ public class NetworkDebugTab private constructor(
                 <div class="pane-header">
                     <div class="net-tab-switcher">
                         <button class="net-tab-btn active" id="tab-btn-detail" data-action="switchRightTab" data-tab="detail" title="Inspect the selected transaction: headers, body, status, timing, byte sizes.">Detail</button>
-                        <button class="net-tab-btn" id="tab-btn-rules" data-action="switchRightTab" data-tab="rules" title="Manage mock rules — short-circuit matching requests with a synthetic response. Rules persist across app restarts.">Mock Rules</button>
+                        <button class="net-tab-btn" id="tab-btn-rules" data-action="switchRightTab" data-tab="rules" title="Manage mock rules — short-circuit matching requests with a synthetic response. Rules live in the app and survive a restart when it gives Lustro a rule storage.">Mock Rules</button>
                         <button class="net-tab-btn" id="tab-btn-send" data-action="switchRightTab" data-tab="send" title="Dispatch an arbitrary request through the app's OkHttpClient. Result appears in the traffic list. Self-requests to the debug server are rejected.">Send Request</button>
                         <div class="net-tab-actions">
                             <button class="net-tab-btn net-action-btn" id="copy-curl-btn" data-action="copyCurl" style="display:none" title="Copy a cURL command that reproduces the selected request (paste into a terminal to re-run).">cURL</button>
@@ -266,24 +267,16 @@ public class NetworkDebugTab private constructor(
 
     private fun handleAddRule(body: String?): DebugResponse =
         try {
-            val json = JSONObject(body ?: "{}")
-            val urlPattern = json.optString("urlPattern", "")
-            if (urlPattern.isBlank()) {
-                DebugResponse.error("urlPattern is required", field = "urlPattern")
-            } else {
-                val rule =
-                    MockRuleImpl(
-                        id = json.optString("id").ifBlank { UUID.randomUUID().toString() },
-                        name = json.optString("name", ""),
-                        urlPattern = urlPattern,
-                        method = if (json.isNull("method")) null else json.optString("method").ifBlank { null },
-                        statusCode = json.optInt("statusCode", 200),
-                        responseHeaders = headersFromJson(json.optJSONObject("responseHeaders")),
-                        responseBody = json.optString("responseBody", ""),
-                        enabled = json.optBoolean("enabled", true),
-                    )
-                store.addMockRule(rule)
-                DebugResponse.json { append("{\"status\":\"ok\",\"id\":\"${rule.id.escapeForJson()}\"}") }
+            when (val parsed = MockRuleCodec.parse(JSONObject(body ?: "{}"), generateMissingId = true)) {
+                is MockRuleParseResult.Invalid ->
+                    DebugResponse.error(parsed.message, field = parsed.field)
+
+                is MockRuleParseResult.Valid -> {
+                    store.addMockRule(parsed.rule)
+                    DebugResponse.json {
+                        append("{\"status\":\"ok\",\"id\":\"${parsed.rule.id.escapeForJson()}\"}")
+                    }
+                }
             }
         } catch (e: Exception) {
             DebugResponse.error("Invalid JSON: ${e.message}")
@@ -300,37 +293,21 @@ public class NetworkDebugTab private constructor(
                 // never silently drop it — mirroring the single-rule add validation.
                 val obj = arr.optJSONObject(i)
                     ?: return DebugResponse.error("rule at index $i is not a JSON object")
-                val rule = ruleFromJsonOrNull(obj)
-                    ?: return DebugResponse.error("rule at index $i is missing urlPattern", field = "urlPattern")
-                rules.add(rule)
+                when (val parsed = MockRuleCodec.parse(obj, generateMissingId = true)) {
+                    is MockRuleParseResult.Invalid ->
+                        return DebugResponse.error(
+                            "rule at index $i: ${parsed.message}",
+                            field = parsed.field,
+                        )
+
+                    is MockRuleParseResult.Valid -> rules.add(parsed.rule)
+                }
             }
             store.replaceMockRules(rules)
             DebugResponse.json { append("{\"status\":\"ok\",\"count\":${rules.size}}") }
         } catch (e: Exception) {
             DebugResponse.error("Invalid JSON: ${e.message}")
         }
-
-    private fun ruleFromJsonOrNull(obj: JSONObject): MockRuleImpl? {
-        val pattern = obj.optString("urlPattern")
-        if (pattern.isBlank()) return null
-        return MockRuleImpl(
-            id = obj.optString("id").ifBlank { UUID.randomUUID().toString() },
-            name = obj.optString("name", ""),
-            urlPattern = pattern,
-            method = if (obj.isNull("method")) null else obj.optString("method").ifBlank { null },
-            statusCode = obj.optInt("statusCode", 200),
-            responseHeaders = headersFromJson(obj.optJSONObject("responseHeaders")),
-            responseBody = obj.optString("responseBody", ""),
-            enabled = obj.optBoolean("enabled", true),
-        )
-    }
-
-    private fun headersFromJson(obj: JSONObject?): Headers {
-        if (obj == null) return Headers.EMPTY
-        val builder = Headers.Builder()
-        obj.keys().forEach { key -> builder.add(key, obj.optString(key)) }
-        return builder.build()
-    }
 
     private fun handleDeleteRule(body: String?): DebugResponse =
         try {
@@ -516,30 +493,10 @@ public class NetworkDebugTab private constructor(
         append("}")
     }
 
+    // responseHeaders go out with the rule (the browser form doesn't show them,
+    // but agents and the CLI round-trip the whole rule through this route).
     private fun StringBuilder.appendMockRule(rule: MockRuleImpl) {
-        append("{")
-        append("\"id\":\"${rule.id.escapeForJson()}\",")
-        append("\"name\":\"${rule.name.escapeForJson()}\",")
-        append("\"urlPattern\":\"${rule.urlPattern.escapeForJson()}\",")
-        append("\"method\":${rule.method?.let { "\"${it.escapeForJson()}\"" } ?: "null"},")
-        append("\"statusCode\":${rule.statusCode},")
-        // responseHeaders is stored and applied by the interceptor, so surface it
-        // here too (network.js may ignore it for display, but agents/clients can
-        // round-trip the full rule).
-        append("\"responseHeaders\":${headersToJson(rule.responseHeaders.toMap())},")
-        append("\"responseBody\":\"${rule.responseBody.escapeForJson()}\",")
-        append("\"enabled\":${rule.enabled},")
-        append("\"hitCount\":${rule.hitCount}")
-        append("}")
-    }
-
-    private fun Headers.toMap(): Map<String, String> {
-        val out = LinkedHashMap<String, String>()
-        forEach { name, value ->
-            val existing = out[name]
-            out[name] = if (existing != null) "$existing, $value" else value
-        }
-        return out
+        MockRuleCodec.appendJson(this, rule, includeHitCount = true)
     }
 
     private fun headersToJson(headers: Map<String, String>): String =

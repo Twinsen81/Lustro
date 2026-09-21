@@ -1,6 +1,8 @@
 package io.github.twinsen81.lustro.internal.network
 
+import android.util.Log
 import io.github.twinsen81.lustro.network.CapturedBody
+import io.github.twinsen81.lustro.network.MockRule
 import io.github.twinsen81.lustro.network.NetworkCaptureSink
 import io.github.twinsen81.lustro.network.TransactionId
 import java.io.IOException
@@ -72,13 +74,26 @@ internal class LustroNetworkInterceptor(
         }
 
         if (mockRule != null) {
+            // Build the response before recording anything: rules are validated
+            // where they enter, but a rule that still can't be turned into one
+            // must fail this call the way a network error does — never as a
+            // RuntimeException thrown out of the app's own execute()/enqueue().
+            val mockResponse =
+                try {
+                    buildMockResponse(request, mockRule)
+                } catch (e: RuntimeException) {
+                    Log.w(TAG, "Mock rule '${mockRule.id}' cannot be served; failing the request", e)
+                    val durationMs = System.currentTimeMillis() - startTime
+                    val reason = "Invalid mock rule '${mockRule.id}': ${e.message}"
+                    if (id != null) {
+                        sink.failRequest(id, durationMs, reason)
+                    }
+                    throw IOException(reason, e)
+                }
             incrementMockHit(mockRule.id)
-            val mediaType =
-                (mockRule.responseHeaders.get("Content-Type") ?: "application/json")
-                    .toMediaType()
-            val mockBodyBytes = mockRule.responseBody.toByteArray(Charsets.UTF_8)
             if (id != null) {
                 val durationMs = System.currentTimeMillis() - startTime
+                val mockBodyBytes = mockRule.responseBody.toByteArray(Charsets.UTF_8)
                 sink.completeRequest(
                     id = id,
                     statusCode = mockRule.statusCode,
@@ -94,18 +109,7 @@ internal class LustroNetworkInterceptor(
                     complete = true,
                 )
             }
-            return Response.Builder()
-                .request(request)
-                .protocol(Protocol.HTTP_1_1)
-                .code(mockRule.statusCode)
-                .message("Mocked")
-                .body(mockRule.responseBody.toResponseBody(mediaType))
-                .apply {
-                    mockRule.responseHeaders.forEach { key, value ->
-                        addHeader(key, value)
-                    }
-                }
-                .build()
+            return mockResponse
         }
 
         // Proceed with the real request.
@@ -137,6 +141,23 @@ internal class LustroNetworkInterceptor(
             }
             throw e
         }
+    }
+
+    private fun buildMockResponse(request: okhttp3.Request, rule: MockRule): Response {
+        val mediaType =
+            (rule.responseHeaders.get("Content-Type") ?: "application/json").toMediaType()
+        return Response.Builder()
+            .request(request)
+            .protocol(Protocol.HTTP_1_1)
+            .code(rule.statusCode)
+            .message("Mocked")
+            .body(rule.responseBody.toResponseBody(mediaType))
+            .apply {
+                rule.responseHeaders.forEach { key, value ->
+                    addHeader(key, value)
+                }
+            }
+            .build()
     }
 
     private fun captureRequestBody(request: okhttp3.Request): CapturedBody? {
@@ -277,5 +298,9 @@ internal class LustroNetworkInterceptor(
                 ),
             )
             .build()
+    }
+
+    private companion object {
+        private const val TAG = "Lustro"
     }
 }
