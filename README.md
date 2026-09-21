@@ -89,15 +89,27 @@ lustro.start()
 `start()` returns a `LustroStatus` (`ENABLED` once armed, `DISABLED` if it cannot start) and is
 idempotent, as is `stop()`.
 
-> **Keep registration in `src/debug`.** The recommended pattern is to put your `DebugTab`
-> subclasses and all `Lustro.builder(...)` / `.addTab(...)` wiring under `src/debug/`, so none
-> of it compiles into release. Lustro ships a published Android Lint check
-> (`LustroDebugUsageInRelease`, severity ERROR) that **enforces** this: it flags those
-> `DebugTab` subclasses and `Lustro` builder/`addTab` calls when they are reachable from any
-> source set other than `src/debug` (e.g. `src/main` or `src/release`). The `:lustro-noop` swap
-> shown above is the release **safety net** — it makes the API inert in release builds even if
-> something slips through — not a license to register Lustro from `src/main`; debug-only
-> placement is still required to keep the lint check green.
+Three things keep that snippet out of production, in order of how much they depend on you:
+
+> **Your `DebugTab` subclasses must live in `src/debug`.** They are your code, so swapping
+> `:lustro` for `:lustro-noop` cannot remove them from a release APK — whatever source set they
+> sit in is compiled into that variant, taking the app internals they read with them. Lustro
+> ships a published Android Lint check (`LustroDebugUsageInRelease`, severity ERROR) that
+> **enforces** this: it flags a `DebugTab` subclass reachable from any source set other than
+> `src/debug` (e.g. `src/main` or `src/release`). The builder call above is *not* flagged — it
+> resolves to whichever facade the variant depends on. Putting the whole bootstrap under
+> `src/debug/` too (as the [`:sample`](sample/) app does) is still the cleanest layout, because
+> then release compiles none of it at all.
+
+> **The release swap makes the API inert.** With `releaseImplementation(libs.lustro.noop)`, the
+> `Lustro.builder(...)` / `.addTab(...)` / `start()` calls in the snippet compile unchanged and
+> do nothing: no socket, no capture, and `networkInterceptor()` forwards every request.
+
+> **The runtime refuses to start in a non-debuggable build.** If the real `:lustro` runtime ever
+> reaches a build without `android:debuggable`, `start()` logs a WARN and returns
+> `LustroStatus.DISABLED` without binding a socket — no Gradle wiring and no lint run required.
+> An internal build that ships `android:debuggable="false"` but still wants the server can opt
+> in with `DebugConfig.builder().allowNonDebuggableBuilds(true)`.
 
 ## Accessing the UI
 
@@ -249,7 +261,9 @@ Lustro deliberately surfaces app internals, so its defaults are conservative. Se
   rules, and only when you give the tab a `MockRuleStorage` (see [Mock rules](#mock-rules)). The
   browser keeps no copy of them.
 - **Release builds are inert.** Release variants depend on `:lustro-noop`, whose runtime bodies
-  are empty — no server ships to production.
+  are empty — no server ships to production. As a backstop for a misconfigured dependency graph,
+  the real runtime also refuses to start in a build that is not marked debuggable
+  (`DebugConfig.allowNonDebuggableBuilds` opts an internal build back in).
 
 ## LAN exposure and port forwarding
 

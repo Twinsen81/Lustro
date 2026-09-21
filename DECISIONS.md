@@ -78,10 +78,27 @@ test task is instrumented manually). This is documented in `lustro/build.gradle.
 next to the `kover { }` block. `:lustro-api` has no unit tests, so Kover is not
 applied there.
 
-## Release-safety lint
+## Release safety: the runtime guard and the lint check
 
-A custom Android Lint check ships with `:lustro` and warns when debug-only Lustro
-usage leaks into a non-debug source set.
+Two independent mechanisms keep the real runtime out of production, on top of the
+`:lustro` / `:lustro-noop` variant split.
+
+**Runtime guard (always on).** `Lustro` reads `ApplicationInfo.FLAG_DEBUGGABLE`
+once at construction. When the host app is not marked debuggable, `start()` logs a
+WARN and returns `LustroStatus.DISABLED` **before** freezing the registry,
+registering the lifecycle observer, or binding a socket. This is the only
+mechanism that does not depend on the consumer's Gradle wiring or on them running
+lint, which matters because a lone `releaseImplementation(lustro)` resolves
+cleanly — the shared `io.github.twinsen81:lustro-runtime` capability only fires
+when both artifacts land on ONE configuration. `DebugConfig.allowNonDebuggableBuilds`
+(default `false`, mirrored in `:lustro-noop`, covered by `checkFacadeParity`) opts
+an internal/QA build that ships `android:debuggable="false"` back in. Robolectric's
+default `ApplicationInfo` DOES carry `FLAG_DEBUGGABLE`, so the existing lifecycle
+tests needed no setup change; `LustroDebuggableGuardTest` drives the flag in both
+directions explicitly.
+
+**Release-safety lint.** A custom Android Lint check ships with `:lustro` and
+flags a `DebugTab` subclass that lives outside a `debug` source set.
 
 **Works (not a fallback):**
 
@@ -93,20 +110,28 @@ usage leaks into a non-debug source set.
 - `LustroIssueRegistry` (one issue, `LustroDebugUsageInRelease`, severity ERROR,
   category SECURITY, with a `Vendor`) registered via the
   `META-INF/services/com.android.tools.lint.client.api.IssueRegistry` resource.
-- `LustroDebugLeakDetector` (UAST `Detector.UastScanner`) flags (a) `DebugTab`
-  subclasses and (b) `Lustro.builder(...)` / `.addTab(...)` calls when the
-  containing file is NOT in a `debug` source set. Source-set membership is derived
-  from the file path (`.../src/<sourceSet>/...`); anything outside `src/debug`
-  (i.e. `main`/`release`/etc.) is reported. `builder(...)` is a companion-object
-  function, so the detector matches any declaring class under the `Lustro` type to
-  tolerate `@JvmStatic`/`Companion` UAST resolution.
+- `LustroDebugLeakDetector` (UAST `Detector.UastScanner`) flags `DebugTab`
+  subclasses when the containing file is NOT in a `debug` source set. Source-set
+  membership is derived from the file path (`.../src/<sourceSet>/...`); anything
+  outside `src/debug` (i.e. `main`/`release`/etc.) is reported.
+- **Scoped to `DebugTab` subclasses only.** The detector deliberately does NOT
+  flag `Lustro.builder(...)` / `.addTab(...)` calls. Those resolve to whichever
+  facade the variant depends on, and `:lustro-noop` makes them inert in release,
+  so flagging them at severity ERROR would fail the README quick start (which
+  wires Lustro from the app's `Application`, i.e. `src/main`) and forced the
+  `:sample` release mirror to carry a `@Suppress`. A `DebugTab` subclass is the
+  opposite case: it is the consumer's own code, compiled into whatever variant its
+  source set belongs to, and it typically reaches into app internals — the no-op
+  swap cannot remove it from the APK, so it is the thing worth an ERROR.
 - Bundled into the `:lustro` AAR via `lintPublish(project(":lustro-lint"))`. The
   built `lustro-debug.aar` contains `lint.jar` with the detector, registry, and
   service file. Verified end-to-end: `:sample:lintDebug` loads the published check
   and reports `[LustroDebugUsageInRelease from io.github.twinsen81:lustro-lint]`.
-- Four `lint-tests` unit tests (`LustroDebugLeakDetectorTest`) cover DebugTab
-  subclass + builder/addTab in `src/main` (flagged) vs `src/debug` (clean); all
-  pass.
+- Five `lint-tests` unit tests (`LustroDebugLeakDetectorTest`) cover a `DebugTab`
+  subclass in `src/main` and `src/release` (flagged) vs `src/debug` (clean), the
+  quick-start layout of builder/`addTab` in `src/main` with the tab in `src/debug`
+  (clean), and builder + subclass both in `src/main` (only the subclass is
+  reported); all pass.
 
 **Notes / scoped exceptions:**
 
@@ -117,15 +142,18 @@ usage leaks into a non-debug source set.
   are excluded from `:lustro-lint`'s `runtimeElements`.
 - `:lustro-lint` is added to BCV's `ignoredProjects` (it ships a lint-check jar, not
   a consumable Kotlin/Java API).
-- The `:sample` app now follows the recommended pattern, so the check runs
-  **enabled with no suppression** there. All Lustro registration is variant-split
+- The `:sample` app follows the recommended pattern, so the check runs **enabled
+  with no suppression** there — including on the release mirror, which no longer
+  carries `@Suppress("LustroDebugUsageInRelease")` now that the detector ignores
+  builder/`addTab`. All Lustro registration is variant-split
   into `src/debug/.../LustroBootstrap.kt` (real `:lustro`: builds Lustro, registers
   the Network tab + the custom `SampleFlagsTab` `DebugTab`, starts the server, and
   returns the capturing interceptor) and a mirror `src/release/.../LustroBootstrap.kt`
   (no-op `:lustro-noop`, SAME signatures, no custom tab). `src/main`
   (`SampleApplication`/`MainActivity`) mentions **no** Lustro type — it only calls
   `LustroBootstrap.start(...)` and reads the returned interceptor — so the detector
-  finds nothing to flag in `main`/`release` and `:sample:lintDebug` is clean
+  finds nothing to flag in `main`/`release`, and both `:sample:lintDebug` and
+  `:sample:lintVitalRelease` are clean
   WITHOUT a `lint { disable += "LustroDebugUsageInRelease" }`. The cross-variant
   parity gate is preserved because BOTH `LustroBootstrap`s have identical
   signatures and compile against their respective facade (`:lustro` in debug,
@@ -136,11 +164,14 @@ usage leaks into a non-debug source set.
   so it is not flagged. This is the canonical example: consumers should place
   Lustro registration (and any custom `DebugTab`s) under `src/debug/`.
 
-**Secondary detector (deferred):** flagging `:lustro` reachable from a `release` /
-`implementation` configuration is left to the existing Gradle capability +
-per-variant deps (the `io.github.twinsen81:lustro-runtime` capability already makes
-`:lustro` and `:lustro-noop` mutually exclusive on a configuration). The source-set
-detector above was prioritised per the task brief.
+**Secondary detector (dropped, not deferred):** a check that flags `:lustro`
+reachable from a `release` / `implementation` configuration is not planned. The
+Gradle capability only makes `:lustro` and `:lustro-noop` mutually exclusive on ONE
+configuration, so it never sees a lone `releaseImplementation(lustro)`; the runtime
+`FLAG_DEBUGGABLE` guard above covers that case at the only point where it is
+certain, and unlike a lint check it does not require the consumer to run lint. Any
+public text describing a dependency-graph lint check is wrong and should be
+corrected.
 
 For canonical package, version, and module facts, see the project README,
 CONTRIBUTING, and the module build files.

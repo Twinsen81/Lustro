@@ -3,6 +3,7 @@
 package io.github.twinsen81.lustro
 
 import android.app.Application
+import android.content.pm.ApplicationInfo
 import android.util.Log
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.Lifecycle
@@ -25,6 +26,12 @@ import okhttp3.Interceptor
  * Build one with [builder], register [DebugTab]s, and [start] it to ARM the
  * loopback debug server. Obtain an OkHttp interceptor with [networkInterceptor]
  * to feed captured traffic into the registered [NetworkDebugTab] (if any).
+ *
+ * Debug-only: [start] refuses to arm when the host app is not marked debuggable,
+ * unless [DebugConfig.allowNonDebuggableBuilds] opts in. This is a runtime
+ * backstop for a consumer whose Gradle wiring puts the real runtime on a release
+ * variant; it does not replace the `debugImplementation` / `releaseImplementation`
+ * split with `:lustro-noop`.
  *
  * Lifecycle: [start] registers a process-lifecycle observer
  * and returns [LustroStatus.ENABLED] once armed. The socket binds when the app is
@@ -58,6 +65,12 @@ public class Lustro internal constructor(
     // that file is disk I/O, so the token is only read off the main thread: by
     // request handlers, and on [workExecutor] for the endpoint log after each bind.
     private val tokenStore = LustroTokenStore(application.applicationContext)
+
+    // Read once at construction: whether the host app ships android:debuggable.
+    // start() consults this before arming, so a release APK that somehow carries
+    // the real runtime never opens a socket.
+    private val debuggable: Boolean =
+        (application.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
 
     @Volatile
     private var server: LustroServer? = null
@@ -113,10 +126,18 @@ public class Lustro internal constructor(
      * on background. Returns [LustroStatus.ENABLED] once armed, or
      * [LustroStatus.DISABLED] if arming fails. When the process is already at least
      * [Lifecycle.State.STARTED], the socket binds immediately. Idempotent.
+     *
+     * Returns [LustroStatus.DISABLED] without arming — and logs a WARN — when the
+     * host app is not marked debuggable and
+     * [DebugConfig.allowNonDebuggableBuilds] is `false` (the default).
      */
     public fun start(): LustroStatus {
         synchronized(this) {
             if (armed) return LustroStatus.ENABLED
+            if (!debuggable && !config.allowNonDebuggableBuilds) {
+                Log.w(TAG, NON_DEBUGGABLE_WARNING)
+                return LustroStatus.DISABLED
+            }
             return try {
                 registry.start()
                 notifyTabs { it.onStart() }
@@ -369,6 +390,13 @@ public class Lustro internal constructor(
     /** Factory for [Lustro]. */
     public companion object {
         private const val TAG = "Lustro"
+
+        private const val NON_DEBUGGABLE_WARNING =
+            "Refusing to start: this app is not marked debuggable. Lustro is a " +
+                "debug-only tool — depend on it with debugImplementation and use " +
+                "the lustro-noop artifact for release. If this really is an " +
+                "internal build that ships android:debuggable=\"false\", opt in " +
+                "with DebugConfig.builder().allowNonDebuggableBuilds(true)."
 
         // Machine-parseable endpoint-discovery log tag. The
         // CLI/agents grep for this tag to learn host:port + token.

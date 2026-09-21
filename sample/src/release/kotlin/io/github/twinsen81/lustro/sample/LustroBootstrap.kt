@@ -26,9 +26,8 @@ import okhttp3.OkHttpClient
  * [Lustro.networkInterceptor] returns a pass-through interceptor.
  */
 // This src/release stub deliberately calls the Lustro API against :lustro-noop to
-// drive the cross-variant facade-parity gate; the no-op makes it inert in release,
-// so the debug-only lint check (LustroDebugUsageInRelease) does not apply here.
-@Suppress("LustroDebugUsageInRelease")
+// drive the cross-variant facade-parity gate. No suppression is needed: the check
+// flags DebugTab subclasses outside src/debug, and this file declares none.
 public object LustroBootstrap {
     /**
      * No-op equivalent of the debug bootstrap. Builds Lustro against the no-op
