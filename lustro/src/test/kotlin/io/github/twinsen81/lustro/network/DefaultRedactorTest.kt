@@ -162,6 +162,34 @@ class DefaultRedactorTest {
         assertTrue("re-serialized: $out", out.contains(""""price":1.1"""))
     }
 
+    // The decision to store a body as it arrived is made on its TEXT, not on the
+    // parse tree: org.json on Android skips comments and lets a repeated key shadow
+    // an earlier one, so a secret can sit in the body without ever reaching the
+    // tree. Storing such a body verbatim would publish it.
+    @Test
+    fun `a secret the parser would drop is never stored`() {
+        val bodies =
+            listOf(
+                """{"a":{"password":"s3cret"},"a":{"x":1}}""",
+                """[{"t":{"api_key":"s3cret"},"t":{}}]""",
+                """{"a":1 /* "password":"s3cret" */}""",
+                "{\"a\":1 // \"password\":\"s3cret\"\n}",
+                """{"a":1, "b":{"deep":[{"secret":"s3cret"}]}, "b":2}""",
+            )
+        for (body in bodies) {
+            val out = redactor.redactBody(body, MediaType.JSON)
+            assertTrue("secret stored for $body -> $out", !out.contains("s3cret"))
+        }
+    }
+
+    // A quoted value is not a key: a body that merely mentions a sensitive name is
+    // still stored as it arrived, as the structured path never masked it either.
+    @Test
+    fun `a sensitive name in a value does not force a rewrite`() {
+        val body = """{ "a": "password", "b": ["token", {"c": "api_key"}] }"""
+        assertEquals(body, redactor.redactBody(body, MediaType.JSON))
+    }
+
 
 
     @Test
@@ -252,8 +280,16 @@ class DefaultRedactorTest {
             val (json, masked) = JsonGenerator(random).document()
             // The generator masks what the structured path masks.
             assertSimilarJson(json, masked, redactor.redactBody(json, MediaType.JSON))
-            // Nothing to mask (the generator's masked copy is its input) -> stored verbatim.
-            if (json == masked) assertEquals(json, redactor.redactBody(json, MediaType.JSON))
+            if (json == masked) {
+                // Nothing to mask (the generator's masked copy is its input) -> stored verbatim.
+                assertEquals(json, redactor.redactBody(json, MediaType.JSON))
+            } else {
+                // A sensitive key anywhere in the TEXT rules the verbatim path out,
+                // even where a repeated key shadows the whole subtree holding it, so
+                // the parse can't drop a secret into a body that is then stored.
+                val shadowed = "{\"a\":$json,\"a\":{}}"
+                assertTrue("stored as-is: $shadowed", redactor.redactBody(shadowed, MediaType.JSON) != shadowed)
+            }
             // Two NDJSON lines or SSE frames don't parse as one value.
             assertEquals(json, "$masked\n$masked", redactor.redactBody("$json\n$json", MediaType.JSON))
             assertEquals(json, "data: $masked\n\n", redactor.redactBody("data: $json\n\n", EVENT_STREAM))

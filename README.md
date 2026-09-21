@@ -255,8 +255,8 @@ Lustro deliberately surfaces app internals, so its defaults are conservative. Se
   trusted by default).
 - **Capture-time redaction.** A `Redactor` removes sensitive headers, URL/query params, and
   JSON/form body fields **before** anything is stored, so redacted values never reach the API,
-  UI, or fixtures. A body with nothing to mask is stored exactly as it arrived, so what you
-  inspect and copy is what was on the wire.
+  UI, or fixtures. A JSON body with no sensitive field in it is stored exactly as it arrived,
+  so what you inspect and copy is what was on the wire.
 - **Nothing persisted to disk except mock rules.** Captured traffic lives only in a bounded
   in-memory ring buffer and is lost when the process dies; the sole persisted state is your mock
   rules, and only when you give the tab a `MockRuleStorage` (see [Mock rules](#mock-rules)). The

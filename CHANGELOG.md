@@ -245,11 +245,14 @@ see [DECISIONS.md](DECISIONS.md).
   `"big": 9007199254740992`: integers past the parser's range lost digits, `1.10`
   and `1e2` normalized, the repeated key collapsed to its last value, `\uXXXX`
   escapes decoded, and whitespace was rewritten — exactly the details an inspector
-  is opened for. `DefaultRedactor` now returns a body with nothing to mask
-  unchanged, byte for byte, and the console indents a body without re-encoding a
-  value of it, so the panel and the Copy button show what was on the wire. A body
-  that does carry a sensitive key is still re-serialized, since masking a value
-  means rebuilding the text. The Send Request and mock-rule editors' **Format**
+  is opened for. `DefaultRedactor` now returns a body unchanged, byte for byte,
+  when its own text is strict JSON with no sensitive key in it, and the console
+  indents a body without re-encoding a value of it, so the panel and the Copy
+  button show what was on the wire. Any other body is still rebuilt from the parse
+  tree: masking a value needs that, and so does a body the parser reads more
+  loosely than the JSON grammar, where text it never puts in the tree — a secret
+  in a comment, or under a key a later duplicate shadows — is dropped by the
+  rebuild rather than stored. The Send Request and mock-rule editors' **Format**
   buttons stopped rewriting values too — formatting a body no longer changes what
   it sends or serves.
 

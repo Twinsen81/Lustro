@@ -39,6 +39,13 @@ import org.json.JSONTokener
 public object DefaultRedactor : Redactor {
     private const val PLACEHOLDER = "[REDACTED]"
 
+    // What hasOnlyInsensitiveKeys expects the token at hand to be.
+    private const val EXPECT_VALUE = 0
+    private const val EXPECT_KEY = 1
+    private const val EXPECT_SEPARATOR = 2
+
+    private val JSON_LITERALS = listOf("true", "false", "null")
+
     private val textualRedactor = TextualRedactor(isSensitiveKey = ::isSensitiveKey, placeholder = PLACEHOLDER)
 
     private val SENSITIVE_HEADERS =
@@ -121,9 +128,10 @@ public object DefaultRedactor : Redactor {
      * (`text/event-stream`), XML, and `text/plain` — falls through to the
      * key-name-based [redactTextually] so a captured secret is never stored raw.
      *
-     * A body with nothing to mask is returned unchanged, byte for byte, so the
-     * inspector shows what was really on the wire. Only a body that does contain
-     * a sensitive key comes back re-serialized (see [redactJson]).
+     * A JSON body with no sensitive key in it is returned unchanged, byte for
+     * byte, so the inspector shows what was really on the wire; one that has a
+     * sensitive key, or that the parser reads more loosely than the JSON grammar,
+     * comes back rebuilt from the parse tree (see [redactJson]).
      */
     override fun redactBody(body: String, contentType: MediaType?): String {
         if (body.isEmpty()) return body
@@ -175,61 +183,211 @@ public object DefaultRedactor : Redactor {
      * happily read only the first object of an NDJSON / concatenated body and
      * silently drop the rest (losing data AND any secrets in the later frames).
      *
-     * A body with no sensitive key comes back as the ORIGINAL text: re-serializing
-     * it would edit what the inspector shows and copies without masking anything —
-     * `org.json` widens integers past `Long` into doubles, normalizes `1.10` and
-     * `1e2`, unescapes `\uXXXX`, drops all but the last of a repeated key, and
-     * rewrites whitespace. A body that does contain a sensitive key still pays
-     * those edits: masking a value means rebuilding the text from the parse tree.
+     * A body whose own text is strict JSON with no sensitive key in it comes back
+     * UNCHANGED (see [hasOnlyInsensitiveKeys]): parsing and re-serializing it would
+     * edit what the inspector shows and copies without masking anything — `org.json`
+     * widens integers past `Long` into doubles, normalizes `1.10` and `1e2`,
+     * unescapes `\uXXXX`, drops all but the last of a repeated key, and rewrites
+     * whitespace. Every other body is rebuilt from the parse tree, which is both
+     * what masking a value needs and what makes a body the parser reads loosely
+     * safe: `org.json` on Android skips comments and lets a repeated key shadow an
+     * earlier one, so text it never puts in the tree — a secret in a comment or
+     * under a shadowed key — is dropped by the rebuild instead of stored.
      */
     private fun redactJson(body: String): String? =
         try {
-            val tokener = JSONTokener(body)
-            val redacted =
-                when (val value = tokener.nextValue()) {
-                    is JSONObject -> if (redactJsonObject(value)) value.toString() else body
-                    is JSONArray -> if (redactJsonArray(value)) value.toString() else body
-                    else -> null
-                }
-            // nextClean() skips whitespace and returns the NUL char (Char.MIN_VALUE)
-            // at end-of-input; any other char means a second value follows (NDJSON /
-            // concatenated), so the body is not a single JSON value -> textual.
-            if (redacted != null && tokener.nextClean() == Char.MIN_VALUE) redacted else null
+            if (hasOnlyInsensitiveKeys(body)) {
+                body
+            } else {
+                val tokener = JSONTokener(body)
+                val redacted =
+                    when (val value = tokener.nextValue()) {
+                        is JSONObject -> redactJsonObject(value).toString()
+                        is JSONArray -> redactJsonArray(value).toString()
+                        else -> null
+                    }
+                // nextClean() skips whitespace and returns the NUL char (Char.MIN_VALUE)
+                // at end-of-input; any other char means a second value follows (NDJSON /
+                // concatenated), so the body is not a single JSON value -> textual.
+                if (redacted != null && tokener.nextClean() == Char.MIN_VALUE) redacted else null
+            }
         } catch (_: Exception) {
             null
         }
 
-    /** Masks sensitive values in [obj] in place; returns whether anything was masked. */
-    private fun redactJsonObject(obj: JSONObject): Boolean {
-        var masked = false
+    private fun redactJsonObject(obj: JSONObject): JSONObject {
         val keys = obj.keys().asSequence().toList()
         for (key in keys) {
             if (isSensitiveKey(key)) {
                 obj.put(key, PLACEHOLDER)
-                masked = true
                 continue
             }
             when (val value = obj.get(key)) {
-                is JSONObject -> if (redactJsonObject(value)) masked = true
-                is JSONArray -> if (redactJsonArray(value)) masked = true
+                is JSONObject -> obj.put(key, redactJsonObject(value))
+                is JSONArray -> obj.put(key, redactJsonArray(value))
                 else -> Unit
             }
         }
-        return masked
+        return obj
     }
 
-    /** Masks sensitive values in [arr] in place; returns whether anything was masked. */
-    private fun redactJsonArray(arr: JSONArray): Boolean {
-        var masked = false
+    private fun redactJsonArray(arr: JSONArray): JSONArray {
         for (i in 0 until arr.length()) {
             when (val value = arr.get(i)) {
-                is JSONObject -> if (redactJsonObject(value)) masked = true
-                is JSONArray -> if (redactJsonArray(value)) masked = true
+                is JSONObject -> arr.put(i, redactJsonObject(value))
+                is JSONArray -> arr.put(i, redactJsonArray(value))
                 else -> Unit
             }
         }
-        return masked
+        return arr
     }
+
+    /**
+     * Whether [body] is a single STRICT JSON value — the grammar, nothing the
+     * parser merely tolerates — in which no key anywhere is sensitive. That is the
+     * one case where the body can be stored as it arrived: the decision is made on
+     * the source text, so a key the parse tree never shows still counts, whether
+     * it sits under a repeated key that shadows it or inside a comment.
+     *
+     * The scan is a flat loop over the text with an explicit container stack, so a
+     * deeply nested body costs memory rather than call frames.
+     */
+    private fun hasOnlyInsensitiveKeys(body: String): Boolean {
+        // One char per open container: '{' or '['.
+        val containers = StringBuilder()
+        var i = skipJsonSpace(body, 0)
+        // What the next token must be: a value, an object key, or a separator
+        // after a completed value.
+        var expect = EXPECT_VALUE
+        while (i < body.length) {
+            val c = body[i]
+            when (expect) {
+                EXPECT_VALUE ->
+                    when {
+                        c == '{' || c == '[' -> {
+                            containers.append(c)
+                            i = skipJsonSpace(body, i + 1)
+                            val close = if (c == '{') '}' else ']'
+                            if (i < body.length && body[i] == close) {
+                                containers.setLength(containers.length - 1)
+                                i++
+                                expect = EXPECT_SEPARATOR
+                            } else {
+                                expect = if (c == '{') EXPECT_KEY else EXPECT_VALUE
+                            }
+                        }
+                        c == '"' -> {
+                            i = jsonStringEnd(body, i)
+                            if (i < 0) return false
+                            expect = EXPECT_SEPARATOR
+                        }
+                        else -> {
+                            i = jsonScalarEnd(body, i)
+                            if (i < 0) return false
+                            expect = EXPECT_SEPARATOR
+                        }
+                    }
+                EXPECT_KEY -> {
+                    if (c != '"') return false
+                    val end = jsonStringEnd(body, i)
+                    if (end < 0 || !isInsensitiveKey(body.substring(i + 1, end - 1))) return false
+                    i = skipJsonSpace(body, end)
+                    if (i == body.length || body[i] != ':') return false
+                    i++
+                    expect = EXPECT_VALUE
+                }
+                else -> {
+                    val open = containers.lastOrNull() ?: return false
+                    when {
+                        c == ',' -> {
+                            i++
+                            expect = if (open == '{') EXPECT_KEY else EXPECT_VALUE
+                        }
+                        c == '}' && open == '{' || c == ']' && open == '[' -> {
+                            containers.setLength(containers.length - 1)
+                            i++
+                        }
+                        else -> return false
+                    }
+                }
+            }
+            i = skipJsonSpace(body, i)
+        }
+        // A complete value, with every container closed and nothing left over.
+        return expect == EXPECT_SEPARATOR && containers.isEmpty()
+    }
+
+    /**
+     * Whether the key whose SOURCE text is [source] (the characters between its
+     * quotes) is non-sensitive. Escapes are resolved first, so a key written as
+     * `tok\u0065n` is matched as the `token` the parse tree would hold.
+     */
+    private fun isInsensitiveKey(source: String): Boolean {
+        if (source.indexOf('\\') < 0) return !isSensitiveKey(source)
+        val unescaped = JSONTokener("\"$source\"").nextValue() as? String ?: return false
+        return !isSensitiveKey(unescaped)
+    }
+
+    private fun skipJsonSpace(text: String, from: Int): Int {
+        var i = from
+        // The four characters JSON counts as whitespace; a parser that also skips
+        // comments must not be followed here, or their text would pass unread.
+        while (i < text.length && (text[i] == ' ' || text[i] == '\t' || text[i] == '\n' || text[i] == '\r')) i++
+        return i
+    }
+
+    /** Index just past the string starting at [from], or -1 when it isn't one. */
+    private fun jsonStringEnd(text: String, from: Int): Int {
+        var i = from + 1
+        while (i < text.length) {
+            when (val c = text[i]) {
+                '"' -> return i + 1
+                '\\' -> {
+                    val escape = text.getOrNull(i + 1) ?: return -1
+                    if (escape == 'u') {
+                        if (i + 6 > text.length || !text.substring(i + 2, i + 6).all { it.isHexDigit() }) return -1
+                        i += 6
+                    } else {
+                        if (escape !in "\"\\/bfnrt") return -1
+                        i += 2
+                    }
+                }
+                else -> if (c < ' ') return -1 else i++
+            }
+        }
+        return -1
+    }
+
+    /** Index just past the number or literal starting at [from], or -1 when it isn't one. */
+    private fun jsonScalarEnd(text: String, from: Int): Int {
+        for (literal in JSON_LITERALS) {
+            if (text.startsWith(literal, from)) return from + literal.length
+        }
+        var i = from
+        if (i < text.length && text[i] == '-') i++
+        val intStart = i
+        while (i < text.length && text[i].isAsciiDigit()) i++
+        // No digits, or a leading zero followed by more of them.
+        if (i == intStart || (text[intStart] == '0' && i - intStart > 1)) return -1
+        if (i < text.length && text[i] == '.') {
+            i++
+            val fractionStart = i
+            while (i < text.length && text[i].isAsciiDigit()) i++
+            if (i == fractionStart) return -1
+        }
+        if (i < text.length && (text[i] == 'e' || text[i] == 'E')) {
+            i++
+            if (i < text.length && (text[i] == '+' || text[i] == '-')) i++
+            val exponentStart = i
+            while (i < text.length && text[i].isAsciiDigit()) i++
+            if (i == exponentStart) return -1
+        }
+        return i
+    }
+
+    private fun Char.isAsciiDigit(): Boolean = this in '0'..'9'
+
+    private fun Char.isHexDigit(): Boolean = isAsciiDigit() || this in 'a'..'f' || this in 'A'..'F'
 
     /**
      * Framing-agnostic fallback that masks the VALUE of any sensitive key wherever
