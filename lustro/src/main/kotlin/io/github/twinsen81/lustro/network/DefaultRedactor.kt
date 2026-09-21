@@ -183,16 +183,18 @@ public object DefaultRedactor : Redactor {
      * happily read only the first object of an NDJSON / concatenated body and
      * silently drop the rest (losing data AND any secrets in the later frames).
      *
-     * A body whose own text is strict JSON with no sensitive key in it comes back
-     * UNCHANGED (see [hasOnlyInsensitiveKeys]): parsing and re-serializing it would
+     * A body whose own text is a strict JSON object or array with no sensitive key
+     * in it comes back UNCHANGED (see [hasOnlyInsensitiveKeys]): parsing and
+     * re-serializing it would
      * edit what the inspector shows and copies without masking anything — `org.json`
      * widens integers past `Long` into doubles, normalizes `1.10` and `1e2`,
      * unescapes `\uXXXX`, drops all but the last of a repeated key, and rewrites
-     * whitespace. Every other body is rebuilt from the parse tree, which is both
-     * what masking a value needs and what makes a body the parser reads loosely
-     * safe: `org.json` on Android skips comments and lets a repeated key shadow an
-     * earlier one, so text it never puts in the tree — a secret in a comment or
-     * under a shadowed key — is dropped by the rebuild instead of stored.
+     * whitespace. Every other body goes down the paths above: rebuilt from the
+     * parse tree, or `null` for [redactTextually] when it isn't one complete JSON
+     * value. The rebuild is what masking a value needs, and what makes a body the
+     * parser reads loosely safe: `org.json` on Android skips comments and lets a
+     * repeated key shadow an earlier one, so text it never puts in the tree — a
+     * secret in a comment or under a shadowed key — is dropped instead of stored.
      */
     private fun redactJson(body: String): String? =
         try {
@@ -256,6 +258,11 @@ public object DefaultRedactor : Redactor {
         // One char per open container: '{' or '['.
         val containers = StringBuilder()
         var i = skipJsonSpace(body, 0)
+        // Only an object or an array, the two the tree path handles. A body that is
+        // a bare JSON string can hold a secret with no key to spot it by
+        // ("https://host/file?token=..."), and it keeps going to [redactTextually],
+        // which masks one.
+        if (i == body.length || (body[i] != '{' && body[i] != '[')) return false
         // What the next token must be: a value, an object key, or a separator
         // after a completed value.
         var expect = EXPECT_VALUE

@@ -248,11 +248,12 @@ see [DECISIONS.md](DECISIONS.md).
   is opened for. `DefaultRedactor` now returns a body unchanged, byte for byte,
   when its own text is strict JSON with no sensitive key in it, and the console
   indents a body without re-encoding a value of it, so the panel and the Copy
-  button show what was on the wire. Any other body is still rebuilt from the parse
-  tree: masking a value needs that, and so does a body the parser reads more
-  loosely than the JSON grammar, where text it never puts in the tree — a secret
-  in a comment, or under a key a later duplicate shadows — is dropped by the
-  rebuild rather than stored. The Send Request and mock-rule editors' **Format**
+  button show what was on the wire. Any other body still takes the path it took
+  before — rebuilt from the parse tree, or masked as text when it isn't one
+  complete JSON value — which is what masking a value needs, and what a body the
+  parser reads more loosely than the JSON grammar needs too: text it never puts in
+  the tree, a secret in a comment or under a key a later duplicate shadows, is
+  dropped by the rebuild rather than stored. The Send Request and mock-rule editors' **Format**
   buttons stopped rewriting values too — formatting a body no longer changes what
   it sends or serves.
 

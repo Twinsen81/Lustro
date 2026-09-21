@@ -150,6 +150,16 @@ class DefaultRedactorTest {
         assertEquals(array, redactor.redactBody(array, null))
     }
 
+    // A body that is a bare JSON string has no key to judge it by, and it can still
+    // carry a secret. It keeps taking the textual path, which masks one.
+    @Test
+    fun `a json body that is just a string is still masked`() {
+        val out = redactor.redactBody("\"https://host/file?token=s3cret\"", MediaType.JSON)
+        assertTrue("masked: $out", out.startsWith("\"https://host/file?token=[REDACTED]"))
+        assertTrue("secret gone: $out", !out.contains("s3cret"))
+        assertEquals("42", redactor.redactBody("42", MediaType.JSON))
+    }
+
     // Masking a value means rebuilding the text from the parse tree, so a body that
     // does contain a sensitive key is re-serialized. Pinned so the cost of the
     // structured path stays visible: it applies to these bodies and no others.
@@ -165,7 +175,9 @@ class DefaultRedactorTest {
     // The decision to store a body as it arrived is made on its TEXT, not on the
     // parse tree: org.json on Android skips comments and lets a repeated key shadow
     // an earlier one, so a secret can sit in the body without ever reaching the
-    // tree. Storing such a body verbatim would publish it.
+    // tree. Storing such a body verbatim would publish it. These assertions hold on
+    // either parser — the JVM's org.json rejects both shapes, which sends them down
+    // the textual path — so they pin the property, not the route taken to it.
     @Test
     fun `a secret the parser would drop is never stored`() {
         val bodies =
