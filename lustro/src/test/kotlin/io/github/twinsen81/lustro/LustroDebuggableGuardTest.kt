@@ -64,15 +64,21 @@ class LustroDebuggableGuardTest {
     }
 
     // Port 0 so binding picks a free ephemeral port; the fixed default 8080 may be
-    // taken in the test sandbox.
-    private fun lustro(allowNonDebuggable: Boolean = false): Lustro {
-        val config =
+    // taken in the test sandbox. The refusal path deliberately never touches
+    // allowNonDebuggableBuilds, so it exercises the SHIPPED builder default —
+    // flipping that default to true has to fail a test here.
+    private fun lustro(): Lustro = lustro(DebugConfig.builder().serverPort(0).build())
+
+    private fun optedInLustro(): Lustro =
+        lustro(
             DebugConfig.builder()
                 .serverPort(0)
-                .allowNonDebuggableBuilds(allowNonDebuggable)
-                .build()
-        return Lustro(app, config, DebugTabRegistry(), owner.registry).also { started.add(it) }
-    }
+                .allowNonDebuggableBuilds(true)
+                .build(),
+        )
+
+    private fun lustro(config: DebugConfig): Lustro =
+        Lustro(app, config, DebugTabRegistry(), owner.registry).also { started.add(it) }
 
     private fun refusalLogged(): Boolean =
         ShadowLog.getLogsForTag("Lustro").any { it.msg.contains("not marked debuggable") }
@@ -91,7 +97,7 @@ class LustroDebuggableGuardTest {
     @Test
     fun `a non-debuggable build arms when allowNonDebuggableBuilds opts in`() {
         setDebuggable(false)
-        val lustro = lustro(allowNonDebuggable = true)
+        val lustro = optedInLustro()
 
         assertEquals(LustroStatus.ENABLED, lustro.start())
         assertTrue("socket is bound", lustro.isBound())
