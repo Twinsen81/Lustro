@@ -120,6 +120,10 @@ public object DefaultRedactor : Redactor {
      * JSON that fails to parse (NDJSON / concatenated frames), SSE
      * (`text/event-stream`), XML, and `text/plain` — falls through to the
      * key-name-based [redactTextually] so a captured secret is never stored raw.
+     *
+     * A body with nothing to mask is returned unchanged, byte for byte, so the
+     * inspector shows what was really on the wire. Only a body that does contain
+     * a sensitive key comes back re-serialized (see [redactJson]).
      */
     override fun redactBody(body: String, contentType: MediaType?): String {
         if (body.isEmpty()) return body
@@ -170,14 +174,21 @@ public object DefaultRedactor : Redactor {
      * reject trailing content because `org.json` parses leniently — it would
      * happily read only the first object of an NDJSON / concatenated body and
      * silently drop the rest (losing data AND any secrets in the later frames).
+     *
+     * A body with no sensitive key comes back as the ORIGINAL text: re-serializing
+     * it would edit what the inspector shows and copies without masking anything —
+     * `org.json` widens integers past `Long` into doubles, normalizes `1.10` and
+     * `1e2`, unescapes `\uXXXX`, drops all but the last of a repeated key, and
+     * rewrites whitespace. A body that does contain a sensitive key still pays
+     * those edits: masking a value means rebuilding the text from the parse tree.
      */
     private fun redactJson(body: String): String? =
         try {
             val tokener = JSONTokener(body)
             val redacted =
                 when (val value = tokener.nextValue()) {
-                    is JSONObject -> redactJsonObject(value).toString()
-                    is JSONArray -> redactJsonArray(value).toString()
+                    is JSONObject -> if (redactJsonObject(value)) value.toString() else body
+                    is JSONArray -> if (redactJsonArray(value)) value.toString() else body
                     else -> null
                 }
             // nextClean() skips whitespace and returns the NUL char (Char.MIN_VALUE)
@@ -188,31 +199,36 @@ public object DefaultRedactor : Redactor {
             null
         }
 
-    private fun redactJsonObject(obj: JSONObject): JSONObject {
+    /** Masks sensitive values in [obj] in place; returns whether anything was masked. */
+    private fun redactJsonObject(obj: JSONObject): Boolean {
+        var masked = false
         val keys = obj.keys().asSequence().toList()
         for (key in keys) {
             if (isSensitiveKey(key)) {
                 obj.put(key, PLACEHOLDER)
+                masked = true
                 continue
             }
             when (val value = obj.get(key)) {
-                is JSONObject -> obj.put(key, redactJsonObject(value))
-                is JSONArray -> obj.put(key, redactJsonArray(value))
+                is JSONObject -> if (redactJsonObject(value)) masked = true
+                is JSONArray -> if (redactJsonArray(value)) masked = true
                 else -> Unit
             }
         }
-        return obj
+        return masked
     }
 
-    private fun redactJsonArray(arr: JSONArray): JSONArray {
+    /** Masks sensitive values in [arr] in place; returns whether anything was masked. */
+    private fun redactJsonArray(arr: JSONArray): Boolean {
+        var masked = false
         for (i in 0 until arr.length()) {
             when (val value = arr.get(i)) {
-                is JSONObject -> arr.put(i, redactJsonObject(value))
-                is JSONArray -> arr.put(i, redactJsonArray(value))
+                is JSONObject -> if (redactJsonObject(value)) masked = true
+                is JSONArray -> if (redactJsonArray(value)) masked = true
                 else -> Unit
             }
         }
-        return arr
+        return masked
     }
 
     /**

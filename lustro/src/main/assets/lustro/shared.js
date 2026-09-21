@@ -323,8 +323,137 @@ window.debugCopyToClipboard = function(text) {
     });
 };
 
+// Splits JSON source text into the pieces a pretty-printer emits, WITHOUT
+// rewriting any of them: every key, string, number, and literal is the exact
+// slice of the input, and only whitespace between them is the printer's own.
+// A JSON.parse + JSON.stringify round-trip can't do that on a captured body —
+// integers past 2^53 lose their last digits, `1.10` and `1e2` normalize, a
+// `\uXXXX` escape decodes, and a repeated key keeps only its last value — and a
+// body is shown and copied exactly to answer questions about those details.
+//
+// Returns an array of {cls, text} (cls null for the printer's own punctuation
+// and indentation), or null when the text is not a single valid JSON value, so
+// callers can fall back. The grammar accepted is JSON.parse's.
+function debugScanJsonSource(src, indent) {
+    if (typeof src !== 'string') return null;
+    var i = 0;
+    var out = [];
+    var NUMBER = /-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?/y;
+    try {
+        skipWs();
+        value(0);
+        skipWs();
+        return i === src.length ? out : null;
+    } catch(e) {
+        return null;
+    }
+
+    function fail() { throw new Error('not json'); }
+
+    function push(cls, text) { out.push({ cls: cls, text: text }); }
+
+    function pad(depth) { return depth * indent > 0 ? new Array(depth * indent + 1).join(' ') : ''; }
+
+    function skipWs() {
+        while (i < src.length) {
+            var c = src.charAt(i);
+            if (c !== ' ' && c !== '\t' && c !== '\n' && c !== '\r') return;
+            i++;
+        }
+    }
+
+    function value(depth) {
+        var c = src.charAt(i);
+        if (c === '{') return object(depth);
+        if (c === '[') return array(depth);
+        if (c === '"') return push('json-string', string());
+        if (c === '-' || (c >= '0' && c <= '9')) return push('json-number', number());
+        if (src.substr(i, 4) === 'true') { i += 4; return push('json-boolean', 'true'); }
+        if (src.substr(i, 5) === 'false') { i += 5; return push('json-boolean', 'false'); }
+        if (src.substr(i, 4) === 'null') { i += 4; return push('json-null', 'null'); }
+        fail();
+    }
+
+    function object(depth) {
+        i++;
+        skipWs();
+        if (src.charAt(i) === '}') { i++; return push('json-bracket', '{}'); }
+        push('json-bracket', '{');
+        for (var n = 0; ; n++) {
+            push(null, (n === 0 ? '\n' : ',\n') + pad(depth + 1));
+            skipWs();
+            if (src.charAt(i) !== '"') fail();
+            push('json-key', string());
+            skipWs();
+            if (src.charAt(i) !== ':') fail();
+            i++;
+            push(null, ': ');
+            skipWs();
+            value(depth + 1);
+            skipWs();
+            if (src.charAt(i) === ',') { i++; continue; }
+            if (src.charAt(i) === '}') { i++; break; }
+            fail();
+        }
+        push(null, '\n' + pad(depth));
+        push('json-bracket', '}');
+    }
+
+    function array(depth) {
+        i++;
+        skipWs();
+        if (src.charAt(i) === ']') { i++; return push('json-bracket', '[]'); }
+        push('json-bracket', '[');
+        for (var n = 0; ; n++) {
+            push(null, (n === 0 ? '\n' : ',\n') + pad(depth + 1));
+            skipWs();
+            value(depth + 1);
+            skipWs();
+            if (src.charAt(i) === ',') { i++; continue; }
+            if (src.charAt(i) === ']') { i++; break; }
+            fail();
+        }
+        push(null, '\n' + pad(depth));
+        push('json-bracket', ']');
+    }
+
+    function string() {
+        var start = i;
+        i++;
+        while (i < src.length) {
+            var c = src.charAt(i);
+            if (c === '"') { i++; return src.slice(start, i); }
+            if (c === '\\') {
+                var escape = src.charAt(i + 1);
+                if ('"\\/bfnrt'.indexOf(escape) >= 0) { i += 2; continue; }
+                if (escape === 'u' && /^[0-9a-fA-F]{4}$/.test(src.substr(i + 2, 4))) { i += 6; continue; }
+                fail();
+            }
+            if (c < ' ') fail();
+            i++;
+        }
+        fail();
+    }
+
+    function number() {
+        NUMBER.lastIndex = i;
+        var match = NUMBER.exec(src);
+        if (!match) fail();
+        i = NUMBER.lastIndex;
+        return match[0];
+    }
+}
+window.debugScanJsonSource = debugScanJsonSource;
+
+// Pretty-prints JSON text as it arrived: indentation is the only thing added.
+// Anything that isn't a single valid JSON value (and any non-string input) goes
+// through JSON.parse/stringify as before, or comes back as-is.
 window.debugFormatJson = function(obj, indent) {
     indent = indent || 2;
+    var pieces = debugScanJsonSource(obj, indent);
+    if (pieces) {
+        return pieces.map(function(piece) { return piece.text; }).join('');
+    }
     try {
         if (typeof obj === 'string') obj = JSON.parse(obj);
         return JSON.stringify(obj, null, indent);
@@ -341,6 +470,16 @@ window.debugSyntaxHighlightJson = function(jsonString, options) {
     options = options || {};
     var indent = options.indent || 2;
     var searchText = options.searchText || '';
+    // Highlight the body's own text, so what's on screen is what arrived (see
+    // debugScanJsonSource). Only input that isn't JSON source — an already-parsed
+    // object — is walked as a tree.
+    var pieces = debugScanJsonSource(jsonString, indent);
+    if (pieces) {
+        return pieces.map(function(piece) {
+            var text = escapeAndMark(piece.text, piece.cls ? searchText : '');
+            return piece.cls ? '<span class="' + piece.cls + '">' + text + '</span>' : text;
+        }).join('');
+    }
     var parsed;
     try {
         parsed = typeof jsonString === 'string' ? JSON.parse(jsonString) : jsonString;

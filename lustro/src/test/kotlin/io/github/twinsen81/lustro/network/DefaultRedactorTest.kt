@@ -132,9 +132,34 @@ class DefaultRedactorTest {
     @Test
     fun `non-sensitive json is left untouched`() {
         val body = """{"name":"alice","count":3}"""
-        val out = JSONObject(redactor.redactBody(body, MediaType.JSON))
-        assertEquals("alice", out.getString("name"))
-        assertEquals(3, out.getInt("count"))
+        assertEquals(body, redactor.redactBody(body, MediaType.JSON))
+    }
+
+    // An inspector exists for sessions about number precision, repeated keys, and
+    // what a server really sent, so a body with nothing to mask must be stored
+    // exactly as it arrived — not as org.json would write it back out.
+    @Test
+    fun `json with nothing to mask is stored byte for byte`() {
+        val body =
+            "{ \"id\": 12345678901234567890, \"price\": 1.10, \"ratio\": 1e2, \"big\": 9007199254740993, " +
+                "\"path\": \"a\\/b\", \"caf\\u00e9\": \"cr\\u00e8me\", \"dup\": 1, \"dup\": 2, \"note\": null }"
+        assertEquals(body, redactor.redactBody(body, MediaType.JSON))
+
+        val array = "[\n  1.0,\n  {\"a\": [2e1]}\n]"
+        assertEquals(array, redactor.redactBody(array, MediaType.JSON))
+        assertEquals(array, redactor.redactBody(array, null))
+    }
+
+    // Masking a value means rebuilding the text from the parse tree, so a body that
+    // does contain a sensitive key is re-serialized. Pinned so the cost of the
+    // structured path stays visible: it applies to these bodies and no others.
+    @Test
+    fun `json with a sensitive key is re-serialized`() {
+        val out = redactor.redactBody("""{ "price": 1.10, "token": "abc" }""", MediaType.JSON)
+        assertTrue("token masked", out.contains(""""token":"[REDACTED]""""))
+        assertTrue("secret gone", !out.contains("abc"))
+        // org.json wrote the tree back out: the spacing and the trailing zero are gone.
+        assertTrue("re-serialized: $out", out.contains(""""price":1.1"""))
     }
 
 
@@ -227,6 +252,8 @@ class DefaultRedactorTest {
             val (json, masked) = JsonGenerator(random).document()
             // The generator masks what the structured path masks.
             assertSimilarJson(json, masked, redactor.redactBody(json, MediaType.JSON))
+            // Nothing to mask (the generator's masked copy is its input) -> stored verbatim.
+            if (json == masked) assertEquals(json, redactor.redactBody(json, MediaType.JSON))
             // Two NDJSON lines or SSE frames don't parse as one value.
             assertEquals(json, "$masked\n$masked", redactor.redactBody("$json\n$json", MediaType.JSON))
             assertEquals(json, "data: $masked\n\n", redactor.redactBody("data: $json\n\n", EVENT_STREAM))

@@ -873,11 +873,14 @@
     window.formatSendBody = function() {
         var ta = document.getElementById('sf-body');
         if (!ta || !ta.value.trim()) return;
-        try {
-            ta.value = JSON.stringify(JSON.parse(ta.value), null, 2);
-        } catch (e) {
+        // Indents the body without rewriting a value of it — a round-trip through
+        // JSON.parse would edit the request before it was ever sent.
+        var pieces = window.debugScanJsonSource(ta.value, 2);
+        if (!pieces) {
             debugToast('Body is not valid JSON', 'warning');
+            return;
         }
+        ta.value = pieces.map(function(piece) { return piece.text; }).join('');
     };
 
     function renderSendResult(data, networkError) {
@@ -954,11 +957,14 @@
         if (!ta) return;
         var raw = ta.value;
         if (!raw.trim()) return;
-        try {
-            ta.value = JSON.stringify(JSON.parse(raw), null, 2);
-        } catch (e) {
+        // As in formatSendBody: indent only, so the rule still serves the body as
+        // it was written.
+        var pieces = window.debugScanJsonSource(raw, 2);
+        if (!pieces) {
             debugToast('Body is not valid JSON', 'warning');
+            return;
         }
+        ta.value = pieces.map(function(piece) { return piece.text; }).join('');
     };
 
     window.submitRule = function() {
