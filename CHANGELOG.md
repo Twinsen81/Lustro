@@ -234,6 +234,28 @@ see [DECISIONS.md](DECISIONS.md).
   rule with the same id wholesale, so saving an edit to a disabled rule turned it
   back on and left it with no headers. The form now sends both fields from the rule
   it is editing.
+- **JSON bodies shown as the parser rewrote them, not as they arrived.** Capture
+  parsed every JSON body and wrote the tree back out, whether or not anything in it
+  was sensitive, and the console then parsed that text again to display and copy it.
+  On a physical device, a response body of
+  `{ "id": 12345678901234567890, "price": 1.10, "ratio": 1e2, "big": 9007199254740993, "dup": 1, "dup": 2 }`
+  was stored as
+  `{"id":1.2345678901234567E19,"price":1.1,"ratio":100,"big":9007199254740993,"dup":2}`
+  and shown in the Network tab as `"id": 12345678901234567000`,
+  `"big": 9007199254740992`: integers past the parser's range lost digits, `1.10`
+  and `1e2` normalized, the repeated key collapsed to its last value, `\uXXXX`
+  escapes decoded, and whitespace was rewritten — exactly the details an inspector
+  is opened for. `DefaultRedactor` now returns a body unchanged, byte for byte,
+  when its own text is strict JSON with no sensitive key in it, and the console
+  indents a body without re-encoding a value of it, so the panel and the Copy
+  button show what was on the wire. Any other body still takes the path it took
+  before — rebuilt from the parse tree, or masked as text when it isn't one
+  complete JSON value — which is what masking a value needs, and what a body the
+  parser reads more loosely than the JSON grammar needs too: text it never puts in
+  the tree, a secret in a comment or under a key a later duplicate shadows, is
+  dropped by the rebuild rather than stored. The Send Request and mock-rule editors' **Format**
+  buttons stopped rewriting values too — formatting a body no longer changes what
+  it sends or serves.
 
 ### Changed
 
