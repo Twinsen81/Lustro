@@ -119,9 +119,9 @@ def discover_from_run_as(
     )
     if not out:
         return None
-    # Prefs XML: <string name="token">AbC123...</string>
+    # Prefs XML: <string name="lustro_token">AbC123...</string>
     match = re.search(
-        r'<string\s+name="token">\s*([^<\s]+)\s*</string>', out
+        r'<string\s+name="lustro_token">\s*([^<\s]+)\s*</string>', out
     )
     if not match:
         return None
