@@ -121,14 +121,27 @@ def test_discover_from_logcat_handles_missing_adb(monkeypatch):
     assert discovery.discover_from_logcat() is None
 
 
+# Verbatim shape of shared_prefs/lustro_debug.xml as written on a device.
+_PREFS_XML = (
+    "<?xml version='1.0' encoding='utf-8' standalone='yes' ?>\n"
+    "<map>\n"
+    '    <string name="lustro_token">prefstok</string>\n'
+    "</map>"
+)
+
+
 def test_discover_from_run_as_parses_prefs(monkeypatch):
-    xml = (
-        '<?xml version="1.0"?>\n<map>'
-        '<string name="token">prefstok</string></map>'
-    )
-    monkeypatch.setattr(discovery, "_run", lambda cmd, timeout=10.0: xml)
+    monkeypatch.setattr(discovery, "_run", lambda cmd, timeout=10.0: _PREFS_XML)
     ep = discovery.discover_from_run_as("com.example.app")
     assert ep.token == "prefstok"
+
+
+def test_discover_from_run_as_ignores_an_unrelated_token_key(monkeypatch):
+    # Only the runtime's own key counts; a plain "token" entry is somebody
+    # else's preference and must not be handed out as the auth token.
+    xml = '<map><string name="token">notours</string></map>'
+    monkeypatch.setattr(discovery, "_run", lambda cmd, timeout=10.0: xml)
+    assert discovery.discover_from_run_as("com.example.app") is None
 
 
 def test_discover_from_run_as_none_when_no_match(monkeypatch):

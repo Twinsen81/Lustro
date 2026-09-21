@@ -782,10 +782,13 @@ $tabsHtml
         // other local services' sessions.
         private val CREDENTIAL_HEADERS = setOf("authorization", "cookie")
 
-        // The exact CSP header served on the chrome and tab views.
+        // The exact CSP header served on the chrome and tab views. The console
+        // drives every state change through fetch(), so `form-action 'none'`
+        // costs nothing here and denies injected markup the one navigation-based
+        // route to a POST that needs no script.
         private const val CSP =
             "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
-                "connect-src 'self'; img-src 'self' data:; form-action 'self'; " +
+                "connect-src 'self'; img-src 'self' data:; form-action 'none'; " +
                 "object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
 
         // Matches the "token" string value in a small {"token":"..."} JSON body.

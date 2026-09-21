@@ -343,6 +343,10 @@ Lustro.builder(application)
   static `.js` / `.css`; returning a non-null `schema()` overrides the static `.openapi.json`.
 - Tab JS is loaded as an **external** script after `shared.js` (CSP: `script-src 'self'`). Use
   `data-action` attributes and event delegation — **no inline `onclick`/`<script>` handlers**.
+  Submit through `fetch()`, not an HTML `<form>`: the CSP sets `form-action 'none'`.
+- **Escape every value you render.** `String.escapeHtml()` makes a value safe as HTML text and
+  inside a quoted attribute; the browser-side `debugEscapeHtml(text)` does the same in tab JS.
+  Anything the app stores or a request carries is untrusted input to your tab.
 - **Styling is free.** Every tab page loads `shared.css` — the console's design system: design
   tokens (surfaces, text ramp, semantic method/status/level/category palettes; dark + light
   themes) plus a documented component library (`.dc-*` and the shared `.debug-*` classes).
