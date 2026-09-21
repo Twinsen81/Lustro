@@ -69,7 +69,7 @@ build, and that even in debug builds it stays bound to the local device.
   request headers cannot leak it.
 - **Content Security Policy.** Chrome and tab views are served with
   `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';
-  connect-src 'self'; img-src 'self' data:; form-action 'self'; object-src
+  connect-src 'self'; img-src 'self' data:; form-action 'none'; object-src
   'none'; base-uri 'none'`. Every API request, whatever its method, passes an
   Origin / `Sec-Fetch-Site` check driven by `DebugConfig.allowedOrigins`. A
   browser can still send a cross-origin `GET` with neither header, so tabs must

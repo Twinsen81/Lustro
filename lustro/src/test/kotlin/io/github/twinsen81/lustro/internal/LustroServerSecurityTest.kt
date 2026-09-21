@@ -41,7 +41,7 @@ class LustroServerSecurityTest {
 
     private val expectedCsp =
         "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
-            "connect-src 'self'; img-src 'self' data:; form-action 'self'; " +
+            "connect-src 'self'; img-src 'self' data:; form-action 'none'; " +
             "object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
 
     /** A tab whose renderContent emits a sentinel that must NEVER appear pre-auth. */

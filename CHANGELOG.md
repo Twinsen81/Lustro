@@ -256,6 +256,16 @@ see [DECISIONS.md](DECISIONS.md).
   dropped by the rebuild rather than stored. The Send Request and mock-rule editors' **Format**
   buttons stopped rewriting values too — formatting a body no longer changes what
   it sends or serves.
+- **The CLI's `run-as` token fallback never matched a device.** The last-resort
+  discovery step reads the app's private preferences over
+  `adb shell run-as <pkg>` and searched them for a `token` entry, but the runtime
+  stores the token under `lustro_token`, so the step returned nothing on every
+  real device and the CLI fell back to an error. Its unit test built a fixture
+  with the wrong key, which is why it stayed green. The fallback now matches the
+  key the runtime writes, and the fixture is the file as a device writes it. This
+  matters beyond a dead fallback: the `run-as` read is the only discovery channel
+  another app on the device cannot write to — any app can print a line under the
+  `LustroToken` log tag, and the CLI takes the last one it finds.
 
 ### Changed
 
@@ -305,5 +315,19 @@ see [DECISIONS.md](DECISIONS.md).
   now requires tabs to change state only on `POST`, `PUT`, `PATCH`, or
   `DELETE`: browsers send `Sec-Fetch-Site` only to loopback and HTTPS
   addresses, and a cross-origin `GET` without it carries no `Origin` either.
+- **`escapeHtml()` left both quote characters unescaped.** It is the only HTML
+  escaper the public API offers to `renderContent()` authors, and it replaced
+  `&`, `<`, and `>` only — so a tab that rendered a stored value into a quoted
+  attribute, `<input value="${x.escapeHtml()}">`, could be broken out of with a
+  bare `"`. Verified on a physical device: a tab rendering a hostile value that
+  way gained an attacker-chosen attribute in the live console. `escapeHtml()` now
+  escapes `"` and `'` as well, so its output is safe in HTML text and in a quoted
+  attribute value, and the console's own `debugEscapeHtml` helper escapes `'`
+  too. The served CSP tightens `form-action` from `'self'` to `'none'`,
+  which closes the one route injected markup had to a state-changing `POST`
+  without running any script — the console itself drives every state change
+  through `fetch()`, and the built-in UI has no `<form>` element. A tab that
+  submits an HTML form to the debug server, rather than calling `fetch()`, needs
+  to move to `fetch()`.
 
 [Unreleased]: https://github.com/Twinsen81/Lustro/compare/HEAD

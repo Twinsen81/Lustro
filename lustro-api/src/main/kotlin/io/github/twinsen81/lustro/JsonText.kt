@@ -54,11 +54,19 @@ public fun String.escapeForJson(): String =
     }
 
 /**
- * Escapes this string for safe inclusion in HTML text by replacing `&`, `<`,
- * and `>` with their entity references.
+ * Escapes this string for safe inclusion in HTML text *and* inside a quoted
+ * attribute value, by replacing `&`, `<`, `>`, `"`, and `'` with their entity
+ * references.
+ *
+ * Both quote characters are escaped so that `<input value="${x.escapeHtml()}">`
+ * cannot be broken out of, whichever quote style the attribute uses. This is not
+ * a substitute for escaping in a URL, a `style`, or a `<script>` block, none of
+ * which are HTML contexts.
  */
 public fun String.escapeHtml(): String =
     this
         .replace("&", "&amp;")
         .replace("<", "&lt;")
         .replace(">", "&gt;")
+        .replace("\"", "&quot;")
+        .replace("'", "&#39;")
