@@ -8,7 +8,8 @@ import com.android.tools.lint.detector.api.Issue
 /**
  * Unit tests for [LustroDebugLeakDetector] using the lint-tests harness. Each test
  * compiles a tiny stub of the Lustro debug API plus a consumer file placed in a
- * specific source set, then asserts the leak check fires only outside `src/debug`.
+ * specific source set, then asserts the leak check fires only for `DebugTab`
+ * subclasses outside `src/debug`.
  */
 @Suppress("UnstableApiUsage")
 class LustroDebugLeakDetectorTest : LintDetectorTest() {
@@ -24,6 +25,28 @@ class LustroDebugLeakDetectorTest : LintDetectorTest() {
                 debugTabStub,
                 kotlin(
                     "src/main/kotlin/com/example/MyTab.kt",
+                    """
+                    package com.example
+                    import io.github.twinsen81.lustro.DebugTab
+                    class MyTab : DebugTab() {
+                        override val id = "my"
+                        override val title = "My"
+                        override val icon = "x"
+                    }
+                    """,
+                ).indented(),
+            )
+            .run()
+            .expectErrorCount(1)
+    }
+
+    fun testDebugTabSubclassInReleaseIsFlagged() {
+        lint()
+            .allowMissingSdk()
+            .files(
+                debugTabStub,
+                kotlin(
+                    "src/release/kotlin/com/example/MyTab.kt",
                     """
                     package com.example
                     import io.github.twinsen81.lustro.DebugTab
@@ -61,7 +84,53 @@ class LustroDebugLeakDetectorTest : LintDetectorTest() {
             .expectClean()
     }
 
-    fun testBuilderAndAddTabInMainAreFlagged() {
+    /**
+     * The documented quick start: registration lives in a shared `Application`
+     * (`src/main`) while the custom tab stays in `src/debug`. `:lustro-noop` makes
+     * the builder/`addTab` calls inert in release, so only the tab's source set
+     * matters and nothing is reported.
+     */
+    fun testBuilderAndAddTabInMainAreNotFlagged() {
+        lint()
+            .allowMissingSdk()
+            .files(
+                debugTabStub,
+                lustroStub,
+                kotlin(
+                    "src/debug/kotlin/com/example/MyTab.kt",
+                    """
+                    package com.example
+                    import io.github.twinsen81.lustro.DebugTab
+                    object MyTab : DebugTab() {
+                        override val id = "my"
+                        override val title = "My"
+                        override val icon = "x"
+                    }
+                    """,
+                ).indented(),
+                kotlin(
+                    "src/main/kotlin/com/example/Setup.kt",
+                    """
+                    package com.example
+                    import android.app.Application
+                    import io.github.twinsen81.lustro.Lustro
+                    fun init(app: Application) {
+                        val b = Lustro.builder(app)
+                        b.addTab(MyTab)
+                        b.build()
+                    }
+                    """,
+                ).indented(),
+            )
+            .run()
+            .expectClean()
+    }
+
+    /**
+     * Registration in `src/main` does not excuse a `DebugTab` subclass that also
+     * sits in `src/main`: only the subclass is reported.
+     */
+    fun testOnlyTheSubclassIsReportedWhenBothAreInMain() {
         lint()
             .allowMissingSdk()
             .files(
@@ -94,31 +163,7 @@ class LustroDebugLeakDetectorTest : LintDetectorTest() {
                 ).indented(),
             )
             .run()
-            // One report each for builder(...) and addTab(...). The DebugTab subclass
-            // (object MyTab) in src/main adds a third report.
-            .expectErrorCount(3)
-    }
-
-    fun testBuilderInDebugIsClean() {
-        lint()
-            .allowMissingSdk()
-            .files(
-                debugTabStub,
-                lustroStub,
-                kotlin(
-                    "src/debug/kotlin/com/example/Setup.kt",
-                    """
-                    package com.example
-                    import android.app.Application
-                    import io.github.twinsen81.lustro.Lustro
-                    fun init(app: Application) {
-                        Lustro.builder(app).build()
-                    }
-                    """,
-                ).indented(),
-            )
-            .run()
-            .expectClean()
+            .expectErrorCount(1)
     }
 
     private companion object {

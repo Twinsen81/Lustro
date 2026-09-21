@@ -43,8 +43,10 @@ see [DECISIONS.md](DECISIONS.md).
   queue → 503, 30 s timeout → 504), and a 50 MB capture budget.
 - **Release safety**: `:lustro-noop` mirrors the runtime public facades as no-ops;
   `:lustro`/`:lustro-noop` share a Gradle capability (project + published metadata)
-  so consumers can't resolve both; a published `LustroDebugUsageInRelease` lint
-  check flags Lustro usage outside `src/debug`; capture redacted at source and never
+  so consumers can't resolve both; `Lustro.start()` refuses to arm in a build that
+  is not marked debuggable (`DebugConfig.allowNonDebuggableBuilds` opts an internal
+  build back in); a published `LustroDebugUsageInRelease` lint check flags
+  `DebugTab` subclasses outside `src/debug`; capture redacted at source and never
   persisted to disk (mock rules excepted).
 - **Wire protocol & CLI**: versioned `/api/v1` protocol with JSON Schemas + the
   Network OpenAPI document + golden fixtures under `wire-protocol/v1/`, and the

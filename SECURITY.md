@@ -39,11 +39,18 @@ location.
 Lustro's security rests on the principle that it must never reach a production
 build, and that even in debug builds it stays bound to the local device.
 
-- **Debug-only by construction.** Release builds depend on `:lustro-noop`, whose
-  runtime bodies are empty — no server, no capture, and no open socket ship to
-  production. A published lint check warns if `:lustro` is reachable from a
-  release variant or pulled in as a non-debug dependency, and flags `DebugTab`
-  subclasses or registrations reachable from release/`main` source.
+- **Debug-only by construction, with a runtime backstop.** Release builds depend
+  on `:lustro-noop`, whose runtime bodies are empty — no server, no capture, and
+  no open socket ship to production. Independently of that Gradle wiring, the
+  real runtime reads `ApplicationInfo.FLAG_DEBUGGABLE` at startup: in a build
+  that is not marked debuggable, `Lustro.start()` logs a WARN and returns
+  `LustroStatus.DISABLED` without binding a socket, unless the consumer opts in
+  with `DebugConfig.allowNonDebuggableBuilds(true)` for an internal build. A
+  published lint check (`LustroDebugUsageInRelease`, severity ERROR) additionally
+  flags `DebugTab` subclasses — consumer code the no-op swap cannot remove from
+  an APK — outside a `debug` source set. Lustro does not inspect the consumer's
+  dependency graph; the shared `io.github.twinsen81:lustro-runtime` capability
+  only prevents `:lustro` and `:lustro-noop` landing on the same configuration.
 - **Loopback-bound by default.** The server binds to `127.0.0.1` and is
   reachable only while the app is foregrounded; the socket is torn down on
   background after draining in-flight requests. LAN exposure is strictly opt-in

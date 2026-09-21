@@ -7,21 +7,23 @@ import com.android.tools.lint.detector.api.Issue
 import com.android.tools.lint.detector.api.JavaContext
 import com.android.tools.lint.detector.api.Scope
 import com.android.tools.lint.detector.api.Severity
-import com.intellij.psi.PsiMethod
-import org.jetbrains.uast.UCallExpression
 import org.jetbrains.uast.UClass
 import java.io.File
 import java.util.EnumSet
 
 /**
- * Flags debug-only Lustro usage that has leaked into a non-debug source set.
+ * Flags [DEBUG_TAB] subclasses that have leaked into a non-debug source set.
  *
- * Lustro's runtime (`:lustro`) is meant to be a `debugImplementation` dependency,
- * and any code that touches it — a [DEBUG_TAB] subclass, or a
- * `Lustro.builder(...)` / `.addTab(...)` registration — must live under
- * `src/debug/` so it is compiled out of release/main builds. When such usage is
- * reachable from `src/main/` (or `src/release/`), the debug server and its tabs
- * can ship to production, which is exactly the leak this check prevents.
+ * A `DebugTab` subclass is the consumer's OWN code: it is compiled into whatever
+ * variant its source set belongs to, and it typically reaches straight into app
+ * internals (feature flags, storage, session state). Swapping `:lustro` for
+ * `:lustro-noop` in release does not make that class disappear from the APK, so
+ * it must live under `src/debug/`.
+ *
+ * `Lustro.builder(...)` / `.addTab(...)` calls are deliberately NOT flagged: those
+ * resolve to the facade the variant depends on, and the `:lustro-noop` release
+ * facade makes them inert. Wiring the runtime from a shared `Application` is a
+ * supported layout, so flagging it would fail the documented quick start.
  *
  * Detection is path-based: lint reports a file as offending when its source-set
  * directory is `main`/`release` (or any non-`debug` variant dir) rather than
@@ -30,8 +32,6 @@ import java.util.EnumSet
  * default `implementation` configuration.
  */
 public class LustroDebugLeakDetector : Detector(), Detector.UastScanner {
-
-    // --- DebugTab subclasses --------------------------------------------------
 
     override fun applicableSuperClasses(): List<String> = listOf(DEBUG_TAB)
 
@@ -46,33 +46,6 @@ public class LustroDebugLeakDetector : Detector(), Detector.UastScanner {
             context.getNameLocation(declaration),
             "`DebugTab` subclass is reachable from a non-debug source set; move it " +
                 "to `src/debug/` so it is excluded from release builds.",
-        )
-    }
-
-    // --- Lustro.builder(...) / .addTab(...) calls -----------------------------
-
-    override fun getApplicableMethodNames(): List<String> = listOf(METHOD_BUILDER, METHOD_ADD_TAB)
-
-    override fun visitMethodCall(
-        context: JavaContext,
-        node: UCallExpression,
-        method: PsiMethod,
-    ) {
-        // Only Lustro's own builder/addTab matter; ignore same-named methods on
-        // unrelated types by checking the declaring class. `Lustro.builder` is a
-        // companion-object function, so its containing class may resolve to
-        // `Lustro` or `Lustro.Companion` depending on @JvmStatic/UAST; accept any
-        // class whose qualified name is under the `Lustro` type.
-        val containingClass = method.containingClass?.qualifiedName ?: return
-        if (!isLustroOwned(containingClass)) return
-        if (isDebugSourceSet(context)) return
-        context.report(
-            ISSUE,
-            node,
-            context.getCallLocation(node, includeReceiver = true, includeArguments = true),
-            "`Lustro.${method.name}(...)` is reachable from a non-debug source set; " +
-                "Lustro registration must live in `src/debug/` so it is excluded " +
-                "from release builds.",
         )
     }
 
@@ -99,46 +72,38 @@ public class LustroDebugLeakDetector : Detector(), Detector.UastScanner {
         return sourceSet == "debug" || sourceSet.endsWith("debug")
     }
 
-    /**
-     * True when [qualifiedName] is the `Lustro` facade or one of its members
-     * (`Lustro.Builder`, `Lustro.Companion`). Matching the prefix tolerates the
-     * companion-object / `@JvmStatic` resolution differences for `builder(...)`.
-     */
-    private fun isLustroOwned(qualifiedName: String): Boolean =
-        qualifiedName == LUSTRO || qualifiedName.startsWith("$LUSTRO.")
-
     private fun pathSegments(file: File): List<String> =
         file.invariantSeparatorsPath.split('/').filter { it.isNotEmpty() }
 
     public companion object {
-        // Fully-qualified names of the Lustro debug API surface this check tracks.
+        // Fully-qualified name of the Lustro debug API surface this check tracks.
         private const val DEBUG_TAB = "io.github.twinsen81.lustro.DebugTab"
-        private const val LUSTRO = "io.github.twinsen81.lustro.Lustro"
-        private const val METHOD_BUILDER = "builder"
-        private const val METHOD_ADD_TAB = "addTab"
 
         /**
-         * The single issue raised by this detector: debug-only Lustro usage that
-         * is reachable from a non-debug source set.
+         * The single issue raised by this detector: a `DebugTab` subclass that is
+         * reachable from a non-debug source set.
          */
         @JvmField
         public val ISSUE: Issue =
             Issue.create(
                 id = "LustroDebugUsageInRelease",
-                briefDescription = "Lustro debug usage outside src/debug",
+                briefDescription = "Lustro DebugTab outside src/debug",
                 explanation =
                     """
                     Lustro's runtime (`:lustro`) is a debug-only tool: it starts a \
                     loopback debug server and exposes app internals. It must be a \
-                    `debugImplementation` dependency, and all code that registers \
-                    Lustro — `DebugTab` subclasses and `Lustro.builder(...)` / \
-                    `.addTab(...)` calls — must live under `src/debug/` so it is \
-                    compiled out of release and main builds.
+                    `debugImplementation` dependency, with `:lustro-noop` on the \
+                    release configuration.
 
-                    When such code is reachable from `src/main/` (or `src/release/`), \
-                    the debug server and its tabs can leak into production builds. \
-                    Move the offending class or registration into the `debug` source \
+                    A `DebugTab` subclass is your own code, so the `:lustro-noop` \
+                    swap cannot make it disappear: whatever source set it lives in \
+                    is compiled into that variant, taking the app internals it \
+                    reads with it. Move the offending class into the `debug` source \
                     set (`src/debug/java` or `src/debug/kotlin`).
+
+                    `Lustro.builder(...)` / `.addTab(...)` calls are not flagged — \
+                    they compile against whichever facade the variant depends on, \
+                    and the no-op facade makes them inert in release.
                     """.trimIndent(),
                 category = Category.SECURITY,
                 priority = PRIORITY,

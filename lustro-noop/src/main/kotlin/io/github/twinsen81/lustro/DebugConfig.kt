@@ -12,6 +12,11 @@ package io.github.twinsen81.lustro
  * never used (nothing binds, captures, or serves).
  */
 public class DebugConfig private constructor(
+    /**
+     * Whether [Lustro.start] may arm the server in a build that is not marked
+     * debuggable (honoured by the :lustro runtime). Default `false`.
+     */
+    public val allowNonDebuggableBuilds: Boolean,
     /** The TCP port the debug server binds to. Default `8080`. */
     public val serverPort: Int,
     /** The loopback address to bind. Default `"127.0.0.1"`. */
@@ -54,6 +59,7 @@ public class DebugConfig private constructor(
 
     /** Mutable builder for [DebugConfig]. Each setter returns `this` for chaining. */
     public class Builder {
+        private var allowNonDebuggableBuilds: Boolean = false
         private var serverPort: Int = 8080
         private var bindAddress: String = "127.0.0.1"
         private var bindFallback: Boolean = false
@@ -66,6 +72,9 @@ public class DebugConfig private constructor(
         private var requestQueueCapacity: Int = 64
         private var requestTimeoutMs: Long = 30_000
         private var allowedOrigins: List<String> = emptyList()
+
+        /** Sets [DebugConfig.allowNonDebuggableBuilds]. */
+        public fun allowNonDebuggableBuilds(value: Boolean): Builder = apply { allowNonDebuggableBuilds = value }
 
         /** Sets [DebugConfig.serverPort]. */
         public fun serverPort(value: Int): Builder = apply { serverPort = value }
@@ -106,6 +115,7 @@ public class DebugConfig private constructor(
         /** Builds the immutable [DebugConfig]. */
         public fun build(): DebugConfig =
             DebugConfig(
+                allowNonDebuggableBuilds = allowNonDebuggableBuilds,
                 serverPort = serverPort,
                 bindAddress = bindAddress,
                 bindFallback = bindFallback,
