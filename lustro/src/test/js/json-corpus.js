@@ -30,8 +30,9 @@ const NOISE = [
 function createRandom(seed) {
     let state = seed >>> 0;
     return function random() {
-        state = (state * 1103515245 + 12345) & 0x7fffffff;
-        return state / 0x7fffffff;
+        // Floating-point multiplication loses low bits and creates short cycles.
+        state = (Math.imul(state, 1103515245) + 12345) & 0x7fffffff;
+        return state / 0x80000000;
     };
 }
 
