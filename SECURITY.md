@@ -58,8 +58,9 @@ build, and that even in debug builds it stays bound to the local device.
 - **Token auth is always on.** A token is generated on first run and stored in
   private debug preferences. Programmatic clients authenticate with
   `Authorization: Bearer <token>`; browsers use an `HttpOnly; SameSite=Strict`
-  cookie. The token is logged at server start under the tag `LustroToken` and
-  rotates on explicit reset, app-data clear, or fresh install. Before
+  cookie. The token is logged at server start under the tag `LustroToken`. It is
+  generated once and then persists: there is no rotation API, so the same token
+  stays valid until the app's data is cleared or the app is reinstalled. Before
   authentication, the server serves only framework chrome — no tab-authored
   output or captured data.
 - **Credentials stop at the server.** The server authenticates a request before
@@ -74,18 +75,39 @@ build, and that even in debug builds it stays bound to the local device.
   Origin / `Sec-Fetch-Site` check driven by `DebugConfig.allowedOrigins`. A
   browser can still send a cross-origin `GET` with neither header, so tabs must
   not change state on `GET` or `HEAD`.
-- **Capture-time redaction.** A `Redactor` SPI redacts sensitive headers,
-  URL/query parameters, JSON body fields, and form fields **at capture time**.
-  Redacted values never enter the in-memory capture store, so they cannot leak
-  through the API, the UI, or fixtures.
+- **Capture-time redaction, best-effort.** A `Redactor` SPI runs at capture
+  time, before anything is stored, so whatever it masks never enters the
+  in-memory capture store and cannot leak through the API, the UI, or fixtures.
+  The default implementation matches on *names*: sensitive request/response
+  headers, and URL query parameters, JSON object fields, and form fields whose
+  name contains a fragment such as `token`, `key`, `secret`, `password`, `auth`,
+  or `signature`. A name-based rule cannot see a secret that is not keyed by a
+  name it recognizes, so the default redactor reduces exposure rather than
+  guaranteeing there is none. Known gaps, where the value is stored as it
+  arrived:
+  - a credential inside a string value under an ordinary key, such as a `url`,
+    `next`, or `download` field holding a presigned URL, a paging link, or a
+    query string carrying an `access_token`;
+  - userinfo in a URL (`https://user:password@host/...`);
+  - URL-valued headers such as `Location` and `Referer`, including any
+    credential in their query string;
+  - a field in a `multipart/form-data` body, whose name and value sit on
+    different lines;
+  - the error text of a failed request, which is stored verbatim; the platform
+    puts the full request URL into some `HttpURLConnection` exception messages.
+
+  Treat a capture as sensitive, and pass a stricter `Redactor` to
+  `NetworkDebugTab.create(...)` when your traffic carries secrets the name
+  heuristic will not find.
 - **Nothing persisted to disk except mock rules.** Captured traffic lives only
   in a bounded in-memory ring buffer and is lost when the process dies. The sole
   persisted state is user-authored mock rules.
 - **Exceptions are contained.** Library exceptions do not escape into the host
   app; server-level errors are logged through `android.util.Log` at WARN.
 
-An external review of the auth, CSP, and capture implementation is required
-before the first public (`1.0.0`) release.
+An external review of the auth, CSP, and capture implementation is part of the
+work remaining before the first public release (`0.1.0`), alongside the
+publishing and emulator-matrix items listed in `CHANGELOG.md`.
 
 ## NanoHTTPD Vendor-Patch Process
 

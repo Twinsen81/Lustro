@@ -158,7 +158,7 @@ Every commit in a pull request must carry a sign-off line.
 5. Make sure the full local gate passes:
 
    ```bash
-   ./gradlew test detekt apiCheck
+   ./gradlew test detekt apiCheck checkFacadeParity
    ```
 
 6. Open the PR, fill in the template, and confirm every commit is signed off.
@@ -169,11 +169,22 @@ Every commit in a pull request must carry a sign-off line.
 Lustro follows [Semantic Versioning](https://semver.org/): **major** for
 breaking changes, **minor** for additive changes, **patch** for fixes.
 
-- **Binary Compatibility Validator (`apiCheck`) must pass.** It runs against both
-  `:lustro` and `:lustro-noop`, whose public facades must mirror each other, and
-  the cross-variant `:sample` compile is a CI gate. If you intentionally change
-  the public surface, regenerate the API dump (`./gradlew apiDump`) and explain
-  the change in your PR.
+- **Binary Compatibility Validator (`apiCheck`) must pass.** It covers
+  `:lustro-api`, the SPI both runtimes depend on, against the committed baseline
+  at `lustro-api/api/lustro-api.api`. It does **not** cover the Android modules
+  `:lustro` and `:lustro-noop`: BCV registers no tasks for them under AGP's
+  built-in Kotlin, so they have no committed baseline (see
+  [DECISIONS.md](DECISIONS.md#bcv--apicheck)). If you intentionally change the
+  SPI, regenerate the dump (`./gradlew apiDump`) and explain the change in your
+  PR.
+- **`checkFacadeParity` must pass.** It is what catches a change to the `:lustro`
+  facades (`Lustro`, `DebugConfig`, `NetworkDebugTab`, …): it compares the public
+  signatures the two facades contribute and fails on any difference, so a member
+  added to one side only is rejected. A change made identically on **both**
+  facades passes it, and passes `apiCheck` too, because neither has a baseline to
+  compare against; call such a change out in your PR yourself. The cross-variant
+  `:sample` compile (debug → `:lustro`, release → `:lustro-noop`) is the third
+  gate, and also a CI job.
 - Do not promote public functions to `inline` or rename public default-value
   parameters.
 - Deprecate for a full minor cycle (with `ReplaceWith` where the migration is

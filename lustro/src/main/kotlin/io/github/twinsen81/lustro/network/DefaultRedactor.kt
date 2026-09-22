@@ -25,16 +25,20 @@ import org.json.JSONTokener
  *   `client_secret`, `session`, `credential`, `bearer`, `signature`, `sig`).
  * - Sensitive values in any other captured text body — SSE, XML, plain text, and
  *   JSON that does not parse as a single object/array (NDJSON / concatenated
- *   frames) — via a framing-agnostic, key-name-based fallback so no captured
- *   value is ever stored raw. As on the structured path, a sensitive key's whole
- *   value is masked, whether a string, a number, or a nested object or array, and
- *   so is everything inside a sensitive XML element.
+ *   frames) — via a framing-agnostic, key-name-based fallback. As on the
+ *   structured path, a sensitive key's whole value is masked, whether a string,
+ *   a number, or a nested object or array, and so is everything inside a
+ *   sensitive XML element.
  *
  * A captured body can end partway through a value, when it's cut off at the
  * capture cap or captured while a stream is still arriving. A sensitive value
  * cut off that way is masked through to the end of the body.
  *
- * Redacted values are never stored.
+ * What it masks is never stored. Every rule above keys off a NAME, though, so
+ * this is a reduction of exposure and not a guarantee: a credential that no
+ * sensitive name points at is stored as it arrived. Known gaps are listed under
+ * "Capture-time redaction" in `SECURITY.md`; consumers whose traffic needs more
+ * pass their own [Redactor] to `NetworkDebugTab.create(...)`.
  */
 public object DefaultRedactor : Redactor {
     private const val PLACEHOLDER = "[REDACTED]"

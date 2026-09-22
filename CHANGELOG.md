@@ -74,6 +74,30 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Fixed
 
+- **Docs described behaviour the code doesn't have.** SECURITY.md said the auth
+  token "rotates on explicit reset" (there is no rotation API: the token is
+  generated once and lives until the app's data is cleared) and that redacted
+  values "never enter the in-memory capture store" as though redaction were
+  exhaustive; it now says the default `Redactor` matches on names, is
+  best-effort, and lists the known gaps (credentials inside a string value under
+  an ordinary key, URL userinfo, URL-valued headers such as `Location` and
+  `Referer`, `multipart/form-data` fields, and the verbatim error text of a
+  failed request). SECURITY.md and this file disagreed about which release the
+  external security review precedes; both now say `0.1.0`. The README told
+  consumers to add a debug `networkSecurityConfig` permitting cleartext for
+  loopback, which does nothing for a listening socket, and now says so; it also
+  documents that a browser cannot log in over LAN until its origin is in
+  `DebugConfig.allowedOrigins`, because `/api/v1/_auth` is origin-checked like
+  every other API route. The README, `docs/AGENTS.md`, the Send Request tooltip
+  and DECISIONS.md said a replayed request appears in the traffic list; it does
+  so only when the configured sender client carries the Lustro interceptor, and
+  the send response's `transactionId` is currently always `null`. CONTRIBUTING
+  said `apiCheck` covers `:lustro` and `:lustro-noop` (only `:lustro-api` has a
+  baseline; `checkFacadeParity` is what gates the facades, and is now part of the
+  documented local gate). DECISIONS.md described overwrite mode as re-serving or
+  mutating responses; it is list compaction. The CLI was described as shipping
+  "in a later phase" while it is implemented and published to PyPI by the release
+  workflow.
 - **Redaction false positives on public headers.** `DefaultRedactor` no longer
   masks `Access-Control-Allow-Credentials`, `WWW-Authenticate`, or
   `Proxy-Authenticate` — their names resemble secrets, but they carry CORS

@@ -72,7 +72,8 @@ Build the runtime once (typically in your `Application`), register tabs, wire th
 interceptor, and start it:
 
 ```kotlin
-val client = OkHttpClient() // your app's client, used to power "Send Request"
+val client = OkHttpClient() // powers "Send Request"; carries no interceptor, so replays through
+                            // it are not captured (see Send Request)
 
 val lustro = Lustro.builder(application)
     .addTab(NetworkDebugTab.create(senderClient = client))
@@ -133,7 +134,7 @@ adb port forwarding:
    ```
 
 4. Authenticate the browser with that token, either by:
-   - using the `lustro` CLI (`lustro open`, ships in a later release — see [docs/AGENTS.md](docs/AGENTS.md)); or
+   - using the `lustro` CLI (`lustro open`, see [docs/AGENTS.md](docs/AGENTS.md)); or
    - appending `#lustro_token=<token>` to the URL **once**
      (`http://localhost:8080/#lustro_token=<token>`). The page posts the token to set an
      `HttpOnly; SameSite=Strict` cookie, then strips the fragment from the address bar.
@@ -176,10 +177,16 @@ result (within the per-request timeout), so you get a single round-trip outcome 
 to poll.
 
 Pass `senderClient` to `NetworkDebugTab.create(...)` to enable it — the client is wrapped in an
-`OkHttpSender`. When no sender is configured, the Send panel and its route are hidden. Use the
-client that already has the Lustro interceptor installed so replayed requests show up in the
-traffic list. Relative URLs resolve against `DebugConfig.appServerBaseUrl` (rejected when it is
-unset); requests aimed at the debug server's own bind host:port are rejected.
+`OkHttpSender`. When no sender is configured, the Send panel and its route are hidden. Relative
+URLs resolve against `DebugConfig.appServerBaseUrl` (rejected when it is unset); requests aimed at
+the debug server's own bind host:port are rejected.
+
+**A replay is captured only if the sender client carries the interceptor.** Nothing about sending
+captures on its own: the request shows up in the traffic list only when the client you passed as
+`senderClient` has `lustro.networkInterceptor()` installed, which the [Quick start](#quick-start)
+wiring cannot do (the sender client has to exist before `lustro` does). The send response's
+`transactionId` field is currently always `null` either way, so poll `GET transactions` rather
+than following it.
 
 The panel reports only the status and outcome, so the sender reads at most
 `DebugConfig.maxBodyCaptureBytes` of the response body and then closes the response: a large
@@ -253,10 +260,12 @@ Lustro deliberately surfaces app internals, so its defaults are conservative. Se
   an Origin / `Sec-Fetch-Site` check: the server's own origin is always allowed, and any other
   cross-origin caller must be listed in `DebugConfig.allowedOrigins` (other localhost ports are not
   trusted by default).
-- **Capture-time redaction.** A `Redactor` removes sensitive headers, URL/query params, and
-  JSON/form body fields **before** anything is stored, so redacted values never reach the API,
-  UI, or fixtures. A JSON body with no sensitive field in it is stored exactly as it arrived,
-  so what you inspect and copy is what was on the wire.
+- **Capture-time redaction, best-effort.** A `Redactor` masks sensitive headers, URL/query
+  params, and JSON/form body fields **before** anything is stored, so what it masks never reaches
+  the API, UI, or fixtures. It matches on names, so it cannot find a secret that isn't keyed by a
+  name it recognizes: see [SECURITY.md](SECURITY.md#threat-model) for the known gaps, and pass
+  your own `Redactor` when your traffic needs more. A JSON body with no sensitive field in it is
+  stored exactly as it arrived, so what you inspect and copy is what was on the wire.
 - **Nothing persisted to disk except mock rules.** Captured traffic lives only in a bounded
   in-memory ring buffer and is lost when the process dies; the sole persisted state is your mock
   rules, and only when you give the tab a `MockRuleStorage` (see [Mock rules](#mock-rules)). The
@@ -268,8 +277,8 @@ Lustro deliberately surfaces app internals, so its defaults are conservative. Se
 
 ## LAN exposure and port forwarding
 
-The default workflow is loopback + `adb forward` (see [Accessing the UI](#accessing-the-ui)); no
-LAN exposure and no cleartext changes are needed for it.
+The default workflow is loopback + `adb forward` (see [Accessing the UI](#accessing-the-ui)); it
+needs no LAN exposure.
 
 To reach the server from another machine on the network, opt in by binding all interfaces:
 
@@ -284,24 +293,16 @@ val lustro = Lustro.builder(application)
 > to everyone on the same network. Token auth still applies, but you lose the loopback boundary.
 > Use it only on trusted networks, and prefer `adb forward` whenever you can.
 
-Because the UI is served over plain HTTP on localhost, your **debug** build needs a network
-security config that permits cleartext for the loopback host. Lustro does **not** modify your
-`networkSecurityConfig`; add a debug-only one yourself:
+> **Browser login over LAN:** add the browser's origin to `DebugConfig.allowedOrigins`, e.g.
+> `allowedOrigins(listOf("http://192.168.1.42:8080"))` for the address the browser shows. The
+> `/api/v1/_auth` route is origin-checked like every other API route, and only a loopback host on
+> the listening port counts as the server's own origin, so a page loaded over LAN is rejected with
+> `403` until its origin is listed. Programmatic clients that send neither `Origin` nor
+> `Sec-Fetch-Site`, such as `curl` or the CLI, are unaffected.
 
-```xml
-<!-- src/debug/res/xml/network_security_config.xml -->
-<network-security-config>
-    <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="true">localhost</domain>
-        <domain includeSubdomains="true">127.0.0.1</domain>
-    </domain-config>
-</network-security-config>
-```
-
-```xml
-<!-- src/debug/AndroidManifest.xml -->
-<application android:networkSecurityConfig="@xml/network_security_config" />
-```
+A network security config is **not** needed for any of this: it governs the connections your app
+makes, not the socket Lustro listens on. Lustro serves plain HTTP and needs no
+`cleartextTrafficPermitted` entry and no `usesCleartextTraffic` in either workflow.
 
 ## Custom tabs
 
@@ -392,7 +393,7 @@ Shared shapes: a uniform **error envelope** `{ error, message, code?, field?, hi
 policy live in [`wire-protocol/v1/`](wire-protocol/v1/); the Network tab's contract is
 [`lustro/src/main/assets/lustro/network.openapi.json`](lustro/src/main/assets/lustro/network.openapi.json).
 
-For driving Lustro from agents, scripts, or the forthcoming `lustro` CLI, see
+For driving Lustro from agents, scripts, or the `lustro` CLI, see
 [docs/AGENTS.md](docs/AGENTS.md).
 
 ## Troubleshooting
@@ -416,7 +417,7 @@ For driving Lustro from agents, scripts, or the forthcoming `lustro` CLI, see
 | `:lustro` | `io.github.twinsen81:lustro` | Debug runtime AAR: embedded server, capture, built-in Network tab, mock storage, OkHttp adapters. |
 | `:lustro-noop` | `io.github.twinsen81:lustro-noop` | Release-safe no-op AAR mirroring `:lustro`'s public facades with empty bodies. |
 | `:lustro-api` | `io.github.twinsen81:lustro-api` | Pure-Kotlin public SPI (`DebugTab`, `DebugRequest`/`DebugResponse`, `Headers`, `MediaType`, network seams). |
-| `lustro-cli/` | — | Python CLI that wraps the HTTP API (ships in a later phase). |
+| `lustro-cli/` | `lustro` (PyPI) | Python CLI that wraps the HTTP API; published alongside each release. |
 
 See also: [CONTRIBUTING.md](CONTRIBUTING.md) · [SECURITY.md](SECURITY.md) ·
 [CHANGELOG.md](CHANGELOG.md) · [DECISIONS.md](DECISIONS.md) · [docs/AGENTS.md](docs/AGENTS.md)

@@ -130,7 +130,8 @@ and the whole batch is rejected. `POST rules` replaces a rule with the same `id`
 **Send request semantics.** Body `{ url, method?="GET", headers?, body? }`. Blocks until the
 sender returns, within the per-request timeout. Relative URLs resolve against the app server base
 the developer configured (rejected if unset). The response is `{ transactionId?, statusCode?,
-ok, error? }` (`transactionId` may be `null`); the response body is never returned, and the
+ok, error? }`; `transactionId` is currently **always `null`** because the send path does not
+correlate its call with a capture. The response body is never returned, and the
 sender reads at most `maxBodyCaptureBytes` of it, so large or endless responses are safe to send.
 A send that outlives the per-request timeout gets the enveloped `504`, and its call is cancelled.
 Requests to the debug server's **own** bind host:port are rejected. **Send is only available when
@@ -177,7 +178,11 @@ curl -s -X POST "$BASE/api/v1/network/send" \
   -d '{"url":"https://api.example.com/v1/orders","method":"GET"}'
 ```
 
-The replayed request also flows through the interceptor and appears as its own transaction.
+A replay is captured, as its own transaction, only when the client the developer passed as
+`senderClient` carries `lustro.networkInterceptor()`. In the README's quick-start wiring it does
+not: the sender client is built before the interceptor exists, so a replay runs but never reaches
+the traffic list. When it is captured, find it by polling `GET transactions`; the send response's
+`transactionId` does not point at it.
 
 **Atomically sync a rule set** (declarative — the resulting set equals exactly what you post):
 
@@ -212,7 +217,8 @@ Errors use the shared envelope; key statuses:
 
 ## The `lustro` CLI
 
-A Python `lustro` CLI lives at `lustro-cli/` and ships in a later phase. It wraps these
+A Python `lustro` CLI lives at `lustro-cli/` and is published to PyPI alongside each release
+(run it from a checkout until the first one lands). It wraps these
 endpoints (token discovery from the `LustroToken` log line, `lustro open`, etc.). The CLI is a
 convenience over the HTTP API — **the wire protocol described here is the stable contract**, so
 agents can target the endpoints directly without waiting for the CLI.
