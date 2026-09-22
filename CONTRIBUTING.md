@@ -179,12 +179,15 @@ breaking changes, **minor** for additive changes, **patch** for fixes.
   PR.
 - **`checkFacadeParity` must pass.** It is what catches a change to the `:lustro`
   facades (`Lustro`, `DebugConfig`, `NetworkDebugTab`, …): it compares the public
-  signatures the two facades contribute and fails on any difference, so a member
-  added to one side only is rejected. A change made identically on **both**
-  facades passes it, and passes `apiCheck` too, because neither has a baseline to
-  compare against; call such a change out in your PR yourself. The cross-variant
-  `:sample` compile (debug → `:lustro`, release → `:lustro-noop`) is the third
-  gate, and also a CI job.
+  member signatures each facade itself contributes and fails on any difference,
+  so a method added to one side only is rejected. Two things are outside what it
+  compares, and neither is caught anywhere else, so review them by hand:
+  **constructors**, which it normalizes away, and a change made identically on
+  **both** facades, which passes it and passes `apiCheck` too because neither
+  Android module has a baseline. The cross-variant `:sample` compile (debug →
+  `:lustro`, release → `:lustro-noop`) is the third gate, and also a CI job, but
+  it only exercises what the sample actually calls. Call any change to the public
+  facades out in your PR.
 - Do not promote public functions to `inline` or rename public default-value
   parameters.
 - Deprecate for a full minor cycle (with `ReplaceWith` where the migration is

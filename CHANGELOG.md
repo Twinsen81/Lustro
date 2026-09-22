@@ -80,9 +80,10 @@ see [DECISIONS.md](DECISIONS.md).
   values "never enter the in-memory capture store" as though redaction were
   exhaustive; it now says the default `Redactor` matches on names, is
   best-effort, and lists the known gaps (credentials inside a string value under
-  an ordinary key, URL userinfo, URL-valued headers such as `Location` and
-  `Referer`, `multipart/form-data` fields, and the verbatim error text of a
-  failed request). SECURITY.md and this file disagreed about which release the
+  an ordinary key, a credential in a URL's path or fragment, URL userinfo,
+  URL-valued headers such as `Location` and `Referer`, `multipart/form-data`
+  fields, and the verbatim error text of a failed request, which no custom
+  `Redactor` can reach because the SPI has no hook for it). SECURITY.md and this file disagreed about which release the
   external security review precedes; both now say `0.1.0`. The README told
   consumers to add a debug `networkSecurityConfig` permitting cleartext for
   loopback, which does nothing for a listening socket, and now says so; it also

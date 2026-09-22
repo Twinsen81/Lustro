@@ -88,17 +88,23 @@ build, and that even in debug builds it stays bound to the local device.
   - a credential inside a string value under an ordinary key, such as a `url`,
     `next`, or `download` field holding a presigned URL, a paging link, or a
     query string carrying an `access_token`;
+  - a credential in a URL's **path** or **fragment**
+    (`/password-reset/<token>`, `#access_token=...`). Only the query string is
+    scanned, and only by parameter name, so a path segment keeps its value even
+    where the segment before it is a sensitive name;
   - userinfo in a URL (`https://user:password@host/...`);
   - URL-valued headers such as `Location` and `Referer`, including any
     credential in their query string;
   - a field in a `multipart/form-data` body, whose name and value sit on
     different lines;
-  - the error text of a failed request, which is stored verbatim; the platform
-    puts the full request URL into some `HttpURLConnection` exception messages.
+  - the error text of a failed request, which is stored verbatim. This one is
+    not a heuristic miss: the `Redactor` SPI has no hook for an error, so a
+    custom redactor cannot cover it either. It matters because the platform puts
+    the full request URL into some `HttpURLConnection` exception messages.
 
-  Treat a capture as sensitive, and pass a stricter `Redactor` to
-  `NetworkDebugTab.create(...)` when your traffic carries secrets the name
-  heuristic will not find.
+  Treat a capture as sensitive. For everything above except the error text, a
+  stricter `Redactor` passed to `NetworkDebugTab.create(...)` closes the gap for
+  traffic whose secrets the name heuristic will not find.
 - **Nothing persisted to disk except mock rules.** Captured traffic lives only
   in a bounded in-memory ring buffer and is lost when the process dies. The sole
   persisted state is user-authored mock rules.

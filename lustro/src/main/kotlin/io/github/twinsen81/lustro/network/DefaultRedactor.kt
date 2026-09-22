@@ -130,7 +130,8 @@ public object DefaultRedactor : Redactor {
      * JSON/form paths are the precise fast paths, and anything else — including
      * JSON that fails to parse (NDJSON / concatenated frames), SSE
      * (`text/event-stream`), XML, and `text/plain` — falls through to the
-     * key-name-based [redactTextually] so a captured secret is never stored raw.
+     * key-name-based [redactTextually]. Every path keys off a NAME, so a value
+     * no sensitive name points at is returned as it arrived; see the class KDoc.
      *
      * A JSON body with no sensitive key in it is returned unchanged, byte for
      * byte, so the inspector shows what was really on the wire; one that has a
@@ -404,7 +405,7 @@ public object DefaultRedactor : Redactor {
      * Framing-agnostic fallback that masks the VALUE of any sensitive key wherever
      * it appears in arbitrary text, so a captured body that isn't strict JSON or a
      * form (NDJSON / concatenated JSON, SSE `data:` frames, XML, `text/plain`) is
-     * never stored raw. It is deliberately CONSERVATIVE: only the value of a
+     * still scanned. It is deliberately CONSERVATIVE: only the value of a
      * sensitive key (per [isSensitiveKey]) is replaced; every other byte is left
      * untouched. Covers four shapes, case-insensitively:
      * - JSON-ish `"<key>": <value>`, where the value is a string, a number, a

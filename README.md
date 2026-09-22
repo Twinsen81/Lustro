@@ -417,7 +417,7 @@ For driving Lustro from agents, scripts, or the `lustro` CLI, see
 | `:lustro` | `io.github.twinsen81:lustro` | Debug runtime AAR: embedded server, capture, built-in Network tab, mock storage, OkHttp adapters. |
 | `:lustro-noop` | `io.github.twinsen81:lustro-noop` | Release-safe no-op AAR mirroring `:lustro`'s public facades with empty bodies. |
 | `:lustro-api` | `io.github.twinsen81:lustro-api` | Pure-Kotlin public SPI (`DebugTab`, `DebugRequest`/`DebugResponse`, `Headers`, `MediaType`, network seams). |
-| `lustro-cli/` | `lustro` (PyPI) | Python CLI that wraps the HTTP API; published alongside each release. |
+| `lustro-cli/` | `lustro-cli` (PyPI) | Python CLI that wraps the HTTP API, installing a `lustro` command; published alongside each release. |
 
 See also: [CONTRIBUTING.md](CONTRIBUTING.md) · [SECURITY.md](SECURITY.md) ·
 [CHANGELOG.md](CHANGELOG.md) · [DECISIONS.md](DECISIONS.md) · [docs/AGENTS.md](docs/AGENTS.md)
