@@ -10,6 +10,9 @@ project's [Apache License 2.0](LICENSE).
 - JDK 21 (the Kotlin toolchain targets JVM 17 bytecode).
 - The Android SDK with `compileSdk 35`. `minSdk` is 26.
 - Use the Gradle wrapper (`./gradlew`); do not install a separate Gradle.
+- Node 18+ **only** to run the debug console's JavaScript tests. It is not
+  needed to build the library, and those tests are deliberately outside
+  Gradle `check` so they never block a build.
 
 ## Building
 
@@ -38,6 +41,21 @@ Tests use MockK (preferred over Mockito), Turbine for Flow assertions, and
 MockWebServer for OkHttp-side tests. Wire-protocol changes must keep the
 contract tests and JSON Schema validation green. CI does not require internet
 access — network tests run against MockWebServer fixtures.
+
+The debug console's browser JavaScript ships inside the runtime AAR but is not
+built by Gradle, so it has its own runner — the one built into Node, with no
+`package.json` and no dependencies:
+
+```bash
+node --test lustro/src/test/js/*.test.js
+```
+
+Those tests cover the code worth pinning rather than the file as a whole: the
+JSON viewer (`debugScanJsonSource` and the formatting and highlighting on top of
+it) and the HTML escaping that decides whether a captured body renders as text
+or as markup. DOM wiring, resizers, toasts, modals, and one-line helpers are
+deliberately left untested. Please keep it that way when adding to them, and
+keep the suite dependency-free.
 
 ## Module layout
 

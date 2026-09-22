@@ -140,6 +140,27 @@ jobs:
           PYTHONPATH=src python -m lustro_cli.wire.sync
           git diff --exit-code -- src/lustro_cli/wire
 
+  # --- Debug console JS: behavioural tests for the browser assets -------------
+  # The console's JavaScript ships inside the runtime AAR but is not built by
+  # Gradle, so it gets its own job rather than a Gradle task: a contributor
+  # building the library should not need Node installed. Zero dependencies —
+  # the runner is the one built into Node, so there is nothing to install.
+  js:
+    name: Debug console JS tests (node --test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      # A directory argument is not expanded by every Node version's test
+      # runner, so the files are passed explicitly.
+      - name: Run tests
+        run: node --test lustro/src/test/js/*.test.js
+
   # --- Emulator matrix: instrumented connectedCheck on real Android images ----
   # IMPORTANT: this job runs ONLY on GitHub-hosted runners. The KVM-accelerated
   # Android emulator (reactivecircus/android-emulator-runner) needs nested
