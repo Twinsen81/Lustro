@@ -14,6 +14,14 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Added
 
+- **Debug console JavaScript tests**: a dependency-free suite run by Node's own
+  test runner (`node --test lustro/src/test/js/*.test.js`) with its own CI job,
+  kept out of Gradle `check` so building the library still needs no Node. It
+  pins the JSON viewer — that the grammar `debugScanJsonSource` accepts matches
+  `JSON.parse`'s in both directions, and that formatting a captured body adds
+  whitespace and nothing else — and the HTML escaping on the same path, including
+  the search query that is compiled into a `RegExp` and spliced into the result.
+
 - **Gradle multi-module project**: `:lustro-api` (pure-Kotlin public SPI),
   `:lustro` (runtime AAR), `:lustro-noop` (release-side no-op AAR),
   `:lustro-wire-schema` (published wire-protocol artifact), `:lustro-lint`
