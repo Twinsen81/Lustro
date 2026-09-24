@@ -1,6 +1,6 @@
 [versions]
 # Build toolchain.
-agp = "9.4.0"
+agp = "9.4.1"
 kotlin = "2.3.21"
 ksp = "2.3.21-2.0.4"
 # lint = AGP major + 23; shipped to consumers via :lustro-lint.
