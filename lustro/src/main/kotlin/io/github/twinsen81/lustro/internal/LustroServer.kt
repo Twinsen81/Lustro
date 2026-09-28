@@ -36,7 +36,8 @@ import java.util.concurrent.TimeUnit
  * - `POST /api/v1/_auth` sets the `lustro_token` cookie on a token match.
  * - The `Authorization` and `Cookie` headers are stripped from the
  *   [DebugRequest] handed to a tab, so tab code never sees the credentials.
- * - CSP + `X-Content-Type-Options: nosniff` attached to all responses.
+ * - CSP + `X-Content-Type-Options: nosniff` attached to all responses. A
+ *   policy a tab sets on its own response is enforced alongside the server's.
  * - Origin / `Sec-Fetch-Site` validation on every `/api/v1/` request, whatever
  *   its method.
  *
@@ -743,7 +744,16 @@ $tabsHtml
                 ByteArrayInputStream(response.body),
                 response.body.size.toLong(),
             )
-        response.headers.forEach { name, value -> nano.addHeader(name, value) }
+        response.headers.forEach { name, value ->
+            if (name.equals(CSP_HEADER, ignoreCase = true)) {
+                // Kept as one header under one name, so withSecurityHeaders finds
+                // the tab's policies and adds the server's to them.
+                val earlier = nano.getHeader(CSP_HEADER)
+                nano.addHeader(CSP_HEADER, if (earlier == null) value else "$earlier, $value")
+            } else {
+                nano.addHeader(name, value)
+            }
+        }
         return nano
     }
 
@@ -753,7 +763,11 @@ $tabsHtml
      * per-route bookkeeping.
      */
     private fun withSecurityHeaders(response: Response): Response {
-        response.addHeader("Content-Security-Policy", CSP)
+        // A policy the tab set is enforced alongside the server's, never instead of
+        // it: a comma separates policies in one header, and a browser enforces
+        // them all, so a tab can only restrict its response further.
+        val tabPolicies = response.getHeader(CSP_HEADER)
+        response.addHeader(CSP_HEADER, if (tabPolicies == null) CSP else "$CSP, $tabPolicies")
         response.addHeader("X-Content-Type-Options", "nosniff")
         return response
     }
@@ -766,7 +780,14 @@ $tabsHtml
     private class StatusAdapter(private val code: Int) : Response.IStatus {
         override fun getRequestStatus(): Int = code
 
-        override fun getDescription(): String = "$code ${Response.Status.lookup(code)?.description ?: ""}".trim()
+        // NanoHTTPD writes this after "HTTP/1.1 " as the rest of the status line,
+        // so it is the code and then the reason phrase, as in its own statuses.
+        override fun getDescription(): String =
+            Response.Status.lookup(code)?.description ?: when (code) {
+                // The server's own timeout answer, which NanoHTTPD doesn't list.
+                504 -> "504 Gateway Timeout"
+                else -> code.toString()
+            }
     }
 
     private companion object {
@@ -782,6 +803,8 @@ $tabsHtml
         // whole because browsers don't isolate cookies by port, so it can also carry
         // other local services' sessions.
         private val CREDENTIAL_HEADERS = setOf("authorization", "cookie")
+
+        private const val CSP_HEADER = "Content-Security-Policy"
 
         // The exact CSP header served on the chrome and tab views. The console
         // drives every state change through fetch(), so `form-action 'none'`

@@ -320,6 +320,14 @@
     padding: 16px 0;
 }
 .net-empty-body::before { content: '// '; }
+.net-body-image img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    background: var(--field);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius);
+}
 .net-truncated-label {
     color: var(--status-3xx);
     font-size: 10.5px;

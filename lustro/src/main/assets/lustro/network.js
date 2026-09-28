@@ -558,7 +558,10 @@
         if (tx.responseHeaders && Object.keys(tx.responseHeaders).length > 0) {
             html += formatHeaders(tx.responseHeaders);
         }
-        if (tx.responseBody) {
+        if (tx.responseBodyBinary) {
+            if (tx.responseBodyTruncated) html += '<div class="net-truncated-label">Truncated</div>';
+            html += binaryBody(tx, 'response');
+        } else if (tx.responseBody) {
             var respFmt = debugFormatJson(tx.responseBody);
             var respHtml = renderBody(tx.responseBody);
             if (tx.responseBodyTruncated) html += '<div class="net-truncated-label">Truncated</div>';
@@ -572,7 +575,10 @@
         if (tx.requestHeaders && Object.keys(tx.requestHeaders).length > 0) {
             html += formatHeaders(tx.requestHeaders);
         }
-        if (tx.requestBody) {
+        if (tx.requestBodyBinary) {
+            if (tx.requestBodyTruncated) html += '<div class="net-truncated-label">Truncated</div>';
+            html += binaryBody(tx, 'request');
+        } else if (tx.requestBody) {
             var reqFmt = debugFormatJson(tx.requestBody);
             var reqHtml = renderBody(tx.requestBody);
             if (tx.requestBodyTruncated) html += '<div class="net-truncated-label">Truncated</div>';
@@ -629,6 +635,13 @@
 
     function renderBody(rawBody) {
         return window.debugSyntaxHighlightJson(rawBody, { searchText: searchText });
+    }
+
+    // A body kept as bytes is an image. The browser loads it from the body
+    // route and sends the session cookie, as for any same-origin image.
+    function binaryBody(tx, dir) {
+        var src = netUrl('transactions/' + encodeURIComponent(tx.id) + '/body/' + dir);
+        return '<div class="net-body-image"><img src="' + debugEscapeHtml(src) + '" alt="' + dir + ' body"></div>';
     }
 
     function formatHeaders(headers) {

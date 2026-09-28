@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.test.core.app.ApplicationProvider
 import io.github.twinsen81.lustro.DebugConfig
 import io.github.twinsen81.lustro.DebugRequest
+import io.github.twinsen81.lustro.DebugResponse
 import io.github.twinsen81.lustro.Lustro
 import io.github.twinsen81.lustro.network.NetworkDebugTab
 import okhttp3.MediaType.Companion.toMediaType
@@ -12,8 +13,10 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
+import okio.Buffer
 import org.json.JSONObject
 import org.junit.After
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -156,6 +159,27 @@ class LustroNetworkCaptureTest {
         assertTrue("startedAt $startedAt outside the call", startedAt in beforeCall..afterCall)
         assertTrue(tx.getLong("completedAt") in startedAt..afterCall)
     }
+
+    @Test
+    fun `an image response reaches the app intact and is served back byte for byte`() {
+        // Not valid UTF-8, so a text round trip anywhere would change it.
+        val png = byteArrayOf(-119, 80, 78, 71, 13, 10, 26, 10, 0, -1, -2, 127)
+        server.enqueue(MockResponse().setHeader("Content-Type", "image/png").setBody(Buffer().write(png)))
+
+        client.newCall(Request.Builder().url(server.url("/image/png")).build()).execute().use {
+            assertArrayEquals(png, it.body!!.bytes())
+        }
+
+        val id = awaitTransactions(count = 1).getJSONArray("items").getJSONObject(0).getString("id")
+        val detail = JSONObject(String(get("transactions/$id").body, Charsets.UTF_8))
+        assertTrue(detail.getBoolean("responseBodyBinary"))
+        val body = get("transactions/$id/body/response")
+        assertEquals("image/png", body.contentType.toString())
+        assertArrayEquals(png, body.body)
+    }
+
+    private fun get(path: String): DebugResponse =
+        networkTab.handle(DebugRequest(path = path, method = "GET")) ?: error("$path returned null")
 
     /**
      * Polls the transactions route until it lists [count] completed captures.

@@ -8,10 +8,14 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
-from lustro_cli import wire
+from lustro_cli import cli, wire
 from lustro_cli.client import LustroClient, LustroError
 
 TOKEN = "test-token-123"
+
+# The signature and IHDR chunk of a 1x1 PNG: enough to tell bytes from text.
+PNG_BYTES = bytes.fromhex("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489")
+IMAGE_TX = "tx_c81f5e02"
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -35,10 +39,18 @@ class _Handler(BaseHTTPRequestHandler):
             return
         if self.path == "/api/v1/_meta":
             self._send_json(200, wire.load_golden("meta.json"))
+        elif self.path == "/api/v1/network/transactions/{}/body/response".format(IMAGE_TX):
+            self.send_response(200)
+            self.send_header("Content-Type", "image/png")
+            self.send_header("Content-Length", str(len(PNG_BYTES)))
+            self.end_headers()
+            self.wfile.write(PNG_BYTES)
         elif self.path.startswith("/api/v1/network/transactions/"):
             tx_id = self.path.rsplit("/", 1)[-1]
             if tx_id == "tx_77e2c014":
                 self._send_json(200, wire.load_golden("transaction.json"))
+            elif tx_id == IMAGE_TX:
+                self._send_json(200, wire.load_golden("transaction-image.json"))
             else:
                 self._send_json(
                     404, wire.load_golden("error-envelope.json")
@@ -99,6 +111,29 @@ def test_transaction_detail(server):
     tx = client.get("/api/v1/network/transactions/tx_77e2c014")
     assert tx["id"] == "tx_77e2c014"
     assert tx["responseBody"] == '{"error":"boom"}'
+
+
+def test_get_raw_returns_the_body_undecoded(server):
+    client = LustroClient(server, TOKEN)
+    body = client.get_raw("/api/v1/network/transactions/{}/body/response".format(IMAGE_TX))
+    assert body.data == PNG_BYTES
+    assert body.content_type == "image/png"
+
+
+def test_get_raw_raises_the_error_envelope(server):
+    client = LustroClient(server, TOKEN)
+    with pytest.raises(LustroError) as excinfo:
+        client.get_raw("/api/v1/network/transactions/tx_77e2c014/body/request")
+    assert excinfo.value.status == 404
+
+
+def test_net_body_saves_a_captured_image(server, tmp_path, capsys):
+    host, port = server.rsplit("//", 1)[1].split(":")
+    out = tmp_path / "avatar.png"
+    argv = ["--host", host, "--port", port, "--token", TOKEN, "net", "body", IMAGE_TX, "-o", str(out)]
+    assert cli.main(argv) == 0
+    assert out.read_bytes() == PNG_BYTES
+    assert capsys.readouterr().out.strip() == "saved {} bytes (image/png) to {}".format(len(PNG_BYTES), out)
 
 
 def test_missing_transaction_raises_typed_error(server):

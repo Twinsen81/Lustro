@@ -26,17 +26,9 @@ internal fun okhttp3.MediaType?.toApiMediaType(): MediaType? =
 internal fun MediaType?.toOkHttpMediaType(): okhttp3.MediaType? =
     this?.toString()?.toMediaTypeOrNull()
 
-internal fun okhttp3.MediaType?.isTextLike(): Boolean {
-    if (this == null) return false
-    val type = this.type
-    val subtype = this.subtype
-    return type == "text" ||
-        subtype == "json" ||
-        subtype == "xml" ||
-        subtype == "x-www-form-urlencoded" ||
-        subtype.endsWith("+json") ||
-        subtype.endsWith("+xml")
-}
+internal fun okhttp3.MediaType?.isTextLike(): Boolean = this != null && isTextLike(type, subtype)
+
+internal fun okhttp3.MediaType?.isRetainedBinary(): Boolean = this != null && isRetainedBinary(type, subtype)
 
 internal fun okhttp3.MediaType?.isEventStream(): Boolean =
     this?.type == "text" && subtype == "event-stream"

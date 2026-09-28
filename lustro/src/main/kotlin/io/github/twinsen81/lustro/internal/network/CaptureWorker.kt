@@ -46,7 +46,8 @@ internal class CaptureWorker(
 
     /**
      * Runs [task], a capture for [transactionId] carrying [chars] of captured
-     * text, after the tasks already queued, or right away if it's behind.
+     * text (a binary body counts its bytes), after the tasks already queued,
+     * or right away if it's behind.
      */
     fun submit(transactionId: String, chars: Long, task: () -> Unit) {
         val weight = chars + TASK_OVERHEAD_CHARS

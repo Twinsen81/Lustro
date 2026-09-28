@@ -11,6 +11,7 @@ import io.github.twinsen81.lustro.network.NetworkClassifier
 import io.github.twinsen81.lustro.network.NoOpNetworkClassifier
 import io.github.twinsen81.lustro.network.Redactor
 import io.github.twinsen81.lustro.network.TransactionId
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -318,6 +319,92 @@ class NetworkTrafficStoreTest {
         store.beginRequest("https://example.com/big", "POST", Headers.EMPTY, captured("q".repeat(500)), MediaType.TEXT)
         // Keeps at least one transaction even though it alone exceeds the budget.
         assertEquals(1, store.getTransactions().size)
+    }
+
+    @Test
+    fun `the capture budget counts kept bytes whose full size is unknown`() {
+        val store = store(captureBudgetBytes = 250)
+        repeat(3) { i ->
+            val id = store.beginRequest("https://example.com/$i.png", "GET", Headers.EMPTY, null, null)
+            // Cut at the cap with no Content-Length: 100 bytes kept, full size unknown.
+            val body = CapturedBody(text = null, truncated = true, bytes = ByteArray(100))
+            store.respond(id, 200, Headers.of("Content-Type" to "image/png"), body, 5)
+        }
+        assertEquals(200L, store.capturedBytes())
+        assertEquals(listOf("https://example.com/2.png", "https://example.com/1.png"), store.getTransactions().map { it.url })
+    }
+
+    @Test
+    fun `binary bodies are stored as they arrived, without the Redactor`() {
+        val redactor = CountingRedactor()
+        val store = store(redactor = redactor)
+        val upload = byteArrayOf(-1, -40, -1, -32)
+        val image = byteArrayOf(-119, 80, 78, 71, 13, 10, 26, 10)
+        val id =
+            store.beginRequest(
+                "https://example.com/avatar",
+                "PUT",
+                Headers.EMPTY,
+                CapturedBody(text = null, byteSize = 4, bytes = upload),
+                MediaType.parse("image/jpeg"),
+            )
+        store.respond(id, 200, Headers.of("Content-Type" to "image/png"), CapturedBody(text = null, byteSize = 8, bytes = image), 5)
+
+        val tx = store.getTransaction(id.value)!!
+        assertArrayEquals(upload, tx.requestBinaryBody)
+        assertArrayEquals(image, tx.responseBinaryBody)
+        assertNull(tx.requestBody)
+        assertNull(tx.responseBody)
+        assertEquals(4L, tx.requestBodyBytes)
+        assertEquals(8L, tx.responseBodyBytes)
+        assertEquals(0, redactor.bodies)
+    }
+
+    @Test
+    fun `a body reported as both text and bytes keeps only the redacted text`() {
+        val store = store(redactor = DefaultRedactor)
+        val secret = """{"password":"hunter2"}"""
+        val id =
+            store.beginRequest(
+                "https://example.com/login",
+                "POST",
+                Headers.EMPTY,
+                CapturedBody(text = secret, bytes = secret.toByteArray(Charsets.UTF_8)),
+                MediaType.JSON,
+            )
+        store.respond(id, 200, Headers.of("Content-Type" to "application/json"), CapturedBody(text = secret, bytes = secret.toByteArray()), 5)
+
+        val tx = store.getTransaction(id.value)!!
+        assertNull(tx.requestBinaryBody)
+        assertNull(tx.responseBinaryBody)
+        assertFalse(tx.requestBody!!.contains("hunter2"))
+        assertFalse(tx.responseBody!!.contains("hunter2"))
+    }
+
+    @Test
+    fun `an empty binary body is no body`() {
+        val store = store()
+        val id = store.beginRequest("https://example.com/a.png", "HEAD", Headers.EMPTY, null, null)
+        // A HEAD reply declares the size of a body it doesn't send.
+        store.respond(id, 200, Headers.of("Content-Type" to "image/png"), CapturedBody(text = null, byteSize = 8090, bytes = ByteArray(0)), 5)
+
+        val tx = store.getTransaction(id.value)!!
+        assertNull(tx.responseBinaryBody)
+        assertEquals(8090L, tx.responseBodyBytes)
+    }
+
+    @Test
+    fun `a queued binary body fills the capture backlog as text does`() {
+        val executor = ManualExecutor()
+        val store = store(worker = CaptureWorker(executor, maxBacklogChars = 10_000))
+        val upload = CapturedBody(text = null, bytes = ByteArray(9_000))
+        store.beginRequest("https://example.com/upload.png", "POST", Headers.EMPTY, upload, MediaType.parse("image/png"))
+
+        // The backlog is full, so this capture is stored on the calling thread.
+        store.beginRequest("https://example.com/next", "GET", Headers.EMPTY, null, null)
+
+        assertEquals(listOf("https://example.com/next"), store.getTransactions().map { it.url })
+        assertEquals(1, executor.pending)
     }
 
 

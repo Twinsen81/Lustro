@@ -34,6 +34,8 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
  * - Capture calls return right away: redaction with the [Redactor],
  *   classification with the [NetworkClassifier], and storing run later on a
  *   [CaptureWorker]. A transaction is stored only once it's redacted.
+ * - A body reported as [CapturedBody.bytes] is stored as it arrived: the
+ *   [Redactor] reads text only.
  * - The polling cursor pairs the transaction list's change [sequence] with
  *   this store's random [epoch]. Only list changes advance the sequence:
  *   control state goes out with every poll, and rules have their own route.
@@ -122,7 +124,7 @@ internal class NetworkTrafficStore(
         val startedAt = System.currentTimeMillis()
         val order = startOrder.incrementAndGet()
         val clears = clearCount
-        worker.submit(id, requestBody?.text?.length?.toLong() ?: 0L) {
+        worker.submit(id, requestBody.backlogWeight()) {
             val redactedUrl = redactor.redactUrl(url)
             val transaction =
                 NetworkTransaction(
@@ -136,6 +138,7 @@ internal class NetworkTrafficStore(
                     // Redact the captured text in place; truncation/byte-size flags are
                     // preserved verbatim from the CapturedBody so badges/sizes stay accurate.
                     requestBody = requestBody?.text?.let { redactBody(it, contentType) },
+                    requestBinaryBody = requestBody.binaryBytes(),
                     requestBodyTruncated = requestBody?.truncated ?: false,
                     requestContentType = contentType?.let { redactContentType(it) },
                     requestBodyBytes = requestBody?.byteSize,
@@ -180,7 +183,7 @@ internal class NetworkTrafficStore(
         completedAt: Long?,
         take: () -> CapturedResponse?,
     ) {
-        worker.submit(id, response.body?.text?.length?.toLong() ?: 0L) {
+        worker.submit(id, response.body.backlogWeight()) {
             take()?.let { recordResponse(id, it, completedAt) }
         }
     }
@@ -193,6 +196,7 @@ internal class NetworkTrafficStore(
             durationMs = response.durationMs,
             responseHeaders = redactHeaders(response.headers),
             responseBody = response.body?.text?.let { redactBody(it, contentType) },
+            responseBinaryBody = response.body.binaryBytes(),
             responseBodyTruncated = response.body?.truncated ?: false,
             responseContentType = contentType?.let { redactContentType(it) },
             responseBodyBytes = response.body?.byteSize,
@@ -259,14 +263,17 @@ internal class NetworkTrafficStore(
     /**
      * Body bytes a single transaction contributes to the capture budget: the
      * request body plus the response body. Uses the recorded byte counts when
-     * present (they reflect the true on-the-wire size even when the stored text
-     * was truncated) and falls back to the UTF-8 length of the retained text.
+     * present (they reflect the true on-the-wire size even when the stored body
+     * was truncated) and falls back to the size of the retained text or bytes.
      */
     private fun transactionBytes(tx: NetworkTransaction): Long {
-        val request = tx.requestBodyBytes ?: tx.requestBody?.let { utf8Len(it) } ?: 0L
-        val response = tx.responseBodyBytes ?: tx.responseBody?.let { utf8Len(it) } ?: 0L
+        val request = tx.requestBodyBytes ?: retainedSize(tx.requestBody, tx.requestBinaryBody)
+        val response = tx.responseBodyBytes ?: retainedSize(tx.responseBody, tx.responseBinaryBody)
         return request + response
     }
+
+    private fun retainedSize(text: String?, bytes: ByteArray?): Long =
+        text?.let { utf8Len(it) } ?: bytes?.size?.toLong() ?: 0L
 
     private fun utf8Len(text: String): Long = text.toByteArray(Charsets.UTF_8).size.toLong()
 
@@ -289,6 +296,7 @@ internal class NetworkTrafficStore(
         completedAt: Long? = null,
         protocol: String? = null,
         isMocked: Boolean = false,
+        responseBinaryBody: ByteArray? = null,
     ) {
         val updated =
             transactionMap.computeIfPresent(id) { _, tx ->
@@ -299,6 +307,7 @@ internal class NetworkTrafficStore(
                         requestHeaders = requestHeaders.ifEmpty { tx.requestHeaders },
                         responseHeaders = responseHeaders,
                         responseBody = responseBody,
+                        responseBinaryBody = responseBinaryBody,
                         responseBodyTruncated = responseBodyTruncated,
                         responseContentType = responseContentType,
                         responseBodyBytes = responseBodyBytes,
@@ -360,6 +369,13 @@ internal class NetworkTrafficStore(
         }
         return out
     }
+
+    // Text wins when an adapter sets both: it is the form the Redactor has seen.
+    // No bytes, as in the reply to a HEAD, is no body: there is nothing to show.
+    private fun CapturedBody?.binaryBytes(): ByteArray? = this?.bytes?.takeIf { text == null && it.isNotEmpty() }
+
+    private fun CapturedBody?.backlogWeight(): Long =
+        this?.text?.length?.toLong() ?: binaryBytes()?.size?.toLong() ?: 0L
 
     private fun safeClassify(url: String): List<String> =
         try {

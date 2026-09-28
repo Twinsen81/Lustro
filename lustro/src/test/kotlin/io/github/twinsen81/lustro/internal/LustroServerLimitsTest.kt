@@ -241,6 +241,8 @@ class LustroServerLimitsTest {
         startServer(tab, timeoutMs = 200)
         postBytes("/api/v1/sample/clear", ByteArray(0)).use { resp ->
             assertEquals(504, resp.code)
+            // NanoHTTPD lists no reason phrase for 504, so the server supplies one.
+            assertEquals("Gateway Timeout", resp.message.trim())
             assertEquals("timeout", JSONObject(resp.body!!.string()).getString("error"))
         }
     }

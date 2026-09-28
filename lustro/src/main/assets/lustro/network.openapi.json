@@ -47,6 +47,32 @@
         }
       }
     },
+    "/api/v1/network/transactions/{id}/body/{direction}": {
+      "get": {
+        "operationId": "getTransactionBody",
+        "summary": "One captured body, as it is stored.",
+        "description": "Returns the bytes of a binary body (requestBodyBinary or responseBodyBinary in the detail) as they arrived, or the redacted text of a text body encoded as UTF-8, so it is also how to download a large text body. A body cut at the capture cap comes back as the part that was kept; the detail's requestBodyTruncated and responseBodyTruncated say when. Content-Type is the captured media type without its parameters, plus charset=utf-8 for text; application/octet-stream or text/plain; charset=utf-8 when none was captured. image/png, image/jpeg, image/gif, and image/webp are served inline, so the console can show them in an img element. Every other type, SVG and HTML included, carries Content-Disposition: attachment and the Content-Security-Policy default-src 'none'; sandbox, enforced alongside the server's own policy, so a captured page can't run script under the console's origin. 404 when the transaction is unknown or no body was kept for that direction: none was sent, it was not captured, or its type is one capture drops.",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "direction", "in": "path", "required": true, "schema": { "type": "string", "enum": ["request", "response"] } }
+        ],
+        "responses": {
+          "200": {
+            "description": "The body.",
+            "headers": {
+              "Content-Disposition": { "description": "attachment, for every type but image/png, image/jpeg, image/gif, and image/webp; absent for those.", "schema": { "type": "string" } },
+              "Content-Security-Policy": { "description": "For an attachment, the server's policy and default-src 'none'; sandbox, in one header; for an inline image, the server's policy alone.", "schema": { "type": "string" } }
+            },
+            "content": { "*/*": { "schema": {} } }
+          },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" },
+          "413": { "$ref": "#/components/responses/Error" },
+          "503": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
     "/api/v1/network/clear": {
       "post": {
         "operationId": "clearTransactions",
@@ -237,9 +263,11 @@
           "requestHeaders": { "type": "object", "additionalProperties": { "type": "string" } },
           "requestBody": { "type": ["string", "null"] },
           "requestBodyTruncated": { "type": "boolean" },
+          "requestBodyBinary": { "type": "boolean", "description": "Detail only. true when the request body was kept as bytes, as it arrived, because the Redactor can't read it: an image. requestBody is then null; fetch the bytes from GET transactions/{id}/body/request." },
           "responseHeaders": { "type": ["object", "null"], "additionalProperties": { "type": "string" } },
           "responseBody": { "type": ["string", "null"] },
-          "responseBodyTruncated": { "type": "boolean" }
+          "responseBodyTruncated": { "type": "boolean" },
+          "responseBodyBinary": { "type": "boolean", "description": "Detail only. true when the response body was kept as bytes, as it arrived, because the Redactor can't read it: an image. responseBody is then null; fetch the bytes from GET transactions/{id}/body/response." }
         }
       },
       "MockRule": {

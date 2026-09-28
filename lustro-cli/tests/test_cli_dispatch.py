@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from lustro_cli import cli
-from lustro_cli.client import LustroClient
+from lustro_cli.client import LustroClient, RawBody
 from lustro_cli.discovery import Endpoint
 
 
@@ -15,10 +17,16 @@ class _RecordingClient(LustroClient):
     def __init__(self):
         super().__init__("http://127.0.0.1:8080", "tok")
         self.calls = []
+        self.response = {"status": "ok"}
+        self.raw = RawBody(b"\x89PNG\r\n\x1a\n", "image/png")
 
     def request(self, method, path, *, params=None, json_body=None):
         self.calls.append((method, path, dict(params or {}), json_body))
-        return {"status": "ok"}
+        return self.response
+
+    def get_raw(self, path, params=None):
+        self.calls.append(("GET", path, dict(params or {}), None))
+        return self.raw
 
 
 @pytest.fixture
@@ -65,6 +73,65 @@ def test_net_poll_once_route(rec):
 
 def test_net_get_route(rec):
     run(["net", "get", "tx_1"])
+    assert rec.calls[-1][:2] == ("GET", "/api/v1/network/transactions/tx_1")
+
+
+def test_net_body_saves_the_response_body_by_default(rec, tmp_path, capsys):
+    out = tmp_path / "body.png"
+    assert run(["net", "body", "tx_1", "-o", str(out)]) == 0
+    # The detail first, for the binary and truncated flags, then the body itself.
+    assert [call[:2] for call in rec.calls] == [
+        ("GET", "/api/v1/network/transactions/tx_1"),
+        ("GET", "/api/v1/network/transactions/tx_1/body/response"),
+    ]
+    assert out.read_bytes() == rec.raw.data
+    assert "saved 8 bytes (image/png) to" in capsys.readouterr().out
+
+
+def test_net_body_request_direction(rec, tmp_path):
+    run(["net", "body", "tx_1", "request", "-o", str(tmp_path / "req.bin")])
+    assert rec.calls[-1][:2] == ("GET", "/api/v1/network/transactions/tx_1/body/request")
+
+
+def test_net_body_writes_to_stdout_without_an_output_file(rec, capsysbinary):
+    rec.raw = RawBody(b'{"ok":true}', "application/json; charset=utf-8")
+    assert run(["net", "body", "tx_1"]) == 0
+    assert capsysbinary.readouterr().out == b'{"ok":true}'
+
+
+def test_net_body_json_summary(rec, tmp_path, capsys):
+    rec.response = {"responseBodyBinary": True, "responseBodyTruncated": False}
+    out = tmp_path / "body.png"
+    run(["--json", "net", "body", "tx_1", "-o", str(out)])
+    summary = json.loads(capsys.readouterr().out)
+    assert summary == {
+        "path": str(out),
+        "bytes": 8,
+        "contentType": "image/png",
+        "binary": True,
+        "truncated": False,
+    }
+
+
+def test_net_body_warns_when_capture_cut_the_body(rec, tmp_path, capsys):
+    rec.response = {"responseBodyTruncated": True, "responseBodyBytes": 4096}
+    run(["net", "body", "tx_1", "-o", str(tmp_path / "body.png")])
+    err = capsys.readouterr().err
+    assert "kept only the first 8 bytes of the response body (4096 bytes in full)" in err
+
+
+def test_net_body_reports_an_output_file_it_cannot_write(rec, tmp_path, capsys):
+    out = tmp_path / "missing" / "body.png"
+    assert run(["net", "body", "tx_1", "-o", str(out)]) == 2
+    assert "could not write body file {}".format(out) in capsys.readouterr().err
+
+
+def test_net_body_refuses_to_write_binary_to_a_terminal(rec, capsys, monkeypatch):
+    rec.response = {"responseBodyBinary": True, "responseContentType": "image/png"}
+    monkeypatch.setattr(cli.sys.stdout, "isatty", lambda: True)
+    assert run(["net", "body", "tx_1"]) == 2
+    assert "binary (image/png)" in capsys.readouterr().err
+    # Refused before the body was fetched.
     assert rec.calls[-1][:2] == ("GET", "/api/v1/network/transactions/tx_1")
 
 
@@ -185,6 +252,7 @@ def test_all_openapi_paths_are_covered():
     covered = {
         "/api/v1/network/transactions",
         "/api/v1/network/transactions/{id}",
+        "/api/v1/network/transactions/{id}/body/{direction}",
         "/api/v1/network/clear",
         "/api/v1/network/rules",
         "/api/v1/network/rules/_/sync",

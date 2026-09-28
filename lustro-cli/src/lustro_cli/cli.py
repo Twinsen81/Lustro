@@ -206,6 +206,57 @@ def cmd_net_get(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_net_body(args: argparse.Namespace) -> int:
+    """Save one captured body to a file, or write it to stdout."""
+    client = _build_client(args)
+    tx_path = NETWORK + "/transactions/" + args.id
+    # The detail says whether the body is binary and whether capture cut it off.
+    tx = client.get(tx_path)
+    direction = args.direction
+    binary = bool(tx.get(direction + "BodyBinary"))
+    if args.output is None and binary and sys.stdout.isatty():
+        print(
+            "error: the {} body is binary ({}); save it with -o FILE or redirect stdout".format(
+                direction, tx.get(direction + "ContentType") or "unknown type"
+            ),
+            file=sys.stderr,
+        )
+        return 2
+    body = client.get_raw(tx_path + "/body/" + direction)
+    if args.output is None:
+        sys.stdout.buffer.write(body.data)
+        sys.stdout.flush()
+    else:
+        try:
+            with open(args.output, "wb") as fh:
+                fh.write(body.data)
+        except OSError as exc:
+            print("could not write body file {}: {}".format(args.output, exc), file=sys.stderr)
+            return 2
+    truncated = bool(tx.get(direction + "BodyTruncated"))
+    if truncated:
+        full = tx.get(direction + "BodyBytes")
+        print(
+            "warning: capture kept only the first {} bytes of the {} body{}".format(
+                len(body.data), direction, "" if full is None else " ({} bytes in full)".format(full)
+            ),
+            file=sys.stderr,
+        )
+    if args.output is not None:
+        summary = {
+            "path": args.output,
+            "bytes": len(body.data),
+            "contentType": body.content_type,
+            "binary": binary,
+            "truncated": truncated,
+        }
+        if args.json:
+            _emit(summary, raw_json=True)
+        else:
+            print("saved {} bytes ({}) to {}".format(len(body.data), body.content_type or "no type", args.output))
+    return 0
+
+
 def cmd_net_clear(args: argparse.Namespace) -> int:
     client = _build_client(args)
     _emit(client.post(NETWORK + "/clear"), raw_json=args.json)
@@ -378,6 +429,16 @@ def build_parser() -> argparse.ArgumentParser:
     n_get = net_sub.add_parser("get", help="GET transactions/<id>")
     n_get.add_argument("id")
     n_get.set_defaults(func=cmd_net_get)
+
+    n_body = net_sub.add_parser(
+        "body", help="GET transactions/<id>/body/<direction>: save a captured body as it is stored"
+    )
+    n_body.add_argument("id")
+    n_body.add_argument(
+        "direction", nargs="?", default="response", choices=["request", "response"], help="default: response"
+    )
+    n_body.add_argument("-o", "--output", default=None, metavar="FILE", help="write the body to FILE (default: stdout)")
+    n_body.set_defaults(func=cmd_net_body)
 
     n_clear = net_sub.add_parser("clear", help="POST clear")
     n_clear.set_defaults(func=cmd_net_clear)
