@@ -220,7 +220,7 @@
           "id": { "type": "string" },
           "timestamp": { "type": "string", "description": "When the request started, as HH:mm:ss.SSS in the device's time zone. For display; sort and correlate by startedAt." },
           "startedAt": { "type": "integer", "description": "When the request started, in milliseconds since the Unix epoch." },
-          "completedAt": { "type": ["integer", "null"], "description": "When the response completed or the request failed, in milliseconds since the Unix epoch; null while in flight, including a streaming response." },
+          "completedAt": { "type": ["integer", "null"], "description": "When the capture recorded the response as complete, or the request as failed, in milliseconds since the Unix epoch; null while in flight, including a streaming response. It comes after the capture has read the response body, up to the capture cap, and platform HttpURLConnection capture moves it to the end of the body once the app reads it, so it can differ from startedAt plus durationMs." },
           "method": { "type": "string" },
           "url": { "type": "string", "description": "Redacted at capture time." },
           "protocol": { "type": ["string", "null"], "description": "The protocol the response came over, as the HTTP client names it, e.g. http/1.1, h2, or h3. null when unknown: before a response, for a mocked response, and for platform HttpURLConnection capture." },

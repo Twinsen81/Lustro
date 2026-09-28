@@ -48,7 +48,9 @@ gets a `reset`.
   `protocol` (e.g. `h2`), and `startedAt` and `completedAt` in milliseconds
   since the Unix epoch. `timestamp` keeps its meaning, a display time in the
   device's zone. Every new field is `null` when it isn't known, except
-  `startedAt`, which is always set.
+  `startedAt`, which is always set. `completedAt` is when the capture recorded
+  the outcome, after reading the body up to the capture cap, so it can differ
+  from `startedAt` plus `durationMs`.
 
 ## Status
 
