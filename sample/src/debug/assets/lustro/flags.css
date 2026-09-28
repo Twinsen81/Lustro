@@ -1,23 +1,8 @@
-/* Sample Feature Flags tab. Reuses the shared color tokens from shared.css. */
+/* Sample Feature Flags tab. Builds on the tokens and .dc-* components from shared.css. */
 
-.flags-toolbar {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 14px 22px 12px;
-    border-bottom: 1px solid var(--border-soft);
-}
-.flags-toolbar h3 {
-    margin: 0;
-    font-size: 13px;
-    font-weight: 600;
-    letter-spacing: .06em;
-    text-transform: uppercase;
-    color: var(--t1);
-}
 .flags-count {
     font-size: 12px;
-    color: var(--text-muted);
+    color: var(--t3);
 }
 
 .flags-list {
@@ -27,7 +12,7 @@
     padding: 14px 22px;
 }
 .flags-empty {
-    color: var(--text-muted);
+    color: var(--t3);
     font-size: 13px;
     padding: 24px;
     text-align: center;
@@ -38,9 +23,9 @@
     align-items: center;
     gap: 12px;
     padding: 10px 14px;
-    background: var(--bg-elevated);
+    background: var(--header);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
 }
 .flag-meta {
     display: flex;
@@ -50,13 +35,12 @@
     min-width: 0;
 }
 .flag-id {
-    font-family: monospace;
     font-size: 13px;
-    color: var(--text-strong);
+    color: var(--t1);
 }
 .flag-desc {
     font-size: 12px;
-    color: var(--text-muted);
+    color: var(--t3);
 }
 
 /* Toggle switch */
@@ -76,8 +60,8 @@
 .flag-toggle-slider {
     position: absolute;
     inset: 0;
-    background: var(--bg-chip-off);
-    border-radius: 22px;
+    background: var(--t5);
+    border-radius: var(--radius-pill);
     transition: background 0.2s;
 }
 .flag-toggle-slider::before {
@@ -87,12 +71,12 @@
     height: 16px;
     left: 3px;
     top: 3px;
-    background: var(--text-on-accent);
+    background: #fff;
     border-radius: 50%;
     transition: transform 0.2s;
 }
 .flag-toggle input:checked + .flag-toggle-slider {
-    background: var(--success);
+    background: var(--live);
 }
 .flag-toggle input:checked + .flag-toggle-slider::before {
     transform: translateX(16px);
@@ -100,37 +84,17 @@
 
 /* Upload modal */
 .flags-upload-hint {
+    margin: 0;
     font-size: 13px;
-    color: var(--text-secondary);
-    margin-top: 0;
+    color: var(--t2);
     line-height: 1.5;
 }
 .flags-upload-hint code {
-    background: var(--bg-code);
+    background: var(--field);
     padding: 1px 5px;
-    border-radius: 4px;
+    border-radius: var(--radius);
     font-size: 12px;
 }
 .flags-upload-text {
-    width: 100%;
     min-height: 160px;
-    margin-top: 10px;
-    background: var(--bg-code);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    color: var(--text);
-    font-family: monospace;
-    font-size: 12px;
-    padding: 10px;
-    resize: vertical;
-    outline: none;
-}
-.flags-upload-text:focus {
-    border-color: var(--accent-primary);
-}
-.flags-modal-actions {
-    display: flex;
-    gap: 8px;
-    margin-top: 14px;
-    justify-content: flex-end;
 }

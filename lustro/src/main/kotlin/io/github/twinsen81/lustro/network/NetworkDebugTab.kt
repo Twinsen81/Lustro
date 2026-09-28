@@ -124,69 +124,65 @@ public class NetworkDebugTab private constructor(
 
     override fun renderContent(): String =
         """
-        <div class="split-container">
-            <div class="pane net-list-pane" id="list-pane">
-                <div class="pane-header">
-                    <h3>Network Traffic</h3>
+        <div class="dc-split">
+            <div class="dc-pane net-list-pane">
+                <div class="dc-toolbar net-list-head">
+                    <h3 class="dc-mono-label">Network Traffic</h3>
                     <span id="tx-count" class="net-tx-count">0 requests</span>
-                    <button class="debug-btn" id="pause-btn" data-action="togglePause" style="margin-left:auto" title="Pause traffic capture. The interceptor still runs but new requests are not recorded into the list. Click again to resume.">⏸ Pause</button>
-                    <button class="debug-btn" id="overwrite-btn" data-action="toggleOverwriteMode" title="Overwrite mode: when a new request arrives, any earlier completed transaction with the same method + URL path is removed from the list. In-flight requests are never evicted.">Overwrite: off</button>
-                    <select class="debug-btn net-throttle-select" id="throttle-select" name="throttleDelayMs" aria-label="Global throttle" data-action="setThrottle" title="Global throttle: sleep this long before every request (mocked or real). Useful for testing loading spinners and timeout handling.">
+                    <button class="dc-btn" id="pause-btn" data-action="togglePause" style="margin-left:auto" title="Pause traffic capture. The interceptor still runs but new requests are not recorded into the list. Click again to resume.">⏸ Pause</button>
+                    <button class="dc-btn" id="overwrite-btn" data-action="toggleOverwriteMode" title="Overwrite mode: when a new request arrives, any earlier completed transaction with the same method + URL path is removed from the list. In-flight requests are never evicted.">Overwrite: off</button>
+                    <select class="dc-btn net-throttle-select" id="throttle-select" name="throttleDelayMs" aria-label="Global throttle" data-action="setThrottle" title="Global throttle: sleep this long before every request (mocked or real). Useful for testing loading spinners and timeout handling.">
                         <option value="0">No throttle</option>
                         <option value="500">500ms</option>
                         <option value="1000">1s</option>
                         <option value="3000">3s</option>
                         <option value="5000">5s</option>
                     </select>
-                    <button class="debug-btn debug-btn-danger" data-action="clearTraffic" title="Clear the captured transaction list. Mock rules and settings are preserved. Keyboard shortcut: C (when not typing in an input).">Clear</button>
+                    <button class="dc-btn dc-btn--ghost-danger" data-action="clearTraffic" title="Clear the captured transaction list. Mock rules and settings are preserved. Keyboard shortcut: C (when not typing in an input).">Clear</button>
                 </div>
-                <div class="debug-search-bar">
+                <div class="net-search">
                     <label class="dc-field" for="search-input"><span class="dc-field__prefix" aria-hidden="true">&gt;</span><input type="text" id="search-input" name="search" aria-label="Search network traffic" class="dc-input" placeholder="filter url, method, body…" data-action="onSearchInput" title="Search across URL, method, request body, and response body (server-side, 300ms debounce). Matches are highlighted in body views. Shortcut: Ctrl/Cmd+K to focus." /></label>
                 </div>
                 <div class="net-category-bar" id="category-filters"></div>
                 <div class="net-filter-bar" id="status-filters"></div>
                 <div class="net-filter-bar" id="method-filters"></div>
                 <div style="flex:1;overflow-y:auto">
-                    <table class="debug-table" style="width:100%">
-                        <thead>
+                    <table class="dc-table">
+                        <thead class="dc-thead">
                             <tr>
-                                <th style="width:74px">Method</th>
-                                <th>URL</th>
-                                <th style="width:60px">Status</th>
-                                <th style="width:66px">Time</th>
-                                <th style="width:96px">Cat</th>
+                                <th class="dc-th" style="width:74px">Method</th>
+                                <th class="dc-th">URL</th>
+                                <th class="dc-th" style="width:60px">Status</th>
+                                <th class="dc-th" style="width:66px">Time</th>
+                                <th class="dc-th" style="width:96px">Cat</th>
                             </tr>
                         </thead>
                         <tbody id="tx-list"></tbody>
                     </table>
                 </div>
             </div>
-            <div class="pane-divider" data-left="list-pane" data-right="detail-pane">
-                <div class="divider-handle"></div>
-            </div>
-            <div class="pane net-detail-pane" id="detail-pane">
-                <div class="pane-header">
-                    <div class="net-tab-switcher">
-                        <button class="net-tab-btn active" id="tab-btn-detail" data-action="switchRightTab" data-tab="detail" title="Inspect the selected transaction: headers, body, status, timing, byte sizes.">Detail</button>
-                        <button class="net-tab-btn" id="tab-btn-rules" data-action="switchRightTab" data-tab="rules" title="Manage mock rules — short-circuit matching requests with a synthetic response. Rules live in the app and survive a restart when it gives Lustro a rule storage.">Mock Rules</button>
-                        <button class="net-tab-btn" id="tab-btn-send" data-action="switchRightTab" data-tab="send" title="Dispatch an arbitrary request through the app's OkHttpClient. The result appears in the traffic list only when that client carries the Lustro interceptor. Self-requests to the debug server are rejected.">Send Request</button>
-                        <div class="net-tab-actions">
-                            <button class="net-tab-btn net-action-btn" id="copy-curl-btn" data-action="copyCurl" style="display:none" title="Copy a cURL command that reproduces the selected request (paste into a terminal to re-run).">cURL</button>
-                            <button class="net-tab-btn net-action-btn" id="copy-all-btn" data-action="copyAllDetail" style="display:none" title="Copy the full request and response (status, headers, bodies) as plain text for sharing or pasting into a bug report.">Copy</button>
-                        </div>
+            <div class="dc-divider"></div>
+            <div class="dc-pane net-detail-pane">
+                <div class="dc-tabs">
+                    <button class="dc-tab dc-tab--active" id="tab-btn-detail" data-action="switchRightTab" data-tab="detail" title="Inspect the selected transaction: headers, body, status, timing, byte sizes.">Detail</button>
+                    <button class="dc-tab" id="tab-btn-rules" data-action="switchRightTab" data-tab="rules" title="Manage mock rules — short-circuit matching requests with a synthetic response. Rules live in the app and survive a restart when it gives Lustro a rule storage.">Mock Rules</button>
+                    <button class="dc-tab" id="tab-btn-send" data-action="switchRightTab" data-tab="send" title="Dispatch an arbitrary request through the app's OkHttpClient. The result appears in the traffic list only when that client carries the Lustro interceptor. Self-requests to the debug server are rejected.">Send Request</button>
+                    <div class="net-tab-actions">
+                        <button class="dc-btn dc-btn--sm" id="copy-curl-btn" data-action="copyCurl" style="display:none" title="Copy a cURL command that reproduces the selected request (paste into a terminal to re-run).">cURL</button>
+                        <button class="dc-btn dc-btn--sm" id="copy-all-btn" data-action="copyAllDetail" style="display:none" title="Copy the full request and response (status, headers, bodies) as plain text for sharing or pasting into a bug report.">Copy</button>
                     </div>
                 </div>
-                <div id="detail-content" class="net-tab-content active">
+                <div id="detail-content" class="dc-tabpanel net-tab-content active">
                     <div class="net-empty-state">
                         <div class="net-empty-icon">🔍</div>
                         <p>Select a request to inspect</p>
                     </div>
                 </div>
-                <div id="rules-content" class="net-tab-content">
+                <div id="rules-content" class="dc-tabpanel net-tab-content">
                     <div id="rules-list"></div>
                     <div id="rule-form-container"></div>
                 </div>
-                <div id="send-content" class="net-tab-content">
+                <div id="send-content" class="dc-tabpanel net-tab-content">
                     <div id="send-form-container"></div>
                 </div>
             </div>

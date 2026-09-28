@@ -34,8 +34,7 @@ const PAYLOADS = [
 // output came from the body or the query, which would mean escaping failed.
 const ALLOWED_TAGS = new Set([
     '<mark>', '</mark>', '</span>',
-    '<span class="json-key">', '<span class="json-string">', '<span class="json-number">',
-    '<span class="json-boolean">', '<span class="json-null">', '<span class="json-bracket">',
+    '<span class="k">', '<span class="s">', '<span class="n">', '<span class="b">', '<span class="p">',
 ]);
 
 function unexpectedTags(html) {
@@ -147,7 +146,7 @@ test('search cannot corrupt the highlighter\'s own markup', async (t) => {
     await t.test('a query matching the generated tags does not mark them', () => {
         // Matching runs on each piece before its span is wrapped around it, so a
         // query of "span" or "class" can never land inside a generated tag.
-        for (const query of ['span', 'class', 'json', 'mark', '<span', 'json-key']) {
+        for (const query of ['span', 'class', 'mark', '<span', 'class="k"', 'k', 's', 'p']) {
             const html = debugSyntaxHighlightJson('{"a":1}', { searchText: query });
             assert.deepStrictEqual(unexpectedTags(html), [], `query ${query} corrupted the markup`);
             assert.ok(!html.includes('<mark>span'), `query ${query} marked a generated tag`);
@@ -165,10 +164,10 @@ test('search cannot corrupt the highlighter\'s own markup', async (t) => {
     await t.test('marks land inside the value spans', () => {
         assert.strictEqual(
             debugSyntaxHighlightJson('{"a":"hello"}', { searchText: 'ell' }),
-            '<span class="json-bracket">{</span>\n'
-                + '  <span class="json-key">"a"</span>: '
-                + '<span class="json-string">"h<mark>ell</mark>o"</span>\n'
-                + '<span class="json-bracket">}</span>',
+            '<span class="p">{</span>\n'
+                + '  <span class="k">"a"</span>: '
+                + '<span class="s">"h<mark>ell</mark>o"</span>\n'
+                + '<span class="p">}</span>',
         );
     });
 });

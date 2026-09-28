@@ -350,10 +350,9 @@ Lustro.builder(application)
   Anything the app stores or a request carries is untrusted input to your tab.
 - **Styling is free.** Every tab page loads `shared.css` — the console's design system: design
   tokens (surfaces, text ramp, semantic method/status/level/category palettes; dark + light
-  themes) plus a documented component library (`.dc-*` and the shared `.debug-*` classes).
-  Build on those and your tab matches the console in both themes with no extra CSS; see
-  [`docs/STYLEGUIDE.md`](docs/STYLEGUIDE.md) for the contract and the sample flags tab for a
-  working example.
+  themes) plus a documented `.dc-*` component library. Build on those and your tab matches the
+  console in both themes with no extra CSS; see [`docs/STYLEGUIDE.md`](docs/STYLEGUIDE.md) for
+  the contract and the sample flags tab for a working example.
 - JSON routes go through `handle(request)`; build responses with the `DebugResponse` factories
   (`ok`, `json { ... }`, `text`, `bytes`, `notFound`, `error`). For observable list routes,
   `DebugResponse.cursorEnvelope(currentSequence, clientCursor) { /* items */ }` implements the

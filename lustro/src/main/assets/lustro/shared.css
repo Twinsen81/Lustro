@@ -7,20 +7,16 @@
    below is available to built-in tabs AND third-party tabs alike.
 
    Layout of this file:
-     1. Design tokens — CSS custom properties. Dark is the default
+     1. Design tokens - CSS custom properties. Dark is the default
         (:root); light overrides under :root[data-theme="light"].
         Theme is driven by document.documentElement.dataset.theme
         (shared.js owns the toggle + persistence).
-     2. .dc-* component library — the public, documented component
+     2. .dc-* component library - the public, documented component
         contract for tab UIs (buttons, chips, tabs, tables, menus,
-        modals…). Tab authors should build on these classes.
-     3. Framework chrome + legacy .debug-* shared components — the
-        top bar and the pre-redesign shared classes, restyled on the
-        same tokens so existing tab markup picks up the new look
-        without changes.
-     4. Legacy token aliases — old custom-property names mapped onto
-        the new tokens, so tab CSS written against the previous
-        palette keeps theming correctly.
+        modals…). Tab authors should build on these classes; the
+        chrome (top bar, theme toggle, status pill) uses them too.
+     3. Framework chrome - the few page-shell rules that are not
+        components: the tab content root and the auth message.
 
    Rules of thumb for tab authors:
      - Never hardcode colors; use tokens (methods, statuses, levels,
@@ -163,7 +159,7 @@
 
   /* Overlays & highlights */
   --scrim:        rgba(0, 0, 0, 0.55); /* modal backdrop */
-  --scrim-strong: rgba(0, 0, 0, 0.85); /* disconnect overlay */
+  --scrim-strong: rgba(0, 0, 0, 0.85); /* full-screen blocking overlay */
   --search-highlight: rgba(255, 200, 0, 0.35);
 }
 
@@ -273,6 +269,7 @@ body {
 }
 input::placeholder, textarea::placeholder { color: var(--t4); }
 a { text-decoration: none; color: inherit; }
+mark { background: var(--search-highlight); color: inherit; border-radius: 2px; padding: 0 1px; } /* search matches in bodies */
 
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb { background: rgba(128, 128, 128, 0.32); border-radius: 6px; }
@@ -280,64 +277,74 @@ a { text-decoration: none; color: inherit; }
 
 @keyframes dc-menu-in  { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
 @keyframes dc-toast-in { from { opacity: 0; transform: translateY(8px);  } to { opacity: 1; transform: none; } }
+@keyframes dc-toast-out { to { opacity: 0; } }
 @keyframes dc-modal-in { from { opacity: 0; transform: translateY(8px) scale(.99); } to { opacity: 1; transform: none; } }
 @keyframes dc-live-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .4; } }
 
-/* Honor the OS reduced-motion preference: the connection/live dot otherwise
-   pulses for the entire debug session. Covers both the chrome status dot and
-   the .dc-pill--live component (so future tabs inherit the courtesy too). */
+/* Honor the OS reduced-motion preference: the LIVE dot otherwise pulses for
+   the entire debug session. */
 @media (prefers-reduced-motion: reduce) {
-  .status.connected::before,
-  .dc-pill--live .dc-dot { animation: none; }
+  .dc-pill--live .dc-pill__dot { animation: none; }
 }
 
 /* ─────────────────── 2. .dc-* component library ────────────────── */
 /* The documented component contract for tab UIs. Semantic color is
    passed via the --c custom property where noted, e.g.
-   <span class="dc-badge" style="--c: var(--method-get)">GET</span>   */
+   <span class="dc-badge" style="--c: var(--method-get)">GET</span>
+   Hover rules sit inside :where() so that a state modifier declared
+   after them (--active, --selected) still wins while hovered.        */
 
 /* ---------- App shell ---------- */
-.dc-app { height: 100vh; display: flex; flex-direction: column; background: var(--bg); color: var(--t2); font-family: var(--font-mono); }
+.dc-app { height: 100vh; overflow: hidden; display: flex; flex-direction: column; background: var(--bg); color: var(--t2); font-family: var(--font-mono); }
+.dc-app__content { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; } /* full-bleed: tabs own their edge padding */
 
 /* ---------- Top nav bar ---------- */
 .dc-topbar {
   height: 52px; flex: none; display: flex; align-items: stretch; justify-content: space-between;
   padding: 0 22px; background: var(--header); border-bottom: 1px solid var(--border);
 }
+.dc-topbar__actions { display: flex; align-items: center; gap: 8px; }
 .dc-nav { display: flex; align-items: stretch; }
 .dc-nav__item {
   display: flex; align-items: center; gap: 8px; padding: 0 16px; white-space: nowrap;
-  font-size: 12px; font-weight: 500; letter-spacing: .1em; color: var(--t3); cursor: pointer;
+  font-size: 12px; font-weight: 500; letter-spacing: .1em; text-transform: uppercase; color: var(--t3); cursor: pointer;
 }
-.dc-nav__item:hover { color: var(--t1); }
+.dc-nav__item:where(:hover) { color: var(--t1); }
 .dc-nav__item--active { color: var(--accent-2); font-weight: 600; box-shadow: inset 0 -2px 0 var(--accent); }
-.dc-nav__item--active::before { content: ""; width: 6px; height: 6px; background: var(--accent-2); }
 .dc-nav__item--disabled { color: var(--t5); cursor: not-allowed; }
+.dc-nav__icon { font-size: 13px; line-height: 1; }
 
-/* DARK/LIGHT toggle + LIVE pill */
+/* DARK/LIGHT toggle (a <button>) and status pills such as LIVE */
 .dc-pill {
-  display: flex; align-items: center; gap: 6px; padding: 5px 10px; border: 1px solid var(--btn-border);
-  font-size: 11px; letter-spacing: .08em; color: var(--t1); cursor: pointer;
+  display: flex; align-items: center; gap: 6px; padding: 5px 10px;
+  background: transparent; border: 1px solid var(--btn-border); border-radius: 0;
+  color: var(--t1); font-family: inherit; font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
 }
-.dc-pill:hover { border-color: var(--hover-border); }
-.dc-pill--live { border-color: var(--live-border); background: var(--live-soft); color: var(--live); font-weight: 600; cursor: default; }
-.dc-pill--live .dc-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--live); animation: dc-live-pulse 1.8s ease-in-out infinite; }
+button.dc-pill { cursor: pointer; user-select: none; }
+button.dc-pill:hover { border-color: var(--hover-border); }
+.dc-pill--live   { border-color: var(--live-border); background: var(--live-soft); color: var(--live); font-weight: 600; }
+.dc-pill--danger { border-color: var(--danger-border); background: var(--danger-soft); color: var(--danger); font-weight: 600; }
+.dc-pill__dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.dc-pill--live .dc-pill__dot { animation: dc-live-pulse 1.8s ease-in-out infinite; }
 
 /* ---------- Buttons ---------- */
 .dc-btn {
-  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+  display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
   background: transparent; border: 1px solid var(--btn-border); border-radius: var(--radius);
-  padding: 8px 13px; color: var(--t1); font-family: inherit; font-size: 11.5px; letter-spacing: .04em; cursor: pointer;
+  padding: 6px 11px; color: var(--t1); font-family: inherit; font-size: 11px; letter-spacing: .04em; text-transform: uppercase; cursor: pointer;
 }
-.dc-btn:hover { border-color: var(--hover-border); }
+.dc-btn:where(:hover) { border-color: var(--hover-border); }
 .dc-btn--active  { background: var(--accent-soft); border-color: var(--accent-border); color: var(--accent-2); } /* toggled-on state */
 .dc-btn--primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
 .dc-btn--primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
 .dc-btn--soft    { background: var(--accent-soft); border-color: var(--accent-border); color: var(--accent-2); font-weight: 600; }
-.dc-btn--danger:hover { color: var(--danger); border-color: var(--danger-border); }
-.dc-btn--ghost-danger { color: var(--danger); border-color: var(--danger-border); }
-.dc-btn--ghost-danger:hover { background: var(--danger-soft); }
+.dc-btn--icon    { border: none; padding: 4px 6px; color: var(--t3); font-family: var(--font-ui); font-size: 13px; transition: color .15s; } /* bare glyph, e.g. ✎ ✕; the UI font's fallback draws them larger than the mono one */
+.dc-btn--icon:hover { color: var(--t1); }
+.dc-btn--danger:hover { color: var(--danger); border-color: var(--danger-border); } /* red on hover only */
+.dc-btn--ghost-danger { color: var(--danger); border-color: var(--danger-border); } /* red at rest, e.g. Clear */
+.dc-btn--ghost-danger:hover { background: var(--danger-soft); border-color: var(--danger); }
 .dc-btn--sm { padding: 4px 11px; font-size: 10.5px; }
+.dc-btn:disabled { background: transparent; border-color: var(--border-soft); color: var(--t5); cursor: not-allowed; }
 
 /* ---------- Filter chips (pills) ---------- */
 .dc-chip {
@@ -350,16 +357,23 @@ a { text-decoration: none; color: inherit; }
 
 /* ---------- Segmented control (e.g. ROWS|SQL, REQUEST|RESPONSE) ---------- */
 .dc-seg { display: inline-flex; gap: 3px; padding: 3px; background: var(--field); border: 1px solid var(--chip-border); border-radius: var(--radius-md); }
-.dc-seg__item { padding: 6px 16px; font-size: 11px; letter-spacing: .08em; border-radius: var(--radius); cursor: pointer; color: var(--t3); font-weight: 500; }
+.dc-seg__item {
+  padding: 6px 16px; background: transparent; border: none; border-radius: var(--radius); cursor: pointer;
+  color: var(--t3); font-family: inherit; font-size: 11px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase;
+  transition: color .15s, background .15s;
+}
+.dc-seg__item:where(:hover) { color: var(--t1); }
 .dc-seg__item--active { background: var(--accent); color: #fff; font-weight: 600; }
 
 /* ---------- Connected panel tabs (active tab merges into content) ---------- */
-.dc-tabs { display: flex; align-items: stretch; gap: 3px; height: 46px; padding: 7px 8px 0; background: var(--tabbar); border-bottom: 1px solid var(--border); }
+.dc-tabs { flex: none; display: flex; align-items: stretch; gap: 3px; height: 46px; padding: 7px 8px 0; background: var(--tabbar); border-bottom: 1px solid var(--border); }
 .dc-tab {
   display: flex; align-items: center; padding: 0 16px; white-space: nowrap; cursor: pointer; position: relative;
-  font-size: 11.5px; letter-spacing: .08em; color: var(--t3); font-weight: 500; border-radius: var(--radius-md) var(--radius-md) 0 0;
+  background: transparent; border: none; border-radius: var(--radius-md) var(--radius-md) 0 0;
+  color: var(--t3); font-family: inherit; font-size: 11.5px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase;
+  transition: color .15s, background .15s;
 }
-.dc-tab:hover { color: var(--t1); }
+.dc-tab:where(:hover) { color: var(--t1); }
 .dc-tab--active {
   color: var(--accent-2); font-weight: 600; background: var(--raise);
   /* top accent bar + cover the 1px container border so the tab joins its content */
@@ -372,7 +386,7 @@ a { text-decoration: none; color: inherit; }
 .dc-field:focus-within { border-color: var(--accent); }
 .dc-field__prefix { color: var(--accent); font-size: 12px; }        /* '/' or '>' lead-in */
 .dc-input { flex: 1; min-width: 0; background: transparent; border: none; outline: none; color: var(--t1); font-family: inherit; font-size: 12px; }
-.dc-input--block { width: 100%; background: var(--field); border: 1px solid var(--chip-border); border-radius: var(--radius); padding: 10px 12px; color: var(--t1); font-family: inherit; font-size: 12.5px; outline: none; }
+.dc-input--block { width: 100%; background: var(--field); border: 1px solid var(--chip-border); border-radius: var(--radius); padding: 9px 12px; color: var(--t1); font-family: inherit; font-size: 12px; outline: none; }
 .dc-input--block:focus { border-color: var(--accent); }
 .dc-textarea { width: 100%; resize: vertical; background: var(--field); border: 1px solid var(--chip-border); border-radius: var(--radius); padding: 11px 13px; color: var(--t1); font-family: inherit; font-size: 12.5px; line-height: 1.5; outline: none; }
 .dc-textarea:focus { border-color: var(--accent); }
@@ -383,27 +397,37 @@ a { text-decoration: none; color: inherit; }
 .dc-check--on { background: var(--accent); border-color: var(--accent); }
 .dc-check--locked { background: var(--t4); border-color: var(--t4); } /* always-on / disabled */
 
-/* ---------- Tables / data grid ---------- */
-.dc-table { width: 100%; }
+/* ---------- Toolbar (title row with actions above a list or grid) ---------- */
+/* Title: a .dc-mono-label; push the actions right with margin-left: auto. */
+.dc-toolbar { flex: none; display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 14px 22px 12px; border-bottom: 1px solid var(--border-soft); }
+
+/* ---------- Tables / data grid (a <table> or div rows) ---------- */
+.dc-table { width: 100%; border-collapse: collapse; }
 .dc-thead { background: var(--header); border-bottom: 1px solid var(--border); }
-.dc-th { padding: 8px 14px; border-right: 1px solid var(--grid); font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--t4); white-space: nowrap; }
+.dc-th {
+  position: sticky; top: 0; z-index: 1; padding: 8px 14px; text-align: left;
+  background: var(--header); border-bottom: 1px solid var(--border); border-right: 1px solid var(--grid);
+  font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--t4); white-space: nowrap;
+}
 .dc-th--sortable { cursor: pointer; color: var(--t4); display: flex; align-items: center; gap: 6px; }
 .dc-th--sortable:hover { color: var(--accent); }
 .dc-th--sorted { color: var(--accent-2); }
 .dc-th__arrow { color: var(--accent); font-size: 9px; } /* ▲ / ▼ */
 .dc-row { border-bottom: 1px solid var(--row-border); }
-.dc-row:nth-child(even) { background: var(--row-zebra); }
+.dc-row:where(:nth-child(even)) { background: var(--row-zebra); }
+.dc-row:where(:hover) { background: var(--row-hover); }
 .dc-row--selected { background: var(--row-selected); box-shadow: inset 2px 0 0 var(--accent); }
 .dc-row--warn  { background: var(--row-warn);  box-shadow: inset 3px 0 0 var(--lvl-w); }
 .dc-row--error { background: var(--row-error); box-shadow: inset 3px 0 0 var(--danger); }
 .dc-cell { padding: 9px 14px; border-right: 1px solid var(--grid); font-size: 12px; color: var(--t2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dc-th:last-child, .dc-cell:last-child { border-right: none; }
 .dc-cell--num { color: var(--syn-num); }     /* numeric cells */
 .dc-cell--null { color: var(--t5); font-style: italic; } /* NULL */
 .dc-cell--muted { color: var(--t4); }        /* time / meta */
 
 /* ---------- Badges & tags (semantic color via --c) ---------- */
-.dc-badge { font-size: 9.5px; font-weight: 700; letter-spacing: .06em; padding: 3px 8px; border-radius: var(--radius); color: var(--c, var(--t3)); background: color-mix(in srgb, var(--c, var(--t3)) 15%, transparent); }
-.dc-tag   { font-size: 10px; font-weight: 600; letter-spacing: .04em; padding: 2px 6px; border-radius: var(--radius-sm); color: var(--c, var(--t3)); border: 1px solid var(--tag-border); }
+.dc-badge { display: inline-block; padding: 2px 7px; border-radius: var(--radius-sm); font-size: 9.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--c, var(--t3)); background: color-mix(in srgb, var(--c, var(--t3)) 15%, transparent); }
+.dc-tag   { display: inline-block; padding: 1px 5px; border: 1px solid var(--tag-border); border-radius: var(--radius-sm); font-size: 9.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--c, var(--t3)); }
 .dc-tag--mock { color: var(--ai); border: 1px dashed var(--ai-border); } /* MOCK badge */
 
 /* ---------- Dropdown menu (single & multi select) ---------- */
@@ -422,23 +446,32 @@ a { text-decoration: none; color: inherit; }
 .dc-menu-scrim { position: fixed; inset: 0; z-index: 30; }
 
 /* ---------- Modal dialog ---------- */
+/* A modal kept in the markup starts with the hidden attribute; debugModal(id) shows and hides it. */
 .dc-modal-scrim { position: fixed; inset: 0; z-index: 50; background: var(--scrim); display: flex; align-items: center; justify-content: center; padding: 24px; }
+.dc-modal-scrim[hidden] { display: none; }
 .dc-modal { width: 460px; max-width: 94vw; max-height: 90vh; display: flex; flex-direction: column; overflow: hidden;
   background: var(--raise); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-modal); animation: dc-modal-in .16s ease; }
 .dc-modal--wide { width: 620px; }
 .dc-modal__head { flex: none; display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--border-soft); }
 .dc-modal__title { font-size: 13px; font-weight: 600; letter-spacing: .04em; color: var(--t1); }
-.dc-modal__close { color: var(--t3); cursor: pointer; font-size: 16px; }
+.dc-modal__close { background: transparent; border: none; color: var(--t3); cursor: pointer; font-size: 16px; }
 .dc-modal__close:hover { color: var(--t1); }
 .dc-modal__body { flex: 1; overflow: auto; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
 .dc-modal__foot { flex: none; display: flex; justify-content: flex-end; gap: 10px; padding: 14px 20px; border-top: 1px solid var(--border-soft); }
 
-/* ---------- Toast ---------- */
-.dc-toast { position: fixed; bottom: 26px; left: 50%; transform: translateX(-50%); z-index: 60;
-  display: flex; align-items: center; gap: 9px; padding: 11px 18px;
-  background: var(--menu); border: 1px solid var(--live-border); border-radius: var(--radius-lg); box-shadow: var(--shadow-modal); animation: dc-toast-in .18s ease; }
-.dc-toast__icon { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; background: var(--live); color: #fff; font-size: 11px; }
-.dc-toast__text { font-size: 12.5px; color: var(--t1); letter-spacing: .02em; }
+/* ---------- Toasts (debugToast(message, type) stacks them bottom-right) ---------- */
+.dc-toasts { position: fixed; bottom: 20px; right: 20px; z-index: 60; display: flex; flex-direction: column; gap: 8px; }
+.dc-toast {
+  display: flex; align-items: center; gap: 9px; padding: 11px 16px;
+  background: var(--menu); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-menu);
+  color: var(--t1); font-size: 12.5px; letter-spacing: .02em;
+  animation: dc-toast-in .3s ease, dc-toast-out .3s ease 2.7s forwards;
+}
+.dc-toast::before { content: ''; flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--c, var(--t4)); }
+.dc-toast--success { --c: var(--live);     border-color: var(--live-border); }
+.dc-toast--error   { --c: var(--danger);   border-color: var(--danger-border); }
+.dc-toast--info    { --c: var(--accent-2); border-color: var(--accent-border); }
+.dc-toast--warning { --c: var(--lvl-w);    border-color: color-mix(in srgb, var(--lvl-w) 50%, transparent); }
 
 /* ---------- Sidebar list item ---------- */
 .dc-listitem { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border-radius: var(--radius-sm); cursor: pointer; }
@@ -451,12 +484,13 @@ a { text-decoration: none; color: inherit; }
 .dc-star { font-size: 13px; line-height: 1; cursor: pointer; color: var(--t5); } /* unstarred */
 .dc-star--on { color: var(--star); } /* favorite (gold) */
 
-/* ---------- Resizable split ---------- */
-.dc-split { flex: 1; display: flex; min-height: 0; }
-.dc-divider { flex: none; width: 9px; cursor: col-resize; border-left: 1px solid var(--border); box-sizing: border-box; }
-.dc-divider:hover { border-left-color: var(--accent); background: var(--accent-soft); }
+/* ---------- Resizable split: pane | divider | pane (debugInitResizers() wires the drag) ---------- */
+.dc-split { flex: 1; height: 100%; min-height: 0; display: flex; }
+.dc-pane { display: flex; flex-direction: column; min-width: 200px; overflow: hidden; } /* the drag stops at each pane's min-width */
+.dc-divider { flex: none; width: 9px; cursor: col-resize; user-select: none; border-left: 1px solid var(--border); box-sizing: border-box; }
+.dc-divider:hover, .dc-divider--dragging { border-left-color: var(--accent); background: var(--accent-soft); }
 
-/* ---------- JSON syntax highlighting ---------- */
+/* ---------- JSON syntax highlighting (debugSyntaxHighlightJson() emits these spans) ---------- */
 .dc-json { font-family: var(--font-mono); font-size: 12px; line-height: 1.65; white-space: pre; }
 .dc-json .k { color: var(--syn-key); }   /* "key": */
 .dc-json .s { color: var(--syn-str); }    /* "string" */
@@ -464,521 +498,19 @@ a { text-decoration: none; color: inherit; }
 .dc-json .b { color: var(--syn-bool); }   /* true/false/null */
 .dc-json .p { color: var(--syn-punc); }   /* { } [ ] , : */
 
+/* ---------- Code well (after .dc-json, so <pre class="dc-code dc-json"> wraps long lines) ---------- */
+.dc-code { background: var(--field); border: 1px solid var(--chip-border); border-radius: var(--radius); padding: 13px 14px; font-family: var(--font-mono); font-size: 12px; line-height: 1.65; color: var(--t2); overflow-x: auto; white-space: pre-wrap; word-break: break-word; }
+
 /* ---------- Helpers ---------- */
 .dc-comment { color: var(--t4); }                 /* // inline comments */
-.dc-mono-label { font-size: 13px; font-weight: 600; letter-spacing: .06em; color: var(--t1); text-transform: uppercase; } /* e.g. NETWORK TRAFFIC */
+.dc-mono-label { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: .06em; color: var(--t1); text-transform: uppercase; } /* e.g. NETWORK TRAFFIC; fine on an <h3> */
 
-/* ──────── 3. Framework chrome + shared .debug-* components ─────── */
+/* ─────────────────────── 3. Framework chrome ────────────────────── */
 
-/* App shell: top bar + scrollable content area. */
-body {
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-.header {
-  flex: none;
-  height: 52px;
-  background: var(--header);
-  border-bottom: 1px solid var(--border);
-  padding: 0 22px;
-  display: flex;
-  align-items: stretch;
-  justify-content: space-between;
-}
-.tabs { display: flex; align-items: stretch; }
-.tab {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 16px;
-  font-size: 12px;
-  font-weight: 500;
-  letter-spacing: .1em;
-  text-transform: uppercase;
-  color: var(--t3);
-  white-space: nowrap;
-}
-.tab:hover { color: var(--t1); }
-.tab.active { color: var(--accent-2); font-weight: 600; box-shadow: inset 0 -2px 0 var(--accent); }
-.tab .tab-icon { font-size: 13px; line-height: 1; }
-.status-bar { display: flex; align-items: center; gap: 8px; }
-
-/* Connection state pill (#status, driven by debugSetStatus). */
-.status {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 10px;
-  border: 1px solid var(--btn-border);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-  color: var(--t3);
-}
-.status::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
-.status.connected { color: var(--live); border-color: var(--live-border); background: var(--live-soft); }
-.status.connected::before { animation: dc-live-pulse 1.8s ease-in-out infinite; }
-.status.disconnected,
-.status.error { color: var(--danger); border-color: var(--danger-border); background: var(--danger-soft); }
-
-.content { flex: 1; min-height: 0; overflow: auto; padding: 0; display: flex; flex-direction: column; }
-/* The injected tab content fills the scroll area so split-pane tabs (which size
-   themselves with height:100%) resolve against a real height instead of
-   collapsing to content height. Non-split tabs just get a taller container. */
+/* The tab's _view HTML is injected here. It fills the content area so
+   split-pane tabs (height: 100%) resolve against a real height instead
+   of collapsing to content height. */
 #lustro-tab-content { flex: 1; min-height: 0; }
-
-/* Theme toggle (cycles auto → light → dark; label set by shared.js). */
-.theme-toggle {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  background: transparent;
-  border: 1px solid var(--btn-border);
-  color: var(--t1);
-  padding: 5px 10px;
-  border-radius: 0;
-  cursor: pointer;
-  font-family: inherit;
-  font-size: 11px;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-  user-select: none;
-}
-.theme-toggle:hover { border-color: var(--hover-border); }
-
-/* ═══ Shared Debug Components (legacy class names, dc styling) ═══ */
-
-/* Modal System */
-.debug-modal {
-  display: none;
-  position: fixed;
-  inset: 0;
-  background: var(--scrim);
-  z-index: 1000;
-  justify-content: center;
-  align-items: center;
-  padding: 24px;
-}
-.debug-modal.visible { display: flex; }
-.debug-modal-content {
-  background: var(--raise);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-modal);
-  width: 900px;
-  min-width: 400px;
-  max-width: 95vw;
-  max-height: 90vh;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  resize: both;
-  animation: dc-modal-in .16s ease;
-}
-.debug-modal-content.medium { width: 700px; }
-.debug-modal-content.small { width: 500px; }
-.debug-modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 14px 20px;
-  border-bottom: 1px solid var(--border-soft);
-}
-.debug-modal-header span {
-  color: var(--t1);
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: .04em;
-  text-transform: uppercase;
-}
-.debug-modal-close {
-  background: transparent;
-  border: none;
-  color: var(--t3);
-  font-size: 16px;
-  cursor: pointer;
-}
-.debug-modal-close:hover { color: var(--t1); }
-.debug-modal-body {
-  padding: 20px;
-  overflow-y: auto;
-  flex: 1;
-  min-height: 0;
-}
-
-/* Split Pane System */
-.split-container {
-  display: flex;
-  height: 100%;
-  min-height: 0;
-}
-.pane {
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  min-width: 200px;
-  user-select: text;
-  -webkit-user-select: text;
-}
-.pane-divider {
-  flex: none;
-  width: 9px;
-  cursor: col-resize;
-  border-left: 1px solid var(--border);
-  user-select: none;
-}
-.pane-divider:hover,
-.pane-divider.dragging {
-  border-left-color: var(--accent);
-  background: var(--accent-soft);
-}
-.pane-divider::before { content: none; }
-.divider-handle { display: none; }
-.pane-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 14px 22px 12px;
-  border-bottom: 1px solid var(--border-soft);
-}
-.pane-header h3 {
-  margin: 0;
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: .06em;
-  text-transform: uppercase;
-  color: var(--t1);
-}
-.pane-header button {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  white-space: nowrap;
-  background: transparent;
-  border: 1px solid var(--btn-border);
-  border-radius: var(--radius);
-  color: var(--t1);
-  padding: 6px 11px;
-  cursor: pointer;
-  font-family: inherit;
-  font-size: 11px;
-  letter-spacing: .04em;
-  text-transform: uppercase;
-}
-.pane-header button:hover { border-color: var(--hover-border); }
-
-/* Table Styles */
-.debug-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 12px;
-}
-.debug-table th {
-  text-align: left;
-  padding: 8px 14px;
-  background: var(--header);
-  color: var(--t4);
-  font-size: 10.5px;
-  font-weight: 600;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-  white-space: nowrap;
-  border-bottom: 1px solid var(--border);
-  border-right: 1px solid var(--grid);
-  position: sticky;
-  top: 0;
-  z-index: 1;
-}
-.debug-table th:last-child { border-right: none; }
-.debug-table td {
-  padding: 9px 14px;
-  border-bottom: 1px solid var(--row-border);
-  border-right: 1px solid var(--grid);
-  color: var(--t2);
-}
-.debug-table td:last-child { border-right: none; }
-.debug-table tr:nth-child(even) td { background: var(--row-zebra); }
-.debug-table tr:hover td { background: var(--row-hover); }
-.debug-table tr.selected td { background: var(--row-selected); }
-.debug-table tr.selected td:first-child { box-shadow: inset 2px 0 0 var(--accent); }
-
-/* Button Variants */
-.debug-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  white-space: nowrap;
-  background: transparent;
-  border: 1px solid var(--btn-border);
-  border-radius: var(--radius);
-  color: var(--t1);
-  padding: 6px 11px;
-  cursor: pointer;
-  font-family: inherit;
-  font-size: 11px;
-  letter-spacing: .04em;
-  text-transform: uppercase;
-}
-.debug-btn:hover { border-color: var(--hover-border); }
-.debug-btn:disabled {
-  background: transparent;
-  border-color: var(--border-soft);
-  color: var(--t5);
-  cursor: not-allowed;
-}
-.debug-btn-primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-  font-weight: 600;
-}
-.debug-btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
-/* Destructive buttons read danger AT REST (ghost-danger), not only on hover. The
-   .debug-btn.debug-btn-danger form (0,2,0) outranks the .pane-header button element
-   rule (0,1,1), so the danger color/border still wins inside a pane-header toolbar. */
-.debug-btn-danger,
-.debug-btn.debug-btn-danger { color: var(--danger); border-color: var(--danger-border); }
-.debug-btn-danger:hover,
-.debug-btn.debug-btn-danger:hover { background: var(--danger-soft); border-color: var(--danger); }
-.debug-btn.active,
-.pane-header button.active {
-  background: var(--accent-soft);
-  border-color: var(--accent-border);
-  color: var(--accent-2);
-}
-.debug-btn-icon {
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  font-size: 13px;
-  padding: 4px 6px;
-  color: var(--t3);
-  transition: color 0.15s;
-}
-.debug-btn-icon:hover { color: var(--t1); }
-.debug-btn-icon.danger:hover { color: var(--danger); }
-
-/* Status Pills (soft tinted badges) */
-.status-pill {
-  display: inline-block;
-  padding: 2px 7px;
-  border-radius: var(--radius-sm);
-  font-size: 9.5px;
-  font-weight: 700;
-  letter-spacing: .06em;
-  text-transform: uppercase;
-  color: var(--t3);
-  background: color-mix(in srgb, var(--t3) 15%, transparent);
-}
-.status-pill.success { color: var(--live); background: color-mix(in srgb, var(--live) 15%, transparent); }
-.status-pill.error { color: var(--danger); background: color-mix(in srgb, var(--danger) 15%, transparent); }
-.status-pill.warning { color: var(--lvl-w); background: color-mix(in srgb, var(--lvl-w) 15%, transparent); }
-.status-pill.info { color: var(--accent-2); background: var(--accent-soft); }
-.status-pill.mocked { color: var(--ai); background: var(--ai-soft); }
-
-/* Search/Filter Bar */
-.debug-search-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 22px 12px;
-  border-bottom: 1px solid var(--border-soft);
-}
-.debug-search-bar .dc-field { flex: 1; }
-/* Style a legacy bare <input> nested anywhere in the bar, but never the
-   .dc-input inside a .dc-field (it is intentionally borderless/transparent).
-   Descendant + :not() so wrapped legacy markup keeps working as documented. */
-.debug-search-bar input:not(.dc-input) {
-  flex: 1;
-  background: var(--field);
-  border: 1px solid var(--chip-border);
-  border-radius: var(--radius);
-  padding: 8px 11px;
-  color: var(--t1);
-  font-family: inherit;
-  font-size: 12.5px;
-  outline: none;
-}
-.debug-search-bar input:not(.dc-input):focus { border-color: var(--accent); }
-.debug-filter-group {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-.debug-filter-group .filter-chip {
-  padding: 4px 11px;
-  border-radius: var(--radius-pill);
-  font-size: 11px;
-  letter-spacing: .03em;
-  cursor: pointer;
-  background: transparent;
-  color: var(--t3);
-  border: 1px solid var(--chip-border);
-  transition: border-color 0.15s, color 0.15s;
-}
-.debug-filter-group .filter-chip:hover { border-color: var(--hover-border); color: var(--t1); }
-.debug-filter-group .filter-chip.active {
-  background: var(--accent-soft);
-  color: var(--accent-2);
-  border-color: var(--accent-border);
-}
-
-/* JSON/Code Block (recessed well) */
-.debug-code-block {
-  background: var(--field);
-  border: 1px solid var(--chip-border);
-  border-radius: var(--radius);
-  padding: 13px 14px;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 1.65;
-  color: var(--t2);
-  overflow-x: auto;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-.debug-json .json-key { color: var(--syn-key); }
-.debug-json .json-string { color: var(--syn-str); }
-.debug-json .json-number { color: var(--syn-num); }
-.debug-json .json-boolean { color: var(--syn-bool); }
-.debug-json .json-null { color: var(--syn-bool); }
-.debug-json .json-bracket { color: var(--syn-punc); }
-
-/* Search highlight inside body views */
-mark {
-  background: var(--search-highlight);
-  color: inherit;
-  border-radius: 2px;
-  padding: 0 1px;
-}
-
-/* JSON Tree Viewer */
-.json-tree { font-family: var(--font-mono); font-size: 12px; line-height: 1.5; }
-.json-tree .json-section-header {
-  color: var(--accent-2);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-  margin: 16px 0 8px 0;
-  padding-bottom: 5px;
-  border-bottom: 1px solid var(--border-soft);
-}
-.json-tree .json-section-header:first-child { margin-top: 0; }
-.json-tree .json-section-header.collapsible { cursor: pointer; user-select: none; }
-.json-tree .json-section-header.collapsible:hover { color: var(--accent); }
-.json-tree .section-toggle {
-  display: inline-block;
-  width: 14px;
-  text-align: center;
-  color: var(--t4);
-}
-.json-tree .collapsible-section { margin-left: 16px; }
-.json-tree .collapsible-section.collapsed { display: none; }
-.json-tree .json-item { position: relative; padding-left: 16px; }
-.json-tree .json-toggle {
-  position: absolute;
-  left: 0;
-  cursor: pointer;
-  user-select: none;
-  color: var(--t4);
-  width: 14px;
-  text-align: center;
-}
-.json-tree .json-toggle:hover { color: var(--accent-2); }
-.json-tree .json-key { color: var(--syn-key); }
-.json-tree .json-string { color: var(--syn-str); }
-.json-tree .json-number { color: var(--syn-num); }
-.json-tree .json-boolean { color: var(--syn-bool); }
-.json-tree .json-null { color: var(--syn-bool); }
-.json-tree .json-bracket { color: var(--syn-punc); }
-.json-tree .json-children { display: block; }
-.json-tree .json-children.collapsed { display: none; }
-.json-tree .json-inline-preview { color: var(--t4); font-style: italic; }
-
-/* Disconnect Overlay */
-.disconnect-overlay {
-  display: none;
-  position: fixed;
-  inset: 0;
-  background: var(--scrim-strong);
-  z-index: 2000;
-  justify-content: center;
-  align-items: center;
-}
-.disconnect-overlay.visible { display: flex; }
-.disconnect-content { text-align: center; color: var(--t2); }
-.disconnect-icon { font-size: 48px; margin-bottom: 16px; }
-.disconnect-title {
-  font-size: 18px;
-  font-weight: 600;
-  letter-spacing: .06em;
-  text-transform: uppercase;
-  color: var(--danger);
-  margin-bottom: 8px;
-}
-.disconnect-message {
-  font-size: 13px;
-  color: var(--t3);
-  margin-bottom: 24px;
-}
-.disconnect-spinner {
-  width: 40px;
-  height: 40px;
-  margin: 0 auto;
-  border: 3px solid var(--danger-soft);
-  border-top-color: var(--danger);
-  border-radius: 50%;
-  animation: debugSpin 1s linear infinite;
-}
-@keyframes debugSpin { to { transform: rotate(360deg); } }
-
-/* Toast Notifications */
-.debug-toast-container {
-  position: fixed;
-  bottom: 20px;
-  right: 20px;
-  z-index: 3000;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.debug-toast {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 11px 16px;
-  border-radius: var(--radius-lg);
-  font-size: 12.5px;
-  letter-spacing: .02em;
-  color: var(--t1);
-  background: var(--menu);
-  border: 1px solid var(--border);
-  box-shadow: var(--shadow-menu);
-  animation: debugToastIn 0.3s ease, debugToastOut 0.3s ease 2.7s;
-  opacity: 0;
-  animation-fill-mode: forwards;
-}
-.debug-toast::before {
-  content: '';
-  flex: none;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--t4);
-}
-.debug-toast.success { border-color: var(--live-border); }
-.debug-toast.success::before { background: var(--live); }
-.debug-toast.error { border-color: var(--danger-border); }
-.debug-toast.error::before { background: var(--danger); }
-.debug-toast.info { border-color: var(--accent-border); }
-.debug-toast.info::before { background: var(--accent-2); }
-.debug-toast.warning { border-color: color-mix(in srgb, var(--lvl-w) 50%, transparent); }
-.debug-toast.warning::before { background: var(--lvl-w); }
-@keyframes debugToastIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-@keyframes debugToastOut { from { opacity: 1; } to { opacity: 0; } }
 
 /* Pre-auth / unauthorized message shown when /_view returns 401. */
 .lustro-auth-needed {
@@ -1001,79 +533,4 @@ mark {
   padding: 2px 6px;
   border-radius: var(--radius-sm);
   font-size: 12px;
-}
-
-/* ─────────────────── 4. Legacy token aliases ────────────────────
-   The pre-redesign palette, mapped onto the tokens above so tab CSS
-   written against the old names keeps working and keeps theming
-   (aliases reference the new tokens, which swap per theme). New code
-   should use the new tokens directly. */
-:root {
-  --bg-primary: var(--bg);
-  --bg-elevated: var(--header);
-  --bg-code: var(--field);
-  --bg-chip-off: var(--t5);   /* off-state toggle track: a visible neutral, distinct from the card surface (matches .net-toggle) */
-  --bg-disabled: var(--t5);
-
-  --border-subtle: var(--border-soft);
-
-  --text: var(--t2);
-  --text-strong: var(--t1);
-  --text-secondary: var(--t2);
-  --text-muted: var(--t3);
-  --text-faint: var(--t4);
-  --text-faintest: var(--t5);
-  --text-on-accent: #fff;
-  --text-on-light: #000;
-
-  --accent-soft-border: var(--accent-border);
-  --accent-info: var(--accent-2);
-  --accent-info-hover: var(--accent-2);
-  --accent-primary: var(--accent);
-  --accent-primary-hover: var(--accent-hover);
-  --accent-button: var(--accent);
-  --accent-button-hover: var(--accent-hover);
-  --accent-pink: var(--ai);
-  --accent-pink-hover: var(--ai);
-  --accent-teal: var(--type-long);
-  --accent-teal-hover: var(--type-long);
-  --accent-orange: var(--status-4xx);
-  --accent-purple: var(--cat-ai);
-  --accent-cyan: var(--cat-config);
-
-  --success: var(--live);
-  --success-bright: var(--live);
-  --success-text: var(--live);
-  --warning: var(--lvl-w);
-  --warning-text-dark: #15181d;
-  --danger-hover: var(--danger);
-  --danger-bright: var(--danger);
-  --danger-text: var(--danger);
-
-  --status-mocked: var(--ai);
-  --status-err: var(--danger);
-  --status-pending: var(--t3);
-
-  --pill-success-bg: color-mix(in srgb, var(--live) 15%, transparent);
-  --pill-error-bg: color-mix(in srgb, var(--danger) 15%, transparent);
-  --pill-warning-bg: color-mix(in srgb, var(--lvl-w) 15%, transparent);
-  --pill-info-bg: var(--accent-soft);
-  --pill-mocked-bg: var(--ai-soft);
-  --pill-teal-bg: color-mix(in srgb, var(--type-long) 15%, transparent);
-
-  --overlay-modal: var(--scrim);
-  --overlay-disconnect: var(--scrim-strong);
-  --row-stripe: var(--row-zebra);
-
-  --json-key: var(--syn-key);
-  --json-string: var(--syn-str);
-  --json-number: var(--syn-num);
-  --json-boolean: var(--syn-bool);
-  --json-null: var(--syn-bool);
-  --json-bracket: var(--syn-punc);
-
-  --scrollbar-thumb: rgba(128, 128, 128, 0.32);
-  --scrollbar-thumb-hover: rgba(128, 128, 128, 0.5);
-
-  --shadow-toast: var(--shadow-menu);
 }
