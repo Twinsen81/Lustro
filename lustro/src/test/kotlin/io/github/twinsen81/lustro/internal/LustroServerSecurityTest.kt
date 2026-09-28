@@ -72,10 +72,28 @@ class LustroServerSecurityTest {
 
     private val recordingTab = RecordingTab()
 
+    /** Sets its own policies on its responses, under two spellings of the header name. */
+    private class PolicyTab : DebugTab() {
+        override val id: String = "policy"
+        override val title: String = "Policy"
+        override val icon: String = "P"
+
+        override fun handle(request: DebugRequest): DebugResponse? =
+            DebugResponse.bytes(
+                body = "<p>hi</p>".toByteArray(),
+                contentType = io.github.twinsen81.lustro.MediaType.parse("text/html"),
+                headers =
+                    io.github.twinsen81.lustro.Headers.Builder()
+                        .add("Content-Security-Policy", "sandbox")
+                        .add("content-security-policy", "script-src 'none'")
+                        .build(),
+            )
+    }
+
     @Before
     fun setUp() {
         val context = ApplicationProvider.getApplicationContext<android.app.Application>()
-        val registry = DebugTabRegistry().apply { addTab(SentinelTab()); addTab(recordingTab); start() }
+        val registry = DebugTabRegistry().apply { addTab(SentinelTab()); addTab(recordingTab); addTab(PolicyTab()); start() }
         val assetLoader = DebugAssetLoader(context)
         tokenStore = LustroTokenStore(context)
         server =
@@ -349,6 +367,18 @@ class LustroServerSecurityTest {
     }
 
 
+
+    @Test
+    fun `a tab's own policies are enforced alongside the server's, never instead of it`() {
+        get("/api/v1/policy/page", bearer = tokenStore.token()).use { resp ->
+            assertEquals(200, resp.code)
+            assertEquals(
+                listOf("$expectedCsp, sandbox, script-src 'none'"),
+                resp.headers("Content-Security-Policy"),
+            )
+            assertEquals("nosniff", resp.header("X-Content-Type-Options"))
+        }
+    }
 
     @Test
     fun `the server's own origin is allowed on state-changing requests`() {

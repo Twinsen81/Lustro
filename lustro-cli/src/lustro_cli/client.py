@@ -12,7 +12,7 @@ import json
 import urllib.error
 import urllib.parse
 import urllib.request
-from typing import Any, Dict, Mapping, Optional
+from typing import Any, Dict, Mapping, NamedTuple, Optional, Tuple
 
 # The shared error-envelope status -> machine "error" type map, mirrored from the
 # wire protocol (docs/AGENTS.md "Failure modes" / error-envelope.schema.json). Used as
@@ -86,6 +86,13 @@ def _opt_str(value: Any) -> Optional[str]:
     return None if value is None else str(value)
 
 
+class RawBody(NamedTuple):
+    """A response body as the server sent it, for routes that don't answer JSON."""
+
+    data: bytes
+    content_type: Optional[str]
+
+
 class LustroClient:
     """Minimal JSON-over-HTTP client for ``/api/v1/*`` routes.
 
@@ -112,8 +119,8 @@ class LustroClient:
                 url += "?" + urllib.parse.urlencode(filtered)
         return url
 
-    def _headers(self) -> Dict[str, str]:
-        headers = {"Accept": "application/json"}
+    def _headers(self, accept: str) -> Dict[str, str]:
+        headers = {"Accept": accept}
         if self.token:
             headers["Authorization"] = "Bearer " + self.token
         return headers
@@ -131,8 +138,27 @@ class LustroClient:
         Raises :class:`LustroError` on any non-2xx response (parsing the error
         envelope when present) or on a transport failure.
         """
+        raw, _ = self._send(method, path, params=params, json_body=json_body, accept="application/json")
+        return _decode_json(raw)
+
+    def get_raw(self, path: str, params: Optional[Mapping[str, Any]] = None) -> RawBody:
+        """GET a route whose body isn't JSON, such as a captured body, and return
+        it undecoded with its ``Content-Type``. Errors raise :class:`LustroError`
+        as :meth:`request` does, since they still use the error envelope."""
+        data, content_type = self._send("GET", path, params=params, json_body=None, accept="*/*")
+        return RawBody(data, content_type)
+
+    def _send(
+        self,
+        method: str,
+        path: str,
+        *,
+        params: Optional[Mapping[str, Any]],
+        json_body: Any,
+        accept: str,
+    ) -> Tuple[bytes, Optional[str]]:
         url = self._url(path, params)
-        headers = self._headers()
+        headers = self._headers(accept)
         data: Optional[bytes] = None
         if json_body is not None:
             data = json.dumps(json_body).encode("utf-8")
@@ -141,8 +167,7 @@ class LustroClient:
         req = urllib.request.Request(url, data=data, headers=headers, method=method.upper())
         try:
             with urllib.request.urlopen(req, timeout=self.timeout) as resp:
-                raw = resp.read()
-                return _decode_json(raw)
+                return resp.read(), resp.headers.get("Content-Type")
         except urllib.error.HTTPError as exc:  # non-2xx
             raise _error_from_http(exc) from None
         except urllib.error.URLError as exc:

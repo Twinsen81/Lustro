@@ -11,7 +11,11 @@ public interface DebugResponse {
     /** The HTTP status code. */
     public val status: Int
 
-    /** The response headers (excludes the content type). */
+    /**
+     * The response headers (excludes the content type). A
+     * `Content-Security-Policy` among them is enforced alongside the server's
+     * own policy, so it can only restrict the response further.
+     */
     public val headers: Headers
 
     /** The `Content-Type` of the [body], or `null` if unspecified. */

@@ -71,10 +71,20 @@ build, and that even in debug builds it stays bound to the local device.
 - **Content Security Policy.** Chrome and tab views are served with
   `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';
   connect-src 'self'; img-src 'self' data:; form-action 'none'; object-src
-  'none'; base-uri 'none'`. Every API request, whatever its method, passes an
-  Origin / `Sec-Fetch-Site` check driven by `DebugConfig.allowedOrigins`. A
-  browser can still send a cross-origin `GET` with neither header, so tabs must
-  not change state on `GET` or `HEAD`.
+  'none'; base-uri 'none'`. A policy a tab sets on its own response is enforced
+  alongside this one, never instead of it. Every API request, whatever its
+  method, passes an Origin / `Sec-Fetch-Site` check driven by
+  `DebugConfig.allowedOrigins`. A browser can still send a cross-origin `GET`
+  with neither header, so tabs must not change state on `GET` or `HEAD`.
+- **Captured bodies can't run script under the console's origin.** A captured
+  body is content from the app's servers, and
+  `GET /api/v1/network/transactions/{id}/body/{request|response}` serves it
+  from the console's own origin. Only PNG, JPEG, GIF, and WebP images are
+  served inline, and with `nosniff` a browser never renders a body labelled as
+  one of them as a page. Every other type, SVG and HTML included, is sent with
+  `Content-Disposition: attachment` and the policy
+  `default-src 'none'; sandbox` as well, so no script in it runs even if a
+  browser renders it.
 - **Capture-time redaction, best-effort.** A `Redactor` SPI runs at capture
   time, before anything is stored, so whatever it masks never enters the
   in-memory capture store and cannot leak through the API, the UI, or fixtures.
@@ -100,11 +110,18 @@ build, and that even in debug builds it stays bound to the local device.
   - the error text of a failed request, which is stored verbatim. This one is
     not a heuristic miss: the `Redactor` SPI has no hook for an error, so a
     custom redactor cannot cover it either. It matters because the platform puts
-    the full request URL into some `HttpURLConnection` exception messages.
+    the full request URL into some `HttpURLConnection` exception messages;
+  - an image body. The capture keeps a request or response body whose type is
+    an image as bytes, up to the capture cap, and the `Redactor` reads text
+    only, so it never sees one, and a custom redactor cannot cover it either.
+    An image can carry a secret in its pixels or its metadata, such as a photo's
+    location. SVG is XML, so it is captured as text and redacted like any other.
+    OkHttp capture keeps no other binary body, such as protobuf or an octet
+    stream; platform `HttpURLConnection` capture decodes one as text.
 
-  Treat a capture as sensitive. For everything above except the error text, a
-  stricter `Redactor` passed to `NetworkDebugTab.create(...)` closes the gap for
-  traffic whose secrets the name heuristic will not find.
+  Treat a capture as sensitive. For everything above except the error text and
+  image bodies, a stricter `Redactor` passed to `NetworkDebugTab.create(...)`
+  closes the gap for traffic whose secrets the name heuristic will not find.
 - **Nothing persisted to disk except mock rules.** Captured traffic lives only
   in a bounded in-memory ring buffer and is lost when the process dies. The sole
   persisted state is user-authored mock rules.

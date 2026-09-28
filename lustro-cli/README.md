@@ -51,6 +51,7 @@ discovery), `--json` (raw JSON output).
 | `lustro net list` | `GET network/transactions` (one poll) |
 | `lustro net poll` | cursor loop; prints new transactions |
 | `lustro net get <id>` | `GET network/transactions/<id>` |
+| `lustro net body <id> [request\|response] [-o FILE]` | `GET network/transactions/<id>/body/<direction>`: saves a body as it is stored, the response by default; stdout without `-o` |
 | `lustro net clear` | `POST network/clear` |
 | `lustro net pause` | `POST network/pause` |
 | `lustro net overwrite` | `POST network/overwrite-mode` |

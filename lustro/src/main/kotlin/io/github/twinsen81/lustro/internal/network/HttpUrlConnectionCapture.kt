@@ -183,6 +183,7 @@ internal class HttpUrlConnectionCapture(
             if (!requestRecorded.compareAndSet(false, true)) return
             try {
                 val bodyBytes = requestBodyBuffer?.toByteArray()
+                val contentType = contentTypeOf(requestHeaders)
                 transactionId =
                     sink.beginRequest(
                         url = url.toString(),
@@ -190,8 +191,8 @@ internal class HttpUrlConnectionCapture(
                         // promotion, not just whatever setRequestMethod tracked.
                         method = connection.requestMethod,
                         headers = headersOf(requestHeaders),
-                        requestBody = bodyBytes?.let { capturedBodyOf(it) },
-                        contentType = contentTypeOf(requestHeaders),
+                        requestBody = bodyBytes?.let { platformCapturedBody(it, maxBodySize, contentType) },
+                        contentType = contentType,
                     )
             } catch (t: Throwable) {
                 Log.w(TAG, "recordRequest failed: ${t.javaClass.simpleName}")
@@ -206,7 +207,7 @@ internal class HttpUrlConnectionCapture(
                 // check the response code but never read the body stream, so finalizeBody
                 // would never fire and the transaction would be stuck "in flight". If a body
                 // is read, finalizeBody enriches this (still complete).
-                sink.completeRequest(id, capturedResponse(statusCode, headers, body = null))
+                sink.completeRequest(id, capturedResponse(statusCode, flatten(headers), body = null))
             } catch (t: Throwable) {
                 Log.w(TAG, "recordResponseHeaders failed: ${t.javaClass.simpleName}")
             }
@@ -223,8 +224,10 @@ internal class HttpUrlConnectionCapture(
             if (!bodyFinalized.compareAndSet(false, true)) return
             val id = transactionId ?: return
             try {
-                val raw = responseBodyBuffer.toByteArray()
-                sink.completeRequest(id, capturedResponse(statusCode, headers, capturedBodyOf(raw)))
+                val flat = flatten(headers)
+                val contentType = flat.get("Content-Type")?.let { MediaType.parse(it) }
+                val body = platformCapturedBody(responseBodyBuffer.toByteArray(), maxBodySize, contentType)
+                sink.completeRequest(id, capturedResponse(statusCode, flat, body))
             } catch (t: Throwable) {
                 Log.w(TAG, "finalizeBody failed: ${t.javaClass.simpleName}")
             }
@@ -233,28 +236,13 @@ internal class HttpUrlConnectionCapture(
         // No protocol: HttpURLConnection has no public API that reports it.
         private fun capturedResponse(
             statusCode: Int,
-            headers: Map<String, List<String>>,
+            headers: Headers,
             body: CapturedBody?,
         ): CapturedResponse =
             CapturedResponse.Builder(statusCode, System.currentTimeMillis() - startTime)
-                .headers(flatten(headers))
+                .headers(headers)
                 .body(body)
                 .build()
-
-        /**
-         * Builds a [CapturedBody] from tee-captured [bytes]. The tee caps writes at
-         * [maxBodySize], so a buffer at the cap signals truncation (a buffer length
-         * equal to the cap indicates the full body was not captured); [byteSize] reports
-         * the captured size since the full size isn't tracked beyond the cap.
-         */
-        private fun capturedBodyOf(bytes: ByteArray): CapturedBody {
-            val truncated = bytes.size >= maxBodySize
-            return CapturedBody(
-                text = String(bytes, Charsets.UTF_8),
-                truncated = truncated,
-                byteSize = bytes.size.toLong(),
-            )
-        }
 
         fun recordError(message: String?) {
             // A response (incl. 4xx/5xx) was already captured; don't clobber it with an "error"
@@ -673,5 +661,22 @@ internal class HttpUrlConnectionCapture(
         private const val TAG = "LustroHttpUrlCapture"
         private const val HTTPS_PORT = 443
         private const val HTTP_PORT = 80
+    }
+}
+
+/**
+ * Builds a [CapturedBody] from tee-captured [bytes] of a body of [contentType]:
+ * an image body as bytes, anything else decoded as UTF-8 text. The tee caps
+ * writes at [maxBodySize], so a buffer at the cap signals truncation (a buffer
+ * length equal to the cap indicates the full body was not captured); `byteSize`
+ * reports the captured size since the full size isn't tracked beyond the cap.
+ */
+internal fun platformCapturedBody(bytes: ByteArray, maxBodySize: Int, contentType: MediaType?): CapturedBody {
+    val truncated = bytes.size >= maxBodySize
+    val byteSize = bytes.size.toLong()
+    return if (contentType.isRetainedBinary()) {
+        CapturedBody(text = null, truncated = truncated, byteSize = byteSize, bytes = bytes)
+    } else {
+        CapturedBody(text = String(bytes, Charsets.UTF_8), truncated = truncated, byteSize = byteSize)
     }
 }

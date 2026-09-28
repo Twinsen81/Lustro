@@ -55,6 +55,7 @@ OPENAPI_COMPONENT_CASES = [
     ("cursor-delta.json", "TransactionCursorEnvelope"),
     ("cursor-unchanged.json", "TransactionCursorEnvelope"),
     ("transaction.json", "Transaction"),
+    ("transaction-image.json", "Transaction"),
     ("error-envelope.json", "ErrorEnvelope"),
 ]
 
@@ -120,12 +121,18 @@ TRANSACTION_FIELDS_SINCE_1_2 = (
     "responseContentType",
 )
 
+# Also added in 1.2, and sent on the detail only.
+DETAIL_FIELDS_SINCE_1_2 = ("requestBodyBinary", "responseBodyBinary")
+
+DETAIL_FIXTURES = ("transaction.json", "transaction-image.json")
+
 
 def _golden_transactions():
     for fixture in ("cursor-reset.json", "cursor-delta.json"):
         for tx in wire.load_golden(fixture)["items"]:
             yield fixture, tx
-    yield "transaction.json", wire.load_golden("transaction.json")
+    for fixture in DETAIL_FIXTURES:
+        yield fixture, wire.load_golden(fixture)
 
 
 def test_the_network_schema_version_matches_meta():
@@ -136,7 +143,7 @@ def test_the_network_schema_version_matches_meta():
 
 def test_the_transaction_schema_declares_the_1_2_fields():
     properties = wire.load_openapi()["components"]["schemas"]["Transaction"]["properties"]
-    for field in TRANSACTION_FIELDS_SINCE_1_2:
+    for field in TRANSACTION_FIELDS_SINCE_1_2 + DETAIL_FIELDS_SINCE_1_2:
         assert field in properties, field
 
 
@@ -144,3 +151,21 @@ def test_every_golden_transaction_carries_the_1_2_fields():
     for fixture, tx in _golden_transactions():
         for field in TRANSACTION_FIELDS_SINCE_1_2:
             assert field in tx, "{}: {} has no {}".format(fixture, tx["id"], field)
+
+
+def test_every_golden_detail_carries_the_binary_flags():
+    for fixture in DETAIL_FIXTURES:
+        tx = wire.load_golden(fixture)
+        for direction in ("request", "response"):
+            binary = tx[direction + "BodyBinary"]
+            assert isinstance(binary, bool), fixture
+            # A body is text or bytes, never both: a binary one has no text.
+            if binary:
+                assert tx[direction + "Body"] is None, fixture
+
+
+def test_the_body_route_is_declared_with_both_directions():
+    op = wire.load_openapi()["paths"]["/api/v1/network/transactions/{id}/body/{direction}"]["get"]
+    direction = next(p for p in op["parameters"] if p["name"] == "direction")
+    assert direction["schema"]["enum"] == ["request", "response"]
+    assert "404" in op["responses"]

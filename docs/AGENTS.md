@@ -104,6 +104,7 @@ below summarizes it. All routes are token-authenticated and use the shared error
 | --- | --- | --- |
 | Poll transactions | `GET transactions?cursor=&search=` | Cursor envelope. First poll (no/invalid cursor) → `reset` with the full list; cursor unchanged → `unchanged` (items omitted); after a change → `delta`. `search` filters case-insensitively over URL, method, and bodies. Carries a top-level `state` `{ paused, overwriteMode, throttleDelayMs }`. |
 | Transaction detail | `GET transactions/{id}` | Full object (headers + bodies, with truncation flags). Enveloped `404` if missing. |
+| Transaction body | `GET transactions/{id}/body/{request\|response}` | One body as it is stored: the bytes of an image, or the redacted text as UTF-8. Not JSON. Enveloped `404` when no body was kept. See below. |
 | Clear | `POST clear` | Clears the captured list; mock rules and settings are preserved. |
 | List rules | `GET rules` | `{ items: [MockRule...] }`. |
 | Add / upsert rule | `POST rules` | Body `MockRuleInput` (`urlPattern` required). Supplying a stable `id` makes the write **idempotent** (upsert by id); omitting it generates one. Returns `{ status: "ok", id }`. |
@@ -153,6 +154,18 @@ plus `durationMs`; take a request's duration from `durationMs`. `protocol` (`htt
 `requestContentType` and `responseContentType` give the media type as captured, so a client can
 tell JSON from an image without reading the headers. These fields arrived in protocol 1.2; a 1.1
 server leaves them out.
+
+**Image bodies and the body route.** A body is captured as text, or, for an image, as bytes; SVG
+is text. The detail's `requestBodyBinary` and `responseBodyBinary` are `true` when that body was
+kept as bytes, and its `requestBody` or `responseBody` is then `null`.
+`GET transactions/{id}/body/{request|response}` returns either kind as it is stored, so it is also
+how to save a large text body to a file. A body cut at the capture cap comes back as the part that
+was kept, and the detail's `...BodyTruncated` flag says when. `Content-Type` is the captured media
+type without its parameters, plus `charset=utf-8` for text. The route answers an enveloped `404`
+when the request or response had no body, or when capture kept none: a one-shot or duplex request
+body, or a binary type other than an image. The redactor never sees an image, so treat it as
+unredacted. `lustro net body <id> [request|response] -o FILE` wraps the route. These fields and
+the route are part of protocol 1.2.
 
 ## Common workflows
 
@@ -220,7 +233,8 @@ Errors use the shared envelope; key statuses:
   `POST /api/v1/_auth`).
 - **`503 unavailable`** — the server is at its concurrency + queue limit; back off and retry.
 - **`504 timeout`** — a handler (e.g. a slow `send`) exceeded the per-request timeout.
-- **`404 not_found`** — unknown route, missing transaction, or `send` with no sender configured.
+- **`404 not_found`** — unknown route, missing transaction, a body that wasn't kept, or `send` with
+  no sender configured.
 - **Connection refused / no response** — the app is backgrounded (the server only listens while
   foregrounded) or `adb forward` isn't set up. Re-check the `LustroToken` log line for the live
   endpoint. A connection closed without a response can also mean the server is at its

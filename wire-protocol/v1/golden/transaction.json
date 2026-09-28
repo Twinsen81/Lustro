@@ -22,9 +22,11 @@
   },
   "requestBody": null,
   "requestBodyTruncated": false,
+  "requestBodyBinary": false,
   "responseHeaders": {
     "Content-Type": "application/json"
   },
   "responseBody": "{\"error\":\"boom\"}",
-  "responseBodyTruncated": false
+  "responseBodyTruncated": false,
+  "responseBodyBinary": false
 }

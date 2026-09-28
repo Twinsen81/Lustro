@@ -66,6 +66,24 @@ see [DECISIONS.md](DECISIONS.md).
   release GitHub Actions workflows.
 - **Docs**: `README.md`, library `docs/AGENTS.md`, `SECURITY.md`, `CONTRIBUTING.md`,
   `CODE_OF_CONDUCT.md`, `DECISIONS.md`, and issue/PR templates + grouped Dependabot.
+- **Image bodies, and a route that serves any captured body.** The capture
+  used to keep a body only as text, so an image kept nothing but its size. The
+  OkHttp and platform `HttpURLConnection` adapters now keep image request and
+  response bodies as bytes, up to `maxBodyCaptureBytes` and marked truncated
+  past it, as they keep text; SVG stays text, and other binary bodies are still
+  dropped. `CapturedBody` gains `bytes` for them: at most one of `text` and
+  `bytes` is set, and the `Redactor`, which reads text, never sees `bytes`, so
+  an image body is stored as it arrived. The bytes count toward
+  `captureBudgetBytes` like text. `GET network/transactions/{id}/body/{request|response}`
+  returns a body as it is stored, bytes or redacted text, so it is also how to
+  download a large text body; it answers an enveloped `404` when no body was
+  kept. It serves PNG, JPEG, GIF, and WebP inline, and every other type, SVG
+  and HTML included, as an attachment with the policy
+  `default-src 'none'; sandbox`, so a captured page can't run script under the
+  console's origin. The transaction detail gains `requestBodyBinary` and
+  `responseBodyBinary` (wire protocol 1.2). The console shows an image body in
+  the detail, and `lustro net body <id> [request|response] -o FILE` saves a
+  body to a file.
 - **Request cancellation for tabs**: `DebugRequest.isCancelled`, `onCancel(Runnable)`, and
   `cancel()`. The runtime cancels a request when it times out or the server shuts down, so a
   handler can abort blocking work that ignores thread interrupts, such as a SQLite query
@@ -331,6 +349,10 @@ see [DECISIONS.md](DECISIONS.md).
   instead of as seven parameters. A field added in a later release becomes one
   more optional builder call, so a capture adapter keeps compiling and linking.
   An adapter that called the old signature moves its arguments to the builder.
+- **A tab's `Content-Security-Policy` is enforced alongside the server's.** The
+  server used to replace a policy a tab set on its response with its own. It
+  now sends both in one header, and a browser enforces each, so a tab can
+  restrict a response further but never loosen the server's policy.
 - **Console redesign — terminal theme.** The web console now uses a dark-first,
   mono-spaced terminal design: one blue accent, semantic color tokens for
   methods/statuses/levels/types/categories, flat surfaces with 1px separators,

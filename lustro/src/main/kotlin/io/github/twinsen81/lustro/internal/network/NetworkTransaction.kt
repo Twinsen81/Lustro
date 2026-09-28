@@ -24,6 +24,9 @@ internal data class NetworkTransaction(
     val url: String,
     val requestHeaders: Map<String, String> = emptyMap(),
     val requestBody: String? = null,
+    // Set only when requestBody isn't, and stored as it arrived. Never changed
+    // after capture, so copies of this snapshot can share the array.
+    val requestBinaryBody: ByteArray? = null,
     val requestBodyTruncated: Boolean = false,
     val requestContentType: String? = null,
     val requestBodyBytes: Long? = null,
@@ -31,6 +34,8 @@ internal data class NetworkTransaction(
     val statusCode: Int? = null,
     val responseHeaders: Map<String, String>? = null,
     val responseBody: String? = null,
+    // As requestBinaryBody.
+    val responseBinaryBody: ByteArray? = null,
     val responseBodyTruncated: Boolean = false,
     val responseContentType: String? = null,
     val responseBodyBytes: Long? = null,

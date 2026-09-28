@@ -22,6 +22,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import okhttp3.ResponseBody
+import okhttp3.ResponseBody.Companion.toResponseBody
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import okio.Buffer
@@ -29,6 +30,7 @@ import okio.BufferedSource
 import okio.Source
 import okio.Timeout
 import okio.buffer
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -484,6 +486,96 @@ class LustroNetworkInterceptorTest {
         assertEquals(16, tx.requestBody!!.length)
         // ...while the reported byte size is the full request body size.
         assertEquals(64L, tx.requestBodyBytes)
+    }
+
+    @Test
+    fun `an image response is kept as bytes, not decoded or redacted`() {
+        val redactor = CountingRedactor()
+        val store = store(redactor)
+        val png = byteArrayOf(-119, 80, 78, 71, 13, 10, 26, 10, 0, -1)
+        val request = Request.Builder().url("https://example.com/avatar.png").build()
+        val response = responseFor(request, png.toResponseBody("image/png".toMediaType()))
+
+        val result = interceptor(store).intercept(FakeChain(request, response))
+
+        val tx = store.getTransactions().single()
+        assertArrayEquals(png, tx.responseBinaryBody)
+        assertNull(tx.responseBody)
+        assertFalse(tx.responseBodyTruncated)
+        assertEquals(10L, tx.responseBodyBytes)
+        assertEquals(0, redactor.bodies)
+        // Capture peeked: the app still reads the whole body.
+        assertArrayEquals(png, result.body!!.bytes())
+    }
+
+    @Test
+    fun `an image response over the cap keeps a prefix and reports the full size`() {
+        val store = store()
+        val jpeg = ByteArray(64) { it.toByte() }
+        val request = Request.Builder().url("https://example.com/photo.jpg").build()
+        val response = responseFor(request, jpeg.toResponseBody("image/jpeg".toMediaType()))
+
+        interceptor(store, maxBodySize = 16).intercept(FakeChain(request, response))
+
+        val tx = store.getTransactions().single()
+        assertArrayEquals(jpeg.copyOf(16), tx.responseBinaryBody)
+        assertTrue(tx.responseBodyTruncated)
+        assertEquals(64L, tx.responseBodyBytes)
+    }
+
+    @Test
+    fun `an image request body is kept as bytes, up to the cap`() {
+        val store = store()
+        val upload = ByteArray(32) { (255 - it).toByte() }
+        val request =
+            Request.Builder()
+                .url("https://example.com/upload")
+                .put(upload.toRequestBody("image/webp".toMediaType()))
+                .build()
+        val response = responseFor(request, TrackingResponseBody("text/plain".toMediaType(), "ok", 2))
+
+        interceptor(store, maxBodySize = 16).intercept(FakeChain(request, response))
+
+        val tx = store.getTransactions().single()
+        assertArrayEquals(upload.copyOf(16), tx.requestBinaryBody)
+        assertNull(tx.requestBody)
+        assertTrue(tx.requestBodyTruncated)
+        assertEquals(32L, tx.requestBodyBytes)
+    }
+
+    @Test
+    fun `other binary bodies are still dropped, keeping their size`() {
+        val store = store()
+        val request =
+            Request.Builder()
+                .url("https://example.com/blob")
+                .post(byteArrayOf(1, 2, 3).toRequestBody("application/protobuf".toMediaType()))
+                .build()
+        val response = responseFor(request, ByteArray(5).toResponseBody("application/octet-stream".toMediaType()))
+
+        interceptor(store).intercept(FakeChain(request, response))
+
+        val tx = store.getTransactions().single()
+        assertNull(tx.requestBinaryBody)
+        assertNull(tx.requestBody)
+        assertEquals(3L, tx.requestBodyBytes)
+        assertNull(tx.responseBinaryBody)
+        assertNull(tx.responseBody)
+        assertEquals(5L, tx.responseBodyBytes)
+    }
+
+    @Test
+    fun `an SVG body is text, so the Redactor reads it`() {
+        val store = store()
+        val svg = """<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>"""
+        val request = Request.Builder().url("https://example.com/logo.svg").build()
+        val response = responseFor(request, TrackingResponseBody("image/svg+xml".toMediaType(), svg, 64))
+
+        interceptor(store).intercept(FakeChain(request, response))
+
+        val tx = store.getTransactions().single()
+        assertEquals(svg, tx.responseBody)
+        assertNull(tx.responseBinaryBody)
     }
 
     @Test

@@ -30,10 +30,11 @@ import okio.buffer
  * applies throttle while paused. Uses peekBody() for regular response capture
  * and wraps event streams so they can be captured without buffering upfront.
  *
- * Body capture: text-like request/response bodies are captured up to
- * [maxBodySize]; `truncated = fullSize > cap` and
- * `byteSize = declaredContentLength ?: fullSize`. Binary/one-shot/duplex bodies
- * report `CapturedBody(text=null, truncated=false, byteSize=declared)`.
+ * Body capture: text-like request/response bodies are captured as text, and
+ * image ones as bytes, up to [maxBodySize]; `truncated = fullSize > cap` and
+ * `byteSize = declaredContentLength ?: fullSize`. Other binary bodies and
+ * one-shot/duplex ones report `CapturedBody(text=null, truncated=false,
+ * byteSize=declared)`.
  */
 internal class LustroNetworkInterceptor(
     private val sink: NetworkCaptureSink,
@@ -162,7 +163,8 @@ internal class LustroNetworkInterceptor(
         if (body.isOneShot() || body.isDuplex()) {
             return CapturedBody(text = null, truncated = false, byteSize = declaredSize)
         }
-        if (!contentType.isTextLike()) {
+        val binary = contentType.isRetainedBinary()
+        if (!binary && !contentType.isTextLike()) {
             return CapturedBody(text = null, truncated = false, byteSize = declaredSize)
         }
         val buffer = Buffer()
@@ -175,8 +177,13 @@ internal class LustroNetworkInterceptor(
             capturing.buffer().use { body.writeTo(it) }
             val fullSize = capturing.bytesSeen
             val truncated = fullSize > maxBodySize
-            val text = if (truncated) buffer.readUtf8(maxBodySize) else buffer.readUtf8()
-            CapturedBody(text = text, truncated = truncated, byteSize = declaredSize ?: fullSize)
+            val kept = if (truncated) maxBodySize else buffer.size
+            val byteSize = declaredSize ?: fullSize
+            if (binary) {
+                CapturedBody(text = null, truncated = truncated, byteSize = byteSize, bytes = buffer.readByteArray(kept))
+            } else {
+                CapturedBody(text = buffer.readUtf8(kept), truncated = truncated, byteSize = byteSize)
+            }
         } catch (_: Exception) {
             CapturedBody(text = null, truncated = false, byteSize = declaredSize)
         } finally {
@@ -214,7 +221,9 @@ internal class LustroNetworkInterceptor(
     private fun captureResponseBody(response: Response): CapturedBody? {
         val body = response.body ?: return null
         val declaredSize = body.contentLength().takeIf { it >= 0 }
-        if (!body.contentType().isTextLike()) {
+        val contentType = body.contentType()
+        val binary = contentType.isRetainedBinary()
+        if (!binary && !contentType.isTextLike()) {
             return CapturedBody(text = null, truncated = false, byteSize = declaredSize)
         }
         return try {
@@ -226,20 +235,20 @@ internal class LustroNetworkInterceptor(
             val peeked = response.peekBody(maxBodySize + 1)
             val raw = peeked.bytes()
             val truncated = raw.size > maxBodySize
-            val charset = body.contentType().resolvedCharset()
-            val text =
-                if (truncated) {
-                    String(raw, 0, maxBodySize.toInt(), charset)
-                } else {
-                    String(raw, charset)
-                }
+            val kept = if (truncated) maxBodySize.toInt() else raw.size
             // When the full size isn't known (no Content-Length) and the body was
             // truncated, we can't report a true byte count — leave it null rather
             // than report the truncated prefix length.
             val measured =
                 declaredSize
                     ?: if (truncated) null else raw.size.toLong()
-            CapturedBody(text = text, truncated = truncated, byteSize = measured)
+            if (binary) {
+                val bytes = if (truncated) raw.copyOf(kept) else raw
+                CapturedBody(text = null, truncated = truncated, byteSize = measured, bytes = bytes)
+            } else {
+                val text = String(raw, 0, kept, contentType.resolvedCharset())
+                CapturedBody(text = text, truncated = truncated, byteSize = measured)
+            }
         } catch (_: Exception) {
             CapturedBody(text = null, truncated = false, byteSize = declaredSize)
         }

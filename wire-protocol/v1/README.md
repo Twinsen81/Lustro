@@ -50,7 +50,11 @@ gets a `reset`.
   device's zone. Every new field is `null` when it isn't known, except
   `startedAt`, which is always set. `completedAt` is when the capture recorded
   the outcome, after reading the body up to the capture cap, so it can differ
-  from `startedAt` plus `durationMs`.
+  from `startedAt` plus `durationMs`. The detail also carries
+  `requestBodyBinary` and `responseBodyBinary`, `true` when that body was kept
+  as bytes (an image), and the new route
+  `GET network/transactions/{id}/body/{request|response}` returns a body as it
+  is stored.
 
 ## Status
 

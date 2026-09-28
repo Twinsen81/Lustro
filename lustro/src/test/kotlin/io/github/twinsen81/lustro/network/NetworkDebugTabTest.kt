@@ -12,6 +12,7 @@ import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import okio.Buffer
 import org.json.JSONObject
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -166,6 +167,122 @@ class NetworkDebugTabTest {
     private fun assertNullField(json: JSONObject, name: String) {
         assertTrue("missing $name", json.has(name))
         assertTrue("$name is not null", json.isNull(name))
+    }
+
+    private val png = byteArrayOf(-119, 80, 78, 71, 13, 10, 26, 10)
+
+    /** Records a transaction with the given bodies and response Content-Type. */
+    private fun NetworkDebugTab.record(
+        requestBody: CapturedBody? = null,
+        requestType: MediaType? = null,
+        responseBody: CapturedBody? = null,
+        responseType: String? = null,
+    ): String {
+        val store = captureSink as NetworkTrafficStore
+        val id = store.beginRequest("https://example.com/a", "POST", Headers.EMPTY, requestBody, requestType)
+        val headers = responseType?.let { Headers.of("Content-Type" to it) } ?: Headers.EMPTY
+        store.completeRequest(id, CapturedResponse.Builder(200, 5).headers(headers).body(responseBody).build())
+        assertTrue(store.awaitCaptures())
+        return id.value
+    }
+
+    private fun DebugResponse.header(name: String): String? = headers.get(name)
+
+    @Test
+    fun `the detail says which bodies were kept as bytes`() {
+        val tab = tab()
+        val id = tab.record(responseBody = CapturedBody(text = null, byteSize = 8, bytes = png), responseType = "image/png")
+
+        val detail = tab.handle(get("transactions/$id"))!!.json()
+        assertTrue(detail.getBoolean("responseBodyBinary"))
+        assertFalse(detail.getBoolean("requestBodyBinary"))
+        assertNullField(detail, "responseBody")
+        // The flags are detail only; the list stays brief.
+        val brief = tab.handle(get("transactions"))!!.json().getJSONArray("items").getJSONObject(0)
+        assertFalse(brief.has("responseBodyBinary"))
+    }
+
+    @Test
+    fun `the body route serves a raster image inline, as it arrived`() {
+        val tab = tab()
+        val id = tab.record(responseBody = CapturedBody(text = null, byteSize = 8, bytes = png), responseType = "image/png")
+
+        val res = tab.handle(get("transactions/$id/body/response"))!!
+        assertEquals(200, res.status)
+        assertEquals("image/png", res.contentType.toString())
+        assertArrayEquals(png, res.body)
+        assertNull(res.header("Content-Disposition"))
+        // No sandbox: it would break the browser's own viewer for an image opened on its own.
+        assertNull(res.header("Content-Security-Policy"))
+    }
+
+    @Test
+    fun `the body route serves a text body redacted, as a UTF-8 attachment`() {
+        val tab = tab()
+        val secret = """{"password":"hunter2","note":"café"}"""
+        val requestType = MediaType.parse("application/json; charset=iso-8859-1")
+        val id = tab.record(requestBody = CapturedBody(secret), requestType = requestType)
+
+        val res = tab.handle(get("transactions/$id/body/request"))!!
+        assertEquals(200, res.status)
+        // The type as captured, but UTF-8: the text is re-encoded, not the bytes that arrived.
+        assertEquals("application/json; charset=utf-8", res.contentType.toString())
+        val served = JSONObject(res.body.toString(Charsets.UTF_8))
+        assertEquals("[REDACTED]", served.getString("password"))
+        assertEquals("café", served.getString("note"))
+        assertEquals("attachment", res.header("Content-Disposition"))
+        assertEquals("default-src 'none'; sandbox", res.header("Content-Security-Policy"))
+    }
+
+    @Test
+    fun `SVG and HTML bodies are attachments that can't run script`() {
+        val tab = tab()
+        for (type in listOf("image/svg+xml", "text/html; charset=utf-8")) {
+            val id = tab.record(responseBody = CapturedBody("<svg onload=alert(1)>"), responseType = type)
+
+            val res = tab.handle(get("transactions/$id/body/response"))!!
+            assertEquals(type, "${type.substringBefore(';')}; charset=utf-8", res.contentType.toString())
+            assertEquals(type, "attachment", res.header("Content-Disposition"))
+            assertEquals(type, "default-src 'none'; sandbox", res.header("Content-Security-Policy"))
+        }
+    }
+
+    @Test
+    fun `a body with no usable captured type gets a generic one`() {
+        val tab = tab()
+        val text = tab.record(requestBody = CapturedBody("plain"))
+        val bytes = tab.record(responseBody = CapturedBody(text = null, bytes = png), responseType = "\"image/png")
+
+        val textRes = tab.handle(get("transactions/$text/body/request"))!!
+        assertEquals("text/plain; charset=utf-8", textRes.contentType.toString())
+        assertEquals("attachment", textRes.header("Content-Disposition"))
+        // A type that isn't made of HTTP tokens is not sent on.
+        val bytesRes = tab.handle(get("transactions/$bytes/body/response"))!!
+        assertEquals("application/octet-stream", bytesRes.contentType.toString())
+        assertEquals("attachment", bytesRes.header("Content-Disposition"))
+    }
+
+    @Test
+    fun `the body route answers 404 when no body was kept`() {
+        val tab = tab()
+        // Dropped binary: the size is known, but neither text nor bytes were kept.
+        val id = tab.record(responseBody = CapturedBody(text = null, byteSize = 5), responseType = "application/octet-stream")
+
+        for (path in listOf("transactions/$id/body/request", "transactions/$id/body/response", "transactions/nope/body/response")) {
+            val res = tab.handle(get(path))!!
+            assertEquals(path, 404, res.status)
+            assertEquals(path, "not_found", res.json().getString("error"))
+        }
+    }
+
+    @Test
+    fun `other paths under a transaction are not routes`() {
+        val tab = tab()
+        val id = tab.record(requestBody = CapturedBody("x"))
+
+        for (path in listOf("transactions/$id/body", "transactions/$id/body/both", "transactions/$id/head/request", "transactions/$id/body/request/x")) {
+            assertNull(path, tab.handle(get(path)))
+        }
     }
 
     @Test

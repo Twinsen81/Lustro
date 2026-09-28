@@ -200,7 +200,7 @@ public class NetworkDebugTab private constructor(
         return when {
             path == "transactions" && method == "GET" -> handleTransactions(request)
             path.startsWith("transactions/") && method == "GET" ->
-                handleTransactionDetail(path.removePrefix("transactions/"))
+                handleTransactionPath(path.removePrefix("transactions/").split('/'))
             path == "clear" && method == "POST" -> handleClear()
             path == "rules" && method == "GET" -> handleGetRules()
             path == "rules" && method == "POST" -> handleAddRule(body)
@@ -240,9 +240,60 @@ public class NetworkDebugTab private constructor(
             append("}")
         }
 
+    // transactions/{id} and transactions/{id}/body/{request|response}.
+    private fun handleTransactionPath(segments: List<String>): DebugResponse? =
+        when {
+            segments.size == 1 -> handleTransactionDetail(segments[0])
+            segments.size == 3 && segments[1] == "body" && segments[2] == "request" ->
+                handleTransactionBody(segments[0], request = true)
+            segments.size == 3 && segments[1] == "body" && segments[2] == "response" ->
+                handleTransactionBody(segments[0], request = false)
+            else -> null
+        }
+
     private fun handleTransactionDetail(txId: String): DebugResponse {
         val tx = store.getTransaction(txId) ?: return DebugResponse.notFound("Transaction not found")
         return DebugResponse.json { appendTransaction(tx, brief = false) }
+    }
+
+    /**
+     * Serves a body as it is stored: the bytes of a binary body, or the redacted
+     * text of a text body as UTF-8. Only the raster image types the console
+     * shows are served inline. Every other type, SVG and HTML included, is an
+     * attachment with a sandboxing CSP, so a captured page can never run script
+     * under the console's origin.
+     */
+    private fun handleTransactionBody(txId: String, request: Boolean): DebugResponse {
+        val tx = store.getTransaction(txId) ?: return DebugResponse.notFound("Transaction not found")
+        val bytes = if (request) tx.requestBinaryBody else tx.responseBinaryBody
+        val text = if (request) tx.requestBody else tx.responseBody
+        val captured = (if (request) tx.requestContentType else tx.responseContentType)?.let { MediaType.parse(it) }
+        // Rebuilt from its type and subtype alone: a text body is re-encoded as
+        // UTF-8, and nothing else from a captured header is sent on.
+        val essence = captured?.takeIf { MEDIA_TOKEN.matches(it.type) && MEDIA_TOKEN.matches(it.subtype) }
+            ?.let { "${it.type}/${it.subtype}" }
+        val body: ByteArray
+        val contentType: MediaType
+        when {
+            bytes != null -> {
+                body = bytes
+                contentType = essence?.let { MediaType.parse(it) } ?: MediaType.OCTET_STREAM
+            }
+            text != null -> {
+                body = text.toByteArray(Charsets.UTF_8)
+                contentType = essence?.let { MediaType.parse("$it; charset=utf-8") } ?: MediaType.TEXT
+            }
+            else -> return DebugResponse.notFound("No ${if (request) "request" else "response"} body was retained")
+        }
+        // The sandbox is for attachments only: it would also block the inline
+        // styles a browser's own image viewer uses when an image is opened on its own.
+        val headers =
+            if (essence in INLINE_BODY_TYPES) {
+                Headers.EMPTY
+            } else {
+                Headers.of("Content-Disposition" to "attachment", "Content-Security-Policy" to ATTACHMENT_CSP)
+            }
+        return DebugResponse.bytes(body, contentType, headers = headers)
     }
 
     private fun handleClear(): DebugResponse {
@@ -487,9 +538,11 @@ public class NetworkDebugTab private constructor(
             append("\"requestHeaders\":${headersToJson(tx.requestHeaders)},")
             append("\"requestBody\":${tx.requestBody.toJsonString()},")
             append("\"requestBodyTruncated\":${tx.requestBodyTruncated},")
+            append("\"requestBodyBinary\":${tx.requestBinaryBody != null},")
             append("\"responseHeaders\":${tx.responseHeaders?.let { headersToJson(it) } ?: "null"},")
             append("\"responseBody\":${tx.responseBody.toJsonString()},")
-            append("\"responseBodyTruncated\":${tx.responseBodyTruncated}")
+            append("\"responseBodyTruncated\":${tx.responseBodyTruncated},")
+            append("\"responseBodyBinary\":${tx.responseBinaryBody != null}")
         }
         append("}")
     }
@@ -609,6 +662,15 @@ public class NetworkDebugTab private constructor(
         }
 
         private const val SEND_CANCEL_GRACE_MS = 1_000L
+
+        // Types the console shows in an <img>. Browsers render them without script.
+        private val INLINE_BODY_TYPES = setOf("image/png", "image/jpeg", "image/gif", "image/webp")
+
+        // No subresources and no script, even when a browser renders the body.
+        private const val ATTACHMENT_CSP = "default-src 'none'; sandbox"
+
+        // An HTTP token (RFC 9110), as a media type's type and subtype must be.
+        private val MEDIA_TOKEN = Regex("[A-Za-z0-9!#$%&'*+.^_`|~-]+")
 
         // The built-in defaults. The configurable DebugConfig values are applied by the
         // runtime when the tab is registered via Lustro.Builder (the proven defaults are
