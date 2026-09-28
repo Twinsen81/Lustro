@@ -33,6 +33,10 @@ with no source checkout required.
   this — clients must never assume bodies/headers are raw.
 - **Send result.** `transactionId` may be `null` when the runtime cannot
   correlate the dispatched request to a captured transaction.
+- **Times.** `startedAt` and `completedAt` are epoch milliseconds, and
+  `timestamp` is `startedAt` as the device's local time; the fixtures model a
+  device in UTC. The mocked `tx_77e2c014` has no `protocol`, because a mock
+  never reaches the network.
 
 When the server's emitted shapes change, update these fixtures in the same
 change that bumps the protocol version, and keep the schema validation green.

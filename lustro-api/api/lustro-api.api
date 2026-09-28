@@ -168,6 +168,27 @@ public final class io/github/twinsen81/lustro/network/CapturedBody {
 	public final fun getTruncated ()Z
 }
 
+public final class io/github/twinsen81/lustro/network/CapturedResponse {
+	public synthetic fun <init> (Lio/github/twinsen81/lustro/network/CapturedResponse$Builder;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getBody ()Lio/github/twinsen81/lustro/network/CapturedBody;
+	public final fun getDurationMs ()J
+	public final fun getHeaders ()Lio/github/twinsen81/lustro/Headers;
+	public final fun getProtocol ()Ljava/lang/String;
+	public final fun getStatusCode ()I
+	public final fun isComplete ()Z
+	public final fun isMocked ()Z
+}
+
+public final class io/github/twinsen81/lustro/network/CapturedResponse$Builder {
+	public fun <init> (IJ)V
+	public final fun body (Lio/github/twinsen81/lustro/network/CapturedBody;)Lio/github/twinsen81/lustro/network/CapturedResponse$Builder;
+	public final fun build ()Lio/github/twinsen81/lustro/network/CapturedResponse;
+	public final fun complete (Z)Lio/github/twinsen81/lustro/network/CapturedResponse$Builder;
+	public final fun headers (Lio/github/twinsen81/lustro/Headers;)Lio/github/twinsen81/lustro/network/CapturedResponse$Builder;
+	public final fun mocked (Z)Lio/github/twinsen81/lustro/network/CapturedResponse$Builder;
+	public final fun protocol (Ljava/lang/String;)Lio/github/twinsen81/lustro/network/CapturedResponse$Builder;
+}
+
 public abstract interface class io/github/twinsen81/lustro/network/MockRule {
 	public abstract fun getEnabled ()Z
 	public abstract fun getHitCount ()I
@@ -182,14 +203,9 @@ public abstract interface class io/github/twinsen81/lustro/network/MockRule {
 
 public abstract interface class io/github/twinsen81/lustro/network/NetworkCaptureSink {
 	public abstract fun beginRequest (Ljava/lang/String;Ljava/lang/String;Lio/github/twinsen81/lustro/Headers;Lio/github/twinsen81/lustro/network/CapturedBody;Lio/github/twinsen81/lustro/MediaType;)Lio/github/twinsen81/lustro/network/TransactionId;
-	public abstract fun completeRequest (Lio/github/twinsen81/lustro/network/TransactionId;ILio/github/twinsen81/lustro/Headers;Lio/github/twinsen81/lustro/network/CapturedBody;JZZ)V
-	public static synthetic fun completeRequest$default (Lio/github/twinsen81/lustro/network/NetworkCaptureSink;Lio/github/twinsen81/lustro/network/TransactionId;ILio/github/twinsen81/lustro/Headers;Lio/github/twinsen81/lustro/network/CapturedBody;JZZILjava/lang/Object;)V
+	public abstract fun completeRequest (Lio/github/twinsen81/lustro/network/TransactionId;Lio/github/twinsen81/lustro/network/CapturedResponse;)V
 	public abstract fun failRequest (Lio/github/twinsen81/lustro/network/TransactionId;JLjava/lang/String;)V
 	public abstract fun findMockRule (Ljava/lang/String;Ljava/lang/String;)Lio/github/twinsen81/lustro/network/MockRule;
-}
-
-public final class io/github/twinsen81/lustro/network/NetworkCaptureSink$DefaultImpls {
-	public static synthetic fun completeRequest$default (Lio/github/twinsen81/lustro/network/NetworkCaptureSink;Lio/github/twinsen81/lustro/network/TransactionId;ILio/github/twinsen81/lustro/Headers;Lio/github/twinsen81/lustro/network/CapturedBody;JZZILjava/lang/Object;)V
 }
 
 public abstract interface class io/github/twinsen81/lustro/network/NetworkClassifier {

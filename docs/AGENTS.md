@@ -143,6 +143,17 @@ new request, its response or streaming progress, a failure, an eviction, or `cle
 overwrite mode, throttle, and mock-rule changes don't. Every poll response carries the current
 `state`, `unchanged` ones included, and `GET rules` returns the rules with their hit counts.
 
+**Times, protocol, and content types.** Every transaction, in the list and in the detail, has
+`startedAt` and `completedAt` in milliseconds since the Unix epoch. Sort and correlate by those,
+with logcat or a server log: `timestamp` is an `HH:mm:ss.SSS` display time in the device's zone.
+`completedAt` is `null` while the request is in flight. It is when the capture recorded the
+outcome, after reading the response body up to the capture cap, so it can differ from `startedAt`
+plus `durationMs`; take a request's duration from `durationMs`. `protocol` (`http/1.1`, `h2`, `h3`) is
+`null` before a response, for a mocked one, and for platform `HttpURLConnection` capture.
+`requestContentType` and `responseContentType` give the media type as captured, so a client can
+tell JSON from an image without reading the headers. These fields arrived in protocol 1.2; a 1.1
+server leaves them out.
+
 ## Common workflows
 
 **Mock a 500 for an endpoint**

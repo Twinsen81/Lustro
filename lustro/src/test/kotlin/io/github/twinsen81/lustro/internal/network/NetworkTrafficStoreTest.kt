@@ -3,12 +3,14 @@ package io.github.twinsen81.lustro.internal.network
 import io.github.twinsen81.lustro.Headers
 import io.github.twinsen81.lustro.MediaType
 import io.github.twinsen81.lustro.network.CapturedBody
+import io.github.twinsen81.lustro.network.CapturedResponse
 import io.github.twinsen81.lustro.network.DefaultRedactor
 import io.github.twinsen81.lustro.network.MockRule
 import io.github.twinsen81.lustro.network.MockRuleStorage
 import io.github.twinsen81.lustro.network.NetworkClassifier
 import io.github.twinsen81.lustro.network.NoOpNetworkClassifier
 import io.github.twinsen81.lustro.network.Redactor
+import io.github.twinsen81.lustro.network.TransactionId
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -55,6 +57,25 @@ class NetworkTrafficStoreTest {
     private fun captured(text: String): CapturedBody =
         CapturedBody(text = text, truncated = false, byteSize = text.toByteArray(Charsets.UTF_8).size.toLong())
 
+    /** Reports a response the way a capture adapter does. */
+    private fun NetworkTrafficStore.respond(
+        id: TransactionId,
+        statusCode: Int,
+        headers: Headers,
+        body: CapturedBody?,
+        durationMs: Long,
+        complete: Boolean = true,
+        protocol: String? = null,
+    ) = completeRequest(
+        id,
+        CapturedResponse.Builder(statusCode, durationMs)
+            .headers(headers)
+            .body(body)
+            .complete(complete)
+            .protocol(protocol)
+            .build(),
+    )
+
     private fun rule(
         id: String,
         urlPattern: String = "example.com",
@@ -76,7 +97,7 @@ class NetworkTrafficStoreTest {
         val store = store()
         val id = store.beginRequest("https://example.com/a", "GET", Headers.EMPTY, null, null)
         val after = store.getSequence()
-        store.completeRequest(id, 200, Headers.EMPTY, captured("hi"), 5, isMocked = false)
+        store.respond(id, 200, Headers.EMPTY, captured("hi"), 5)
         assertTrue(store.getSequence() > after)
     }
 
@@ -122,7 +143,7 @@ class NetworkTrafficStoreTest {
         val id = store.beginRequest("https://example.com/a", "GET", Headers.EMPTY, null, null)
         store.clear()
         val afterClear = store.getSequence()
-        store.completeRequest(id, 200, Headers.EMPTY, captured("chunk"), 5, isMocked = false, complete = false)
+        store.respond(id, 200, Headers.EMPTY, captured("chunk"), 5, complete = false)
         store.failRequest(id, 5, "boom")
         assertEquals(afterClear, store.getSequence())
     }
@@ -178,7 +199,7 @@ class NetworkTrafficStoreTest {
         val id = store.beginRequest("https://example.com/a", "GET", Headers.EMPTY, null, null)
         assertEquals(0, store.getTransactions(search = "needle").size)
 
-        store.completeRequest(id, 200, Headers.EMPTY, captured("a Needle"), 5, isMocked = false)
+        store.respond(id, 200, Headers.EMPTY, captured("a Needle"), 5)
 
         assertEquals(1, store.getTransactions(search = "needle").size)
         assertEquals(0, store.getTransactions(search = "haystack").size)
@@ -203,7 +224,7 @@ class NetworkTrafficStoreTest {
         // older-but-in-flight /1.
         val inFlight = store.beginRequest("https://example.com/1", "GET", Headers.EMPTY, null, null)
         val completed = store.beginRequest("https://example.com/2", "GET", Headers.EMPTY, null, null)
-        store.completeRequest(completed, 200, Headers.EMPTY, captured("done"), 5, isMocked = false)
+        store.respond(completed, 200, Headers.EMPTY, captured("done"), 5)
 
         store.beginRequest("https://example.com/3", "GET", Headers.EMPTY, null, null)
 
@@ -272,9 +293,9 @@ class NetworkTrafficStoreTest {
 
         // Attaching 100-byte response bodies one at a time: after the third the total
         // (300) exceeds the 250 budget and the oldest transaction is evicted.
-        store.completeRequest(id1, 200, Headers.EMPTY, captured(body), 5, isMocked = false)
-        store.completeRequest(id2, 200, Headers.EMPTY, captured(body), 5, isMocked = false)
-        store.completeRequest(id3, 200, Headers.EMPTY, captured(body), 5, isMocked = false)
+        store.respond(id1, 200, Headers.EMPTY, captured(body), 5)
+        store.respond(id2, 200, Headers.EMPTY, captured(body), 5)
+        store.respond(id3, 200, Headers.EMPTY, captured(body), 5)
 
         assertTrue("total must be held within budget", store.capturedBytes() <= 250)
         assertTrue("at least one transaction evicted", store.getTransactions().size < 3)
@@ -307,7 +328,7 @@ class NetworkTrafficStoreTest {
         store.setOverwriteMode(true)
         val firstId =
             store.beginRequest("https://example.com/data?x=1", "GET", Headers.EMPTY, null, null)
-        store.completeRequest(firstId, 200, Headers.EMPTY, captured("old"), 5, isMocked = false)
+        store.respond(firstId, 200, Headers.EMPTY, captured("old"), 5)
 
         // Same method + path (query differs) -> the prior completed one is evicted.
         store.beginRequest("https://example.com/data?x=2", "GET", Headers.EMPTY, null, null)
@@ -327,8 +348,8 @@ class NetworkTrafficStoreTest {
         val earlier = store.beginRequest("https://example.com/sync?seq=1", "GET", Headers.EMPTY, captured("x".repeat(9_000)), MediaType.TEXT)
         // ...while the next one is captured on the caller's thread and completes.
         val newest = store.beginRequest("https://example.com/sync?seq=2", "GET", Headers.EMPTY, null, null)
-        store.completeRequest(newest, 200, Headers.EMPTY, captured("ok"), 5, isMocked = false)
-        store.completeRequest(earlier, 200, Headers.EMPTY, captured("ok"), 5, isMocked = false)
+        store.respond(newest, 200, Headers.EMPTY, captured("ok"), 5)
+        store.respond(earlier, 200, Headers.EMPTY, captured("ok"), 5)
         executor.runAll()
 
         // Overwrite mode still keeps exactly one row for the path, the request that started last.
@@ -355,7 +376,7 @@ class NetworkTrafficStoreTest {
         val store = store()
         store.setOverwriteMode(true)
         val id = store.beginRequest("https://example.com/a", "GET", Headers.EMPTY, null, null)
-        store.completeRequest(id, 200, Headers.EMPTY, null, 5, isMocked = false)
+        store.respond(id, 200, Headers.EMPTY, null, 5)
         store.beginRequest("https://example.com/b", "GET", Headers.EMPTY, null, null)
         assertEquals(2, store.getTransactions().size)
     }
@@ -540,13 +561,12 @@ class NetworkTrafficStoreTest {
                 requestBody = captured("""{"password":"hunter2","user":"alice"}"""),
                 contentType = MediaType.JSON,
             )
-        store.completeRequest(
+        store.respond(
             id = id,
             statusCode = 200,
-            responseHeaders = Headers.of("Set-Cookie" to "sid=abc123"),
-            responseBody = captured("""{"token":"RESPSECRET","ok":true}"""),
+            headers = Headers.of("Set-Cookie" to "sid=abc123"),
+            body = captured("""{"token":"RESPSECRET","ok":true}"""),
             durationMs = 12,
-            isMocked = false,
         )
 
         val tx = store.getTransaction(id.value)!!
@@ -585,7 +605,7 @@ class NetworkTrafficStoreTest {
                 requestBody = captured("""{"password":"hunter2"}"""),
                 contentType = MediaType.JSON,
             )
-        store.completeRequest(id, 200, Headers.of("Content-Type" to "application/json"), captured("""{"token":"RESP"}"""), 5, isMocked = false)
+        store.respond(id, 200, Headers.of("Content-Type" to "application/json"), captured("""{"token":"RESP"}"""), 5)
 
         assertEquals(0, redactor.bodies)
         assertNull(store.getTransaction(id.value))
@@ -624,9 +644,9 @@ class NetworkTrafficStoreTest {
         val sse = Headers.of("Content-Type" to "text/event-stream")
         val id = store.beginRequest("https://example.com/events", "GET", Headers.EMPTY, null, null)
 
-        store.completeRequest(id, 200, sse, captured("data: 1\n"), 1, isMocked = false, complete = false)
-        store.completeRequest(id, 200, sse, captured("data: 1\ndata: 2\n"), 2, isMocked = false, complete = false)
-        store.completeRequest(id, 200, sse, captured("data: 1\ndata: 2\ndata: 3\n"), 3, isMocked = false, complete = false)
+        store.respond(id, 200, sse, captured("data: 1\n"), 1, complete = false)
+        store.respond(id, 200, sse, captured("data: 1\ndata: 2\n"), 2, complete = false)
+        store.respond(id, 200, sse, captured("data: 1\ndata: 2\ndata: 3\n"), 3, complete = false)
         executor.runAll()
 
         assertEquals(1, redactor.bodies)
@@ -644,8 +664,8 @@ class NetworkTrafficStoreTest {
         val sse = Headers.of("Content-Type" to "text/event-stream")
         val id = store.beginRequest("https://example.com/events", "GET", Headers.EMPTY, null, null)
 
-        store.completeRequest(id, 200, sse, captured("data: 1\n"), 1, isMocked = false, complete = false)
-        store.completeRequest(id, 200, sse, captured("data: 1\ndata: 2\n"), 2, isMocked = false, complete = true)
+        store.respond(id, 200, sse, captured("data: 1\n"), 1, complete = false)
+        store.respond(id, 200, sse, captured("data: 1\ndata: 2\n"), 2, complete = true)
         executor.runAll()
 
         assertEquals(1, redactor.bodies)
@@ -660,10 +680,10 @@ class NetworkTrafficStoreTest {
         val store = store(worker = CaptureWorker(executor))
         val sse = Headers.of("Content-Type" to "text/event-stream")
         val id = store.beginRequest("https://example.com/events", "GET", Headers.EMPTY, null, null)
-        store.completeRequest(id, 200, sse, captured("data: 1\n"), 1, isMocked = false, complete = false)
+        store.respond(id, 200, sse, captured("data: 1\n"), 1, complete = false)
         executor.runAll()
 
-        store.completeRequest(id, 200, sse, captured("data: 1\ndata: 2\n"), 2, isMocked = false, complete = false)
+        store.respond(id, 200, sse, captured("data: 1\ndata: 2\n"), 2, complete = false)
         executor.runAll()
 
         assertEquals("data: 1\ndata: 2\n", store.getTransaction(id.value)!!.responseBody)
@@ -692,7 +712,7 @@ class NetworkTrafficStoreTest {
         store.beginRequest("https://example.com/upload", "POST", Headers.EMPTY, captured("x".repeat(8_000)), MediaType.TEXT)
 
         for (events in 1..3) {
-            store.completeRequest(id, 200, sse, captured("data: x\n".repeat(1_500 * events)), events.toLong(), isMocked = false, complete = false)
+            store.respond(id, 200, sse, captured("data: x\n".repeat(1_500 * events)), events.toLong(), complete = false)
         }
         assertEquals(0, redactor.bodies)
         executor.runAll()
@@ -708,7 +728,7 @@ class NetworkTrafficStoreTest {
 
         val before = store.beginRequest("https://example.com/before", "GET", Headers.EMPTY, null, null)
         store.clear()
-        store.completeRequest(before, 200, Headers.EMPTY, captured("late"), 5, isMocked = false)
+        store.respond(before, 200, Headers.EMPTY, captured("late"), 5)
         store.beginRequest("https://example.com/after", "GET", Headers.EMPTY, null, null)
         executor.runAll()
 
@@ -726,7 +746,7 @@ class NetworkTrafficStoreTest {
         val store = store(redactor = failing)
 
         val id = store.beginRequest("https://example.com/deep", "POST", Headers.EMPTY, captured("[[[]]]"), MediaType.JSON)
-        store.completeRequest(id, 200, Headers.EMPTY, captured("[[[]]]"), 5, isMocked = false)
+        store.respond(id, 200, Headers.EMPTY, captured("[[[]]]"), 5)
 
         val tx = store.getTransaction(id.value)!!
         assertNull(tx.requestBody)
@@ -746,7 +766,7 @@ class NetworkTrafficStoreTest {
         val store = store(redactor = failing)
 
         val id = store.beginRequest("https://example.com/x", "GET", Headers.of("X-Odd" to "secret", "Accept" to "*/*"), null, null)
-        store.completeRequest(id, 200, Headers.of("X-Odd" to "secret"), captured("ok"), 5, isMocked = false)
+        store.respond(id, 200, Headers.of("X-Odd" to "secret"), captured("ok"), 5)
 
         val tx = store.getTransaction(id.value)!!
         assertEquals("[REDACTED]", tx.requestHeaders["X-Odd"])
@@ -764,10 +784,81 @@ class NetworkTrafficStoreTest {
         val store = store(redactor = failing)
 
         val id = store.beginRequest("https://example.com/x", "GET", Headers.EMPTY, null, null)
-        store.completeRequest(id, 200, Headers.EMPTY, captured("ok"), 5, isMocked = false)
+        store.respond(id, 200, Headers.EMPTY, captured("ok"), 5)
         store.failRequest(id, 5, "boom")
 
         assertTrue(store.getTransactions().isEmpty())
+    }
+
+    @Test
+    fun `start and completion times are read when reported, not when capture catches up`() {
+        val executor = ManualExecutor()
+        val store = store(worker = CaptureWorker(executor))
+        val beforeCalls = System.currentTimeMillis()
+        val id = store.beginRequest("https://example.com/a", "GET", Headers.EMPTY, null, null)
+        store.respond(id, 200, Headers.EMPTY, captured("ok"), 5)
+        val afterCalls = System.currentTimeMillis()
+        Thread.sleep(20)
+        executor.runAll()
+
+        val tx = store.getTransaction(id.value)!!
+        assertTrue(tx.startedAt in beforeCalls..afterCalls)
+        assertTrue(tx.completedAt!! in tx.startedAt..afterCalls)
+    }
+
+    @Test
+    fun `completedAt stays unset while a stream is in flight`() {
+        val store = store()
+        val sse = Headers.of("Content-Type" to "text/event-stream")
+        val id = store.beginRequest("https://example.com/events", "GET", Headers.EMPTY, null, null)
+
+        store.respond(id, 200, sse, captured("data: 1\n"), 1, complete = false)
+        assertNull(store.getTransaction(id.value)!!.completedAt)
+
+        store.respond(id, 200, sse, captured("data: 1\n"), 2)
+        assertNotNull(store.getTransaction(id.value)!!.completedAt)
+    }
+
+    @Test
+    fun `a failure records when it happened`() {
+        val store = store()
+        val id = store.beginRequest("https://example.com/a", "GET", Headers.EMPTY, null, null)
+        val beforeFailure = System.currentTimeMillis()
+        store.failRequest(id, 5, "boom")
+
+        val tx = store.getTransaction(id.value)!!
+        assertTrue(tx.completedAt!! >= beforeFailure)
+        assertTrue(tx.responseComplete)
+    }
+
+    @Test
+    fun `protocol and content types are stored as reported`() {
+        val store = store()
+        val id = store.beginRequest("https://example.com/a", "POST", Headers.EMPTY, captured("{}"), MediaType.JSON)
+        store.respond(id, 200, Headers.of("content-type" to "text/plain; charset=ISO-8859-1"), captured("ok"), 5, protocol = "h2")
+
+        val tx = store.getTransaction(id.value)!!
+        assertEquals("h2", tx.protocol)
+        assertEquals("application/json; charset=utf-8", tx.requestContentType)
+        assertEquals("text/plain; charset=ISO-8859-1", tx.responseContentType)
+    }
+
+    @Test
+    fun `a Redactor that masks Content-Type masks the stored content types too`() {
+        val masking =
+            object : Redactor by DefaultRedactor {
+                override fun redactHeaderValue(name: String, value: String): String =
+                    if (name.equals("Content-Type", ignoreCase = true)) "[REDACTED]" else value
+            }
+        val store = store(redactor = masking)
+
+        val id = store.beginRequest("https://example.com/a", "POST", Headers.EMPTY, captured("{}"), MediaType.JSON)
+        store.respond(id, 200, Headers.of("Content-Type" to "application/json"), captured("{}"), 5)
+
+        val tx = store.getTransaction(id.value)!!
+        assertEquals("[REDACTED]", tx.requestContentType)
+        assertEquals("[REDACTED]", tx.responseContentType)
+        assertEquals("[REDACTED]", tx.responseHeaders!!["Content-Type"])
     }
 
     /** Simple in-memory [MockRuleStorage] fake. */

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Lustro Network debug tab",
-    "version": "1.1",
+    "version": "1.2",
     "description": "Capture, inspect, mock, throttle, and replay HTTP traffic. All routes are token-authenticated (Bearer header or HttpOnly cookie) and live under /api/v1/network. Errors use the shared error envelope."
   },
   "servers": [
@@ -218,13 +218,18 @@
         "required": ["id", "method", "url"],
         "properties": {
           "id": { "type": "string" },
-          "timestamp": { "type": "string", "description": "HH:mm:ss.SSS local time." },
+          "timestamp": { "type": "string", "description": "When the request started, as HH:mm:ss.SSS in the device's time zone. For display; sort and correlate by startedAt." },
+          "startedAt": { "type": "integer", "description": "When the request started, in milliseconds since the Unix epoch." },
+          "completedAt": { "type": ["integer", "null"], "description": "When the capture recorded the response as complete, or the request as failed, in milliseconds since the Unix epoch; null while in flight, including a streaming response. It comes after the capture has read the response body, up to the capture cap, and platform HttpURLConnection capture moves it to the end of the body once the app reads it, so it can differ from startedAt plus durationMs." },
           "method": { "type": "string" },
           "url": { "type": "string", "description": "Redacted at capture time." },
+          "protocol": { "type": ["string", "null"], "description": "The protocol the response came over, as the HTTP client names it, e.g. http/1.1, h2, or h3. null when unknown: before a response, for a mocked response, and for platform HttpURLConnection capture." },
           "statusCode": { "type": ["integer", "null"] },
           "durationMs": { "type": ["integer", "null"] },
           "categories": { "type": "array", "items": { "type": "string" }, "description": "Labels from the configured NetworkClassifier (may be empty)." },
           "isMocked": { "type": "boolean" },
+          "requestContentType": { "type": ["string", "null"], "description": "The request's media type as captured, e.g. application/json; charset=utf-8. null when the request declares none." },
+          "responseContentType": { "type": ["string", "null"], "description": "The response's Content-Type as captured, e.g. application/json; charset=utf-8. null before a response, and when the header is missing or isn't a media type." },
           "requestBodyBytes": { "type": ["integer", "null"] },
           "responseBodyBytes": { "type": ["integer", "null"] },
           "responseComplete": { "type": "boolean" },

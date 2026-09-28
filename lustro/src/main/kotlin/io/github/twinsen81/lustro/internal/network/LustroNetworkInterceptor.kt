@@ -1,13 +1,16 @@
 package io.github.twinsen81.lustro.internal.network
 
 import android.util.Log
+import io.github.twinsen81.lustro.Headers
 import io.github.twinsen81.lustro.network.CapturedBody
+import io.github.twinsen81.lustro.network.CapturedResponse
 import io.github.twinsen81.lustro.network.MockRule
 import io.github.twinsen81.lustro.network.NetworkCaptureSink
 import io.github.twinsen81.lustro.network.TransactionId
 import java.io.IOException
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.Protocol
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
@@ -62,14 +65,15 @@ internal class LustroNetworkInterceptor(
         val startTime = System.currentTimeMillis()
         var id: TransactionId? = null
         if (capturing) {
-            val requestCapture = captureRequestBody(request)
+            val contentType = requestContentType(request)
+            val requestCapture = captureRequestBody(request, contentType)
             id =
                 sink.beginRequest(
                     url = url,
                     method = request.method,
                     headers = request.headers.toApiHeaders(),
                     requestBody = requestCapture,
-                    contentType = request.body?.contentType()?.toApiMediaType(),
+                    contentType = contentType.toApiMediaType(),
                 )
         }
 
@@ -94,19 +98,20 @@ internal class LustroNetworkInterceptor(
             if (id != null) {
                 val durationMs = System.currentTimeMillis() - startTime
                 val mockBodyBytes = mockRule.responseBody.toByteArray(Charsets.UTF_8)
+                // No protocol: the mock response's HTTP/1.1 is made up, not negotiated.
                 sink.completeRequest(
-                    id = id,
-                    statusCode = mockRule.statusCode,
-                    responseHeaders = mockRule.responseHeaders,
-                    responseBody =
-                        CapturedBody(
-                            text = mockRule.responseBody,
-                            truncated = false,
-                            byteSize = mockBodyBytes.size.toLong(),
-                        ),
-                    durationMs = durationMs,
-                    isMocked = true,
-                    complete = true,
+                    id,
+                    CapturedResponse.Builder(mockRule.statusCode, durationMs)
+                        .headers(mockRule.responseHeaders)
+                        .body(
+                            CapturedBody(
+                                text = mockRule.responseBody,
+                                truncated = false,
+                                byteSize = mockBodyBytes.size.toLong(),
+                            ),
+                        )
+                        .mocked(true)
+                        .build(),
                 )
             }
             return mockResponse
@@ -123,16 +128,7 @@ internal class LustroNetworkInterceptor(
 
             wrapEventStreamResponse(id, response, startTime)?.let { return it }
 
-            val responseCapture = captureResponseBody(response)
-            sink.completeRequest(
-                id = id,
-                statusCode = response.code,
-                responseHeaders = response.headers.toApiHeaders(),
-                responseBody = responseCapture,
-                durationMs = durationMs,
-                isMocked = false,
-                complete = true,
-            )
+            sink.completeRequest(id, response.toCapturedResponse(durationMs, captureResponseBody(response)))
             response
         } catch (e: IOException) {
             if (id != null) {
@@ -160,13 +156,13 @@ internal class LustroNetworkInterceptor(
             .build()
     }
 
-    private fun captureRequestBody(request: okhttp3.Request): CapturedBody? {
+    private fun captureRequestBody(request: okhttp3.Request, contentType: okhttp3.MediaType?): CapturedBody? {
         val body = request.body ?: return null
         val declaredSize = body.contentLength().takeIf { it >= 0 }
         if (body.isOneShot() || body.isDuplex()) {
             return CapturedBody(text = null, truncated = false, byteSize = declaredSize)
         }
-        if (!body.contentType().isTextLike()) {
+        if (!contentType.isTextLike()) {
             return CapturedBody(text = null, truncated = false, byteSize = declaredSize)
         }
         val buffer = Buffer()
@@ -263,13 +259,13 @@ internal class LustroNetworkInterceptor(
         // Record an initial "in flight" (complete=false) state so the transaction
         // shows up before the stream produces any bytes.
         sink.completeRequest(
-            id = id,
-            statusCode = response.code,
-            responseHeaders = responseHeaders,
-            responseBody = CapturedBody(text = null, truncated = false, byteSize = declaredSize),
-            durationMs = System.currentTimeMillis() - startTime,
-            isMocked = false,
-            complete = false,
+            id,
+            response.toCapturedResponse(
+                durationMs = System.currentTimeMillis() - startTime,
+                body = CapturedBody(text = null, truncated = false, byteSize = declaredSize),
+                complete = false,
+                headers = responseHeaders,
+            ),
         )
 
         return response.newBuilder()
@@ -280,25 +276,43 @@ internal class LustroNetworkInterceptor(
                     maxBodySize = maxBodySize,
                     onCapture = { capture ->
                         sink.completeRequest(
-                            id = id,
-                            statusCode = response.code,
-                            responseHeaders = responseHeaders,
-                            responseBody =
-                                CapturedBody(
-                                    text = capture.text,
-                                    truncated = capture.truncated,
-                                    byteSize = capture.sizeBytes,
-                                ),
-                            durationMs = System.currentTimeMillis() - startTime,
-                            isMocked = false,
-                            // false for progressive updates, true at EOF/close.
-                            complete = capture.responseComplete,
+                            id,
+                            response.toCapturedResponse(
+                                durationMs = System.currentTimeMillis() - startTime,
+                                body =
+                                    CapturedBody(
+                                        text = capture.text,
+                                        truncated = capture.truncated,
+                                        byteSize = capture.sizeBytes,
+                                    ),
+                                // false for progressive updates, true at EOF/close.
+                                complete = capture.responseComplete,
+                                headers = responseHeaders,
+                            ),
                         )
                     },
                 ),
             )
             .build()
     }
+
+    private fun Response.toCapturedResponse(
+        durationMs: Long,
+        body: CapturedBody?,
+        complete: Boolean = true,
+        headers: Headers = this.headers.toApiHeaders(),
+    ): CapturedResponse =
+        CapturedResponse.Builder(code, durationMs)
+            .headers(headers)
+            .body(body)
+            .complete(complete)
+            .protocol(protocol.toString())
+            .build()
+
+    // What goes on the wire: OkHttp sends the body's media type, or the header
+    // the app set when the body has none. Body capture goes by the same type.
+    private fun requestContentType(request: okhttp3.Request): okhttp3.MediaType? =
+        request.body?.contentType() ?: request.header("Content-Type")?.toMediaTypeOrNull()
 
     private companion object {
         private const val TAG = "Lustro"

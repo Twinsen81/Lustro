@@ -6,6 +6,7 @@ import android.util.Log
 import io.github.twinsen81.lustro.Headers
 import io.github.twinsen81.lustro.MediaType
 import io.github.twinsen81.lustro.network.CapturedBody
+import io.github.twinsen81.lustro.network.CapturedResponse
 import io.github.twinsen81.lustro.network.NetworkCaptureSink
 import io.github.twinsen81.lustro.network.TransactionId
 import java.io.ByteArrayOutputStream
@@ -201,19 +202,11 @@ internal class HttpUrlConnectionCapture(
             if (!responseRecorded.compareAndSet(false, true)) return
             val id = transactionId ?: return
             try {
-                sink.completeRequest(
-                    id = id,
-                    statusCode = statusCode,
-                    responseHeaders = flatten(headers),
-                    responseBody = null,
-                    durationMs = System.currentTimeMillis() - startTime,
-                    // Complete as soon as we have status + headers: some callers (e.g. on a 202)
-                    // check the response code but never read the body stream, so finalizeBody
-                    // would never fire and the transaction would be stuck "in flight". If a body
-                    // is read, finalizeBody enriches this (still complete).
-                    isMocked = false,
-                    complete = true,
-                )
+                // Complete as soon as we have status + headers: some callers (e.g. on a 202)
+                // check the response code but never read the body stream, so finalizeBody
+                // would never fire and the transaction would be stuck "in flight". If a body
+                // is read, finalizeBody enriches this (still complete).
+                sink.completeRequest(id, capturedResponse(statusCode, headers, body = null))
             } catch (t: Throwable) {
                 Log.w(TAG, "recordResponseHeaders failed: ${t.javaClass.simpleName}")
             }
@@ -231,19 +224,22 @@ internal class HttpUrlConnectionCapture(
             val id = transactionId ?: return
             try {
                 val raw = responseBodyBuffer.toByteArray()
-                sink.completeRequest(
-                    id = id,
-                    statusCode = statusCode,
-                    responseHeaders = flatten(headers),
-                    responseBody = capturedBodyOf(raw),
-                    durationMs = System.currentTimeMillis() - startTime,
-                    isMocked = false,
-                    complete = true,
-                )
+                sink.completeRequest(id, capturedResponse(statusCode, headers, capturedBodyOf(raw)))
             } catch (t: Throwable) {
                 Log.w(TAG, "finalizeBody failed: ${t.javaClass.simpleName}")
             }
         }
+
+        // No protocol: HttpURLConnection has no public API that reports it.
+        private fun capturedResponse(
+            statusCode: Int,
+            headers: Map<String, List<String>>,
+            body: CapturedBody?,
+        ): CapturedResponse =
+            CapturedResponse.Builder(statusCode, System.currentTimeMillis() - startTime)
+                .headers(flatten(headers))
+                .body(body)
+                .build()
 
         /**
          * Builds a [CapturedBody] from tee-captured [bytes]. The tee caps writes at

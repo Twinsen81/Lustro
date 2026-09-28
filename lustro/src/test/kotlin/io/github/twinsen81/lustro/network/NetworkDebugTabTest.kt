@@ -5,6 +5,7 @@ import io.github.twinsen81.lustro.DebugResponse
 import io.github.twinsen81.lustro.Headers
 import io.github.twinsen81.lustro.MediaType
 import io.github.twinsen81.lustro.internal.network.NetworkTrafficStore
+import io.github.twinsen81.lustro.internal.toDebugTimestamp
 import java.util.concurrent.TimeUnit
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
@@ -124,6 +125,47 @@ class NetworkDebugTabTest {
         val poll = after.handle(get("transactions", "cursor" to staleCursor))!!.json()
         assertEquals("reset", poll.getString("status"))
         assertEquals("https://example.com/new", poll.getJSONArray("items").getJSONObject(0).getString("url"))
+    }
+
+    @Test
+    fun `list and detail carry content types, protocol, and epoch times`() {
+        val tab = tab()
+        val store = tab.captureSink as NetworkTrafficStore
+        val beforeStart = System.currentTimeMillis()
+        val id = store.beginRequest("https://example.com/orders", "POST", Headers.EMPTY, CapturedBody("{}"), MediaType.JSON)
+        assertTrue(store.awaitCaptures())
+
+        val inFlight = tab.handle(get("transactions"))!!.json().getJSONArray("items").getJSONObject(0)
+        assertTrue(inFlight.getLong("startedAt") >= beforeStart)
+        assertEquals("application/json; charset=utf-8", inFlight.getString("requestContentType"))
+        assertNullField(inFlight, "completedAt")
+        assertNullField(inFlight, "protocol")
+        assertNullField(inFlight, "responseContentType")
+
+        store.completeRequest(
+            id,
+            CapturedResponse.Builder(201, 7)
+                .headers(Headers.of("Content-Type" to "application/json"))
+                .protocol("h2")
+                .build(),
+        )
+        assertTrue(store.awaitCaptures())
+
+        val brief = tab.handle(get("transactions"))!!.json().getJSONArray("items").getJSONObject(0)
+        val detail = tab.handle(get("transactions/${id.value}"))!!.json()
+        for (tx in listOf(brief, detail)) {
+            val startedAt = tx.getLong("startedAt")
+            assertEquals(startedAt.toDebugTimestamp(), tx.getString("timestamp"))
+            assertTrue(tx.getLong("completedAt") >= startedAt)
+            assertEquals("h2", tx.getString("protocol"))
+            assertEquals("application/json; charset=utf-8", tx.getString("requestContentType"))
+            assertEquals("application/json", tx.getString("responseContentType"))
+        }
+    }
+
+    private fun assertNullField(json: JSONObject, name: String) {
+        assertTrue("missing $name", json.has(name))
+        assertTrue("$name is not null", json.isNull(name))
     }
 
     @Test

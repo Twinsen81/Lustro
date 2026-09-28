@@ -11,7 +11,7 @@ the protocol a stable public contract independent of the library's Kotlin API.
   A future incompatible revision becomes `/api/v2/`, and the old major stays
   alive for at least one major release.
 - The **minor** protocol version is reported at runtime in
-  `GET /api/v1/_meta` as `_meta.protocolVersion` (currently `1.1`).
+  `GET /api/v1/_meta` as `_meta.protocolVersion` (currently `1.2`).
 
 ## Contents
 
@@ -43,6 +43,14 @@ gets a `reset`.
   throttle, and mock-rule changes no longer re-send the transaction list; the
   `state` object reports them on every poll response. Cursors issued before an
   app restart now get a `reset`.
+- **1.2** — Network transactions, in the list and the detail alike, carry
+  `requestContentType` and `responseContentType` (the media type as captured),
+  `protocol` (e.g. `h2`), and `startedAt` and `completedAt` in milliseconds
+  since the Unix epoch. `timestamp` keeps its meaning, a display time in the
+  device's zone. Every new field is `null` when it isn't known, except
+  `startedAt`, which is always set. `completedAt` is when the capture recorded
+  the outcome, after reading the body up to the capture cap, so it can differ
+  from `startedAt` plus `durationMs`.
 
 ## Status
 
