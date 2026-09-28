@@ -120,6 +120,12 @@ def test_net_body_warns_when_capture_cut_the_body(rec, tmp_path, capsys):
     assert "kept only the first 8 bytes of the response body (4096 bytes in full)" in err
 
 
+def test_net_body_reports_an_output_file_it_cannot_write(rec, tmp_path, capsys):
+    out = tmp_path / "missing" / "body.png"
+    assert run(["net", "body", "tx_1", "-o", str(out)]) == 2
+    assert "could not write body file {}".format(out) in capsys.readouterr().err
+
+
 def test_net_body_refuses_to_write_binary_to_a_terminal(rec, capsys, monkeypatch):
     rec.response = {"responseBodyBinary": True, "responseContentType": "image/png"}
     monkeypatch.setattr(cli.sys.stdout, "isatty", lambda: True)

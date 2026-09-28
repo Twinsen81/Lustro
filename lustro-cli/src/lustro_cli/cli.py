@@ -227,8 +227,12 @@ def cmd_net_body(args: argparse.Namespace) -> int:
         sys.stdout.buffer.write(body.data)
         sys.stdout.flush()
     else:
-        with open(args.output, "wb") as fh:
-            fh.write(body.data)
+        try:
+            with open(args.output, "wb") as fh:
+                fh.write(body.data)
+        except OSError as exc:
+            print("could not write body file {}: {}".format(args.output, exc), file=sys.stderr)
+            return 2
     truncated = bool(tx.get(direction + "BodyTruncated"))
     if truncated:
         full = tx.get(direction + "BodyBytes")
