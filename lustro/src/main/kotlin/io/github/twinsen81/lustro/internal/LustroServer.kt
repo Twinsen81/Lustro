@@ -780,7 +780,14 @@ $tabsHtml
     private class StatusAdapter(private val code: Int) : Response.IStatus {
         override fun getRequestStatus(): Int = code
 
-        override fun getDescription(): String = "$code ${Response.Status.lookup(code)?.description ?: ""}".trim()
+        // NanoHTTPD writes this after "HTTP/1.1 " as the rest of the status line,
+        // so it is the code and then the reason phrase, as in its own statuses.
+        override fun getDescription(): String =
+            Response.Status.lookup(code)?.description ?: when (code) {
+                // The server's own timeout answer, which NanoHTTPD doesn't list.
+                504 -> "504 Gateway Timeout"
+                else -> code.toString()
+            }
     }
 
     private companion object {

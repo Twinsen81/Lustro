@@ -368,6 +368,22 @@ class LustroServerSecurityTest {
 
 
 
+    /** The first line of the response to a GET of [path], read off the socket as sent. */
+    private fun statusLine(path: String, bearer: String? = null): String =
+        java.net.Socket("127.0.0.1", port).use { socket ->
+            val auth = bearer?.let { "Authorization: Bearer $it\r\n" }.orEmpty()
+            socket.getOutputStream().write("GET $path HTTP/1.1\r\nHost: 127.0.0.1\r\n${auth}Connection: close\r\n\r\n".toByteArray())
+            // NanoHTTPD ends every status line with a space before the CRLF.
+            socket.getInputStream().bufferedReader(Charsets.ISO_8859_1).readLine().trimEnd()
+        }
+
+    @Test
+    fun `the status line carries the code once, then its reason phrase`() {
+        assertEquals("HTTP/1.1 200 OK", statusLine("/api/v1/_meta", bearer = tokenStore.token()))
+        assertEquals("HTTP/1.1 401 Unauthorized", statusLine("/api/v1/_meta"))
+        assertEquals("HTTP/1.1 404 Not Found", statusLine("/no-such-page"))
+    }
+
     @Test
     fun `a tab's own policies are enforced alongside the server's, never instead of it`() {
         get("/api/v1/policy/page", bearer = tokenStore.token()).use { resp ->

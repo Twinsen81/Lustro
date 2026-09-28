@@ -317,6 +317,11 @@ see [DECISIONS.md](DECISIONS.md).
   matters beyond a dead fallback: the `run-as` read is the only discovery channel
   another app on the device cannot write to — any app can print a line under the
   `LustroToken` log tag, and the CLI takes the last one it finds.
+- **Every API response repeated its status code in the status line.** It read
+  `HTTP/1.1 200 200 OK`, so a client that shows the reason phrase showed
+  `200 OK` as it. The status line now reads `HTTP/1.1 200 OK`, and the `504` a
+  request timeout gets reads `504 Gateway Timeout`, a reason phrase NanoHTTPD
+  doesn't supply.
 
 ### Changed
 
