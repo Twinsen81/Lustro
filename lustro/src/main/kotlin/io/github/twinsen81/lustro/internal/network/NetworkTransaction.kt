@@ -10,11 +10,14 @@ import java.util.concurrent.atomic.AtomicReference
  */
 internal data class NetworkTransaction(
     val id: String,
-    val timestamp: Long,
+    // Epoch milliseconds, like completedAt.
+    val startedAt: Long,
     // Which request started first. A capture taken on the calling thread can be stored
     // before an earlier one that is still waiting for the capture thread, so where the
     // order requests started in matters, it can't be read off the list.
     val startOrder: Long = 0,
+    // Set once the response is complete or the request failed.
+    val completedAt: Long? = null,
     val durationMs: Long? = null,
     val categories: List<String> = emptyList(),
     val method: String,
@@ -24,6 +27,7 @@ internal data class NetworkTransaction(
     val requestBodyTruncated: Boolean = false,
     val requestContentType: String? = null,
     val requestBodyBytes: Long? = null,
+    val protocol: String? = null,
     val statusCode: Int? = null,
     val responseHeaders: Map<String, String>? = null,
     val responseBody: String? = null,

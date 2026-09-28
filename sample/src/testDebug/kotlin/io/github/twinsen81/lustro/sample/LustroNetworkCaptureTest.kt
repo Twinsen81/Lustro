@@ -134,6 +134,29 @@ class LustroNetworkCaptureTest {
         assertTrue(state.has("overwriteMode"))
     }
 
+    @Test
+    fun `a capture reports its protocol, content types, and epoch times`() {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(201)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{"created":true}"""),
+        )
+        val beforeCall = System.currentTimeMillis()
+        val postBody = """{"hello":"world"}""".toRequestBody("application/json".toMediaType())
+        client.newCall(Request.Builder().url(server.url("/post")).post(postBody).build()).execute().use { it.body!!.string() }
+        val afterCall = System.currentTimeMillis()
+
+        val tx = awaitTransactions(count = 1).getJSONArray("items").getJSONObject(0)
+        // MockWebServer speaks HTTP/1.1 unless told otherwise.
+        assertEquals("http/1.1", tx.getString("protocol"))
+        assertEquals("application/json; charset=utf-8", tx.getString("requestContentType"))
+        assertEquals("application/json", tx.getString("responseContentType"))
+        val startedAt = tx.getLong("startedAt")
+        assertTrue("startedAt $startedAt outside the call", startedAt in beforeCall..afterCall)
+        assertTrue(tx.getLong("completedAt") in startedAt..afterCall)
+    }
+
     /**
      * Polls the transactions route until it lists [count] completed captures.
      * Capture is recorded off the app's calls, so a request shows up shortly

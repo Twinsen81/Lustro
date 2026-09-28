@@ -32,7 +32,7 @@ see [DECISIONS.md](DECISIONS.md).
   (+ `ok`/`text`/`bytes`/`json`/`notFound`/`error` factories), `Headers`,
   `MediaType`, and the network seams `NetworkCaptureSink`, `NetworkSender`,
   `NetworkClassifier`, `Redactor`, `MockRule`, `NetworkSendRequest`,
-  `NetworkSendResult`, `TransactionId`, `CapturedBody`, plus
+  `NetworkSendResult`, `TransactionId`, `CapturedBody`, `CapturedResponse`, plus
   `escapeForJson`/`escapeHtml`. Explicit-API strict, BCV-validated.
 - **NanoHTTPD-backed debug server** with a browser tab UI and a tab plugin model:
   `Lustro.builder(...)`, `DebugConfig`, the `DebugTabRegistry`, asset loading, and
@@ -310,6 +310,27 @@ see [DECISIONS.md](DECISIONS.md).
   included, and `GET rules` returns the rules with their hit counts, so
   clients lose no information. A client that watched the cursor for control
   or rule changes should read `state` or `GET rules` instead.
+- **Wire protocol 1.2: transactions carry content types, the protocol, and
+  epoch times.** Every transaction, in the list and in the detail, now has
+  `requestContentType` and `responseContentType` (the media type as captured,
+  e.g. `application/json; charset=utf-8`), `protocol` (e.g. `http/1.1`, `h2`,
+  or `h3`, as OkHttp reports it), and `startedAt` and `completedAt` in
+  milliseconds since the Unix epoch. `timestamp` stays what it was, an
+  `HH:mm:ss.SSS` display time in the device's zone, which can't be sorted
+  across midnight or matched against logcat or a server log; `startedAt` can.
+  The new fields are `null` when they aren't known: `completedAt` while a
+  request is in flight, `protocol` for a mocked response and for platform
+  `HttpURLConnection` capture. `requestContentType` is what OkHttp sends: the
+  body's media type, or the `Content-Type` header the app set when the body
+  declares none. Both content types pass through the `Redactor` like any
+  header value. The console shows the protocol and the content types in the
+  detail header.
+- **`NetworkCaptureSink.completeRequest` takes a `CapturedResponse`.** A
+  response's status, headers, body, duration, mocked and complete flags, and
+  now its protocol arrive as one object built with `CapturedResponse.Builder`
+  instead of as seven parameters. A field added in a later release becomes one
+  more optional builder call, so a capture adapter keeps compiling and linking.
+  An adapter that called the old signature moves its arguments to the builder.
 - **Console redesign — terminal theme.** The web console now uses a dark-first,
   mono-spaced terminal design: one blue accent, semantic color tokens for
   methods/statuses/levels/types/categories, flat surfaces with 1px separators,

@@ -105,3 +105,42 @@ def test_every_mock_rule_matches_mockrule_component():
     validator = _component_validator(openapi, "MockRule")
     for rule in wire.load_golden("rules-list.json")["items"]:
         validator.validate(rule)
+
+
+# ── protocol version ──────────────────────────────────────────────────────────
+
+# Added in 1.2. The server sends each of them on every transaction, list and
+# detail alike, as null when the value isn't known; the schema doesn't require
+# them because a 1.1 server leaves them out.
+TRANSACTION_FIELDS_SINCE_1_2 = (
+    "startedAt",
+    "completedAt",
+    "protocol",
+    "requestContentType",
+    "responseContentType",
+)
+
+
+def _golden_transactions():
+    for fixture in ("cursor-reset.json", "cursor-delta.json"):
+        for tx in wire.load_golden(fixture)["items"]:
+            yield fixture, tx
+    yield "transaction.json", wire.load_golden("transaction.json")
+
+
+def test_the_network_schema_version_matches_meta():
+    meta = wire.load_golden("meta.json")
+    network = next(tab for tab in meta["tabs"] if tab["id"] == "network")
+    assert wire.load_openapi()["info"]["version"] == meta["protocolVersion"] == network["version"]
+
+
+def test_the_transaction_schema_declares_the_1_2_fields():
+    properties = wire.load_openapi()["components"]["schemas"]["Transaction"]["properties"]
+    for field in TRANSACTION_FIELDS_SINCE_1_2:
+        assert field in properties, field
+
+
+def test_every_golden_transaction_carries_the_1_2_fields():
+    for fixture, tx in _golden_transactions():
+        for field in TRANSACTION_FIELDS_SINCE_1_2:
+            assert field in tx, "{}: {} has no {}".format(fixture, tx["id"], field)

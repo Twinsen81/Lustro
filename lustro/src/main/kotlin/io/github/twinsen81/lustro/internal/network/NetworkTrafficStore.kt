@@ -6,6 +6,7 @@ import android.util.Log
 import io.github.twinsen81.lustro.Headers
 import io.github.twinsen81.lustro.MediaType
 import io.github.twinsen81.lustro.network.CapturedBody
+import io.github.twinsen81.lustro.network.CapturedResponse
 import io.github.twinsen81.lustro.network.MockRule
 import io.github.twinsen81.lustro.network.MockRuleStorage
 import io.github.twinsen81.lustro.network.NetworkCaptureSink
@@ -118,7 +119,7 @@ internal class NetworkTrafficStore(
         contentType: MediaType?,
     ): TransactionId {
         val id = UUID.randomUUID().toString()
-        val timestamp = System.currentTimeMillis()
+        val startedAt = System.currentTimeMillis()
         val order = startOrder.incrementAndGet()
         val clears = clearCount
         worker.submit(id, requestBody?.text?.length?.toLong() ?: 0L) {
@@ -126,7 +127,7 @@ internal class NetworkTrafficStore(
             val transaction =
                 NetworkTransaction(
                     id = id,
-                    timestamp = timestamp,
+                    startedAt = startedAt,
                     startOrder = order,
                     method = method,
                     url = redactedUrl,
@@ -136,7 +137,7 @@ internal class NetworkTrafficStore(
                     // preserved verbatim from the CapturedBody so badges/sizes stay accurate.
                     requestBody = requestBody?.text?.let { redactBody(it, contentType) },
                     requestBodyTruncated = requestBody?.truncated ?: false,
-                    requestContentType = contentType?.toString(),
+                    requestContentType = contentType?.let { redactContentType(it) },
                     requestBodyBytes = requestBody?.byteSize,
                 )
             synchronized(captureLock) {
@@ -150,44 +151,42 @@ internal class NetworkTrafficStore(
         mockRules.values.firstOrNull { it.matches(url, method) }
 
     @Suppress("RestrictedApi") // id.value is @RestrictTo(LIBRARY_GROUP); same-group call (see beginRequest).
-    override fun completeRequest(
-        id: TransactionId,
-        statusCode: Int,
-        responseHeaders: Headers,
-        responseBody: CapturedBody?,
-        durationMs: Long,
-        isMocked: Boolean,
-        complete: Boolean,
-    ) {
+    override fun completeRequest(id: TransactionId, response: CapturedResponse) {
         val key = id.value
-        val response = CapturedResponse(statusCode, responseHeaders, responseBody, durationMs, isMocked, complete)
-        if (complete) {
-            // Supersedes any stream progress still waiting to be recorded.
+        if (response.isComplete) {
+            // Supersedes any stream progress still waiting to be recorded. The
+            // completion time is read now: the capture thread can run behind.
             pendingProgress.remove(key)
-            submitResponse(key, response) { response }
+            submitResponse(key, response, completedAt = System.currentTimeMillis()) { response }
         } else if (pendingProgress.put(key, response) == null) {
             // A stream reports progress on every read. The queued update records
             // whatever progress is latest when it runs, so at most one waits per stream.
-            submitResponse(key, response) { pendingProgress.remove(key) }
+            submitResponse(key, response, completedAt = null) { pendingProgress.remove(key) }
         }
     }
 
     @Suppress("RestrictedApi") // id.value is @RestrictTo(LIBRARY_GROUP); same-group call (see beginRequest).
     override fun failRequest(id: TransactionId, durationMs: Long, error: String) {
-        worker.submit(id.value, 0L) { updateWithError(id.value, durationMs, error) }
+        val completedAt = System.currentTimeMillis() // Now, as in completeRequest.
+        worker.submit(id.value, 0L) { updateWithError(id.value, durationMs, error, completedAt) }
     }
 
     /** Waits up to [timeoutMs] until the captures reported so far are stored. For tests. */
     fun awaitCaptures(timeoutMs: Long = 5_000L): Boolean = worker.awaitIdle(timeoutMs)
 
-    private fun submitResponse(id: String, response: CapturedResponse, take: () -> CapturedResponse?) {
+    private fun submitResponse(
+        id: String,
+        response: CapturedResponse,
+        completedAt: Long?,
+        take: () -> CapturedResponse?,
+    ) {
         worker.submit(id, response.body?.text?.length?.toLong() ?: 0L) {
-            take()?.let { recordResponse(id, it) }
+            take()?.let { recordResponse(id, it, completedAt) }
         }
     }
 
-    private fun recordResponse(id: String, response: CapturedResponse) {
-        val contentType = MediaType.parse(response.headers.get("Content-Type").orEmpty())
+    private fun recordResponse(id: String, response: CapturedResponse, completedAt: Long?) {
+        val contentType = MediaType.parse(response.headers.get(CONTENT_TYPE).orEmpty())
         updateWithResponse(
             id = id,
             statusCode = response.statusCode,
@@ -195,9 +194,11 @@ internal class NetworkTrafficStore(
             responseHeaders = redactHeaders(response.headers),
             responseBody = response.body?.text?.let { redactBody(it, contentType) },
             responseBodyTruncated = response.body?.truncated ?: false,
-            responseContentType = contentType?.toString(),
+            responseContentType = contentType?.let { redactContentType(it) },
             responseBodyBytes = response.body?.byteSize,
-            responseComplete = response.complete,
+            responseComplete = response.isComplete,
+            completedAt = completedAt,
+            protocol = response.protocol,
             isMocked = response.isMocked,
         )
     }
@@ -285,6 +286,8 @@ internal class NetworkTrafficStore(
         responseContentType: String?,
         responseBodyBytes: Long? = null,
         responseComplete: Boolean = true,
+        completedAt: Long? = null,
+        protocol: String? = null,
         isMocked: Boolean = false,
     ) {
         val updated =
@@ -300,6 +303,8 @@ internal class NetworkTrafficStore(
                         responseContentType = responseContentType,
                         responseBodyBytes = responseBodyBytes,
                         responseComplete = responseComplete,
+                        completedAt = completedAt,
+                        protocol = protocol,
                         isMocked = isMocked,
                     )
                 // The response body now counts toward the budget; reconcile the delta
@@ -313,10 +318,10 @@ internal class NetworkTrafficStore(
         if (updated != null || evicted) sequence.incrementAndGet()
     }
 
-    fun updateWithError(id: String, durationMs: Long, error: String) {
+    fun updateWithError(id: String, durationMs: Long, error: String, completedAt: Long) {
         val updated =
             transactionMap.computeIfPresent(id) { _, tx ->
-                tx.copy(durationMs = durationMs, responseComplete = true, error = error)
+                tx.copy(durationMs = durationMs, responseComplete = true, completedAt = completedAt, error = error)
             }
         if (updated != null) sequence.incrementAndGet()
     }
@@ -339,6 +344,11 @@ internal class NetworkTrafficStore(
             logCaptureFailure("Could not redact a captured header; masked it", t)
             PLACEHOLDER
         }
+
+    // The content type is a header value, so the Redactor sees it before it's
+    // stored on its own. The unredacted MediaType still picks how a body is redacted.
+    private fun redactContentType(contentType: MediaType): String =
+        redactHeaderValue(CONTENT_TYPE, contentType.toString())
 
     private fun redactHeaders(headers: Headers): Map<String, String> {
         val out = LinkedHashMap<String, String>()
@@ -504,19 +514,10 @@ internal class NetworkTrafficStore(
                 hitCount = hitCount,
             )
 
-    /** A response update as a capture adapter reported it, before redaction. */
-    private class CapturedResponse(
-        val statusCode: Int,
-        val headers: Headers,
-        val body: CapturedBody?,
-        val durationMs: Long,
-        val isMocked: Boolean,
-        val complete: Boolean,
-    )
-
     private companion object {
         private const val TAG = "Lustro"
         private const val PLACEHOLDER = "[REDACTED]"
+        private const val CONTENT_TYPE = "Content-Type"
 
         // The built-in default; the runtime overrides this with DebugConfig
         // .captureBudgetBytes via applyConfig so create() works standalone.

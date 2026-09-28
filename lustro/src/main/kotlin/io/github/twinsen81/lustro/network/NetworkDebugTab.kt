@@ -461,9 +461,12 @@ public class NetworkDebugTab private constructor(
     private fun StringBuilder.appendTransaction(tx: NetworkTransaction, brief: Boolean) {
         append("{")
         append("\"id\":\"${tx.id.escapeForJson()}\",")
-        append("\"timestamp\":\"${tx.timestamp.toDebugTimestamp()}\",")
+        append("\"timestamp\":\"${tx.startedAt.toDebugTimestamp()}\",")
+        append("\"startedAt\":${tx.startedAt},")
+        append("\"completedAt\":${tx.completedAt ?: "null"},")
         append("\"method\":\"${tx.method.escapeForJson()}\",")
         append("\"url\":\"${tx.url.escapeForJson()}\",")
+        append("\"protocol\":${tx.protocol.toJsonString()},")
         append("\"statusCode\":${tx.statusCode ?: "null"},")
         append("\"durationMs\":${tx.durationMs ?: "null"},")
         append("\"categories\":[")
@@ -473,21 +476,25 @@ public class NetworkDebugTab private constructor(
         }
         append("],")
         append("\"isMocked\":${tx.isMocked},")
+        append("\"requestContentType\":${tx.requestContentType.toJsonString()},")
+        append("\"responseContentType\":${tx.responseContentType.toJsonString()},")
         append("\"requestBodyBytes\":${tx.requestBodyBytes ?: "null"},")
         append("\"responseBodyBytes\":${tx.responseBodyBytes ?: "null"},")
         append("\"responseComplete\":${tx.responseComplete},")
-        append("\"error\":${tx.error?.let { "\"${it.escapeForJson()}\"" } ?: "null"}")
+        append("\"error\":${tx.error.toJsonString()}")
         if (!brief) {
             append(",")
             append("\"requestHeaders\":${headersToJson(tx.requestHeaders)},")
-            append("\"requestBody\":${tx.requestBody?.let { "\"${it.escapeForJson()}\"" } ?: "null"},")
+            append("\"requestBody\":${tx.requestBody.toJsonString()},")
             append("\"requestBodyTruncated\":${tx.requestBodyTruncated},")
             append("\"responseHeaders\":${tx.responseHeaders?.let { headersToJson(it) } ?: "null"},")
-            append("\"responseBody\":${tx.responseBody?.let { "\"${it.escapeForJson()}\"" } ?: "null"},")
+            append("\"responseBody\":${tx.responseBody.toJsonString()},")
             append("\"responseBodyTruncated\":${tx.responseBodyTruncated}")
         }
         append("}")
     }
+
+    private fun String?.toJsonString(): String = this?.let { "\"${it.escapeForJson()}\"" } ?: "null"
 
     // responseHeaders go out with the rule (the browser form doesn't show them,
     // but agents and the CLI round-trip the whole rule through this route).

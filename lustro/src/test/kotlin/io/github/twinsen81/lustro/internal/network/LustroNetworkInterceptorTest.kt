@@ -3,6 +3,7 @@ package io.github.twinsen81.lustro.internal.network
 import io.github.twinsen81.lustro.Headers
 import io.github.twinsen81.lustro.MediaType
 import io.github.twinsen81.lustro.network.CapturedBody
+import io.github.twinsen81.lustro.network.CapturedResponse
 import io.github.twinsen81.lustro.network.DefaultRedactor
 import io.github.twinsen81.lustro.network.MockRule
 import io.github.twinsen81.lustro.network.NetworkCaptureSink
@@ -27,6 +28,7 @@ import okio.Timeout
 import okio.buffer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
@@ -107,6 +109,7 @@ class LustroNetworkInterceptorTest {
         // flips through CapturedBody/complete as chunks arrive).
         assertNull(transaction.responseBody)
         assertFalse(transaction.responseComplete)
+        assertEquals("http/1.1", transaction.protocol)
 
         val sink = Buffer()
         val source = result.body!!.source()
@@ -217,6 +220,8 @@ class LustroNetworkInterceptorTest {
         assertEquals(1, sink.completions.size)
         assertTrue(sink.completions.single().isMocked)
         assertEquals(201, sink.completions.single().statusCode)
+        // The mock response's HTTP/1.1 was never negotiated.
+        assertNull(sink.completions.single().protocol)
     }
 
     @Test
@@ -301,6 +306,64 @@ class LustroNetworkInterceptorTest {
         assertSame(boom, thrown)
         assertEquals(1, sink.failures.size)
         assertEquals("connection reset", sink.failures.single().error)
+    }
+
+    @Test
+    fun `the negotiated protocol and both content types are captured`() {
+        val store = store()
+        val interceptor = interceptor(store)
+        val reqBody = """{"q":1}""".toRequestBody("application/json".toMediaType())
+        val request = Request.Builder().url("https://example.com/search").post(reqBody).build()
+        val body = TrackingResponseBody("application/json; charset=utf-8".toMediaType(), "[]", chunkSize = 2)
+        val response =
+            responseFor(
+                request,
+                body,
+                protocol = Protocol.HTTP_2,
+                headers = okhttp3.Headers.headersOf("Content-Type", "application/json; charset=utf-8"),
+            )
+
+        interceptor.intercept(FakeChain(request, response))
+
+        val tx = store.getTransactions().single()
+        assertEquals("h2", tx.protocol)
+        // OkHttp adds the charset to a String body's media type; that's what went out.
+        assertEquals("application/json; charset=utf-8", tx.requestContentType)
+        assertEquals("application/json; charset=utf-8", tx.responseContentType)
+    }
+
+    @Test
+    fun `a Content-Type header stands in for a body that declares no media type`() {
+        val store = store()
+        val interceptor = interceptor(store)
+        val request =
+            Request.Builder()
+                .url("https://example.com/upload")
+                .header("Content-Type", "application/xml")
+                .post(ByteArray(3).toRequestBody(null))
+                .build()
+        val response = responseFor(request, TrackingResponseBody("text/plain".toMediaType(), "ok", 2))
+
+        interceptor.intercept(FakeChain(request, response))
+
+        assertEquals("application/xml", store.getTransactions().single().requestContentType)
+    }
+
+    @Test
+    fun `a failure before a response records no protocol`() {
+        val store = store()
+        val interceptor = interceptor(store)
+        val request = Request.Builder().url("https://example.com/boom").build()
+
+        assertThrows(IOException::class.java) {
+            interceptor.intercept(FakeChain(request, response = null, proceedError = IOException("reset")))
+        }
+
+        val tx = store.getTransactions().single()
+        assertEquals("reset", tx.error)
+        assertNull(tx.protocol)
+        assertNull(tx.responseContentType)
+        assertNotNull(tx.completedAt)
     }
 
     @Test
@@ -434,12 +497,18 @@ class LustroNetworkInterceptorTest {
         assertEquals("data: {\"token\":\"[REDACTED]\"}\n\n", transaction.responseBody)
     }
 
-    private fun responseFor(request: Request, body: ResponseBody): Response =
+    private fun responseFor(
+        request: Request,
+        body: ResponseBody,
+        protocol: Protocol = Protocol.HTTP_1_1,
+        headers: okhttp3.Headers = okhttp3.Headers.headersOf(),
+    ): Response =
         Response.Builder()
             .request(request)
-            .protocol(Protocol.HTTP_1_1)
+            .protocol(protocol)
             .code(200)
             .message("OK")
+            .headers(headers)
             .body(body)
             .build()
 
@@ -512,18 +581,10 @@ class LustroNetworkInterceptorTest {
         override fun withWriteTimeout(timeout: Int, unit: TimeUnit): Interceptor.Chain = this
     }
 
-    private data class Completion(
-        val id: TransactionId,
-        val statusCode: Int,
-        val isMocked: Boolean,
-        val complete: Boolean,
-        val responseBody: CapturedBody?,
-    )
-
     private data class Failure(val id: TransactionId, val error: String)
 
     private class RecordingSink(private val mockRule: MockRule? = null) : NetworkCaptureSink {
-        val completions = mutableListOf<Completion>()
+        val completions = mutableListOf<CapturedResponse>()
         val failures = mutableListOf<Failure>()
         val requestBodies = mutableListOf<CapturedBody?>()
         private var counter = 0
@@ -542,16 +603,8 @@ class LustroNetworkInterceptorTest {
         override fun findMockRule(url: String, method: String): MockRule? =
             mockRule?.takeIf { (it as MockRuleImpl).matches(url, method) }
 
-        override fun completeRequest(
-            id: TransactionId,
-            statusCode: Int,
-            responseHeaders: Headers,
-            responseBody: CapturedBody?,
-            durationMs: Long,
-            isMocked: Boolean,
-            complete: Boolean,
-        ) {
-            completions.add(Completion(id, statusCode, isMocked, complete, responseBody))
+        override fun completeRequest(id: TransactionId, response: CapturedResponse) {
+            completions.add(response)
         }
 
         override fun failRequest(id: TransactionId, durationMs: Long, error: String) {

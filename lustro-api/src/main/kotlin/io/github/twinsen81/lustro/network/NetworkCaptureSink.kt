@@ -37,25 +37,12 @@ public interface NetworkCaptureSink {
     public fun findMockRule(url: String, method: String): MockRule?
 
     /**
-     * Records a completion of the transaction [id] with the response
-     * [statusCode], [responseHeaders], optional [responseBody], elapsed
-     * [durationMs], and whether the response was [isMocked].
-     *
-     * [complete] distinguishes a finished response (`true`, the default for
-     * ordinary requests) from an in-flight progressive update (event streams
-     * report `false` for the initial record and each progressive update, then
-     * `true` at EOF/close). The [responseBody] carries the captured text plus
-     * its truncation flag and full byte size.
+     * Records the [response] to the transaction [id]. An ordinary request
+     * reports one complete response; an event stream reports in-flight ones
+     * as it reads, then a complete one at EOF or close (see
+     * [CapturedResponse.isComplete]).
      */
-    public fun completeRequest(
-        id: TransactionId,
-        statusCode: Int,
-        responseHeaders: Headers,
-        responseBody: CapturedBody?,
-        durationMs: Long,
-        isMocked: Boolean,
-        complete: Boolean = true,
-    )
+    public fun completeRequest(id: TransactionId, response: CapturedResponse)
 
     /**
      * Records a failed transaction [id] after [durationMs], with the [error]

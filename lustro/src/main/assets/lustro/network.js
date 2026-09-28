@@ -535,8 +535,9 @@
         html += '<span class="' + sc + '">' + statusLabel + '</span>';
         html += '<span>' + (tx.durationMs != null ? tx.durationMs + 'ms' + (streaming ? ' streaming' : '') : '—') + '</span>';
         html += '<span>' + debugEscapeHtml(tx.timestamp || '') + '</span>';
-        if (tx.requestBodyBytes != null) html += '<span title="Request body size">↑ ' + formatBytes(tx.requestBodyBytes) + '</span>';
-        if (tx.responseBodyBytes != null) html += '<span title="Response body size">↓ ' + formatBytes(tx.responseBodyBytes) + '</span>';
+        if (tx.protocol) html += '<span title="Protocol the response came over">' + debugEscapeHtml(tx.protocol) + '</span>';
+        html += bodyMeta('↑', 'Request', tx.requestBodyBytes, tx.requestContentType);
+        html += bodyMeta('↓', 'Response', tx.responseBodyBytes, tx.responseContentType);
         (tx.categories || []).forEach(function(c) { html += '<span class="dc-tag" data-cat="' + debugEscapeHtml(c) + '">' + debugEscapeHtml(c) + '</span>'; });
         if (tx.isMocked) html += '<span class="dc-badge" style="--c: var(--ai)">Mocked</span>';
         html += '</div>';
@@ -648,6 +649,25 @@
         if (n < 1024) return n + ' B';
         if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
         return (n / (1024 * 1024)).toFixed(2) + ' MB';
+    }
+
+    // "↓ 1.2 KB application/json": a body's size and media type, whichever
+    // are known. The header shows the type without its parameters; the
+    // tooltip has it as captured, charset and all.
+    function bodyMeta(arrow, label, bytes, contentType) {
+        var shown = [];
+        var full = [];
+        if (bytes != null) {
+            shown.push(formatBytes(bytes));
+            full.push(formatBytes(bytes));
+        }
+        if (contentType) {
+            shown.push(String(contentType).split(';')[0].trim());
+            full.push(contentType);
+        }
+        if (!shown.length) return '';
+        return '<span title="' + debugEscapeHtml(label + ' body: ' + full.join(', ')) + '">'
+            + arrow + ' ' + debugEscapeHtml(shown.join(' ')) + '</span>';
     }
 
     function buildCurlCommand(tx) {
