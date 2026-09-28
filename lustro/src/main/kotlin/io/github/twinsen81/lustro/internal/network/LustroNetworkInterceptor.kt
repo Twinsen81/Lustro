@@ -2,7 +2,6 @@ package io.github.twinsen81.lustro.internal.network
 
 import android.util.Log
 import io.github.twinsen81.lustro.Headers
-import io.github.twinsen81.lustro.MediaType
 import io.github.twinsen81.lustro.network.CapturedBody
 import io.github.twinsen81.lustro.network.CapturedResponse
 import io.github.twinsen81.lustro.network.MockRule
@@ -11,6 +10,7 @@ import io.github.twinsen81.lustro.network.TransactionId
 import java.io.IOException
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.Protocol
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
@@ -65,14 +65,15 @@ internal class LustroNetworkInterceptor(
         val startTime = System.currentTimeMillis()
         var id: TransactionId? = null
         if (capturing) {
-            val requestCapture = captureRequestBody(request)
+            val contentType = requestContentType(request)
+            val requestCapture = captureRequestBody(request, contentType)
             id =
                 sink.beginRequest(
                     url = url,
                     method = request.method,
                     headers = request.headers.toApiHeaders(),
                     requestBody = requestCapture,
-                    contentType = requestContentType(request),
+                    contentType = contentType.toApiMediaType(),
                 )
         }
 
@@ -155,13 +156,13 @@ internal class LustroNetworkInterceptor(
             .build()
     }
 
-    private fun captureRequestBody(request: okhttp3.Request): CapturedBody? {
+    private fun captureRequestBody(request: okhttp3.Request, contentType: okhttp3.MediaType?): CapturedBody? {
         val body = request.body ?: return null
         val declaredSize = body.contentLength().takeIf { it >= 0 }
         if (body.isOneShot() || body.isDuplex()) {
             return CapturedBody(text = null, truncated = false, byteSize = declaredSize)
         }
-        if (!body.contentType().isTextLike()) {
+        if (!contentType.isTextLike()) {
             return CapturedBody(text = null, truncated = false, byteSize = declaredSize)
         }
         val buffer = Buffer()
@@ -309,10 +310,9 @@ internal class LustroNetworkInterceptor(
             .build()
 
     // What goes on the wire: OkHttp sends the body's media type, or the header
-    // the app set when the body has none.
-    private fun requestContentType(request: okhttp3.Request): MediaType? =
-        request.body?.contentType()?.toApiMediaType()
-            ?: request.header("Content-Type")?.let { MediaType.parse(it) }
+    // the app set when the body has none. Body capture goes by the same type.
+    private fun requestContentType(request: okhttp3.Request): okhttp3.MediaType? =
+        request.body?.contentType() ?: request.header("Content-Type")?.toMediaTypeOrNull()
 
     private companion object {
         private const val TAG = "Lustro"

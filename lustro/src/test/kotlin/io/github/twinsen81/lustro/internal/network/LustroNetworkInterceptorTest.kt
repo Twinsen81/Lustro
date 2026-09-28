@@ -340,13 +340,16 @@ class LustroNetworkInterceptorTest {
             Request.Builder()
                 .url("https://example.com/upload")
                 .header("Content-Type", "application/xml")
-                .post(ByteArray(3).toRequestBody(null))
+                .post("<order id=\"7\"/>".toByteArray().toRequestBody(null))
                 .build()
         val response = responseFor(request, TrackingResponseBody("text/plain".toMediaType(), "ok", 2))
 
         interceptor.intercept(FakeChain(request, response))
 
-        assertEquals("application/xml", store.getTransactions().single().requestContentType)
+        val tx = store.getTransactions().single()
+        assertEquals("application/xml", tx.requestContentType)
+        // Captured as the text the header says it is, not skipped as untyped bytes.
+        assertEquals("<order id=\"7\"/>", tx.requestBody)
     }
 
     @Test
