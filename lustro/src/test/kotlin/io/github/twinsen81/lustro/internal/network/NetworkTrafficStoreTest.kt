@@ -382,6 +382,18 @@ class NetworkTrafficStoreTest {
     }
 
     @Test
+    fun `an empty binary body is no body`() {
+        val store = store()
+        val id = store.beginRequest("https://example.com/a.png", "HEAD", Headers.EMPTY, null, null)
+        // A HEAD reply declares the size of a body it doesn't send.
+        store.respond(id, 200, Headers.of("Content-Type" to "image/png"), CapturedBody(text = null, byteSize = 8090, bytes = ByteArray(0)), 5)
+
+        val tx = store.getTransaction(id.value)!!
+        assertNull(tx.responseBinaryBody)
+        assertEquals(8090L, tx.responseBodyBytes)
+    }
+
+    @Test
     fun `a queued binary body fills the capture backlog as text does`() {
         val executor = ManualExecutor()
         val store = store(worker = CaptureWorker(executor, maxBacklogChars = 10_000))

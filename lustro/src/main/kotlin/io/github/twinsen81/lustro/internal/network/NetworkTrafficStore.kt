@@ -371,7 +371,8 @@ internal class NetworkTrafficStore(
     }
 
     // Text wins when an adapter sets both: it is the form the Redactor has seen.
-    private fun CapturedBody?.binaryBytes(): ByteArray? = this?.bytes?.takeIf { text == null }
+    // No bytes, as in the reply to a HEAD, is no body: there is nothing to show.
+    private fun CapturedBody?.binaryBytes(): ByteArray? = this?.bytes?.takeIf { text == null && it.isNotEmpty() }
 
     private fun CapturedBody?.backlogWeight(): Long =
         this?.text?.length?.toLong() ?: binaryBytes()?.size?.toLong() ?: 0L

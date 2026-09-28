@@ -8,8 +8,9 @@ package io.github.twinsen81.lustro.network
  * stored as it arrived, so report [bytes] only for a type that is useful to
  * keep and seldom carries a secret. The built-in adapters keep image bodies
  * this way (SVG is text), and drop other non-text bodies. When both are set, the
- * built-in sink keeps [text] and drops [bytes]. Both are `null` for a body
- * that wasn't captured: a one-shot or duplex body, or a type neither covers.
+ * built-in sink keeps [text] and drops [bytes], and it treats empty [bytes] as
+ * no body. Both are `null` for a body that wasn't captured: a one-shot or
+ * duplex body, or a type neither covers.
  *
  * [truncated] marks that the full body exceeded the capture cap, so [text] or
  * [bytes] only holds a prefix; [byteSize] is the FULL body size in bytes when
