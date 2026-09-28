@@ -389,16 +389,6 @@
 .net-send-result.error .net-send-result-status { color: var(--danger); }
 .net-send-result .net-send-result-line { margin-top: 4px; color: var(--t3); }
 
-/* Throttle dropdown (a select dressed as a button). */
-.net-throttle-select {
-    appearance: none;
-    -webkit-appearance: none;
-    padding-right: 24px;
-    background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
-    background-position: calc(100% - 13px) 55%, calc(100% - 9px) 55%;
-    background-size: 4px 4px, 4px 4px;
-    background-repeat: no-repeat;
-}
 .net-rule-header {
     display: flex;
     align-items: center;

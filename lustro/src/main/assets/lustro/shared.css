@@ -336,15 +336,24 @@ button.dc-pill:hover { border-color: var(--hover-border); }
 .dc-btn:where(:hover) { border-color: var(--hover-border); }
 .dc-btn--active  { background: var(--accent-soft); border-color: var(--accent-border); color: var(--accent-2); } /* toggled-on state */
 .dc-btn--primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
-.dc-btn--primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+.dc-btn--primary:hover { background-color: var(--accent-hover); border-color: var(--accent-hover); }
 .dc-btn--soft    { background: var(--accent-soft); border-color: var(--accent-border); color: var(--accent-2); font-weight: 600; }
 .dc-btn--icon    { border: none; padding: 4px 6px; color: var(--t3); font-family: var(--font-ui); font-size: 13px; transition: color .15s; } /* bare glyph, e.g. ✎ ✕; the UI font's fallback draws them larger than the mono one */
 .dc-btn--icon:hover { color: var(--t1); }
 .dc-btn--danger:hover { color: var(--danger); border-color: var(--danger-border); } /* red on hover only */
 .dc-btn--ghost-danger { color: var(--danger); border-color: var(--danger-border); } /* red at rest, e.g. Clear */
-.dc-btn--ghost-danger:hover { background: var(--danger-soft); border-color: var(--danger); }
+.dc-btn--ghost-danger:hover { background-color: var(--danger-soft); border-color: var(--danger); }
 .dc-btn--sm { padding: 4px 11px; font-size: 10.5px; }
-.dc-btn:disabled { background: transparent; border-color: var(--border-soft); color: var(--t5); cursor: not-allowed; }
+.dc-btn:disabled { background-color: transparent; border-color: var(--border-soft); color: var(--t5); cursor: not-allowed; }
+/* A <select class="dc-btn"> draws its own ▾ instead of the native control. This must apply from
+   the first layout: when appearance changes later (tab CSS loads after the markup), Chrome keeps
+   the native select's height and label offset, and the label is cut off. */
+select.dc-btn {
+  appearance: none; -webkit-appearance: none; padding-right: 24px;
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 13px) 55%, calc(100% - 9px) 55%;
+  background-size: 4px 4px; background-repeat: no-repeat;
+}
 
 /* ---------- Filter chips (pills) ---------- */
 .dc-chip {

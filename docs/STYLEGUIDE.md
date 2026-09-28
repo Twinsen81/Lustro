@@ -85,7 +85,7 @@ too. Semantic color is passed via the `--c` custom property where noted:
   `--sm`, `--icon`): transparent 1px-border buttons. Primary is solid accent,
   `--ghost-danger` is red at rest (e.g. Clear), `--danger` turns red on hover
   only, and `--icon` is a bare glyph button (✎ ✕). A disabled `.dc-btn` greys
-  out.
+  out, and a `<select class="dc-btn">` is a dropdown with a drawn ▾.
 - `.dc-chip` + `.dc-chip__dot`: pill filters with a colored leading dot;
   `--active` = accent-tinted.
 - `.dc-seg` / `.dc-seg__item(--active)`: segmented control on a recessed track;
