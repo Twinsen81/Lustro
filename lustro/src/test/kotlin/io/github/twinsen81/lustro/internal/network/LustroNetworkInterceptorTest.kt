@@ -16,11 +16,14 @@ import okhttp3.Call
 import okhttp3.Connection
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
 import okhttp3.Protocol
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import okhttp3.ResponseBody
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
 import okio.Buffer
 import okio.BufferedSource
 import okio.Source
@@ -350,6 +353,37 @@ class LustroNetworkInterceptorTest {
         assertEquals("application/xml", tx.requestContentType)
         // Captured as the text the header says it is, not skipped as untyped bytes.
         assertEquals("<order id=\"7\"/>", tx.requestBody)
+    }
+
+    @Test
+    fun `a typeless body captured by its header still reaches the server intact`() {
+        // Capturing writes the body once into a buffer before OkHttp writes it to
+        // the network; through a real client, the server must still get all of it.
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setBody("ok"))
+        server.start()
+        try {
+            val store = store()
+            val client = OkHttpClient.Builder().addInterceptor(interceptor(store)).build()
+            val json = """{"id":7,"note":"héllo"}"""
+            val request =
+                Request.Builder()
+                    .url(server.url("/orders"))
+                    .header("Content-Type", "application/json")
+                    .post(json.toByteArray().toRequestBody(null))
+                    .build()
+
+            client.newCall(request).execute().use { assertEquals(200, it.code) }
+
+            val sent = server.takeRequest()
+            assertEquals(json, sent.body.readUtf8())
+            assertEquals("application/json", sent.getHeader("Content-Type"))
+            val tx = store.getTransactions().single()
+            assertEquals("application/json", tx.requestContentType)
+            assertEquals(json, tx.requestBody)
+        } finally {
+            server.shutdown()
+        }
     }
 
     @Test
