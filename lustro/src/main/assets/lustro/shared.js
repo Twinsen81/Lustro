@@ -14,16 +14,11 @@ window.lustroApiUrl = function(path) {
 window.debugSetStatus = function(state) {
     const el = document.getElementById('status');
     if (!el) return;
-    if (state === 'connected') {
-        el.textContent = 'Live';
-        el.className = 'status connected';
-    } else if (state === 'error') {
-        el.textContent = 'Error';
-        el.className = 'status error';
-    } else {
-        el.textContent = 'Disconnected';
-        el.className = 'status disconnected';
-    }
+    var label = 'Disconnected';
+    if (state === 'connected') label = 'Live';
+    else if (state === 'error') label = 'Error';
+    el.className = 'dc-pill ' + (state === 'connected' ? 'dc-pill--live' : 'dc-pill--danger');
+    el.innerHTML = '<span class="dc-pill__dot"></span>' + label;
 };
 
 // The tab page starts as unauthenticated chrome. After fragment-token auth sets
@@ -250,15 +245,15 @@ window.debugCheckSession = function() { /* no-op */ };
 
 (function() {
     var c = document.createElement('div');
-    c.className = 'debug-toast-container';
+    c.className = 'dc-toasts';
     document.body.appendChild(c);
 })();
 
 window.debugToast = function(message, type) {
     type = type || 'info';
-    var container = document.querySelector('.debug-toast-container');
+    var container = document.querySelector('.dc-toasts');
     var toast = document.createElement('div');
-    toast.className = 'debug-toast ' + type;
+    toast.className = 'dc-toast dc-toast--' + type;
     toast.textContent = message;
     container.appendChild(toast);
     setTimeout(function() { toast.remove(); }, 3000);
@@ -331,9 +326,10 @@ window.debugCopyToClipboard = function(text) {
 // `\uXXXX` escape decodes, and a repeated key keeps only its last value — and a
 // body is shown and copied exactly to answer questions about those details.
 //
-// Returns an array of {cls, text} (cls null for the printer's own punctuation
-// and indentation), or null when the text is not a single valid JSON value, so
-// callers can fall back. The grammar accepted is JSON.parse's.
+// Returns an array of {cls, text}, where cls is the piece's .dc-json span class
+// (k, s, n, b or p) or null for the printer's own punctuation and indentation,
+// or null when the text is not a single valid JSON value, so callers can fall
+// back. The grammar accepted is JSON.parse's.
 function debugScanJsonSource(src, indent) {
     if (typeof src !== 'string') return null;
     var i = 0;
@@ -366,24 +362,24 @@ function debugScanJsonSource(src, indent) {
         var c = src.charAt(i);
         if (c === '{') return object(depth);
         if (c === '[') return array(depth);
-        if (c === '"') return push('json-string', string());
-        if (c === '-' || (c >= '0' && c <= '9')) return push('json-number', number());
-        if (src.substr(i, 4) === 'true') { i += 4; return push('json-boolean', 'true'); }
-        if (src.substr(i, 5) === 'false') { i += 5; return push('json-boolean', 'false'); }
-        if (src.substr(i, 4) === 'null') { i += 4; return push('json-null', 'null'); }
+        if (c === '"') return push('s', string());
+        if (c === '-' || (c >= '0' && c <= '9')) return push('n', number());
+        if (src.substr(i, 4) === 'true') { i += 4; return push('b', 'true'); }
+        if (src.substr(i, 5) === 'false') { i += 5; return push('b', 'false'); }
+        if (src.substr(i, 4) === 'null') { i += 4; return push('b', 'null'); }
         fail();
     }
 
     function object(depth) {
         i++;
         skipWs();
-        if (src.charAt(i) === '}') { i++; return push('json-bracket', '{}'); }
-        push('json-bracket', '{');
+        if (src.charAt(i) === '}') { i++; return push('p', '{}'); }
+        push('p', '{');
         for (var n = 0; ; n++) {
             push(null, (n === 0 ? '\n' : ',\n') + pad(depth + 1));
             skipWs();
             if (src.charAt(i) !== '"') fail();
-            push('json-key', string());
+            push('k', string());
             skipWs();
             if (src.charAt(i) !== ':') fail();
             i++;
@@ -396,14 +392,14 @@ function debugScanJsonSource(src, indent) {
             fail();
         }
         push(null, '\n' + pad(depth));
-        push('json-bracket', '}');
+        push('p', '}');
     }
 
     function array(depth) {
         i++;
         skipWs();
-        if (src.charAt(i) === ']') { i++; return push('json-bracket', '[]'); }
-        push('json-bracket', '[');
+        if (src.charAt(i) === ']') { i++; return push('p', '[]'); }
+        push('p', '[');
         for (var n = 0; ; n++) {
             push(null, (n === 0 ? '\n' : ',\n') + pad(depth + 1));
             skipWs();
@@ -414,7 +410,7 @@ function debugScanJsonSource(src, indent) {
             fail();
         }
         push(null, '\n' + pad(depth));
-        push('json-bracket', ']');
+        push('p', ']');
     }
 
     function string() {
@@ -463,7 +459,7 @@ window.debugFormatJson = function(obj, indent) {
 };
 
 // JetBrains-style JSON syntax highlighter. Returns HTML safe to drop into
-// innerHTML of a <pre class="debug-json">. Falls back to escaped plain text
+// innerHTML of a <pre class="dc-json">. Falls back to escaped plain text
 // when the input isn't valid JSON. Optional options.searchText wraps matches
 // in <mark> inside the generated spans.
 window.debugSyntaxHighlightJson = function(jsonString, options) {
@@ -489,37 +485,37 @@ window.debugSyntaxHighlightJson = function(jsonString, options) {
     return walkValue(parsed, 0, indent, searchText);
 
     function walkValue(value, depth, indent, searchText) {
-        if (value === null) return '<span class="json-null">null</span>';
+        if (value === null) return '<span class="b">null</span>';
         var t = typeof value;
-        if (t === 'boolean') return '<span class="json-boolean">' + value + '</span>';
-        if (t === 'number') return '<span class="json-number">' + escapeAndMark(String(value), searchText) + '</span>';
-        if (t === 'string') return '<span class="json-string">"' + escapeStringInner(value, searchText) + '"</span>';
+        if (t === 'boolean') return '<span class="b">' + value + '</span>';
+        if (t === 'number') return '<span class="n">' + escapeAndMark(String(value), searchText) + '</span>';
+        if (t === 'string') return '<span class="s">"' + escapeStringInner(value, searchText) + '"</span>';
         if (Array.isArray(value)) return walkArray(value, depth, indent, searchText);
         if (t === 'object') return walkObject(value, depth, indent, searchText);
         return escapeAndMark(String(value), searchText);
     }
 
     function walkArray(arr, depth, indent, searchText) {
-        if (arr.length === 0) return '<span class="json-bracket">[]</span>';
+        if (arr.length === 0) return '<span class="p">[]</span>';
         var pad = repeat(' ', (depth + 1) * indent);
         var endPad = repeat(' ', depth * indent);
         var items = arr.map(function(v) {
             return pad + walkValue(v, depth + 1, indent, searchText);
         }).join(',\n');
-        return '<span class="json-bracket">[</span>\n' + items + '\n' + endPad + '<span class="json-bracket">]</span>';
+        return '<span class="p">[</span>\n' + items + '\n' + endPad + '<span class="p">]</span>';
     }
 
     function walkObject(obj, depth, indent, searchText) {
         var keys = Object.keys(obj);
-        if (keys.length === 0) return '<span class="json-bracket">{}</span>';
+        if (keys.length === 0) return '<span class="p">{}</span>';
         var pad = repeat(' ', (depth + 1) * indent);
         var endPad = repeat(' ', depth * indent);
         var items = keys.map(function(k) {
             return pad
-                + '<span class="json-key">"' + escapeStringInner(k, searchText) + '"</span>: '
+                + '<span class="k">"' + escapeStringInner(k, searchText) + '"</span>: '
                 + walkValue(obj[k], depth + 1, indent, searchText);
         }).join(',\n');
-        return '<span class="json-bracket">{</span>\n' + items + '\n' + endPad + '<span class="json-bracket">}</span>';
+        return '<span class="p">{</span>\n' + items + '\n' + endPad + '<span class="p">}</span>';
     }
 
     function escapeStringInner(s, searchText) {
@@ -563,24 +559,25 @@ function highlightMatches(html, searchText) {
     }
 }
 
+// Controls a .dc-modal-scrim kept in the tab markup with the hidden attribute.
 window.debugModal = function(modalId) {
     var el = document.getElementById(modalId);
     if (!el) return { show: function(){}, hide: function(){}, toggle: function(){}, isVisible: function(){ return false; } };
     el.addEventListener('mousedown', function(e) {
-        if (e.target === el) el.classList.remove('visible');
+        if (e.target === el) el.hidden = true;
     });
     return {
-        show: function() { el.classList.add('visible'); },
-        hide: function() { el.classList.remove('visible'); },
-        toggle: function() { el.classList.toggle('visible'); },
-        isVisible: function() { return el.classList.contains('visible'); }
+        show: function() { el.hidden = false; },
+        hide: function() { el.hidden = true; },
+        toggle: function() { el.hidden = !el.hidden; },
+        isVisible: function() { return !el.hidden; }
     };
 };
 
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
-        document.querySelectorAll('.debug-modal.visible').forEach(function(m) {
-            m.classList.remove('visible');
+        document.querySelectorAll('.dc-modal-scrim:not([hidden])').forEach(function(m) {
+            m.hidden = true;
         });
     }
 });
@@ -641,26 +638,15 @@ window.debugPoll = function(endpointOrFn, intervalMs, callback) {
 };
 
 window.debugInitResizers = function() {
-    // Both divider flavors are supported: the legacy .pane-divider (explicit
-    // data-left/data-right element-id contract) and the .dc-divider component
-    // (infers its two flanking panes from the DOM: pane | divider | pane).
-    document.querySelectorAll('.pane-divider, .dc-divider').forEach(function(divider) {
+    // Each .dc-divider resizes the two panes on either side of it:
+    // pane | divider | pane.
+    document.querySelectorAll('.dc-divider').forEach(function(divider) {
         var isDragging = false;
         var startX = 0;
         var leftPane = null;
         var rightPane = null;
         var leftStartWidth = 0;
         var total = 0;
-
-        function resolvePanes() {
-            var left = divider.dataset.left
-                ? document.getElementById(divider.dataset.left)
-                : divider.previousElementSibling;
-            var right = divider.dataset.right
-                ? document.getElementById(divider.dataset.right)
-                : divider.nextElementSibling;
-            return { left: left, right: right };
-        }
 
         // Read each pane's CSS min-width so the drag honors it. Clamping to a
         // hardcoded floor instead would let JS and CSS disagree: JS would write a
@@ -674,9 +660,8 @@ window.debugInitResizers = function() {
         }
 
         divider.addEventListener('mousedown', function(e) {
-            var panes = resolvePanes();
-            leftPane = panes.left;
-            rightPane = panes.right;
+            leftPane = divider.previousElementSibling;
+            rightPane = divider.nextElementSibling;
             if (!leftPane || !rightPane) return;
             e.preventDefault();
             isDragging = true;
@@ -685,7 +670,7 @@ window.debugInitResizers = function() {
             // The pair shares a fixed total: their combined width stays constant as
             // the divider moves, so resizing is a single split point between them.
             total = leftStartWidth + rightPane.offsetWidth;
-            divider.classList.add('dragging');
+            divider.classList.add('dc-divider--dragging');
             document.body.style.cursor = 'col-resize';
         });
 
@@ -708,7 +693,7 @@ window.debugInitResizers = function() {
         document.addEventListener('mouseup', function() {
             if (isDragging) {
                 isDragging = false;
-                divider.classList.remove('dragging');
+                divider.classList.remove('dc-divider--dragging');
                 document.body.style.cursor = '';
             }
         });

@@ -353,16 +353,16 @@
             var dur = tx.durationMs != null ? tx.durationMs + 'ms' + (streaming ? '…' : '') : '…';
             var pathOnly = extractPath(tx.url).split('?')[0];
             var shortUrl = pathOnly.length > 100 ? pathOnly.substring(0, 100) + '…' : pathOnly;
-            var sel = tx.id === selectedTxId ? ' selected' : '';
-            var mockedBadge = tx.isMocked ? ' <span class="status-pill mocked">Mocked</span>' : '';
-            var streamingBadge = streaming ? ' <span class="status-pill">Streaming</span>' : '';
-            return '<tr class="' + sel + '" data-action="selectTransaction" data-tx-id="' + debugEscapeHtml(tx.id) + '">'
-                + '<td class="net-cell-method ' + methodClass(tx) + '">' + debugEscapeHtml(tx.method || '') + '</td>'
-                + '<td class="net-cell-url" title="' + debugEscapeHtml(pathOnly) + '">' + debugEscapeHtml(shortUrl) + '</td>'
-                + '<td class="net-cell-status ' + sc + '">' + statusText + mockedBadge + streamingBadge + '</td>'
-                + '<td class="net-cell-time">' + dur + '</td>'
-                + '<td class="net-cell-cat">' + ((tx.categories || []).map(function(c) {
-                    return '<span class="status-pill cat-pill" data-cat="' + debugEscapeHtml(c) + '">' + debugEscapeHtml(c) + '</span>';
+            var sel = tx.id === selectedTxId ? ' dc-row--selected' : '';
+            var mockedBadge = tx.isMocked ? ' <span class="dc-badge" style="--c: var(--ai)">Mocked</span>' : '';
+            var streamingBadge = streaming ? ' <span class="dc-badge">Streaming</span>' : '';
+            return '<tr class="dc-row' + sel + '" data-action="selectTransaction" data-tx-id="' + debugEscapeHtml(tx.id) + '">'
+                + '<td class="dc-cell net-cell-method ' + methodClass(tx) + '">' + debugEscapeHtml(tx.method || '') + '</td>'
+                + '<td class="dc-cell net-cell-url" title="' + debugEscapeHtml(pathOnly) + '">' + debugEscapeHtml(shortUrl) + '</td>'
+                + '<td class="dc-cell net-cell-status ' + sc + '">' + statusText + mockedBadge + streamingBadge + '</td>'
+                + '<td class="dc-cell net-cell-time">' + dur + '</td>'
+                + '<td class="dc-cell net-cell-cat">' + ((tx.categories || []).map(function(c) {
+                    return '<span class="dc-tag" data-cat="' + debugEscapeHtml(c) + '">' + debugEscapeHtml(c) + '</span>';
                 }).join(' ')) + '</td>'
                 + '</tr>';
         }).join('');
@@ -372,7 +372,7 @@
             if (!loadMoreEl) {
                 loadMoreEl = document.createElement('button');
                 loadMoreEl.id = 'tx-load-more';
-                loadMoreEl.className = 'debug-btn';
+                loadMoreEl.className = 'dc-btn';
                 loadMoreEl.style.margin = '8px auto';
                 loadMoreEl.style.display = 'block';
                 loadMoreEl.onclick = function() {
@@ -537,15 +537,15 @@
         html += '<span>' + debugEscapeHtml(tx.timestamp || '') + '</span>';
         if (tx.requestBodyBytes != null) html += '<span title="Request body size">↑ ' + formatBytes(tx.requestBodyBytes) + '</span>';
         if (tx.responseBodyBytes != null) html += '<span title="Response body size">↓ ' + formatBytes(tx.responseBodyBytes) + '</span>';
-        (tx.categories || []).forEach(function(c) { html += '<span class="status-pill cat-pill" data-cat="' + debugEscapeHtml(c) + '">' + debugEscapeHtml(c) + '</span>'; });
-        if (tx.isMocked) html += '<span class="status-pill mocked">Mocked</span>';
+        (tx.categories || []).forEach(function(c) { html += '<span class="dc-tag" data-cat="' + debugEscapeHtml(c) + '">' + debugEscapeHtml(c) + '</span>'; });
+        if (tx.isMocked) html += '<span class="dc-badge" style="--c: var(--ai)">Mocked</span>';
         html += '</div>';
         if (tx.error) html += '<div class="net-error-line">' + debugEscapeHtml(tx.error) + '</div>';
         html += '</div>';
 
-        html += '<div class="net-dir-tabs">';
-        html += '<button class="net-dir-btn' + (activeDir === 'response' ? ' active' : '') + '" data-action="switchDir" data-dir="response" title="Show what the server sent back (status, headers, body).">Response</button>';
-        html += '<button class="net-dir-btn' + (activeDir === 'request' ? ' active' : '') + '" data-action="switchDir" data-dir="request" title="Show what the app sent (method, URL, headers, body). Redacted values are removed.">Request</button>';
+        html += '<div class="dc-seg net-dir-tabs">';
+        html += '<button class="dc-seg__item' + (activeDir === 'response' ? ' dc-seg__item--active' : '') + '" data-action="switchDir" data-dir="response" title="Show what the server sent back (status, headers, body).">Response</button>';
+        html += '<button class="dc-seg__item' + (activeDir === 'request' ? ' dc-seg__item--active' : '') + '" data-action="switchDir" data-dir="request" title="Show what the app sent (method, URL, headers, body). Redacted values are removed.">Request</button>';
         html += '</div>';
 
         // One panel per direction: headers (collapsed <details>) above the
@@ -561,7 +561,7 @@
             var respFmt = debugFormatJson(tx.responseBody);
             var respHtml = renderBody(tx.responseBody);
             if (tx.responseBodyTruncated) html += '<div class="net-truncated-label">Truncated</div>';
-            html += '<div class="net-body-wrap">' + copyBtn(respFmt) + '<pre class="debug-code-block debug-json">' + respHtml + '</pre></div>';
+            html += '<div class="net-body-wrap">' + copyBtn(respFmt) + '<pre class="dc-code dc-json">' + respHtml + '</pre></div>';
         } else {
             html += '<div class="net-empty-body">No response body</div>';
         }
@@ -575,14 +575,14 @@
             var reqFmt = debugFormatJson(tx.requestBody);
             var reqHtml = renderBody(tx.requestBody);
             if (tx.requestBodyTruncated) html += '<div class="net-truncated-label">Truncated</div>';
-            html += '<div class="net-body-wrap">' + copyBtn(reqFmt) + '<pre class="debug-code-block debug-json">' + reqHtml + '</pre></div>';
+            html += '<div class="net-body-wrap">' + copyBtn(reqFmt) + '<pre class="dc-code dc-json">' + reqHtml + '</pre></div>';
         } else {
             html += '<div class="net-empty-body">No request body</div>';
         }
         html += '</div>';
 
         html += '<div style="margin-top:16px">';
-        html += '<button class="debug-btn" data-action="mockThis" title="Switch to Mock Rules and pre-fill a new rule that intercepts this request. Edit the status/body before saving to control the response on the next match.">Mock This Request</button>';
+        html += '<button class="dc-btn" data-action="mockThis" title="Switch to Mock Rules and pre-fill a new rule that intercepts this request. Edit the status/body before saving to control the response on the next match.">Mock This Request</button>';
         html += '</div>';
 
         el.innerHTML = html;
@@ -599,8 +599,8 @@
 
     window.switchDir = function(dir) {
         activeDir = dir;
-        document.querySelectorAll('.net-dir-btn').forEach(function(b) {
-            b.classList.toggle('active', b.dataset.dir === dir);
+        document.querySelectorAll('.net-dir-tabs .dc-seg__item').forEach(function(b) {
+            b.classList.toggle('dc-seg__item--active', b.dataset.dir === dir);
         });
         updateDetailPanels();
     };
@@ -639,7 +639,7 @@
         return '<details class="net-headers-details"' + (headersOpen() ? ' open' : '') + '>'
             + '<summary title="Expand or collapse the headers. The choice is remembered in your browser.">'
             + keys.length + ' header' + (keys.length === 1 ? '' : 's') + '</summary>'
-            + '<table class="debug-table net-headers-table">' + rows + '</table>'
+            + '<table class="net-headers-table">' + rows + '</table>'
             + '</details>';
     }
 
@@ -677,9 +677,9 @@
         document.getElementById('detail-content').classList.toggle('active', tab === 'detail');
         document.getElementById('rules-content').classList.toggle('active', tab === 'rules');
         document.getElementById('send-content').classList.toggle('active', tab === 'send');
-        document.getElementById('tab-btn-detail').classList.toggle('active', tab === 'detail');
-        document.getElementById('tab-btn-rules').classList.toggle('active', tab === 'rules');
-        document.getElementById('tab-btn-send').classList.toggle('active', tab === 'send');
+        document.getElementById('tab-btn-detail').classList.toggle('dc-tab--active', tab === 'detail');
+        document.getElementById('tab-btn-rules').classList.toggle('dc-tab--active', tab === 'rules');
+        document.getElementById('tab-btn-send').classList.toggle('dc-tab--active', tab === 'send');
         var detailHasTx = !!currentDetailTx;
         var copyAll = document.getElementById('copy-all-btn');
         var copyCurl = document.getElementById('copy-curl-btn');
@@ -712,13 +712,13 @@
     var loadedRules = [];
     var editingRuleId = null;
 
-    // Map a mock rule's status code onto the shared .status-pill variants.
-    function ruleStatusVariant(code) {
+    // Tint a mock rule's status code badge: green below 300, amber 3xx, red from 400.
+    function ruleStatusStyle(code) {
         var c = parseInt(code, 10);
         if (!c) return '';
-        if (c < 300) return ' success';
-        if (c < 400) return ' warning';
-        return ' error';
+        if (c < 300) return ' style="--c: var(--live)"';
+        if (c < 400) return ' style="--c: var(--lvl-w)"';
+        return ' style="--c: var(--danger)"';
     }
 
     function renderRules(rules) {
@@ -734,15 +734,15 @@
                 var editing = r.id === editingRuleId ? ' editing' : '';
                 var bodyPreview = '';
                 if (r.responseBody) {
-                    bodyPreview = '<pre class="net-rule-body debug-code-block debug-json">' + window.debugSyntaxHighlightJson(r.responseBody) + '</pre>';
+                    bodyPreview = '<pre class="net-rule-body dc-code dc-json">' + window.debugSyntaxHighlightJson(r.responseBody) + '</pre>';
                 }
                 return '<div class="net-rule-card' + disabled + editing + '">'
                     + '<div class="net-rule-header">'
                     + '<label class="net-toggle" title="Enable or disable this rule. Disabled rules stay in the list but do not match traffic."><input id="rule-toggle-' + debugEscapeHtml(r.id) + '" name="ruleEnabled" type="checkbox" aria-label="Enable mock rule ' + debugEscapeHtml(r.name || r.urlPattern) + '"' + checked + ' data-action="toggleRule" data-rule-id="' + debugEscapeHtml(r.id) + '"><span class="net-toggle-slider"></span></label>'
                     + '<span class="net-rule-name" title="' + debugEscapeHtml(r.name || r.urlPattern) + '">' + debugEscapeHtml(r.name || r.urlPattern) + '</span>'
-                    + '<span class="status-pill' + ruleStatusVariant(r.statusCode) + '" title="HTTP status returned to the app when this rule matches.">' + debugEscapeHtml(r.statusCode) + '</span>'
-                    + '<button class="debug-btn-icon" data-action="editRule" data-rule-id="' + debugEscapeHtml(r.id) + '" title="Edit this rule (loads it into the form below).">✎</button>'
-                    + '<button class="debug-btn-icon danger" data-action="deleteRule" data-rule-id="' + debugEscapeHtml(r.id) + '" title="Delete this rule permanently.">✕</button>'
+                    + '<span class="dc-badge"' + ruleStatusStyle(r.statusCode) + ' title="HTTP status returned to the app when this rule matches.">' + debugEscapeHtml(r.statusCode) + '</span>'
+                    + '<button class="dc-btn dc-btn--icon" data-action="editRule" data-rule-id="' + debugEscapeHtml(r.id) + '" title="Edit this rule (loads it into the form below).">✎</button>'
+                    + '<button class="dc-btn dc-btn--icon dc-btn--danger" data-action="deleteRule" data-rule-id="' + debugEscapeHtml(r.id) + '" title="Delete this rule permanently.">✕</button>'
                     + '</div>'
                     + '<div class="net-rule-detail">'
                     + (r.method ? debugEscapeHtml(r.method) + ' ' : '') + debugEscapeHtml(r.urlPattern)
@@ -768,23 +768,23 @@
             ? 'Save changes to this rule. Future matching requests use the updated response.'
             : 'Save this rule. Future matching requests get the synthetic response. Rules live in the app, and survive a restart when it gives Lustro a rule storage.';
         formEl.innerHTML = '<div class="net-rule-form">'
-            + '<h4>' + heading + (isEdit ? ' <button class="debug-btn-icon" data-action="cancelEditRule" title="Cancel editing and return to the empty Add form.">✕</button>' : '') + '</h4>'
+            + '<h4>' + heading + (isEdit ? ' <button class="dc-btn dc-btn--icon" data-action="cancelEditRule" title="Cancel editing and return to the empty Add form.">✕</button>' : '') + '</h4>'
             + '<input type="hidden" id="rf-id" name="id" value="' + debugEscapeHtml(prefill.id || '') + '">'
-            + '<div class="net-form-row"><label for="rf-name" title="Optional human label shown in the rule list. Defaults to the URL pattern.">Name</label><input id="rf-name" name="name" placeholder="Optional label" value="' + debugEscapeHtml(prefill.name || '') + '" title="Optional human label. Doesn\'t affect matching."></div>'
-            + '<div class="net-form-row"><label for="rf-pattern" title="What URLs this rule intercepts.">URL Pattern</label><input id="rf-pattern" name="urlPattern" placeholder="Substring or regex:..." value="' + debugEscapeHtml(prefill.urlPattern || '') + '" title="Substring match by default (e.g. /api/sync). Prefix with regex: for a regular expression (e.g. regex:^.+/api/v\\d+/entries$)."></div>'
-            + '<div class="net-form-row"><label for="rf-method" title="HTTP method to match.">Method</label>'
-            + '<select id="rf-method" name="method" title="HTTP method this rule applies to. Choose Any to match every method.">'
+            + '<div class="net-form-row"><label class="dc-label" for="rf-name" title="Optional human label shown in the rule list. Defaults to the URL pattern.">Name</label><input class="dc-input--block" id="rf-name" name="name" placeholder="Optional label" value="' + debugEscapeHtml(prefill.name || '') + '" title="Optional human label. Doesn\'t affect matching."></div>'
+            + '<div class="net-form-row"><label class="dc-label" for="rf-pattern" title="What URLs this rule intercepts.">URL Pattern</label><input class="dc-input--block" id="rf-pattern" name="urlPattern" placeholder="Substring or regex:..." value="' + debugEscapeHtml(prefill.urlPattern || '') + '" title="Substring match by default (e.g. /api/sync). Prefix with regex: for a regular expression (e.g. regex:^.+/api/v\\d+/entries$)."></div>'
+            + '<div class="net-form-row"><label class="dc-label" for="rf-method" title="HTTP method to match.">Method</label>'
+            + '<select class="dc-input--block" id="rf-method" name="method" title="HTTP method this rule applies to. Choose Any to match every method.">'
             + '<option value="">Any</option>'
             + ['GET','POST','PUT','PATCH','DELETE'].map(function(m) {
                 var sel = prefill.method === m ? ' selected' : '';
                 return '<option value="' + m + '"' + sel + '>' + m + '</option>';
             }).join('')
             + '</select></div>'
-            + '<div class="net-form-row"><label for="rf-status" title="HTTP status code returned to the app.">Status</label><input id="rf-status" name="statusCode" type="number" value="' + (prefill.statusCode || 200) + '" style="width:80px;flex:none" title="Status code returned to the app (e.g. 200, 404, 503)."></div>'
-            + '<div class="net-form-row"><label for="rf-body" title="Body returned to the app when this rule matches.">Body <button type="button" class="net-format-btn" data-action="formatRuleBody" title="Pretty-print the body as JSON (no-op if not valid JSON).">Format</button></label><textarea id="rf-body" name="responseBody" placeholder="Response body (JSON, text, etc.)" title="Response body returned to the app. Can be any string; JSON is auto-formatted in the rule preview.">' + debugEscapeHtml(prefill.responseBody || '') + '</textarea></div>'
+            + '<div class="net-form-row"><label class="dc-label" for="rf-status" title="HTTP status code returned to the app.">Status</label><input class="dc-input--block" id="rf-status" name="statusCode" type="number" value="' + (prefill.statusCode || 200) + '" style="width:80px;flex:none" title="Status code returned to the app (e.g. 200, 404, 503)."></div>'
+            + '<div class="net-form-row"><label class="dc-label" for="rf-body" title="Body returned to the app when this rule matches.">Body <button type="button" class="net-format-btn" data-action="formatRuleBody" title="Pretty-print the body as JSON (no-op if not valid JSON).">Format</button></label><textarea class="dc-textarea" id="rf-body" name="responseBody" placeholder="Response body (JSON, text, etc.)" title="Response body returned to the app. Can be any string; JSON is auto-formatted in the rule preview.">' + debugEscapeHtml(prefill.responseBody || '') + '</textarea></div>'
             + '<div class="net-form-actions">'
-            + '<button class="debug-btn debug-btn-primary" data-action="submitRule" title="' + submitTooltip + '">' + submitText + '</button>'
-            + (isEdit ? '<button class="debug-btn" data-action="cancelEditRule" title="Discard changes and return to the empty Add form.">Cancel</button>' : '')
+            + '<button class="dc-btn dc-btn--primary" data-action="submitRule" title="' + submitTooltip + '">' + submitText + '</button>'
+            + (isEdit ? '<button class="dc-btn" data-action="cancelEditRule" title="Discard changes and return to the empty Add form.">Cancel</button>' : '')
             + '</div>'
             + '</div>';
     }
@@ -828,15 +828,15 @@
             .map(function(m) { return '<option value="' + m + '">' + m + '</option>'; }).join('');
         container.innerHTML = '<div class="net-rule-form">'
             + '<h4>Send a request through the app\'s OkHttp client</h4>'
-            + '<div class="net-form-row"><label for="sf-method" title="HTTP method for the dispatched request.">Method</label>'
-            + '<select id="sf-method" name="method" style="max-width:120px;flex:0 0 120px" title="HTTP method.">' + methodOptions + '</select></div>'
-            + '<div class="net-form-row"><label for="sf-url" title="Where to send the request.">URL</label>'
-            + '<input id="sf-url" name="url" placeholder="/api/v1/entries or https://example.com/path" title="Absolute URL or a relative path. Relative paths are resolved against the app\'s configured server base URL."></div>'
-            + '<div class="net-form-row"><label id="sf-headers-label" title="Custom request headers (the app\'s OkHttp interceptors still add Auth/UA/etc.).">Headers</label><div id="sf-headers" role="group" aria-labelledby="sf-headers-label" style="flex:1"></div></div>'
-            + '<div class="net-form-row"><label for="sf-body" title="Body sent with the request.">Body <button type="button" class="net-format-btn" data-action="formatSendBody" title="Pretty-print the body as JSON (no-op if not valid JSON).">Format</button></label>'
-            + '<textarea id="sf-body" name="body" placeholder="Request body (omit for GET/HEAD)" title="Body sent with the request. Omit for GET/HEAD. Content-Type defaults to application/json unless overridden via Headers."></textarea></div>'
+            + '<div class="net-form-row"><label class="dc-label" for="sf-method" title="HTTP method for the dispatched request.">Method</label>'
+            + '<select class="dc-input--block" id="sf-method" name="method" style="max-width:120px;flex:0 0 120px" title="HTTP method.">' + methodOptions + '</select></div>'
+            + '<div class="net-form-row"><label class="dc-label" for="sf-url" title="Where to send the request.">URL</label>'
+            + '<input class="dc-input--block" id="sf-url" name="url" placeholder="/api/v1/entries or https://example.com/path" title="Absolute URL or a relative path. Relative paths are resolved against the app\'s configured server base URL."></div>'
+            + '<div class="net-form-row"><label class="dc-label" id="sf-headers-label" title="Custom request headers (the app\'s OkHttp interceptors still add Auth/UA/etc.).">Headers</label><div id="sf-headers" role="group" aria-labelledby="sf-headers-label" style="flex:1"></div></div>'
+            + '<div class="net-form-row"><label class="dc-label" for="sf-body" title="Body sent with the request.">Body <button type="button" class="net-format-btn" data-action="formatSendBody" title="Pretty-print the body as JSON (no-op if not valid JSON).">Format</button></label>'
+            + '<textarea class="dc-textarea" id="sf-body" name="body" placeholder="Request body (omit for GET/HEAD)" title="Body sent with the request. Omit for GET/HEAD. Content-Type defaults to application/json unless overridden via Headers."></textarea></div>'
             + '<div class="net-form-actions">'
-            + '<button class="debug-btn debug-btn-primary" id="sf-send-btn" data-action="submitSendRequest" title="Dispatch through the app\'s authorized OkHttpClient. Goes through every real interceptor (auth, logging, debug capture). Self-requests to the debug server are rejected. The request is sent synchronously and the result is shown below.">Send</button>'
+            + '<button class="dc-btn dc-btn--primary" id="sf-send-btn" data-action="submitSendRequest" title="Dispatch through the app\'s authorized OkHttpClient. Goes through every real interceptor (auth, logging, debug capture). Self-requests to the debug server are rejected. The request is sent synchronously and the result is shown below.">Send</button>'
             + '</div>'
             + '<div id="sf-result"></div>'
             + '</div>';
@@ -850,9 +850,9 @@
             var keyId = 'sf-header-key-' + i;
             var valueId = 'sf-header-value-' + i;
             return '<div class="net-send-header-row">'
-                + '<input id="' + keyId + '" name="headerKey" type="text" aria-label="Header name" placeholder="Header" value="' + debugEscapeHtml(h.key) + '" data-action="updateSendHeader" data-index="' + i + '" data-field="key" title="Header name (e.g. Content-Type, Accept).">'
-                + '<input id="' + valueId + '" name="headerValue" type="text" aria-label="Header value" placeholder="Value" value="' + debugEscapeHtml(h.value) + '" data-action="updateSendHeader" data-index="' + i + '" data-field="value" title="Header value.">'
-                + '<button type="button" class="debug-btn-icon danger" data-action="removeSendHeader" data-index="' + i + '" aria-label="Remove header row" title="Remove this header row.">✕</button>'
+                + '<input class="dc-input--block" id="' + keyId + '" name="headerKey" type="text" aria-label="Header name" placeholder="Header" value="' + debugEscapeHtml(h.key) + '" data-action="updateSendHeader" data-index="' + i + '" data-field="key" title="Header name (e.g. Content-Type, Accept).">'
+                + '<input class="dc-input--block" id="' + valueId + '" name="headerValue" type="text" aria-label="Header value" placeholder="Value" value="' + debugEscapeHtml(h.value) + '" data-action="updateSendHeader" data-index="' + i + '" data-field="value" title="Header value.">'
+                + '<button type="button" class="dc-btn dc-btn--icon dc-btn--danger" data-action="removeSendHeader" data-index="' + i + '" aria-label="Remove header row" title="Remove this header row.">✕</button>'
                 + '</div>';
         }).join('')
             + '<button type="button" class="net-format-btn" data-action="addSendHeader" style="margin-top:6px" title="Add another header row.">+ Add header</button>';
@@ -1065,7 +1065,7 @@
         var btn = document.getElementById('pause-btn');
         if (!btn) return;
         btn.textContent = isPaused ? '▶ Resume' : '⏸ Pause';
-        btn.classList.toggle('active', isPaused);
+        btn.classList.toggle('dc-btn--active', isPaused);
     }
 
     window.togglePause = function() {
@@ -1085,7 +1085,7 @@
         var btn = document.getElementById('overwrite-btn');
         if (!btn) return;
         btn.textContent = 'Overwrite: ' + (isOverwriteMode ? 'on' : 'off');
-        btn.classList.toggle('active', isOverwriteMode);
+        btn.classList.toggle('dc-btn--active', isOverwriteMode);
     }
 
     window.toggleOverwriteMode = function() {
@@ -1230,7 +1230,7 @@
             if (search) { search.focus(); search.select(); }
             return;
         }
-        if (e.key === 'Escape' && !document.querySelector('.debug-modal.visible')) {
+        if (e.key === 'Escape' && !document.querySelector('.dc-modal-scrim:not([hidden])')) {
             if (selectedTxId) {
                 selectedTxId = null;
                 currentDetailTx = null;

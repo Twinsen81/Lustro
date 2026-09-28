@@ -315,13 +315,11 @@ see [DECISIONS.md](DECISIONS.md).
   methods/statuses/levels/types/categories, flat surfaces with 1px separators,
   uppercase spaced labels, and a light theme with equal contrast. `shared.css` is
   now the design system for all tabs: design tokens (CSS custom properties on
-  `:root`, light overrides under `[data-theme="light"]`), the documented `.dc-*`
-  component library, the restyled shared `.debug-*` components, and aliases that
-  keep the pre-redesign token names working for existing tab CSS. The Network tab
-  and the framework chrome (top bar, status pill, theme toggle) are restyled to
-  match; see `docs/STYLEGUIDE.md` for the tab-author contract. The chrome's
-  `.content` container is now full-bleed (no built-in padding) — tabs own their
-  edge padding.
+  `:root`, light overrides under `[data-theme="light"]`) and the documented
+  `.dc-*` component library. The Network tab, the sample tab and the framework
+  chrome (top bar, status pill, theme toggle) are built from those components;
+  see `docs/STYLEGUIDE.md` for the tab-author contract. The chrome's content
+  area is now full-bleed (no built-in padding), so tabs own their edge padding.
 
 ### Security
 

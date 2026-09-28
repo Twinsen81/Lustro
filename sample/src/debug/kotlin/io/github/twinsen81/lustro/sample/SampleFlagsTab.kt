@@ -40,27 +40,27 @@ public class SampleFlagsTab(
     // Static shell; flags.js owns rendering and event delegation.
     override fun renderContent(): String =
         """
-        <div class="flags-toolbar">
-            <h3>Sample Client Feature Flags</h3>
+        <div class="dc-toolbar">
+            <h3 class="dc-mono-label">Sample Client Feature Flags</h3>
             <span id="flags-count" class="flags-count">0 flags</span>
-            <button class="debug-btn debug-btn-primary" data-action="openUpload" style="margin-left:auto" title="Upload a flags file (JSON). Opens a modal where you can pick a file or paste contents, then merge them.">Upload flags…</button>
+            <button class="dc-btn dc-btn--primary" data-action="openUpload" style="margin-left:auto" title="Upload a flags file (JSON). Opens a modal where you can pick a file or paste contents, then merge them.">Upload flags…</button>
         </div>
         <div id="flags-list" class="flags-list"></div>
 
-        <div id="flags-upload-modal" class="debug-modal">
-            <div class="debug-modal-content small">
-                <div class="debug-modal-header">
-                    <span>Upload flags file</span>
-                    <button class="debug-modal-close" data-action="closeUpload" title="Close without uploading.">×</button>
+        <div id="flags-upload-modal" class="dc-modal-scrim" hidden>
+            <div class="dc-modal">
+                <div class="dc-modal__head">
+                    <span class="dc-modal__title">Upload flags file</span>
+                    <button class="dc-modal__close" data-action="closeUpload" title="Close without uploading.">×</button>
                 </div>
-                <div class="debug-modal-body">
+                <div class="dc-modal__body">
                     <p class="flags-upload-hint">Pick a <code>.json</code> file or paste its contents. Accepts a bare array of <code>{id, description, enabled}</code> objects or an object with a top-level <code>flags</code> array.</p>
                     <input type="file" accept="application/json,.json" data-action="onUploadFile" title="Read a flags file into the box below.">
-                    <textarea id="flags-upload-text" class="flags-upload-text" placeholder='[{"id":"my-flag","description":"My flag","enabled":true}]' title="Flags JSON to upload."></textarea>
-                    <div class="flags-modal-actions">
-                        <button class="debug-btn debug-btn-primary" data-action="submitUpload" title="POST the contents to /api/v1/flags/upload and merge the flags.">Upload</button>
-                        <button class="debug-btn" data-action="closeUpload" title="Cancel.">Cancel</button>
-                    </div>
+                    <textarea id="flags-upload-text" class="dc-textarea flags-upload-text" placeholder='[{"id":"my-flag","description":"My flag","enabled":true}]' title="Flags JSON to upload."></textarea>
+                </div>
+                <div class="dc-modal__foot">
+                    <button class="dc-btn dc-btn--primary" data-action="submitUpload" title="POST the contents to /api/v1/flags/upload and merge the flags.">Upload</button>
+                    <button class="dc-btn" data-action="closeUpload" title="Cancel.">Cancel</button>
                 </div>
             </div>
         </div>

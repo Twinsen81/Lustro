@@ -523,8 +523,9 @@ internal class LustroServer(
     private fun buildPageHtml(activeTab: DebugTab): String {
         val tabsHtml =
             registry.visibleTabs().joinToString("\n") { tab ->
-                val activeClass = if (tab.id == activeTab.id) "active" else ""
-                """<a href="/tab/${tab.id}" class="tab $activeClass"><span class="tab-icon">${tab.icon.escapeHtml()}</span>${tab.title.escapeHtml()}</a>"""
+                val activeClass = if (tab.id == activeTab.id) " dc-nav__item--active" else ""
+                val icon = """<span class="dc-nav__icon">${tab.icon.escapeHtml()}</span>"""
+                """<a href="/tab/${tab.id}" class="dc-nav__item$activeClass">$icon${tab.title.escapeHtml()}</a>"""
             }
         val pageTitle = pageTitle()
         // EXTERNAL scripts/styles only (no inline tab logic — CSP holds). The tab
@@ -545,17 +546,17 @@ internal class LustroServer(
          cookie is set; loading them as static tags here would fire the requests
          during HTML parse, before auth, and 401. -->
 </head>
-<body data-lustro-tab="${activeTab.id.escapeHtml()}">
-    <div class="header">
-        <div class="tabs">
+<body class="dc-app" data-lustro-tab="${activeTab.id.escapeHtml()}">
+    <div class="dc-topbar">
+        <div class="dc-nav">
 $tabsHtml
         </div>
-        <div class="status-bar">
-            <button id="theme-toggle" class="theme-toggle" type="button">◑ Auto</button>
-            <span id="status" class="status disconnected">Connecting...</span>
+        <div class="dc-topbar__actions">
+            <button id="theme-toggle" class="dc-pill" type="button">◑ Auto</button>
+            <span id="status" class="dc-pill dc-pill--danger"><span class="dc-pill__dot"></span>Connecting...</span>
         </div>
     </div>
-    <div class="content">
+    <div class="dc-app__content">
         <div id="lustro-tab-content" data-lustro-content></div>
     </div>
     <script src="/shared.js"></script>

@@ -216,16 +216,16 @@ test('highlighting classifies the same slices', async (t) => {
     await t.test('spans carry the source text verbatim', () => {
         assert.strictEqual(
             debugSyntaxHighlightJson('{"id":12345678901234567890,"n":1.10}'),
-            '<span class="json-bracket">{</span>\n'
-                + '  <span class="json-key">"id"</span>: <span class="json-number">12345678901234567890</span>,\n'
-                + '  <span class="json-key">"n"</span>: <span class="json-number">1.10</span>\n'
-                + '<span class="json-bracket">}</span>',
+            '<span class="p">{</span>\n'
+                + '  <span class="k">"id"</span>: <span class="n">12345678901234567890</span>,\n'
+                + '  <span class="k">"n"</span>: <span class="n">1.10</span>\n'
+                + '<span class="p">}</span>',
         );
     });
 
     await t.test('every JSON token type gets a class', () => {
         const html = debugSyntaxHighlightJson('{"k":["s",1,true,null,{}]}');
-        for (const cls of ['json-key', 'json-string', 'json-number', 'json-boolean', 'json-null', 'json-bracket']) {
+        for (const cls of ['k', 's', 'n', 'b', 'p']) {
             assert.ok(html.includes(`class="${cls}"`), `expected a ${cls} span in ${html}`);
         }
     });
@@ -258,8 +258,8 @@ test('non-JSON bodies fall back instead of being rewritten', async (t) => {
         assert.strictEqual(debugFormatJson({ a: 1 }, 2), '{\n  "a": 1\n}');
         assert.strictEqual(
             debugSyntaxHighlightJson({ a: 1 }),
-            '<span class="json-bracket">{</span>\n  <span class="json-key">"a"</span>: '
-                + '<span class="json-number">1</span>\n<span class="json-bracket">}</span>',
+            '<span class="p">{</span>\n  <span class="k">"a"</span>: '
+                + '<span class="n">1</span>\n<span class="p">}</span>',
         );
     });
 

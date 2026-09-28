@@ -28,7 +28,7 @@
                 + '<span class="flag-id">' + window.debugEscapeHtml(f.id) + '</span>'
                 + '<span class="flag-desc">' + window.debugEscapeHtml(f.description || '') + '</span>'
                 + '</div>'
-                + '<span class="status-pill ' + (f.enabled ? 'success' : '') + '">' + (f.enabled ? 'ON' : 'OFF') + '</span>'
+                + '<span class="dc-badge"' + (f.enabled ? ' style="--c: var(--live)"' : '') + '>' + (f.enabled ? 'ON' : 'OFF') + '</span>'
                 + '</div>';
         }).join('');
     }
