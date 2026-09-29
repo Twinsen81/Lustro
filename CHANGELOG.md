@@ -351,6 +351,30 @@ see [DECISIONS.md](DECISIONS.md).
   An app that called `connect()` before writing the body had the request
   recorded before the switch, so it was listed as a GET. It is now recorded,
   and shown to a capture filter, as the POST that goes on the wire.
+- **Compressed bodies were stored as unreadable text.** Capture decoded a text
+  body straight from its bytes and never read `Content-Encoding`. OkHttp
+  inflates a gzip response on its own only when it added `Accept-Encoding`
+  itself, so when an app set that header, or compressed request bodies in an
+  interceptor added before Lustro's, the Network tab showed the compressed
+  bytes as text where the JSON should be. The OkHttp and platform
+  `HttpURLConnection` adapters now inflate a `gzip`, `x-gzip`, or `deflate`
+  body, and a body with no encoding that starts with the gzip magic bytes,
+  before they decode it. The inflated output stops at `maxBodyCaptureBytes`,
+  so a small body that inflates to far more is cut there and marked truncated
+  instead of being inflated in full. A body in an encoding they can't decode,
+  such as Brotli (`br`), is captured without text but with its size, and the
+  Network tab says why. `CapturedBody.byteSize` stays the size on the wire,
+  before decoding, and `truncated` refers to the decoded body. Platform capture
+  now takes that size from `Content-Length` when there is one, and reports no
+  size, instead of the cap, for a body cut at the cap whose full size it
+  doesn't know. Because an inflated body can be far larger than its compressed
+  size, the capture budget now counts a body as the larger of the two, with the
+  kept text counted in UTF-8 bytes. "Copy as cURL" leaves out a request's
+  `Content-Encoding` and `Content-Length`, because the body it sends is the
+  decoded and redacted one. Event streams are still captured as they arrive,
+  without decoding. The
+  sample gains buttons for gzip, deflate, and `br` responses, a gzip request
+  body, and a gzip response over `HttpURLConnection`.
 
 ### Changed
 

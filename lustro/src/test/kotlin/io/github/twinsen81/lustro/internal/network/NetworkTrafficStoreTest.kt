@@ -335,6 +335,29 @@ class NetworkTrafficStoreTest {
     }
 
     @Test
+    fun `a body kept inflated counts what is kept, not its compressed size`() {
+        val store = store(captureBudgetBytes = 250)
+        repeat(3) { i ->
+            // 100 chars of text from a body that took 10 bytes on the wire.
+            val body = CapturedBody(text = "z".repeat(100), byteSize = 10)
+            store.beginRequest("https://example.com/$i", "POST", Headers.EMPTY, body, MediaType.TEXT)
+        }
+        assertEquals(200L, store.capturedBytes())
+        assertEquals(listOf("https://example.com/2", "https://example.com/1"), store.getTransactions().map { it.url })
+    }
+
+    @Test
+    fun `a body kept inflated counts the UTF-8 size of what is kept`() {
+        val store = store()
+        // 100 chars that take 300 bytes, from a body that took 120 bytes on the wire.
+        val body = CapturedBody(text = "漢".repeat(100), byteSize = 120)
+
+        store.beginRequest("https://example.com/cjk", "POST", Headers.EMPTY, body, MediaType.TEXT)
+
+        assertEquals(300L, store.capturedBytes())
+    }
+
+    @Test
     fun `binary bodies are stored as they arrived, without the Redactor`() {
         val redactor = CountingRedactor()
         val store = store(redactor = redactor)

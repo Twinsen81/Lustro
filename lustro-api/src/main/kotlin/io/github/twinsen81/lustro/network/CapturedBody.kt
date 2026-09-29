@@ -12,11 +12,18 @@ package io.github.twinsen81.lustro.network
  * no body. Both are `null` for a body that wasn't captured: a one-shot or
  * duplex body, or a type neither covers.
  *
- * [truncated] marks that the full body exceeded the capture cap, so [text] or
- * [bytes] only holds a prefix; [byteSize] is the FULL body size in bytes when
- * known (which may exceed `text`'s length, e.g. for multi-byte UTF-8 or when
- * only a declared Content-Length is available). This restores the truncation
- * badge and true byte count that a bytes-only SPI would lose.
+ * [text] and [bytes] hold the body with its content coding undone: the
+ * built-in adapters inflate a `gzip` or `deflate` body first, and report one in
+ * a coding they can't undo, such as `br`, with both `null`. [truncated] marks
+ * that this decoded body exceeded the capture cap, so [text] or [bytes] only
+ * holds a prefix of it.
+ *
+ * [byteSize] is the size of the body as the adapter received it, before any
+ * decoding, when known: from its `Content-Length`, or as counted. For a body the
+ * adapter inflated it is the compressed size, so it can be smaller than [text];
+ * for a truncated body it is the full size, so it can be larger. The built-in
+ * sink counts a body toward its capture budget as the larger of [byteSize] and
+ * what it keeps.
  *
  * Deliberately NOT a `data class` so the public surface stays stable and
  * mirrorable by `:lustro-noop`.
@@ -24,9 +31,9 @@ package io.github.twinsen81.lustro.network
 public class CapturedBody @JvmOverloads constructor(
     /** The decoded captured body, or `null` for binary/one-shot/not-captured bodies. */
     public val text: String?,
-    /** `true` when the full body exceeded the capture cap and [text] or [bytes] is a prefix. */
+    /** `true` when the decoded body exceeded the capture cap and [text] or [bytes] is a prefix of it. */
     public val truncated: Boolean = false,
-    /** The full body size in bytes when known; may exceed [text]'s length, or `null`. */
+    /** The body's size in bytes before any decoding, such as its compressed size, or `null` when not known. */
     public val byteSize: Long? = null,
     /**
      * The captured bytes of a body the [Redactor] can't read, or `null`. Not

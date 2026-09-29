@@ -32,6 +32,8 @@ import okhttp3.mockwebserver.MockWebServer
 import okio.Buffer
 import okio.BufferedSink
 import okio.BufferedSource
+import okio.GzipSink
+import okio.GzipSource
 import okio.Source
 import okio.Timeout
 import okio.buffer
@@ -678,6 +680,163 @@ class LustroNetworkInterceptorTest {
         val tx = store.getTransactions().single()
         assertEquals(svg, tx.responseBody)
         assertNull(tx.responseBinaryBody)
+    }
+
+    @Test
+    fun `a gzip response to a client that sets Accept-Encoding itself is captured as its JSON`() {
+        val json = """{"id":7,"items":["a","b"],"note":"héllo"}"""
+        val compressed = gzip(json)
+        val server = MockWebServer()
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "application/json; charset=utf-8")
+                .setHeader("Content-Encoding", "gzip")
+                .setBody(Buffer().write(compressed)),
+        )
+        server.start()
+        try {
+            val store = store()
+            val client = OkHttpClient.Builder().addInterceptor(interceptor(store)).build()
+            // Setting Accept-Encoding turns off OkHttp's own gzip handling.
+            val request = Request.Builder().url(server.url("/orders")).header("Accept-Encoding", "gzip").build()
+
+            val received = client.newCall(request).execute().use { it.body!!.bytes() }
+
+            // The app still gets the compressed bytes it asked for.
+            assertArrayEquals(compressed, received)
+            val tx = store.getTransactions().single()
+            assertEquals(json, tx.responseBody)
+            assertFalse(tx.responseBodyTruncated)
+            assertEquals(compressed.size.toLong(), tx.responseBodyBytes)
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun `a response OkHttp inflates itself is captured as the app reads it`() {
+        val json = """{"id":7}"""
+        val server = MockWebServer()
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "application/json")
+                .setHeader("Content-Encoding", "gzip")
+                .setBody(Buffer().write(gzip(json))),
+        )
+        server.start()
+        try {
+            val store = store()
+            val client = OkHttpClient.Builder().addInterceptor(interceptor(store)).build()
+
+            val received = client.newCall(Request.Builder().url(server.url("/orders")).build()).execute().use { it.body!!.string() }
+
+            assertEquals("gzip", server.takeRequest().getHeader("Accept-Encoding"))
+            assertEquals(json, received)
+            val tx = store.getTransactions().single()
+            assertEquals(json, tx.responseBody)
+            assertEquals(json.length.toLong(), tx.responseBodyBytes)
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun `a gzip request body is captured as its JSON`() {
+        // The OkHttp GzipRequestInterceptor recipe, added before Lustro's as the README says.
+        val gzipRequests =
+            Interceptor { chain ->
+                val original = chain.request()
+                val body = original.body!!
+                val compressing =
+                    object : RequestBody() {
+                        override fun contentType(): okhttp3.MediaType? = body.contentType()
+
+                        override fun contentLength(): Long = -1L
+
+                        override fun writeTo(sink: BufferedSink) {
+                            GzipSink(sink).buffer().use { body.writeTo(it) }
+                        }
+                    }
+                chain.proceed(original.newBuilder().header("Content-Encoding", "gzip").method(original.method, compressing).build())
+            }
+        val json = """{"hello":"gzip","note":"héllo"}"""
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setBody("ok"))
+        server.start()
+        try {
+            val store = store()
+            val client = OkHttpClient.Builder().addInterceptor(gzipRequests).addInterceptor(interceptor(store)).build()
+            val request = Request.Builder().url(server.url("/events")).post(json.toRequestBody("application/json".toMediaType())).build()
+
+            client.newCall(request).execute().use { assertEquals(200, it.code) }
+
+            val sent = server.takeRequest().body
+            val sentSize = sent.size
+            assertEquals(json, GzipSource(sent).buffer().readUtf8())
+            val tx = store.getTransactions().single()
+            assertEquals(json, tx.requestBody)
+            assertFalse(tx.requestBodyTruncated)
+            assertEquals(sentSize, tx.requestBodyBytes)
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun `a br response keeps only its size`() {
+        val encoded = ByteArray(48) { (it * 7).toByte() }
+        val server = MockWebServer()
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "application/json")
+                .setHeader("Content-Encoding", "br")
+                .setBody(Buffer().write(encoded)),
+        )
+        server.start()
+        try {
+            val store = store()
+            val client = OkHttpClient.Builder().addInterceptor(interceptor(store)).build()
+            val request = Request.Builder().url(server.url("/orders")).header("Accept-Encoding", "br").build()
+
+            val received = client.newCall(request).execute().use { it.body!!.bytes() }
+
+            assertArrayEquals(encoded, received)
+            val tx = store.getTransactions().single()
+            assertNull(tx.responseBody)
+            assertNull(tx.responseBinaryBody)
+            assertFalse(tx.responseBodyTruncated)
+            assertEquals(48L, tx.responseBodyBytes)
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun `a response that inflates past the cap is cut at the cap and flagged`() {
+        // 8 MB of text compresses to about 8 KB; only the cap of it may be inflated.
+        val bomb = gzip("a".repeat(8 * 1024 * 1024))
+        val server = MockWebServer()
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "text/plain")
+                .setHeader("Content-Encoding", "gzip")
+                .setBody(Buffer().write(bomb)),
+        )
+        server.start()
+        try {
+            val store = store()
+            val client = OkHttpClient.Builder().addInterceptor(interceptor(store, maxBodySize = 1024)).build()
+            val request = Request.Builder().url(server.url("/export")).header("Accept-Encoding", "gzip").build()
+
+            client.newCall(request).execute().use { assertEquals(bomb.size.toLong(), it.body!!.bytes().size.toLong()) }
+
+            val tx = store.getTransactions().single()
+            assertEquals("a".repeat(1024), tx.responseBody)
+            assertTrue(tx.responseBodyTruncated)
+            assertEquals(bomb.size.toLong(), tx.responseBodyBytes)
+        } finally {
+            server.shutdown()
+        }
     }
 
     @Test

@@ -21,6 +21,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.random.Random
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import okio.utf8Size
 
 /**
  * Thread-safe in-memory store for captured HTTP transactions and mock rules.
@@ -265,17 +266,17 @@ internal class NetworkTrafficStore(
      * request body plus the response body. Uses the recorded byte counts when
      * present (they reflect the true on-the-wire size even when the stored body
      * was truncated) and falls back to the size of the retained text or bytes.
+     * A compressed body is kept inflated, so what is kept can be far more than
+     * its size on the wire; then the body counts what is kept.
      */
-    private fun transactionBytes(tx: NetworkTransaction): Long {
-        val request = tx.requestBodyBytes ?: retainedSize(tx.requestBody, tx.requestBinaryBody)
-        val response = tx.responseBodyBytes ?: retainedSize(tx.responseBody, tx.responseBinaryBody)
-        return request + response
+    private fun transactionBytes(tx: NetworkTransaction): Long =
+        bodyBytes(tx.requestBodyBytes, tx.requestBody, tx.requestBinaryBody) +
+            bodyBytes(tx.responseBodyBytes, tx.responseBody, tx.responseBinaryBody)
+
+    private fun bodyBytes(wireSize: Long?, text: String?, bytes: ByteArray?): Long {
+        val retained = text?.utf8Size() ?: bytes?.size?.toLong() ?: 0L
+        return if (wireSize == null) retained else maxOf(wireSize, retained)
     }
-
-    private fun retainedSize(text: String?, bytes: ByteArray?): Long =
-        text?.let { utf8Len(it) } ?: bytes?.size?.toLong() ?: 0L
-
-    private fun utf8Len(text: String): Long = text.toByteArray(Charsets.UTF_8).size.toLong()
 
     private fun identityKey(method: String, url: String): String {
         val path = url.toHttpUrlOrNull()?.encodedPath ?: url

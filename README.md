@@ -169,6 +169,17 @@ Network tab a moment after it completes. During a burst of large bodies, once ab
 captured text is waiting, calls capture on their own thread until that one catches up, which
 keeps memory bounded.
 
+**Compressed bodies are captured decoded.** OkHttp inflates a gzip response on its own only when
+it added `Accept-Encoding` itself. If your app sets that header, or compresses request bodies in an
+interceptor added before Lustro's, the interceptor sees the compressed bytes. Lustro inflates a body
+in `gzip`, `x-gzip`, or `deflate` before it stores it, and keeps at most
+`DebugConfig.maxBodyCaptureBytes` of the inflated body; the size the Network tab shows for it is the
+compressed size. Platform `HttpURLConnection` capture does the same. Lustro does not decode Brotli
+(`br`) or any other encoding: for such a body it keeps only the size, and the Network tab says why.
+To see Brotli bodies from OkHttp, add OkHttp's `BrotliInterceptor` (from `okhttp-brotli`) after
+Lustro's interceptor: it then decodes the body before Lustro captures it, as OkHttp does with its own
+gzip. Event streams are captured as they arrive, without decoding.
+
 **Leave traffic out with a capture filter.** Pass a `NetworkCaptureFilter` as `captureFilter`,
 and Lustro asks it about each request before it captures anything. A request it returns `false`
 for is never stored, so it costs no redaction and no part of the capture budget. Use it for
