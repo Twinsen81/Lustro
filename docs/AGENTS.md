@@ -168,6 +168,14 @@ body, or a binary type other than an image. The redactor never sees an image, so
 unredacted. `lustro net body <id> [request|response] -o FILE` wraps the route. These fields and
 the route are part of protocol 1.2.
 
+**Compressed bodies.** A body sent or received with `Content-Encoding: gzip`, `x-gzip`, or
+`deflate` is stored inflated: `requestBody` and `responseBody` hold the text, and
+`...BodyTruncated` says whether the inflated body passed the capture cap. The headers still name
+the encoding, and `requestBodyBytes` and `responseBodyBytes` are the size on the wire, before
+inflating, so drop `Content-Encoding` when you send a stored body again. A body in another
+encoding, such as `br`, is not stored: its body is `null`, and its size is kept. Event streams are
+stored as they arrive, without decoding.
+
 ## Common workflows
 
 **Mock a 500 for an endpoint**

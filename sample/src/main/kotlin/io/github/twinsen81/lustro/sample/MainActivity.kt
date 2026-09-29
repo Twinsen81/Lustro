@@ -20,6 +20,9 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
+import okio.Buffer
+import okio.GzipSink
+import okio.buffer
 
 /** Launcher activity with one button per sample HTTP request shape. */
 public class MainActivity : Activity() {
@@ -94,6 +97,15 @@ public class MainActivity : Activity() {
         addSection(root, "Streaming")
         addButton(root, "Stream SSE (/sse)") { streamSse() }
 
+        // OkHttp decompresses a response on its own only when it asked for gzip
+        // itself. An app that sets Accept-Encoding gets the compressed bytes, and
+        // so does every interceptor on its way back.
+        addSection(root, "Compressed bodies")
+        addButton(root, "GET /get, app asks for gzip") { compressedGet("gzip") }
+        addButton(root, "GET /get, app asks for deflate") { compressedGet("deflate") }
+        addButton(root, "GET /get, app asks for br (not decoded)") { compressedGet("br") }
+        addButton(root, "POST a gzip JSON body (/status/200)") { gzipPostRequest() }
+
         addSection(root, "Periodic sync")
         val syncButton = addButton(root, START_SYNC_LABEL)
         syncButton.setOnClickListener { toggleSync(syncButton) }
@@ -102,6 +114,9 @@ public class MainActivity : Activity() {
         addButton(root, "Raw HttpURLConnection GET") { rawPlatformRequest() }
         addButton(root, "Raw HttpURLConnection GET with $NO_CAPTURE_HEADER") {
             rawPlatformRequest(headers = mapOf(NO_CAPTURE_HEADER to "1"))
+        }
+        addButton(root, "Raw HttpURLConnection GET, app asks for gzip") {
+            rawPlatformRequest(path = "gzip", headers = mapOf("Accept-Encoding" to "gzip"))
         }
         addButton(root, "Volley GET") { volleyPlatformRequest() }
 
@@ -238,8 +253,24 @@ public class MainActivity : Activity() {
         }
     }
 
-    private fun rawPlatformRequest(headers: Map<String, String> = emptyMap()) {
-        val url = "$BASE/anything/platform/raw"
+    private fun compressedGet(encoding: String) {
+        dispatch(Request.Builder().url("$BASE/get").header("Accept-Encoding", encoding).build())
+    }
+
+    private fun gzipPostRequest() {
+        val compressed = Buffer()
+        GzipSink(compressed).buffer().use { it.writeUtf8("""{"hello":"gzip"}""") }
+        dispatch(
+            Request.Builder()
+                .url("$BASE/status/200")
+                .header("Content-Encoding", "gzip")
+                .post(compressed.readByteString().toRequestBody(JSON))
+                .build(),
+        )
+    }
+
+    private fun rawPlatformRequest(path: String = "raw", headers: Map<String, String> = emptyMap()) {
+        val url = "$BASE/anything/platform/$path"
         setStatus("→ GET $url (HttpURLConnection)")
         ioExecutor.execute {
             PlatformHttpDemo.rawGet(

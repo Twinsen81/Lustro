@@ -569,7 +569,7 @@
             if (tx.responseBodyTruncated) html += '<div class="net-truncated-label">Truncated</div>';
             html += '<div class="net-body-wrap">' + copyBtn(respFmt) + '<pre class="dc-code dc-json">' + respHtml + '</pre></div>';
         } else {
-            html += '<div class="net-empty-body">No response body</div>';
+            html += missingBody(tx.responseHeaders, tx.responseBody, 'No response body');
         }
         html += '</div>';
 
@@ -586,7 +586,7 @@
             if (tx.requestBodyTruncated) html += '<div class="net-truncated-label">Truncated</div>';
             html += '<div class="net-body-wrap">' + copyBtn(reqFmt) + '<pre class="dc-code dc-json">' + reqHtml + '</pre></div>';
         } else {
-            html += '<div class="net-empty-body">No request body</div>';
+            html += missingBody(tx.requestHeaders, tx.requestBody, 'No request body');
         }
         html += '</div>';
 
@@ -646,6 +646,28 @@
         return '<div class="net-body-image"><img src="' + debugEscapeHtml(src) + '" alt="' + dir + ' body"></div>';
     }
 
+    // Capture inflates a gzip or deflate body and keeps no body in another
+    // content coding, such as br. An empty body is "", so null is one not kept.
+    function missingBody(headers, body, label) {
+        var coding = body == null ? undecodedCoding(headers) : null;
+        var text = coding ? 'Body not captured: Lustro does not decode the ' + coding + ' encoding' : label;
+        return '<div class="net-empty-body">' + debugEscapeHtml(text) + '</div>';
+    }
+
+    function undecodedCoding(headers) {
+        var codings = [];
+        Object.keys(headers || {}).forEach(function(k) {
+            if (k.toLowerCase() !== 'content-encoding') return;
+            String(headers[k]).split(',').forEach(function(c) {
+                c = c.trim().toLowerCase();
+                if (c && c !== 'identity') codings.push(c);
+            });
+        });
+        if (!codings.length) return null;
+        if (codings.length === 1 && ['gzip', 'x-gzip', 'deflate'].indexOf(codings[0]) >= 0) return null;
+        return codings.join(', ');
+    }
+
     function formatHeaders(headers) {
         var keys = Object.keys(headers);
         var rows = keys.map(function(k) {
@@ -688,11 +710,13 @@
     function buildCurlCommand(tx) {
         var parts = ['curl', '-X', tx.method || 'GET'];
         var headers = tx.requestHeaders || {};
+        var hasBody = tx.requestBody && tx.method !== 'GET' && tx.method !== 'HEAD';
         Object.keys(headers).forEach(function(k) {
+            // The captured body is stored inflated, so it goes out without its coding.
+            if (hasBody && k.toLowerCase() === 'content-encoding') return;
             parts.push('-H');
             parts.push(shellQuote(k + ': ' + headers[k]));
         });
-        var hasBody = tx.requestBody && tx.method !== 'GET' && tx.method !== 'HEAD';
         if (hasBody) {
             parts.push('--data-raw');
             parts.push(shellQuote(tx.requestBody));

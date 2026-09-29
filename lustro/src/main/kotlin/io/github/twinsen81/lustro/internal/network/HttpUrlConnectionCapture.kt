@@ -195,13 +195,14 @@ internal class HttpUrlConnectionCapture(
             try {
                 if (!passesFilter()) return
                 val bodyBytes = requestBodyBuffer?.toByteArray()
+                val headers = headersOf(requestHeaders)
                 val contentType = contentTypeOf(requestHeaders)
                 transactionId =
                     sink.beginRequest(
                         url = url.toString(),
                         method = requestMethod(),
-                        headers = headersOf(requestHeaders),
-                        requestBody = bodyBytes?.let { platformCapturedBody(it, maxBodySize, contentType) },
+                        headers = headers,
+                        requestBody = bodyBytes?.let { platformCapturedBody(it, maxBodySize, contentType, headers.getAll(CONTENT_ENCODING)) },
                         contentType = contentType,
                     )
             } catch (t: Throwable) {
@@ -237,7 +238,7 @@ internal class HttpUrlConnectionCapture(
             try {
                 val flat = flatten(headers)
                 val contentType = flat.get("Content-Type")?.let { MediaType.parse(it) }
-                val body = platformCapturedBody(responseBodyBuffer.toByteArray(), maxBodySize, contentType)
+                val body = platformCapturedBody(responseBodyBuffer.toByteArray(), maxBodySize, contentType, flat.getAll(CONTENT_ENCODING))
                 sink.completeRequest(id, capturedResponse(statusCode, flat, body))
             } catch (t: Throwable) {
                 Log.w(TAG, "finalizeBody failed: ${t.javaClass.simpleName}")
@@ -694,13 +695,24 @@ internal class HttpUrlConnectionCapture(
  * writes at [maxBodySize], so a buffer at the cap signals truncation (a buffer
  * length equal to the cap indicates the full body was not captured); `byteSize`
  * reports the captured size since the full size isn't tracked beyond the cap.
+ *
+ * The platform inflates a gzip response itself only when it asked for gzip. A
+ * body the app compressed, or asked for in an encoding itself, arrives here
+ * compressed and is inflated as in the OkHttp adapter (see [decodeBody]).
  */
-internal fun platformCapturedBody(bytes: ByteArray, maxBodySize: Int, contentType: MediaType?): CapturedBody {
-    val truncated = bytes.size >= maxBodySize
+internal fun platformCapturedBody(
+    bytes: ByteArray,
+    maxBodySize: Int,
+    contentType: MediaType?,
+    contentEncoding: List<String>,
+): CapturedBody {
     val byteSize = bytes.size.toLong()
+    val decoded =
+        decodeBody(bytes, rawTruncated = bytes.size >= maxBodySize, contentEncoding, maxBodySize.toLong())
+            ?: return CapturedBody(text = null, truncated = false, byteSize = byteSize)
     return if (contentType.isRetainedBinary()) {
-        CapturedBody(text = null, truncated = truncated, byteSize = byteSize, bytes = bytes)
+        CapturedBody(text = null, truncated = decoded.truncated, byteSize = byteSize, bytes = decoded.bytes())
     } else {
-        CapturedBody(text = String(bytes, Charsets.UTF_8), truncated = truncated, byteSize = byteSize)
+        CapturedBody(text = decoded.text(Charsets.UTF_8), truncated = decoded.truncated, byteSize = byteSize)
     }
 }

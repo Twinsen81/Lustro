@@ -265,12 +265,22 @@ internal class NetworkTrafficStore(
      * request body plus the response body. Uses the recorded byte counts when
      * present (they reflect the true on-the-wire size even when the stored body
      * was truncated) and falls back to the size of the retained text or bytes.
+     * A compressed body is kept inflated, so what is kept can be far more than
+     * its size on the wire; then the body counts what is kept.
      */
-    private fun transactionBytes(tx: NetworkTransaction): Long {
-        val request = tx.requestBodyBytes ?: retainedSize(tx.requestBody, tx.requestBinaryBody)
-        val response = tx.responseBodyBytes ?: retainedSize(tx.responseBody, tx.responseBinaryBody)
-        return request + response
-    }
+    private fun transactionBytes(tx: NetworkTransaction): Long =
+        bodyBytes(tx.requestBodyBytes, tx.requestBody, tx.requestBinaryBody) +
+            bodyBytes(tx.responseBodyBytes, tx.responseBody, tx.responseBinaryBody)
+
+    // The text's length in chars is a lower bound of its UTF-8 size that costs
+    // nothing to read. Encoding it instead would re-encode a stream's whole body
+    // on every progress update.
+    private fun bodyBytes(wireSize: Long?, text: String?, bytes: ByteArray?): Long =
+        if (wireSize == null) {
+            retainedSize(text, bytes)
+        } else {
+            maxOf(wireSize, text?.length?.toLong() ?: bytes?.size?.toLong() ?: 0L)
+        }
 
     private fun retainedSize(text: String?, bytes: ByteArray?): Long =
         text?.let { utf8Len(it) } ?: bytes?.size?.toLong() ?: 0L

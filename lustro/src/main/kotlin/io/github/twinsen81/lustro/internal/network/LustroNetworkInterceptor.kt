@@ -36,6 +36,13 @@ import okio.buffer
  * `byteSize = declaredContentLength ?: fullSize`. Other binary bodies and
  * one-shot/duplex ones report `CapturedBody(text=null, truncated=false,
  * byteSize=declared)`.
+ *
+ * A gzip or deflate body is inflated first (see [decodeBody]): `truncated` then
+ * refers to the inflated body, and `byteSize` stays the size on the wire. A body
+ * in a coding capture can't undo, such as `br`, reports `text=null` with its
+ * size. Event streams are captured as they arrive, without decoding: servers
+ * don't compress them in practice, so capture doesn't inflate a stream while
+ * the app reads it.
  */
 internal class LustroNetworkInterceptor(
     private val sink: NetworkCaptureSink,
@@ -179,13 +186,14 @@ internal class LustroNetworkInterceptor(
             val capturing = CappingSink(buffer, maxBodySize + 1)
             capturing.buffer().use { body.writeTo(it) }
             val fullSize = capturing.bytesSeen
-            val truncated = fullSize > maxBodySize
-            val kept = if (truncated) maxBodySize else buffer.size
             val byteSize = declaredSize ?: fullSize
+            val decoded =
+                decodeBody(buffer.readByteArray(), fullSize > maxBodySize, request.headers.values(CONTENT_ENCODING), maxBodySize)
+                    ?: return CapturedBody(text = null, truncated = false, byteSize = byteSize)
             if (binary) {
-                CapturedBody(text = null, truncated = truncated, byteSize = byteSize, bytes = buffer.readByteArray(kept))
+                CapturedBody(text = null, truncated = decoded.truncated, byteSize = byteSize, bytes = decoded.bytes())
             } else {
-                CapturedBody(text = buffer.readUtf8(kept), truncated = truncated, byteSize = byteSize)
+                CapturedBody(text = decoded.text(Charsets.UTF_8), truncated = decoded.truncated, byteSize = byteSize)
             }
         } catch (_: Exception) {
             CapturedBody(text = null, truncated = false, byteSize = declaredSize)
@@ -235,22 +243,23 @@ internal class LustroNetworkInterceptor(
             // (e.g. CJK at ~3 bytes/char), a length-based check would miss the
             // truncation and the "Truncated" badge would never show. Reading
             // through peekBody leaves the real body untouched for the caller.
-            val peeked = response.peekBody(maxBodySize + 1)
-            val raw = peeked.bytes()
-            val truncated = raw.size > maxBodySize
-            val kept = if (truncated) maxBodySize.toInt() else raw.size
+            val raw = response.peekBody(maxBodySize + 1).bytes()
+            val rawTruncated = raw.size > maxBodySize
             // When the full size isn't known (no Content-Length) and the body was
             // truncated, we can't report a true byte count — leave it null rather
             // than report the truncated prefix length.
             val measured =
                 declaredSize
-                    ?: if (truncated) null else raw.size.toLong()
+                    ?: if (rawTruncated) null else raw.size.toLong()
+            // OkHttp inflates a gzip response itself only when it asked for gzip. When
+            // the app sets Accept-Encoding, the body arrives here as the server sent it.
+            val decoded =
+                decodeBody(raw, rawTruncated, response.headers.values(CONTENT_ENCODING), maxBodySize)
+                    ?: return CapturedBody(text = null, truncated = false, byteSize = measured)
             if (binary) {
-                val bytes = if (truncated) raw.copyOf(kept) else raw
-                CapturedBody(text = null, truncated = truncated, byteSize = measured, bytes = bytes)
+                CapturedBody(text = null, truncated = decoded.truncated, byteSize = measured, bytes = decoded.bytes())
             } else {
-                val text = String(raw, 0, kept, contentType.resolvedCharset())
-                CapturedBody(text = text, truncated = truncated, byteSize = measured)
+                CapturedBody(text = decoded.text(contentType.resolvedCharset()), truncated = decoded.truncated, byteSize = measured)
             }
         } catch (_: Exception) {
             CapturedBody(text = null, truncated = false, byteSize = declaredSize)
