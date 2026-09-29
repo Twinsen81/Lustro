@@ -6,6 +6,9 @@ HTML. This document is the operational guide for non-browser clients. The HTTP w
 not the Kotlin API — is the stable contract; it is versioned and SemVer-governed under
 [`wire-protocol/v1/`](wire-protocol/v1/).
 
+This document is about using a running Lustro. To add Lustro to an app, follow the README's
+[Install](../README.md#install) and [Quick start](../README.md#quick-start) sections.
+
 > **Status:** pre-1.0. The protocol may still change between snapshots. Always read `_meta` and
 > the per-tab `_schema` at runtime rather than hard-coding shapes.
 
@@ -38,10 +41,12 @@ machine-parseable line at logcat tag `LustroToken`, level INFO:
 Lustro ready endpoint=http://<host>:<port> token=<token>
 ```
 
-This is the single source of truth for host, port, and token. Parse it:
+This is the single source of truth for host, port, and token. Lustro logs it again after each
+bind, so the last line is the current one. `-d` prints the log and exits instead of waiting for
+new lines:
 
 ```bash
-adb logcat -s LustroToken | sed -n 's/.*endpoint=\(\S*\) token=\(\S*\).*/\1 \2/p'
+adb logcat -d -s LustroToken | tail -1 | sed -n 's/.*endpoint=\([^ ]*\) token=\([^ ]*\).*/\1 \2/p'
 ```
 
 Conventions a client should follow:
@@ -58,13 +63,20 @@ should use the Bearer header.)
 
 The server binds to `127.0.0.1:8080` by default and only listens while the app is **foregrounded**.
 
-- From a desktop, forward the device port first:
+- From a desktop, forward the device port first. `--no-rebind` stops adb from taking over a
+  forward that a different tool set up for a different device on the same local port:
 
   ```bash
-  adb forward tcp:8080 tcp:8080
+  adb forward --no-rebind tcp:8080 tcp:8080
   ```
 
-  Then talk to `http://localhost:8080`.
+  Then talk to `http://localhost:8080`. If the local port is taken ("Address already in use", or
+  "cannot rebind existing socket" for a forward that `adb forward --list` doesn't show for your
+  device), forward a free local port to the same device port, for example
+  `adb forward --no-rebind tcp:18080 tcp:8080`, and use `http://localhost:18080`.
+- With more than one device connected, use the device in `ANDROID_SERIAL`, or pass
+  `adb -s <serial>`; don't choose one that other tools may be using. Don't clear the device log
+  (`adb logcat -c`) to find the `LustroToken` line: read it with `-d` and take the last one.
 
 - If you can't reach the default port, parse the `endpoint=` field from the `LustroToken` log
   line (see above) to learn the real host and port, and forward that port instead.

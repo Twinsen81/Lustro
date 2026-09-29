@@ -1,0 +1,36 @@
+# Lustro
+
+> A browser-based, agent-friendly debugging library for Android. Lustro embeds a small web server in an app's debug builds and serves its tools as tabs that a desktop browser opens over adb. The built-in Network tab captures OkHttp traffic, and can mock responses, throttle connections, and replay requests. Every tab is also a JSON API under `/api/v1/`, so agents and scripts can use it directly.
+
+Facts to get right when you add Lustro to an app:
+
+- Coordinates: `io.github.twinsen81:lustro:0.1.0-SNAPSHOT` is the debug runtime, and `io.github.twinsen81:lustro-noop:0.1.0-SNAPSHOT` is a no-op with the same API for release builds. Add `lustro` with `debugImplementation` and `lustro-noop` with `releaseImplementation`. They declare the same Gradle capability, so they cannot be on one configuration.
+- A `-SNAPSHOT` version resolves only from the Sonatype Central snapshots repository, `https://central.sonatype.com/repository/maven-snapshots/`.
+- Lustro needs `minSdk` 26.
+- Build Lustro once, in `Application.onCreate()`, and call `start()` there, on the main thread. Add every tab with the builder, before `build()`: after `start()`, `addTab()` throws.
+- Add `lustro.networkInterceptor()` with `addInterceptor`, not `addNetworkInterceptor`, after the app's own interceptors that change the URL, the headers, or the body.
+- Custom tabs are `DebugTab` subclasses, and they must be in `src/debug`. The published lint check `LustroDebugUsageInRelease` reports them in other source sets.
+- The server binds `127.0.0.1:8080` on the device, and listens only while the app is in the foreground. Reach it with `adb forward tcp:8080 tcp:8080`.
+- Every API request needs the token from the `LustroToken` logcat line (`Lustro ready endpoint=http://127.0.0.1:8080 token=<token>`), sent as `Authorization: Bearer <token>`. `GET /api/v1/_meta` lists the tabs, and `GET /api/v1/<id>/_schema` returns a tab's OpenAPI document.
+
+## Docs
+
+- [README](https://raw.githubusercontent.com/Twinsen81/Lustro/main/README.md): install, quick start, capture options, mock rules, the security model, custom tabs, and troubleshooting
+- [Driving Lustro from agents](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/AGENTS.md): token discovery, authentication, the wire protocol, and the Network routes, for agents that use a running Lustro
+- [Security policy](https://raw.githubusercontent.com/Twinsen81/Lustro/main/SECURITY.md): the threat model, and what keeps Lustro out of release builds
+
+## API contracts
+
+- [Network tab OpenAPI document](https://raw.githubusercontent.com/Twinsen81/Lustro/main/lustro/src/main/assets/lustro/network.openapi.json): the contract of the `/api/v1/network` routes
+- [Wire protocol v1](https://raw.githubusercontent.com/Twinsen81/Lustro/main/wire-protocol/v1/README.md): the shared envelopes, their JSON Schemas, and the versioning policy
+
+## Tools
+
+- [lustro CLI](https://raw.githubusercontent.com/Twinsen81/Lustro/main/lustro-cli/README.md): a Python command-line client for the HTTP API. `lustro open` forwards the port and opens the console with the token
+
+## Optional
+
+- [Changelog](https://raw.githubusercontent.com/Twinsen81/Lustro/main/CHANGELOG.md): what changed in each version
+- [Decisions](https://raw.githubusercontent.com/Twinsen81/Lustro/main/DECISIONS.md): design decisions and the reasons for them
+- [Custom tab styleguide](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/STYLEGUIDE.md): the console's design tokens and components for custom tabs
+- [Contributing](https://raw.githubusercontent.com/Twinsen81/Lustro/main/CONTRIBUTING.md): building, testing, and the pull request process

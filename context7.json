@@ -1,0 +1,24 @@
+{
+  "$schema": "https://context7.com/schema/context7.json",
+  "projectTitle": "Lustro",
+  "description": "A browser-based, agent-friendly debugging library for Android: an embedded debug server with a network inspector, used from a desktop browser or as a JSON API.",
+  "folders": [
+    "lustro/",
+    "lustro-api/",
+    "docs/",
+    "wire-protocol/",
+    "lustro-cli/"
+  ],
+  "excludeFiles": [
+    "CODE_OF_CONDUCT.md",
+    "CONTRIBUTING.md"
+  ],
+  "rules": [
+    "Add io.github.twinsen81:lustro with debugImplementation and io.github.twinsen81:lustro-noop with releaseImplementation. Never put both on one configuration: they declare the same Gradle capability.",
+    "Build Lustro once, in Application.onCreate(), and call start() there, on the main thread. Add every tab before build(): after start(), addTab() throws IllegalStateException.",
+    "Add lustro.networkInterceptor() with addInterceptor, not addNetworkInterceptor, after the app's own interceptors that change the URL, the headers, or the body.",
+    "Put DebugTab subclasses (custom tabs) in src/debug. The published lint check LustroDebugUsageInRelease reports them in other source sets.",
+    "The server binds 127.0.0.1:8080 on the device and listens only while the app is in the foreground. Use adb forward tcp:8080 tcp:8080, and read the token with adb logcat -d -s LustroToken.",
+    "API clients send Authorization: Bearer <token>. Read GET /api/v1/_meta and GET /api/v1/<id>/_schema at runtime instead of hard-coding routes."
+  ]
+}

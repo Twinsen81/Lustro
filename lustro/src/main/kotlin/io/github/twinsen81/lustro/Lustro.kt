@@ -127,6 +127,10 @@ public class Lustro internal constructor(
      * [LustroStatus.DISABLED] if arming fails. When the process is already at least
      * [Lifecycle.State.STARTED], the socket binds immediately. Idempotent.
      *
+     * Call it on the main thread, for example in `Application.onCreate()`. The
+     * process lifecycle accepts observers only on the main thread, so from any
+     * other thread arming fails and this returns [LustroStatus.DISABLED].
+     *
      * Returns [LustroStatus.DISABLED] without arming — and logs a WARN — when the
      * host app is not marked debuggable and
      * [DebugConfig.allowNonDebuggableBuilds] is `false` (the default).

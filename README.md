@@ -20,6 +20,14 @@ your own tabs against a stable plugin contract.
 > change between releases. Only the `0.1.0-SNAPSHOT` line exists today (Sonatype Central
 > snapshots); there is no stable release yet.
 
+## With a coding agent
+
+A coding agent can add Lustro from this README. Give it the repository, for example "Add Lustro
+to this app, following https://github.com/Twinsen81/Lustro". [`llms.txt`](llms.txt) summarizes
+Lustro for agents and links the rest of the docs, and [`context7.json`](context7.json) tells
+[Context7](https://context7.com) which parts of this repository to index. To use a running Lustro
+from an agent or a script, see [docs/AGENTS.md](docs/AGENTS.md).
+
 ## Install
 
 Lustro ships as two interchangeable runtime artifacts that you split by build variant:
@@ -86,9 +94,14 @@ val httpClient = OkHttpClient.Builder()
 lustro.start()
 ```
 
-`start()` freezes the tab registry; tabs registered after `start()` are not picked up.
+Add every tab before `build()`. `start()` freezes the tab registry, and `addTab()` after it
+throws `IllegalStateException`.
 `start()` returns a `LustroStatus` (`ENABLED` once armed, `DISABLED` if it cannot start) and is
 idempotent, as is `stop()`.
+
+Call `start()` on the main thread, as `Application.onCreate()` does. It adds an observer to the
+process lifecycle, which accepts observers only on the main thread, so from any other thread
+`start()` returns `LustroStatus.DISABLED`.
 
 Three things keep that snippet out of production, in order of how much they depend on you:
 
