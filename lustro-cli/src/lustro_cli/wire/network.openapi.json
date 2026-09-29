@@ -13,7 +13,7 @@
       "get": {
         "operationId": "listTransactions",
         "summary": "Poll captured transactions with an opaque cursor.",
-        "description": "Short-polling. Send the last cursor back each call. status=reset returns the full current list; status=delta returns the current list after a change; status=unchanged omits items. Treat unknown statuses as reset. The cursor advances when the transaction list changes: a capture, a response or streaming progress, a failure, an eviction, or clear. Pause, overwrite mode, throttle, and mock-rule changes don't advance it; state reports them on every response, unchanged ones included. A cursor from before an app restart gets a reset.",
+        "description": "Short-polling. Send the last cursor back each call. status=reset returns the full current list; status=delta returns the current list after a change; status=unchanged omits items. Treat unknown statuses as reset. The cursor advances when the transaction list changes: a capture, a response or streaming progress, a failure, an eviction, or clear. Pause, overwrite mode, throttle, and mock-rule changes don't advance it; state reports them on every response, unchanged ones included. A cursor from before an app restart gets a reset. A request the app's capture filter skips is never listed; mock rules and the throttle still apply to it.",
         "parameters": [
           { "name": "cursor", "in": "query", "required": false, "schema": { "type": "string" }, "description": "Opaque cursor from the previous response. Omit on first poll." },
           { "name": "search", "in": "query", "required": false, "schema": { "type": "string" }, "description": "Case-insensitive filter over URL, method, and captured bodies." }

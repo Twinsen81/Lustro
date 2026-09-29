@@ -31,8 +31,9 @@ see [DECISIONS.md](DECISIONS.md).
 - **Public SPI** (`:lustro-api`): `DebugTab`, `DebugRequest`, `DebugResponse`
   (+ `ok`/`text`/`bytes`/`json`/`notFound`/`error` factories), `Headers`,
   `MediaType`, and the network seams `NetworkCaptureSink`, `NetworkSender`,
-  `NetworkClassifier`, `Redactor`, `MockRule`, `NetworkSendRequest`,
-  `NetworkSendResult`, `TransactionId`, `CapturedBody`, `CapturedResponse`, plus
+  `NetworkCaptureFilter`, `NetworkCaptureRequest`, `NetworkClassifier`,
+  `Redactor`, `MockRule`, `NetworkSendRequest`, `NetworkSendResult`,
+  `TransactionId`, `CapturedBody`, `CapturedResponse`, plus
   `escapeForJson`/`escapeHtml`. Explicit-API strict, BCV-validated.
 - **NanoHTTPD-backed debug server** with a browser tab UI and a tab plugin model:
   `Lustro.builder(...)`, `DebugConfig`, the `DebugTabRegistry`, asset loading, and
@@ -42,7 +43,8 @@ see [DECISIONS.md](DECISIONS.md).
   capture, event-stream progressive capture, opt-in platform `HttpURLConnection`
   capture (`@ExperimentalPlatformCapture`), mock rules (incl. atomic
   `rules/_/sync`), throttling, capture-only pause, overwrite mode, synchronous
-  Send Request, a pluggable `NetworkClassifier`/`Redactor`, and `MockRuleStorage`.
+  Send Request, a pluggable `NetworkCaptureFilter`/`NetworkClassifier`/`Redactor`,
+  and `MockRuleStorage`.
 - **Security & lifecycle**: always-on token auth (Bearer + `HttpOnly; SameSite=Strict`
   cookie, machine-parseable `LustroToken` startup log), browser fragment bootstrap,
   CSP, origin/`Sec-Fetch-Site` checks, loopback-default binding with LAN opt-in and
@@ -84,6 +86,21 @@ see [DECISIONS.md](DECISIONS.md).
   `responseBodyBinary` (wire protocol 1.2). The console shows an image body in
   the detail, and `lustro net body <id> [request|response] -o FILE` saves a
   body to a file.
+- **A capture filter, to leave traffic out of the Network tab.**
+  `NetworkCaptureFilter` joins `NetworkClassifier` and `Redactor` in
+  `:lustro-api`, with `NoOpNetworkCaptureFilter` as the default that captures
+  everything, and both `NetworkDebugTab.create` overloads take it as
+  `captureFilter`. Its `shouldCapture` gets a read-only `NetworkCaptureRequest`
+  with the URL, method, and headers, so a later field doesn't change the
+  signature. The OkHttp interceptor and platform `HttpURLConnection` capture
+  ask it before they capture anything, so a request it skips is never stored,
+  redacted, or counted toward `captureBudgetBytes`, and platform capture
+  doesn't copy its bodies. The filter decides capture only: mock rules and the
+  throttle still apply to a skipped request, as they do while capture is
+  paused. It runs on the thread that makes the call. A filter that throws
+  doesn't fail the call: the request is captured, and the first failure is
+  logged. The sample skips an analytics host and requests marked with an
+  `X-No-Capture` header.
 - **Request cancellation for tabs**: `DebugRequest.isCancelled`, `onCancel(Runnable)`, and
   `cancel()`. The runtime cancels a request when it times out or the server shuts down, so a
   handler can abort blocking work that ignores thread interrupts, such as a SQLite query

@@ -100,6 +100,9 @@ public class MainActivity : Activity() {
 
         addSection(root, "Platform HTTP (non-OkHttp)")
         addButton(root, "Raw HttpURLConnection GET") { rawPlatformRequest() }
+        addButton(root, "Raw HttpURLConnection GET with $NO_CAPTURE_HEADER") {
+            rawPlatformRequest(headers = mapOf(NO_CAPTURE_HEADER to "1"))
+        }
         addButton(root, "Volley GET") { volleyPlatformRequest() }
 
         val extras = LustroBootstrap.extraDemoRequests(BASE)
@@ -235,12 +238,13 @@ public class MainActivity : Activity() {
         }
     }
 
-    private fun rawPlatformRequest() {
+    private fun rawPlatformRequest(headers: Map<String, String> = emptyMap()) {
         val url = "$BASE/anything/platform/raw"
         setStatus("→ GET $url (HttpURLConnection)")
         ioExecutor.execute {
             PlatformHttpDemo.rawGet(
                 url = url,
+                headers = headers,
                 onResult = { status -> setStatus("✓ $status $url (HttpURLConnection)") },
                 onError = { message -> setStatus("✗ $url\n$message") },
             )

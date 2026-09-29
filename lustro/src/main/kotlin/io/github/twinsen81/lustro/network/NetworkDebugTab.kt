@@ -17,6 +17,7 @@ import io.github.twinsen81.lustro.internal.network.NetworkCaptureProvider
 import io.github.twinsen81.lustro.internal.network.NetworkSendRequestImpl
 import io.github.twinsen81.lustro.internal.network.NetworkTrafficStore
 import io.github.twinsen81.lustro.internal.network.NetworkTransaction
+import io.github.twinsen81.lustro.internal.network.SafeCaptureFilter
 import io.github.twinsen81.lustro.internal.toDebugTimestamp
 import io.github.twinsen81.lustro.DebugTab
 import okhttp3.Interceptor
@@ -31,10 +32,11 @@ import org.json.JSONObject
  * right. Created through the [companion factory][Companion.create]; the
  * sink/interceptor wiring is internal. Adapted to the `/api/v1/network` wire
  * contract (cursor envelope, synchronous send) and the SPI
- * [NetworkClassifier]/[Redactor]/[MockRuleStorage] seams.
+ * [NetworkCaptureFilter]/[NetworkClassifier]/[Redactor]/[MockRuleStorage] seams.
  */
 public class NetworkDebugTab private constructor(
     private val store: NetworkTrafficStore,
+    private val captureFilter: SafeCaptureFilter,
     private val senderClient: OkHttpClient?,
     private val capturePlatformHttp: Boolean,
     maxBodyCaptureBytes: Long,
@@ -77,6 +79,7 @@ public class NetworkDebugTab private constructor(
         LustroNetworkInterceptor(
             sink = store,
             captureEnabled = { captureEnabled() && !store.isPaused() },
+            captureFilter = captureFilter,
             throttleDelayMs = { store.getThrottleDelayMs() },
             incrementMockHit = { store.incrementHitCount(it) },
             maxBodySize = maxBodyCaptureBytes,
@@ -117,6 +120,7 @@ public class NetworkDebugTab private constructor(
             HttpUrlConnectionCapture(
                 sink = store,
                 isPaused = { store.isPaused() },
+                captureFilter = captureFilter,
                 maxBodySize = maxBodyCaptureBytes.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
             ).install()
         }
@@ -585,6 +589,9 @@ public class NetworkDebugTab private constructor(
          * @param redactor removes sensitive data at capture time (default:
          *   [DefaultRedactor]).
          * @param mockRuleStorage persists mock rules; `null` keeps them in memory.
+         * @param captureFilter decides which requests are captured (default: all).
+         *   It affects capture only: mock rules and the throttle still apply to a
+         *   request it skips.
          */
         @JvmStatic
         @JvmOverloads
@@ -593,6 +600,7 @@ public class NetworkDebugTab private constructor(
             classifier: NetworkClassifier = NoOpNetworkClassifier,
             redactor: Redactor = DefaultRedactor,
             mockRuleStorage: MockRuleStorage? = null,
+            captureFilter: NetworkCaptureFilter = NoOpNetworkCaptureFilter,
         ): NetworkDebugTab =
             newTab(
                 senderClient = senderClient,
@@ -600,6 +608,7 @@ public class NetworkDebugTab private constructor(
                 classifier = classifier,
                 redactor = redactor,
                 mockRuleStorage = mockRuleStorage,
+                captureFilter = captureFilter,
             )
 
         /**
@@ -620,6 +629,9 @@ public class NetworkDebugTab private constructor(
          * @param redactor removes sensitive data at capture time (default:
          *   [DefaultRedactor]).
          * @param mockRuleStorage persists mock rules; `null` keeps them in memory.
+         * @param captureFilter decides which requests are captured, OkHttp and
+         *   `HttpURLConnection` alike (default: all). It affects capture only:
+         *   mock rules and the throttle still apply to an OkHttp request it skips.
          */
         @ExperimentalPlatformCapture
         @JvmStatic
@@ -630,6 +642,7 @@ public class NetworkDebugTab private constructor(
             classifier: NetworkClassifier = NoOpNetworkClassifier,
             redactor: Redactor = DefaultRedactor,
             mockRuleStorage: MockRuleStorage? = null,
+            captureFilter: NetworkCaptureFilter = NoOpNetworkCaptureFilter,
         ): NetworkDebugTab =
             newTab(
                 senderClient = senderClient,
@@ -637,6 +650,7 @@ public class NetworkDebugTab private constructor(
                 classifier = classifier,
                 redactor = redactor,
                 mockRuleStorage = mockRuleStorage,
+                captureFilter = captureFilter,
             )
 
         private fun newTab(
@@ -645,6 +659,7 @@ public class NetworkDebugTab private constructor(
             classifier: NetworkClassifier,
             redactor: Redactor,
             mockRuleStorage: MockRuleStorage?,
+            captureFilter: NetworkCaptureFilter,
         ): NetworkDebugTab {
             val store =
                 NetworkTrafficStore(
@@ -655,6 +670,7 @@ public class NetworkDebugTab private constructor(
                 )
             return NetworkDebugTab(
                 store = store,
+                captureFilter = SafeCaptureFilter(captureFilter),
                 senderClient = senderClient,
                 capturePlatformHttp = capturePlatformHttp,
                 maxBodyCaptureBytes = DEFAULT_MAX_BODY_CAPTURE_BYTES,

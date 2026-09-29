@@ -5,6 +5,7 @@ import io.github.twinsen81.lustro.MediaType
 import io.github.twinsen81.lustro.internal.network.LustroNetworkInterceptor
 import io.github.twinsen81.lustro.internal.network.NetworkSendRequestImpl
 import io.github.twinsen81.lustro.internal.network.NetworkTrafficStore
+import io.github.twinsen81.lustro.internal.network.SafeCaptureFilter
 import java.util.concurrent.TimeUnit
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
@@ -119,6 +120,7 @@ class OkHttpSenderTest {
                     LustroNetworkInterceptor(
                         sink = store,
                         captureEnabled = { true },
+                        captureFilter = SafeCaptureFilter(NoOpNetworkCaptureFilter),
                         throttleDelayMs = { 0 },
                         incrementMockHit = {},
                         maxBodySize = 1024,

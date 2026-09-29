@@ -49,6 +49,9 @@ public class NetworkDebugTab private constructor() : DebugTab() {
          * @param redactor removes sensitive data at capture time (default:
          *   [DefaultRedactor]).
          * @param mockRuleStorage persists mock rules; `null` keeps them in memory.
+         * @param captureFilter decides which requests are captured (default: all).
+         *   It affects capture only: mock rules and the throttle still apply to a
+         *   request it skips.
          *
          * No-op build: all parameters are accepted for API parity but never used.
          */
@@ -59,6 +62,7 @@ public class NetworkDebugTab private constructor() : DebugTab() {
             classifier: NetworkClassifier = NoOpNetworkClassifier,
             redactor: Redactor = DefaultRedactor,
             mockRuleStorage: MockRuleStorage? = null,
+            captureFilter: NetworkCaptureFilter = NoOpNetworkCaptureFilter,
         ): NetworkDebugTab = NetworkDebugTab()
 
         /**
@@ -79,6 +83,9 @@ public class NetworkDebugTab private constructor() : DebugTab() {
          * @param redactor removes sensitive data at capture time (default:
          *   [DefaultRedactor]).
          * @param mockRuleStorage persists mock rules; `null` keeps them in memory.
+         * @param captureFilter decides which requests are captured, OkHttp and
+         *   `HttpURLConnection` alike (default: all). It affects capture only:
+         *   mock rules and the throttle still apply to an OkHttp request it skips.
          *
          * No-op build: all parameters are accepted for API parity but never used.
          */
@@ -91,6 +98,7 @@ public class NetworkDebugTab private constructor() : DebugTab() {
             classifier: NetworkClassifier = NoOpNetworkClassifier,
             redactor: Redactor = DefaultRedactor,
             mockRuleStorage: MockRuleStorage? = null,
+            captureFilter: NetworkCaptureFilter = NoOpNetworkCaptureFilter,
         ): NetworkDebugTab = NetworkDebugTab()
     }
 }

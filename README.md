@@ -169,6 +169,31 @@ Network tab a moment after it completes. During a burst of large bodies, once ab
 captured text is waiting, calls capture on their own thread until that one catches up, which
 keeps memory bounded.
 
+**Leave traffic out with a capture filter.** Pass a `NetworkCaptureFilter` as `captureFilter`,
+and Lustro asks it about each request before it captures anything. A request it returns `false`
+for is never stored, so it costs no redaction and no part of the capture budget. Use it for
+traffic you never inspect, such as calls to an analytics host, or for requests your app marks
+with a header of its own:
+
+```kotlin
+NetworkDebugTab.create(
+    senderClient = client,
+    captureFilter = { request ->
+        request.url.toHttpUrlOrNull()?.host != "analytics.example.com" &&
+            request.headers.get("X-No-Capture") == null
+    },
+)
+```
+
+The filter decides capture only: mock rules and the throttle still apply to a request it skips,
+as they do while capture is paused. It applies to platform `HttpURLConnection` capture too. It
+runs on the thread that makes the call, so keep it fast and thread-safe, and it sees the URL and
+headers before redaction. A filter that throws doesn't fail the call: the request is captured,
+and the first failure is logged. A marker header still goes out with the request.
+
+To label traffic instead of leaving it out, pass a `NetworkClassifier` as `classifier`. Its labels
+show as category filters in the Network tab and in each transaction's `categories`.
+
 ## Send Request
 
 The Network tab's **Send Request** panel dispatches an arbitrary request through a configured
@@ -234,7 +259,8 @@ platform detail (a process-global URL stream handler):
 - **Best-effort and fail-open**: if it cannot install, capture is simply skipped; your app keeps
   working.
 - **Process-wide**: it installs a global handler once, affecting all `HttpURLConnection` traffic
-  in the process.
+  in the process. A [capture filter](#okhttp-capture-setup) leaves out the traffic you don't
+  need, such as an analytics SDK's.
 - **Not covered** by the library's binary- or behaviour-compatibility guarantees, and may
   degrade across OS/SDK versions.
 
@@ -264,8 +290,9 @@ Lustro deliberately surfaces app internals, so its defaults are conservative. Se
   params, and JSON/form body fields **before** anything is stored, so what it masks never reaches
   the API, UI, or fixtures. It matches on names, so it cannot find a secret that isn't keyed by a
   name it recognizes: see [SECURITY.md](SECURITY.md#threat-model) for the known gaps, and pass
-  your own `Redactor` when your traffic needs more. A JSON body with no sensitive field in it is
-  stored exactly as it arrived, so what you inspect and copy is what was on the wire.
+  your own `Redactor` when your traffic needs more, or a capture filter to keep a request out of
+  capture entirely. A JSON body with no sensitive field in it is stored exactly as it arrived, so
+  what you inspect and copy is what was on the wire.
 - **Nothing persisted to disk except mock rules.** Captured traffic lives only in a bounded
   in-memory ring buffer and is lost when the process dies; the sole persisted state is your mock
   rules, and only when you give the tab a `MockRuleStorage` (see [Mock rules](#mock-rules)). The

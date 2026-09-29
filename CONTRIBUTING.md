@@ -61,9 +61,10 @@ keep the suite dependency-free.
 
 - **`:lustro-api`** — pure-Kotlin JAR with the public SPI only: `DebugTab`,
   `DebugRequest`, `DebugResponse`, `Headers`, `MediaType`, and the network seams
-  (`NetworkCaptureSink`, `NetworkSender`, `NetworkClassifier`, `Redactor`,
-  `MockRule`, `NetworkSendRequest`, `NetworkSendResult`, `TransactionId`,
-  `CapturedBody`, `CapturedResponse`).
+  (`NetworkCaptureSink`, `NetworkCaptureFilter`, `NetworkCaptureRequest`,
+  `NetworkSender`, `NetworkClassifier`, `Redactor`, `MockRule`,
+  `NetworkSendRequest`, `NetworkSendResult`, `TransactionId`, `CapturedBody`,
+  `CapturedResponse`).
   Consumer-constructed types carry their concrete implementations here; no
   OkHttp dependency.
 - **`:lustro`** — the runtime AAR: NanoHTTPD-backed server, tab registry, asset

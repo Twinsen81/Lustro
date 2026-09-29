@@ -6,7 +6,10 @@ import io.github.twinsen81.lustro.network.CapturedBody
 import io.github.twinsen81.lustro.network.CapturedResponse
 import io.github.twinsen81.lustro.network.DefaultRedactor
 import io.github.twinsen81.lustro.network.MockRule
+import io.github.twinsen81.lustro.network.NetworkCaptureFilter
+import io.github.twinsen81.lustro.network.NetworkCaptureRequest
 import io.github.twinsen81.lustro.network.NetworkCaptureSink
+import io.github.twinsen81.lustro.network.NoOpNetworkCaptureFilter
 import io.github.twinsen81.lustro.network.NoOpNetworkClassifier
 import io.github.twinsen81.lustro.network.Redactor
 import io.github.twinsen81.lustro.network.TransactionId
@@ -19,6 +22,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
 import okhttp3.Request
+import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import okhttp3.ResponseBody
@@ -26,6 +30,7 @@ import okhttp3.ResponseBody.Companion.toResponseBody
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import okio.Buffer
+import okio.BufferedSink
 import okio.BufferedSource
 import okio.Source
 import okio.Timeout
@@ -74,6 +79,7 @@ class LustroNetworkInterceptorTest {
     private fun interceptor(
         sink: NetworkCaptureSink,
         captureEnabled: Boolean = true,
+        captureFilter: NetworkCaptureFilter = NoOpNetworkCaptureFilter,
         throttleDelayMs: Int = 0,
         onMockHit: (String) -> Unit = {},
         maxBodySize: Long = 256L * 1024,
@@ -81,6 +87,7 @@ class LustroNetworkInterceptorTest {
         LustroNetworkInterceptor(
             sink = sink,
             captureEnabled = { captureEnabled },
+            captureFilter = SafeCaptureFilter(captureFilter),
             throttleDelayMs = { throttleDelayMs },
             incrementMockHit = onMockHit,
             maxBodySize = maxBodySize,
@@ -194,6 +201,101 @@ class LustroNetworkInterceptorTest {
         assertSame(response, result)
         assertFalse(body.sourceRequested)
         assertTrue(store.getTransactions().isEmpty())
+    }
+
+    @Test
+    fun `a request the filter skips passes through without being read or recorded`() {
+        val store = store()
+        val interceptor = interceptor(store, captureFilter = { false })
+        val requestBody = TrackingRequestBody("""{"event":"open"}""")
+        val request = Request.Builder().url("https://analytics.example.com/collect").post(requestBody).build()
+        val body = TrackingResponseBody("application/json".toMediaType(), "{}", chunkSize = 2)
+        val response = responseFor(request, body)
+
+        val result = interceptor.intercept(FakeChain(request, response))
+
+        assertSame(response, result)
+        assertFalse(requestBody.written)
+        assertFalse(body.sourceRequested)
+        assertTrue(store.getTransactions().isEmpty())
+    }
+
+    @Test
+    fun `the filter sees the URL, method, and headers of the request`() {
+        var seen: NetworkCaptureRequest? = null
+        val interceptor =
+            interceptor(
+                RecordingSink(),
+                captureFilter = {
+                    seen = it
+                    true
+                },
+            )
+        val request =
+            Request.Builder()
+                .url("https://example.com/items?page=2")
+                .header("X-No-Capture", "1")
+                .delete()
+                .build()
+
+        interceptor.intercept(FakeChain(request, responseFor(request, TrackingResponseBody("text/plain".toMediaType(), "ok", 2))))
+
+        assertEquals("https://example.com/items?page=2", seen!!.url)
+        assertEquals("DELETE", seen!!.method)
+        assertEquals("1", seen!!.headers.get("X-No-Capture"))
+    }
+
+    @Test
+    fun `a request the filter skips is still mocked and throttled`() {
+        val rule = MockRuleImpl(id = "rule-1", name = "mocked", urlPattern = "example.com/mocked", statusCode = 201)
+        var hitId: String? = null
+        val sink = RecordingSink(mockRule = rule)
+        val interceptor = interceptor(sink, captureFilter = { false }, throttleDelayMs = 120, onMockHit = { hitId = it })
+        val request = Request.Builder().url("https://example.com/mocked/x").build()
+        val chain = FakeChain(request, responseFor(request, TrackingResponseBody("text/plain".toMediaType(), "real", 4)))
+
+        val start = System.currentTimeMillis()
+        val result = interceptor.intercept(chain)
+        val elapsed = System.currentTimeMillis() - start
+
+        assertEquals(201, result.code)
+        assertEquals(0, chain.proceedCount)
+        assertEquals("rule-1", hitId)
+        assertTrue("expected >= ~100ms throttle, was $elapsed", elapsed >= 100)
+        assertEquals(0, sink.begun)
+        assertTrue(sink.completions.isEmpty())
+    }
+
+    @Test
+    fun `a filter that throws does not fail the call, and the request is captured`() {
+        val store = store()
+        val interceptor = interceptor(store, captureFilter = { error("filter bug") })
+        val request = Request.Builder().url("https://example.com/status").build()
+        val response = responseFor(request, TrackingResponseBody("text/plain".toMediaType(), "ok", 2))
+
+        val result = interceptor.intercept(FakeChain(request, response))
+
+        assertSame(response, result)
+        assertEquals("https://example.com/status", store.getTransactions().single().url)
+    }
+
+    @Test
+    fun `the filter is not asked while capture is disabled`() {
+        var asked = 0
+        val interceptor =
+            interceptor(
+                RecordingSink(),
+                captureEnabled = false,
+                captureFilter = {
+                    asked++
+                    true
+                },
+            )
+        val request = Request.Builder().url("https://example.com/status").build()
+
+        interceptor.intercept(FakeChain(request, responseFor(request, TrackingResponseBody("text/plain".toMediaType(), "ok", 2))))
+
+        assertEquals(0, asked)
     }
 
     @Test
@@ -676,6 +778,18 @@ class LustroNetworkInterceptorTest {
         }
     }
 
+    private class TrackingRequestBody(private val content: String) : RequestBody() {
+        var written: Boolean = false
+            private set
+
+        override fun contentType(): okhttp3.MediaType = "application/json".toMediaType()
+
+        override fun writeTo(sink: BufferedSink) {
+            written = true
+            sink.writeUtf8(content)
+        }
+    }
+
     private class FakeChain(
         private val request: Request,
         private val response: Response?,
@@ -717,6 +831,9 @@ class LustroNetworkInterceptorTest {
         val failures = mutableListOf<Failure>()
         val requestBodies = mutableListOf<CapturedBody?>()
         private var counter = 0
+
+        val begun: Int
+            get() = counter
 
         override fun beginRequest(
             url: String,

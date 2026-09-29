@@ -122,6 +122,9 @@ build, and that even in debug builds it stays bound to the local device.
   Treat a capture as sensitive. For everything above except the error text and
   image bodies, a stricter `Redactor` passed to `NetworkDebugTab.create(...)`
   closes the gap for traffic whose secrets the name heuristic will not find.
+  For a request that no redactor can make safe, a `NetworkCaptureFilter` passed
+  as `captureFilter` keeps the whole request out of capture, error text and
+  image bodies included.
 - **Nothing persisted to disk except mock rules.** Captured traffic lives only
   in a bounded in-memory ring buffer and is lost when the process dies. The sole
   persisted state is user-authored mock rules.

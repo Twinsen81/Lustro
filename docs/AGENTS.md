@@ -194,6 +194,10 @@ A request is listed once its capture is redacted, which happens off the app's ca
 milliseconds after the call returns, longer for large bodies. Right after making a request, keep
 polling rather than reading the list once.
 
+The app can also leave requests out with a capture filter, set in its code. Such a request is
+never listed, but mock rules and the throttle still apply to it. So when a request never shows up
+while capture isn't paused, the app's filter may be skipping it.
+
 **Replay a request**
 
 ```bash
