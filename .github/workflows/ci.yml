@@ -63,9 +63,9 @@ jobs:
       - name: Set up JDK + Gradle
         uses: ./.github/actions/setup
 
-      # The Maven coordinates that README.md, llms.txt, the Agent Skill, and
-      # context7.json give to people and agents must match gradle.properties
-      # (see gradle/docs-version.gradle.kts). It reads text only, so it runs first.
+      # The Maven coordinates that README.md, llms.txt, and context7.json give to
+      # people and agents must match gradle.properties (see
+      # gradle/docs-version.gradle.kts). It reads text only, so it runs first.
       - name: Integration docs name the current coordinates
         run: ./gradlew checkDocsVersion --console=plain --stacktrace
 

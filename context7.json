@@ -7,8 +7,7 @@
     "lustro-api/",
     "docs/",
     "wire-protocol/",
-    "lustro-cli/",
-    ".agents/skills/lustro/"
+    "lustro-cli/"
   ],
   "excludeFiles": [
     "CODE_OF_CONDUCT.md",

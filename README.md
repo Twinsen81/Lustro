@@ -22,17 +22,11 @@ your own tabs against a stable plugin contract.
 
 ## With a coding agent
 
-Lustro ships an [Agent Skill](.agents/skills/lustro/SKILL.md) that takes a coding agent through
-the integration in this README: the dependencies, startup, the interceptor, custom tabs, and
-reaching the console. Install it with `npx skills add Twinsen81/Lustro`, or copy the
-`.agents/skills/lustro/` folder into your app's repository: to `.claude/skills/` for Claude Code,
-or to `.agents/skills/` for agents that read that folder, such as Codex. Then ask the agent to add
-Lustro to your app.
-
-[`llms.txt`](llms.txt) summarizes Lustro for agents and links the rest of the docs, and
-[`context7.json`](context7.json) tells [Context7](https://context7.com) which parts of this
-repository to index. To use a running Lustro from an agent or a script, see
-[docs/AGENTS.md](docs/AGENTS.md).
+A coding agent can add Lustro from this README. Give it the repository, for example "Add Lustro
+to this app, following https://github.com/Twinsen81/Lustro". [`llms.txt`](llms.txt) summarizes
+Lustro for agents and links the rest of the docs, and [`context7.json`](context7.json) tells
+[Context7](https://context7.com) which parts of this repository to index. To use a running Lustro
+from an agent or a script, see [docs/AGENTS.md](docs/AGENTS.md).
 
 ## Install
 

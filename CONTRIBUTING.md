@@ -156,10 +156,9 @@ Every commit in a pull request must carry a sign-off line.
 2. Add or update tests for your change.
 3. Update [`CHANGELOG.md`](CHANGELOG.md) under `## [Unreleased]`.
 4. Update docs (KDoc, README, `docs/AGENTS.md`, or wire-protocol files) when behavior
-   or the public surface changes. When the integration steps change, update the Agent
-   Skill (`.agents/skills/lustro/SKILL.md`) and `llms.txt` with the README.
-   `checkDocsVersion` fails when the Maven coordinates in them differ from
-   `gradle.properties`.
+   or the public surface changes. When the integration steps change, update `llms.txt`
+   with the README. `checkDocsVersion` fails when the Maven coordinates in them differ
+   from `gradle.properties`.
 5. Make sure the full local gate passes:
 
    ```bash

@@ -34,9 +34,9 @@ allprojects {
 // See gradle/facade-parity.gradle.kts and DECISIONS.md ("BCV / apiCheck").
 apply(from = "gradle/facade-parity.gradle.kts")
 
-// Registers `checkDocsVersion`: the coordinates that README.md, llms.txt, the Agent
-// Skill, and context7.json give to people and agents must match GROUP and
-// VERSION_NAME. See gradle/docs-version.gradle.kts.
+// Registers `checkDocsVersion`: the coordinates that README.md, llms.txt, and
+// context7.json give to people and agents must match GROUP and VERSION_NAME.
+// See gradle/docs-version.gradle.kts.
 apply(from = "gradle/docs-version.gradle.kts")
 
 // Dokka aggregation: the three published API modules (wire-schema has no Kotlin

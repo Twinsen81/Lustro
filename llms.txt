@@ -15,7 +15,6 @@ Facts to get right when you add Lustro to an app:
 
 ## Docs
 
-- [Agent Skill: add Lustro to an app](https://raw.githubusercontent.com/Twinsen81/Lustro/main/.agents/skills/lustro/SKILL.md): the integration steps for coding agents: dependencies, startup, the interceptor, custom tabs, reaching the console, and troubleshooting
 - [README](https://raw.githubusercontent.com/Twinsen81/Lustro/main/README.md): install, quick start, capture options, mock rules, the security model, custom tabs, and troubleshooting
 - [Driving Lustro from agents](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/AGENTS.md): token discovery, authentication, the wire protocol, and the Network routes, for agents that use a running Lustro
 - [Security policy](https://raw.githubusercontent.com/Twinsen81/Lustro/main/SECURITY.md): the threat model, and what keeps Lustro out of release builds

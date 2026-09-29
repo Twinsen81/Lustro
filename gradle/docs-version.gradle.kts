@@ -12,7 +12,7 @@
 // that earlier release, which people can resolve from Maven Central. A release
 // commit, whose VERSION_NAME has no -SNAPSHOT, must update them all.
 
-val docsWithVersion = listOf("README.md", "llms.txt", ".agents/skills/lustro/SKILL.md")
+val docsWithVersion = listOf("README.md", "llms.txt")
 val docsWithCoordinates = docsWithVersion + "context7.json"
 
 val coordinatePattern = Regex("""\b([A-Za-z][\w-]*(?:\.[\w-]+)+):(lustro[\w-]*)(?::(\d[\w.+-]*))?""")
