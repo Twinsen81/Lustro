@@ -113,6 +113,15 @@ see [DECISIONS.md](DECISIONS.md).
   handler can abort blocking work that ignores thread interrupts, such as a SQLite query
   (through its `CancellationSignal`) or an OkHttp `Call`. Unit tests can call `cancel()` to
   simulate a timeout.
+- **Docs for coding agents that add Lustro to an app.** An Agent Skill at
+  `.agents/skills/lustro/SKILL.md` takes an agent through the integration: the
+  dependencies, startup in the `Application`, where the interceptor goes, custom
+  tabs in `src/debug`, reaching the console, and troubleshooting. `llms.txt`
+  summarizes Lustro and links its docs, and `context7.json` sets what Context7
+  indexes. The `checkDocsVersion` Gradle task, which CI runs, fails when the Maven
+  coordinates in these files or in the README differ from `GROUP` and
+  `VERSION_NAME` in `gradle.properties`. The README and the `start()` KDoc now
+  say that `start()` must run on the main thread.
 
 ### Fixed
 

@@ -6,6 +6,11 @@ HTML. This document is the operational guide for non-browser clients. The HTTP w
 not the Kotlin API — is the stable contract; it is versioned and SemVer-governed under
 [`wire-protocol/v1/`](wire-protocol/v1/).
 
+This document is about using a running Lustro. To add Lustro to an app, follow the
+[Agent Skill](../.agents/skills/lustro/SKILL.md): it covers the dependencies, startup, the
+interceptor, custom tabs, and reaching the console, in the order an agent does them. The
+[README](../README.md) gives the same steps to people.
+
 > **Status:** pre-1.0. The protocol may still change between snapshots. Always read `_meta` and
 > the per-tab `_schema` at runtime rather than hard-coding shapes.
 
