@@ -202,7 +202,10 @@ internal class HttpUrlConnectionCapture(
                         url = url.toString(),
                         method = requestMethod(),
                         headers = headers,
-                        requestBody = bodyBytes?.let { platformCapturedBody(it, maxBodySize, contentType, headers.getAll(CONTENT_ENCODING)) },
+                        requestBody =
+                            bodyBytes?.let {
+                                platformCapturedBody(it, maxBodySize, contentType, headers.getAll(CONTENT_ENCODING), headers.declaredLength())
+                            },
                         contentType = contentType,
                     )
             } catch (t: Throwable) {
@@ -238,7 +241,14 @@ internal class HttpUrlConnectionCapture(
             try {
                 val flat = flatten(headers)
                 val contentType = flat.get("Content-Type")?.let { MediaType.parse(it) }
-                val body = platformCapturedBody(responseBodyBuffer.toByteArray(), maxBodySize, contentType, flat.getAll(CONTENT_ENCODING))
+                val body =
+                    platformCapturedBody(
+                        responseBodyBuffer.toByteArray(),
+                        maxBodySize,
+                        contentType,
+                        flat.getAll(CONTENT_ENCODING),
+                        flat.declaredLength(),
+                    )
                 sink.completeRequest(id, capturedResponse(statusCode, flat, body))
             } catch (t: Throwable) {
                 Log.w(TAG, "finalizeBody failed: ${t.javaClass.simpleName}")
@@ -290,6 +300,8 @@ internal class HttpUrlConnectionCapture(
                 .firstOrNull { it.key.equals("Content-Type", ignoreCase = true) }
                 ?.value
                 ?.let { MediaType.parse(it) }
+
+        private fun Headers.declaredLength(): Long? = get("Content-Length")?.toLongOrNull()?.takeIf { it >= 0 }
 
         private fun flatten(headers: Map<String, List<String>>): Headers {
             val builder = Headers.Builder()
@@ -693,8 +705,9 @@ internal class HttpUrlConnectionCapture(
  * Builds a [CapturedBody] from tee-captured [bytes] of a body of [contentType]:
  * an image body as bytes, anything else decoded as UTF-8 text. The tee caps
  * writes at [maxBodySize], so a buffer at the cap signals truncation (a buffer
- * length equal to the cap indicates the full body was not captured); `byteSize`
- * reports the captured size since the full size isn't tracked beyond the cap.
+ * length equal to the cap indicates the full body was not captured). `byteSize`
+ * is the [declaredSize] when the body has one, else the captured size, or null
+ * when the tee filled up: the full size isn't tracked beyond the cap.
  *
  * The platform inflates a gzip response itself only when it asked for gzip. A
  * body the app compressed, or asked for in an encoding itself, arrives here
@@ -705,10 +718,12 @@ internal fun platformCapturedBody(
     maxBodySize: Int,
     contentType: MediaType?,
     contentEncoding: List<String>,
+    declaredSize: Long?,
 ): CapturedBody {
-    val byteSize = bytes.size.toLong()
+    val filled = bytes.size >= maxBodySize
+    val byteSize = declaredSize ?: bytes.size.toLong().takeUnless { filled }
     val decoded =
-        decodeBody(bytes, rawTruncated = bytes.size >= maxBodySize, contentEncoding, maxBodySize.toLong())
+        decodeBody(bytes, rawTruncated = filled, contentEncoding, maxBodySize.toLong())
             ?: return CapturedBody(text = null, truncated = false, byteSize = byteSize)
     return if (contentType.isRetainedBinary()) {
         CapturedBody(text = null, truncated = decoded.truncated, byteSize = byteSize, bytes = decoded.bytes())

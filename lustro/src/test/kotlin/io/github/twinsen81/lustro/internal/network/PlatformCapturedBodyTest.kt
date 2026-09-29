@@ -12,6 +12,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLConnection
 import java.net.URLStreamHandler
+import kotlin.random.Random
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import okio.Buffer
@@ -33,7 +34,7 @@ class PlatformCapturedBodyTest {
 
     @Test
     fun `an image body is kept as bytes`() {
-        val body = platformCapturedBody(png, maxBodySize = 64, contentType = MediaType.parse("image/png"), contentEncoding = emptyList())
+        val body = platformCapturedBody(png, maxBodySize = 64, contentType = MediaType.parse("image/png"), contentEncoding = emptyList(), declaredSize = null)
 
         assertArrayEquals(png, body.bytes)
         assertNull(body.text)
@@ -42,18 +43,33 @@ class PlatformCapturedBodyTest {
     }
 
     @Test
-    fun `an image body that filled the tee is reported truncated`() {
-        val body = platformCapturedBody(png, maxBodySize = 8, contentType = MediaType.parse("image/jpeg; q=1"), contentEncoding = emptyList())
+    fun `an image body that filled the tee is reported truncated, of unknown size`() {
+        val body = platformCapturedBody(png, maxBodySize = 8, contentType = MediaType.parse("image/jpeg; q=1"), contentEncoding = emptyList(), declaredSize = null)
 
         assertArrayEquals(png, body.bytes)
         assertTrue(body.truncated)
+        assertNull(body.byteSize)
+    }
+
+    @Test
+    fun `a body that filled the tee reports the size it declared`() {
+        val body = platformCapturedBody(png, maxBodySize = 8, contentType = MediaType.parse("image/png"), contentEncoding = emptyList(), declaredSize = 500)
+
+        assertTrue(body.truncated)
+        assertEquals(500L, body.byteSize)
     }
 
     @Test
     fun `other bodies are decoded as text, typed or not`() {
         for (type in listOf("application/json", "image/svg+xml", "application/octet-stream", null)) {
             val body =
-                platformCapturedBody("{}".toByteArray(), maxBodySize = 64, contentType = type?.let { MediaType.parse(it) }, contentEncoding = emptyList())
+                platformCapturedBody(
+                    "{}".toByteArray(),
+                    maxBodySize = 64,
+                    contentType = type?.let { MediaType.parse(it) },
+                    contentEncoding = emptyList(),
+                    declaredSize = null,
+                )
 
             assertEquals(type, "{}", body.text)
             assertNull(type, body.bytes)
@@ -64,7 +80,8 @@ class PlatformCapturedBodyTest {
     fun `a gzip body is inflated, keeping its size on the wire`() {
         val compressed = gzip(json)
 
-        val body = platformCapturedBody(compressed, maxBodySize = 1024, contentType = MediaType.parse("application/json"), contentEncoding = listOf("gzip"))
+        val body =
+            platformCapturedBody(compressed, maxBodySize = 1024, contentType = MediaType.parse("application/json"), contentEncoding = listOf("gzip"), declaredSize = null)
 
         assertEquals(json, body.text)
         assertFalse(body.truncated)
@@ -73,7 +90,8 @@ class PlatformCapturedBodyTest {
 
     @Test
     fun `a body in a coding capture can't undo is not kept, but its size is`() {
-        val body = platformCapturedBody(ByteArray(40) { 7 }, maxBodySize = 1024, contentType = MediaType.parse("application/json"), contentEncoding = listOf("br"))
+        val body =
+            platformCapturedBody(ByteArray(40) { 7 }, maxBodySize = 1024, contentType = MediaType.parse("application/json"), contentEncoding = listOf("br"), declaredSize = null)
 
         assertNull(body.text)
         assertNull(body.bytes)
@@ -103,6 +121,37 @@ class PlatformCapturedBodyTest {
             assertArrayEquals(compressed, received)
             val body = sink.completions.last().body!!
             assertEquals(json, body.text)
+            assertEquals(compressed.size.toLong(), body.byteSize)
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun `a gzip response larger than the cap keeps an inflated prefix and its declared size`() {
+        // Hex digits compress only about 2:1, so the compressed body is far over the 1 KB cap.
+        val random = Random(7)
+        val text = (1..8_000).joinToString("") { "%02x".format(random.nextInt(256)) }
+        val compressed = gzip(text)
+        val server = MockWebServer()
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "text/plain")
+                .setHeader("Content-Encoding", "gzip")
+                .setBody(Buffer().write(compressed)),
+        )
+        server.start()
+        try {
+            val sink = RecordingSink()
+            val connection = open(sink, server.url("/export").toString())
+            connection.setRequestProperty("Accept-Encoding", "gzip")
+
+            connection.inputStream.use { it.readBytes() }
+
+            val body = sink.completions.last().body!!
+            assertTrue(body.truncated)
+            assertTrue(body.text!!.isNotEmpty())
+            assertTrue(text.startsWith(body.text!!))
             assertEquals(compressed.size.toLong(), body.byteSize)
         } finally {
             server.shutdown()
