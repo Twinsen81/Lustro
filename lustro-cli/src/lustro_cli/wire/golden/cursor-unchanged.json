@@ -4,6 +4,11 @@
   "state": {
     "paused": false,
     "overwriteMode": false,
-    "throttleDelayMs": 250
+    "throttleDelayMs": 250,
+    "captureFilter": {
+      "description": "Analytics calls, and requests marked X-No-Capture",
+      "skipped": 12,
+      "failed": 0
+    }
   }
 }

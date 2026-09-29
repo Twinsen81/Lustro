@@ -24,11 +24,12 @@ import okio.buffer
  * [NetworkCaptureSink]. Talks to the SPI sink instead of a concrete store,
  * keeping the interceptor decoupled from any particular storage implementation.
  *
- * Gated by [captureEnabled]; when capture is disabled the interceptor still
- * mocks and throttles (those are independent of capture). "Pause" lives in the
- * store and is capture-only — the [NetworkTrafficStore] still matches mocks and
- * applies throttle while paused. Uses peekBody() for regular response capture
- * and wraps event streams so they can be captured without buffering upfront.
+ * Gated by [captureEnabled], then by [captureFilter] for each request; when
+ * either says no, the interceptor still mocks and throttles (those are
+ * independent of capture). "Pause" lives in the store and is capture-only: the
+ * [NetworkTrafficStore] still matches mocks and applies throttle while paused.
+ * Uses peekBody() for regular response capture and wraps event streams so they
+ * can be captured without buffering upfront.
  *
  * Body capture: text-like request/response bodies are captured as text, and
  * image ones as bytes, up to [maxBodySize]; `truncated = fullSize > cap` and
@@ -39,6 +40,7 @@ import okio.buffer
 internal class LustroNetworkInterceptor(
     private val sink: NetworkCaptureSink,
     private val captureEnabled: () -> Boolean,
+    private val captureFilter: SafeCaptureFilter,
     private val throttleDelayMs: () -> Int,
     private val incrementMockHit: (String) -> Unit,
     private val maxBodySize: Long,
@@ -61,22 +63,9 @@ internal class LustroNetworkInterceptor(
 
         // Mock short-circuit — independent of capture being enabled.
         val mockRule = sink.findMockRule(url, request.method)
-        val capturing = captureEnabled()
 
         val startTime = System.currentTimeMillis()
-        var id: TransactionId? = null
-        if (capturing) {
-            val contentType = requestContentType(request)
-            val requestCapture = captureRequestBody(request, contentType)
-            id =
-                sink.beginRequest(
-                    url = url,
-                    method = request.method,
-                    headers = request.headers.toApiHeaders(),
-                    requestBody = requestCapture,
-                    contentType = contentType.toApiMediaType(),
-                )
-        }
+        val id = if (captureEnabled()) beginCapture(request, url) else null
 
         if (mockRule != null) {
             // Build the response before recording anything: rules are validated
@@ -138,6 +127,20 @@ internal class LustroNetworkInterceptor(
             }
             throw e
         }
+    }
+
+    // Null when the filter skips the request: none of it is read for capture or reported.
+    private fun beginCapture(request: okhttp3.Request, url: String): TransactionId? {
+        val headers = request.headers.toApiHeaders()
+        if (!captureFilter.shouldCapture(url, request.method, headers)) return null
+        val contentType = requestContentType(request)
+        return sink.beginRequest(
+            url = url,
+            method = request.method,
+            headers = headers,
+            requestBody = captureRequestBody(request, contentType),
+            contentType = contentType.toApiMediaType(),
+        )
     }
 
     private fun buildMockResponse(request: okhttp3.Request, rule: MockRule): Response {

@@ -75,12 +75,15 @@ public object LustroBootstrap {
                     // Best-effort and fail-open — it rests on a non-public platform
                     // detail (hence the opt-in) and silently disables itself if the
                     // platform blocks the hook. The classifier tags traffic by URL
-                    // substring; mock rules persist across restarts via prefs.
+                    // substring; mock rules persist across restarts via prefs. The
+                    // capture filter leaves analytics calls and marked requests out
+                    // of the list, on both paths.
                     NetworkDebugTab.create(
                         senderClient = appOkHttpClient,
                         capturePlatformHttp = true,
                         classifier = SampleNetworkClassifier(),
                         mockRuleStorage = SharedPreferencesMockRuleStorage(prefs),
+                        captureFilter = SampleCaptureFilter(),
                     ),
                 )
                 // Custom, schema-backed tab. It is debug-only: it never appears in
@@ -115,5 +118,16 @@ public object LustroBootstrap {
             DemoRequestSpec("GET /anything/other", "GET", "$base/anything/other"),
             DemoRequestSpec("HEAD /status/204", "HEAD", "$base/status/204"),
             DemoRequestSpec("GET https://127.0.0.1:1/lustro-error", "GET", "https://127.0.0.1:1/lustro-error"),
+            DemoRequestSpec(
+                "GET /get with $NO_CAPTURE_HEADER (not captured)",
+                "GET",
+                "$base/get",
+                headers = mapOf(NO_CAPTURE_HEADER to "1"),
+            ),
+            DemoRequestSpec(
+                "GET ${SampleCaptureFilter.ANALYTICS_HOST} (not captured)",
+                "GET",
+                "https://${SampleCaptureFilter.ANALYTICS_HOST}/collect",
+            ),
         )
 }

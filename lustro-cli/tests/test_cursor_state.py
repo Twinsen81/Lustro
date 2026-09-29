@@ -14,7 +14,7 @@ def test_reset_replaces_list_and_captures_cursor_and_state():
     assert [tx["id"] for tx in state.items] == ["tx_9f3c1a8e", "tx_4b1d77a0"]
     # First reset: every item is "new".
     assert [tx["id"] for tx in new] == ["tx_9f3c1a8e", "tx_4b1d77a0"]
-    assert state.state == {"paused": False, "overwriteMode": False, "throttleDelayMs": 0}
+    assert state.state == {"paused": False, "overwriteMode": False, "throttleDelayMs": 0, "captureFilter": None}
 
 
 def test_delta_returns_only_newly_seen_items():

@@ -17,6 +17,7 @@ import io.github.twinsen81.lustro.internal.network.NetworkCaptureProvider
 import io.github.twinsen81.lustro.internal.network.NetworkSendRequestImpl
 import io.github.twinsen81.lustro.internal.network.NetworkTrafficStore
 import io.github.twinsen81.lustro.internal.network.NetworkTransaction
+import io.github.twinsen81.lustro.internal.network.SafeCaptureFilter
 import io.github.twinsen81.lustro.internal.toDebugTimestamp
 import io.github.twinsen81.lustro.DebugTab
 import okhttp3.Interceptor
@@ -31,10 +32,11 @@ import org.json.JSONObject
  * right. Created through the [companion factory][Companion.create]; the
  * sink/interceptor wiring is internal. Adapted to the `/api/v1/network` wire
  * contract (cursor envelope, synchronous send) and the SPI
- * [NetworkClassifier]/[Redactor]/[MockRuleStorage] seams.
+ * [NetworkCaptureFilter]/[NetworkClassifier]/[Redactor]/[MockRuleStorage] seams.
  */
 public class NetworkDebugTab private constructor(
     private val store: NetworkTrafficStore,
+    private val captureFilter: SafeCaptureFilter,
     private val senderClient: OkHttpClient?,
     private val capturePlatformHttp: Boolean,
     maxBodyCaptureBytes: Long,
@@ -77,6 +79,7 @@ public class NetworkDebugTab private constructor(
         LustroNetworkInterceptor(
             sink = store,
             captureEnabled = { captureEnabled() && !store.isPaused() },
+            captureFilter = captureFilter,
             throttleDelayMs = { store.getThrottleDelayMs() },
             incrementMockHit = { store.incrementHitCount(it) },
             maxBodySize = maxBodyCaptureBytes,
@@ -117,6 +120,7 @@ public class NetworkDebugTab private constructor(
             HttpUrlConnectionCapture(
                 sink = store,
                 isPaused = { store.isPaused() },
+                captureFilter = captureFilter,
                 maxBodySize = maxBodyCaptureBytes.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
             ).install()
         }
@@ -129,6 +133,7 @@ public class NetworkDebugTab private constructor(
                 <div class="dc-toolbar net-list-head">
                     <h3 class="dc-mono-label">Network Traffic</h3>
                     <span id="tx-count" class="net-tx-count">0 requests</span>
+                    <button class="dc-btn dc-btn--icon net-filter-flag" id="capture-filter-btn" data-action="showCaptureFilter" hidden aria-label="Requests skipped by the app filters">⚠</button>
                     <button class="dc-btn" id="pause-btn" data-action="togglePause" style="margin-left:auto" title="Pause traffic capture. The interceptor still runs but new requests are not recorded into the list. Click again to resume.">⏸ Pause</button>
                     <button class="dc-btn" id="overwrite-btn" data-action="toggleOverwriteMode" title="Overwrite mode: when a new request arrives, any earlier completed transaction with the same method + URL path is removed from the list. In-flight requests are never evicted.">Overwrite: off</button>
                     <select class="dc-btn" id="throttle-select" name="throttleDelayMs" aria-label="Global throttle" data-action="setThrottle" title="Global throttle: sleep this long before every request (mocked or real). Useful for testing loading spinners and timeout handling.">
@@ -187,6 +192,26 @@ public class NetworkDebugTab private constructor(
                 </div>
             </div>
         </div>
+        <div id="capture-filter-modal" class="dc-modal-scrim" hidden>
+            <div class="dc-modal" role="dialog" aria-labelledby="capture-filter-title">
+                <div class="dc-modal__head">
+                    <span class="dc-modal__title" id="capture-filter-title">Skipped by the app filters</span>
+                    <button class="dc-modal__close" data-action="closeCaptureFilter" title="Close.">×</button>
+                </div>
+                <div class="dc-modal__body">
+                    <p class="net-filter-note">The app's code sets a capture filter, and it left requests out of this list. Mock rules and the throttle still apply to them.</p>
+                    <div class="net-filter-field"><span class="dc-label">Description</span><p id="capture-filter-description" class="net-filter-description"></p></div>
+                    <div class="net-filter-counts">
+                        <div class="net-filter-field"><span class="dc-label">Skipped</span><span id="capture-filter-skipped" class="net-filter-count"></span></div>
+                        <div class="net-filter-field" title="The filter threw an exception on these requests, so they were captured. Logcat has the first failure under the LustroCapture tag."><span class="dc-label">Failed</span><span id="capture-filter-failed" class="net-filter-count"></span></div>
+                    </div>
+                    <p class="net-filter-note">The counts start again when you clear the list.</p>
+                </div>
+                <div class="dc-modal__foot">
+                    <button class="dc-btn dc-btn--primary" data-action="closeCaptureFilter" title="Close.">Close</button>
+                </div>
+            </div>
+        </div>
         """.trimIndent()
 
     // The static OpenAPI lives at assets/lustro/network.openapi.json; the tab
@@ -236,7 +261,15 @@ public class NetworkDebugTab private constructor(
             append("{")
             append("\"paused\":").append(store.isPaused()).append(",")
             append("\"overwriteMode\":").append(store.isOverwriteMode()).append(",")
-            append("\"throttleDelayMs\":").append(store.getThrottleDelayMs())
+            append("\"throttleDelayMs\":").append(store.getThrottleDelayMs()).append(",")
+            append("\"captureFilter\":")
+            if (captureFilter.isSet) {
+                append("{\"description\":\"").append(captureFilter.description.escapeForJson()).append("\",")
+                append("\"skipped\":").append(captureFilter.skipped).append(",")
+                append("\"failed\":").append(captureFilter.failed).append("}")
+            } else {
+                append("null")
+            }
             append("}")
         }
 
@@ -296,8 +329,11 @@ public class NetworkDebugTab private constructor(
         return DebugResponse.bytes(body, contentType, headers = headers)
     }
 
+    // The filter's counts restart with the list, so they describe the requests
+    // missing from what is on screen.
     private fun handleClear(): DebugResponse {
         store.clear()
+        captureFilter.resetCounts()
         return ok()
     }
 
@@ -585,6 +621,10 @@ public class NetworkDebugTab private constructor(
          * @param redactor removes sensitive data at capture time (default:
          *   [DefaultRedactor]).
          * @param mockRuleStorage persists mock rules; `null` keeps them in memory.
+         * @param captureFilter decides which requests are captured (default: all).
+         *   It affects capture only: mock rules and the throttle still apply to a
+         *   request it skips. The Network tab shows how many it skipped, with its
+         *   description.
          */
         @JvmStatic
         @JvmOverloads
@@ -593,6 +633,7 @@ public class NetworkDebugTab private constructor(
             classifier: NetworkClassifier = NoOpNetworkClassifier,
             redactor: Redactor = DefaultRedactor,
             mockRuleStorage: MockRuleStorage? = null,
+            captureFilter: NetworkCaptureFilter = NoOpNetworkCaptureFilter,
         ): NetworkDebugTab =
             newTab(
                 senderClient = senderClient,
@@ -600,6 +641,7 @@ public class NetworkDebugTab private constructor(
                 classifier = classifier,
                 redactor = redactor,
                 mockRuleStorage = mockRuleStorage,
+                captureFilter = captureFilter,
             )
 
         /**
@@ -620,6 +662,10 @@ public class NetworkDebugTab private constructor(
          * @param redactor removes sensitive data at capture time (default:
          *   [DefaultRedactor]).
          * @param mockRuleStorage persists mock rules; `null` keeps them in memory.
+         * @param captureFilter decides which requests are captured, OkHttp and
+         *   `HttpURLConnection` alike (default: all). It affects capture only:
+         *   mock rules and the throttle still apply to an OkHttp request it skips.
+         *   The Network tab shows how many it skipped, with its description.
          */
         @ExperimentalPlatformCapture
         @JvmStatic
@@ -630,6 +676,7 @@ public class NetworkDebugTab private constructor(
             classifier: NetworkClassifier = NoOpNetworkClassifier,
             redactor: Redactor = DefaultRedactor,
             mockRuleStorage: MockRuleStorage? = null,
+            captureFilter: NetworkCaptureFilter = NoOpNetworkCaptureFilter,
         ): NetworkDebugTab =
             newTab(
                 senderClient = senderClient,
@@ -637,6 +684,7 @@ public class NetworkDebugTab private constructor(
                 classifier = classifier,
                 redactor = redactor,
                 mockRuleStorage = mockRuleStorage,
+                captureFilter = captureFilter,
             )
 
         private fun newTab(
@@ -645,6 +693,7 @@ public class NetworkDebugTab private constructor(
             classifier: NetworkClassifier,
             redactor: Redactor,
             mockRuleStorage: MockRuleStorage?,
+            captureFilter: NetworkCaptureFilter,
         ): NetworkDebugTab {
             val store =
                 NetworkTrafficStore(
@@ -655,6 +704,7 @@ public class NetworkDebugTab private constructor(
                 )
             return NetworkDebugTab(
                 store = store,
+                captureFilter = SafeCaptureFilter(captureFilter),
                 senderClient = senderClient,
                 capturePlatformHttp = capturePlatformHttp,
                 maxBodyCaptureBytes = DEFAULT_MAX_BODY_CAPTURE_BYTES,

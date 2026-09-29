@@ -3,6 +3,7 @@ package io.github.twinsen81.lustro
 import android.app.Application
 import androidx.test.core.app.ApplicationProvider
 import io.github.twinsen81.lustro.internal.network.NetworkTrafficStore
+import io.github.twinsen81.lustro.network.NetworkCaptureFilter
 import io.github.twinsen81.lustro.network.NetworkDebugTab
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -55,6 +56,50 @@ class LustroNetworkWiringTest {
             mockServer.shutdown()
         }
     }
+
+    @Test
+    fun `a request the capture filter skips is not listed, and its mock rule still answers it`() {
+        val mockServer = MockWebServer()
+        mockServer.enqueue(MockResponse().setResponseCode(200).setBody("from the server"))
+        mockServer.start()
+        try {
+            val tab =
+                NetworkDebugTab.create(
+                    captureFilter = NetworkCaptureFilter.of("Requests marked X-No-Capture") { it.headers.get("X-No-Capture") == null },
+                )
+            val lustro = Lustro.builder(app).addTab(tab).build()
+            val client = OkHttpClient.Builder().addInterceptor(lustro.networkInterceptor()).build()
+            val rule = """{"id":"skipped","urlPattern":"/skipped","statusCode":418,"responseBody":"from the rule"}"""
+            tab.handle(DebugRequest(path = "rules", method = "POST", body = rule.toByteArray(), contentType = MediaType.JSON))
+
+            val skipped =
+                client.newCall(Request.Builder().url(mockServer.url("/skipped")).header("X-No-Capture", "1").build())
+                    .execute()
+                    .use { it.code to it.body!!.string() }
+            val kept = client.newCall(Request.Builder().url(mockServer.url("/kept")).build()).execute().use { it.body!!.string() }
+            assertTrue((tab.captureSink as NetworkTrafficStore).awaitCaptures())
+
+            assertEquals(418 to "from the rule", skipped)
+            assertEquals("from the server", kept)
+            val transactions = tab.handle(DebugRequest(path = "transactions", method = "GET")).json().getJSONArray("items")
+            val urls = (0 until transactions.length()).map { transactions.getJSONObject(it).getString("url") }
+            assertEquals(listOf(mockServer.url("/kept").toString()), urls)
+            val rules = tab.handle(DebugRequest(path = "rules", method = "GET")).json().getJSONArray("items")
+            assertEquals(1, rules.getJSONObject(0).getInt("hitCount"))
+            // The poll state tells a teammate why a request is missing, until the list is cleared.
+            val filter = tab.handle(DebugRequest(path = "transactions", method = "GET")).json().getJSONObject("state").getJSONObject("captureFilter")
+            assertEquals("Requests marked X-No-Capture", filter.getString("description"))
+            assertEquals(1, filter.getInt("skipped"))
+            assertEquals(0, filter.getInt("failed"))
+            tab.handle(DebugRequest(path = "clear", method = "POST"))
+            val cleared = tab.handle(DebugRequest(path = "transactions", method = "GET")).json().getJSONObject("state").getJSONObject("captureFilter")
+            assertEquals(0, cleared.getInt("skipped"))
+        } finally {
+            mockServer.shutdown()
+        }
+    }
+
+    private fun DebugResponse?.json(): JSONObject = JSONObject(this!!.body.toString(Charsets.UTF_8))
 
     @Test
     fun `networkInterceptor is a pass-through when no network tab is registered`() {

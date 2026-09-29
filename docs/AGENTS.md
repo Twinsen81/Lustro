@@ -102,10 +102,10 @@ below summarizes it. All routes are token-authenticated and use the shared error
 
 | Operation | Route | Notes |
 | --- | --- | --- |
-| Poll transactions | `GET transactions?cursor=&search=` | Cursor envelope. First poll (no/invalid cursor) → `reset` with the full list; cursor unchanged → `unchanged` (items omitted); after a change → `delta`. `search` filters case-insensitively over URL, method, and bodies. Carries a top-level `state` `{ paused, overwriteMode, throttleDelayMs }`. |
+| Poll transactions | `GET transactions?cursor=&search=` | Cursor envelope. First poll (no/invalid cursor) → `reset` with the full list; cursor unchanged → `unchanged` (items omitted); after a change → `delta`. `search` filters case-insensitively over URL, method, and bodies. Carries a top-level `state` `{ paused, overwriteMode, throttleDelayMs, captureFilter }`. |
 | Transaction detail | `GET transactions/{id}` | Full object (headers + bodies, with truncation flags). Enveloped `404` if missing. |
 | Transaction body | `GET transactions/{id}/body/{request\|response}` | One body as it is stored: the bytes of an image, or the redacted text as UTF-8. Not JSON. Enveloped `404` when no body was kept. See below. |
-| Clear | `POST clear` | Clears the captured list; mock rules and settings are preserved. |
+| Clear | `POST clear` | Clears the captured list and starts the capture filter's counts again; mock rules and settings are preserved. |
 | List rules | `GET rules` | `{ items: [MockRule...] }`. |
 | Add / upsert rule | `POST rules` | Body `MockRuleInput` (`urlPattern` required). Supplying a stable `id` makes the write **idempotent** (upsert by id); omitting it generates one. Returns `{ status: "ok", id }`. |
 | Sync rules | `POST rules/_/sync` | **Atomic** full replacement: posts an array; the resulting set exactly equals it, with no empty window observed by the interceptor. Returns `{ status: "ok", count }`. |
@@ -141,8 +141,9 @@ hidden.
 
 **What advances the cursor.** Only changes to the captured list advance the transactions cursor: a
 new request, its response or streaming progress, a failure, an eviction, or `clear`. Pause,
-overwrite mode, throttle, and mock-rule changes don't. Every poll response carries the current
-`state`, `unchanged` ones included, and `GET rules` returns the rules with their hit counts.
+overwrite mode, throttle, mock-rule changes, and the capture filter's counts don't. Every poll
+response carries the current `state`, `unchanged` ones included, and `GET rules` returns the
+rules with their hit counts.
 
 **Times, protocol, and content types.** Every transaction, in the list and in the detail, has
 `startedAt` and `completedAt` in milliseconds since the Unix epoch. Sort and correlate by those,
@@ -193,6 +194,13 @@ Reusing the same `id` updates the rule in place (idempotent). Remove it with
 A request is listed once its capture is redacted, which happens off the app's call: usually
 milliseconds after the call returns, longer for large bodies. Right after making a request, keep
 polling rather than reading the list once.
+
+The app can also leave requests out with a capture filter, set in its code. Such a request is
+never listed, but mock rules and the throttle still apply to it. `state.captureFilter` says
+whether the app set one: `null` when it didn't, or `{ description, skipped, failed }`, where
+`skipped` counts the requests it left out and `failed` the ones it threw on, which were captured.
+Both count since the list was last cleared. So when a request never shows up while capture isn't
+paused, check `skipped` and read `description`.
 
 **Replay a request**
 

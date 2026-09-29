@@ -3,6 +3,9 @@ package io.github.twinsen81.lustro.sample;
 import io.github.twinsen81.lustro.DebugConfig;
 import io.github.twinsen81.lustro.DebugResponse;
 import io.github.twinsen81.lustro.Headers;
+import io.github.twinsen81.lustro.network.DefaultRedactor;
+import io.github.twinsen81.lustro.network.NetworkCaptureFilter;
+import io.github.twinsen81.lustro.network.NetworkClassifierKt;
 import io.github.twinsen81.lustro.network.NetworkDebugTab;
 import okhttp3.OkHttpClient;
 
@@ -36,13 +39,22 @@ public final class JavaUsage {
         // overload above is the documented entry point.
         NetworkDebugTab tabWithFlag = tabWithSender;
 
+        // A capture filter from a Java lambda and the description the Network tab
+        // shows. It is the last parameter, so Java passes the ones before it too.
+        NetworkDebugTab filtered = NetworkDebugTab.create(
+                null,
+                NetworkClassifierKt.getNoOpNetworkClassifier(),
+                DefaultRedactor.INSTANCE,
+                null,
+                NetworkCaptureFilter.of("Analytics calls", request -> !request.getUrl().contains("/analytics/")));
+
         // @JvmStatic / @JvmField factories on the api facades.
         Headers headers = Headers.of();
         DebugResponse response = DebugResponse.ok("{}");
 
         // Keep the locals "used" so this compiles cleanly under -Werror-style lint.
         if (config == null || tab == null || tabWithSender == null
-                || tabWithFlag == null || headers == null || response == null) {
+                || tabWithFlag == null || filtered == null || headers == null || response == null) {
             throw new IllegalStateException("unreachable");
         }
     }

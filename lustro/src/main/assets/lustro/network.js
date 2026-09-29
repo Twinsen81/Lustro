@@ -35,6 +35,8 @@
     var isPaused = false;
     var isOverwriteMode = false;
     var throttleDelayMs = 0;
+    var captureFilter = null;     // the app's capture filter from the poll state; null when it set none
+    var captureFilterModal = null;
     var DISPLAY_LIMIT_INITIAL = 200;
     var DISPLAY_LIMIT_INCREMENT = 200;
     var displayLimit = DISPLAY_LIMIT_INITIAL;
@@ -1152,11 +1154,49 @@
           .catch(function(e) { debugToast('Failed to set throttle: ' + e.message, 'error'); });
     };
 
+    // The flag shows only once the filter has left a request out of the list, so
+    // a teammate who misses a request sees why; its details come from the poll state.
+    function updateCaptureFilter(filter) {
+        captureFilter = filter || null;
+        var skipped = captureFilter ? (captureFilter.skipped || 0) : 0;
+        var btn = document.getElementById('capture-filter-btn');
+        if (btn) {
+            var label = 'Skipped by the app filters: ' + skipped;
+            btn.hidden = skipped <= 0;
+            btn.title = label;
+            btn.setAttribute('aria-label', label);
+        }
+        if (captureFilterModal && captureFilterModal.isVisible()) renderCaptureFilterDetails();
+    }
+
+    function renderCaptureFilterDetails() {
+        var f = captureFilter || { description: '', skipped: 0, failed: 0 };
+        var set = function(id, text) {
+            var el = document.getElementById(id);
+            if (el) el.textContent = text;
+        };
+        set('capture-filter-description', f.description || '');
+        set('capture-filter-skipped', String(f.skipped || 0));
+        set('capture-filter-failed', String(f.failed || 0));
+    }
+
+    window.showCaptureFilter = function() {
+        if (!captureFilterModal) captureFilterModal = window.debugModal('capture-filter-modal');
+        renderCaptureFilterDetails();
+        captureFilterModal.show();
+    };
+
+    window.closeCaptureFilter = function() {
+        if (captureFilterModal) captureFilterModal.hide();
+    };
+
     window.clearTraffic = function() {
         debugFetch(netUrl('clear'), {method: 'POST'}).then(function() {
             allTransactions = [];
             selectedTxId = null;
             lastCursor = null;
+            // Clearing restarts the filter's counts on the server as well.
+            if (captureFilter) updateCaptureFilter(Object.assign({}, captureFilter, { skipped: 0, failed: 0 }));
             renderList();
             var dc = document.getElementById('detail-content');
             if (dc) dc.innerHTML =
@@ -1165,7 +1205,8 @@
     };
 
     // GET transactions?cursor=<opaque>&search=<q> →
-    //   { cursor, status: "delta"|"unchanged"|"reset", items?, state: {paused, overwriteMode, throttleDelayMs} }
+    //   { cursor, status: "delta"|"unchanged"|"reset", items?,
+    //     state: {paused, overwriteMode, throttleDelayMs, captureFilter} }
     // The cursor is opaque: we echo back the last one we received (omitted on the
     // first poll). `unchanged` carries no items and is a no-op; `reset` replaces
     // the whole list; `delta` carries the authoritative current list. Any UNKNOWN
@@ -1212,6 +1253,7 @@
             throttleDelayMs = state.throttleDelayMs || 0;
             updateThrottleSelect();
         }
+        updateCaptureFilter(state.captureFilter);
 
         if (status === 'unchanged') {
             // No items; nothing to render. (Defensive: if items happen to be
@@ -1263,7 +1305,7 @@
             if (search) { search.focus(); search.select(); }
             return;
         }
-        if (e.key === 'Escape' && !document.querySelector('.dc-modal-scrim:not([hidden])')) {
+        if (e.key === 'Escape' && !e.defaultPrevented && !document.querySelector('.dc-modal-scrim:not([hidden])')) {
             if (selectedTxId) {
                 selectedTxId = null;
                 currentDetailTx = null;
@@ -1317,6 +1359,8 @@
         togglePause: function() { window.togglePause(); },
         toggleOverwriteMode: function() { window.toggleOverwriteMode(); },
         clearTraffic: function() { window.clearTraffic(); },
+        showCaptureFilter: function() { window.showCaptureFilter(); },
+        closeCaptureFilter: function() { window.closeCaptureFilter(); },
         copyCurl: function(el, ev) { window.copyCurl(ev); },
         copyAllDetail: function(el, ev) { window.copyAllDetail(ev); },
     };

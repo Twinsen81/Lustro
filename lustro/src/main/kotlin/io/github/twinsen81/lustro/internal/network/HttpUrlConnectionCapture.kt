@@ -51,6 +51,7 @@ import javax.net.ssl.SSLSocketFactory
 internal class HttpUrlConnectionCapture(
     private val sink: NetworkCaptureSink,
     private val isPaused: () -> Boolean,
+    private val captureFilter: SafeCaptureFilter,
     private val maxBodySize: Int,
 ) {
     private val installed = AtomicBoolean(false)
@@ -72,8 +73,8 @@ internal class HttpUrlConnectionCapture(
         val factory =
             URLStreamHandlerFactory { protocol ->
                 when (protocol) {
-                    "https" -> realHttps?.let { CapturingStreamHandler(it, sink, isPaused, maxBodySize, secure = true) }
-                    "http" -> realHttp?.let { CapturingStreamHandler(it, sink, isPaused, maxBodySize, secure = false) }
+                    "https" -> realHttps?.let { CapturingStreamHandler(it, sink, isPaused, captureFilter, maxBodySize, secure = true) }
+                    "http" -> realHttp?.let { CapturingStreamHandler(it, sink, isPaused, captureFilter, maxBodySize, secure = false) }
                     else -> null
                 }
             }
@@ -111,10 +112,12 @@ internal class HttpUrlConnectionCapture(
             null
         }
 
-    private class CapturingStreamHandler(
+    // Internal for tests, which hand it a stand-in for the platform handler.
+    internal class CapturingStreamHandler(
         private val real: URLStreamHandler,
         private val sink: NetworkCaptureSink,
         private val isPaused: () -> Boolean,
+        private val captureFilter: SafeCaptureFilter,
         private val maxBodySize: Int,
         private val secure: Boolean,
     ) : URLStreamHandler() {
@@ -135,9 +138,9 @@ internal class HttpUrlConnectionCapture(
                 if (isPaused()) {
                     conn
                 } else if (secure && conn is HttpsURLConnection) {
-                    CapturingHttpsURLConnection(u, conn, sink, maxBodySize)
+                    CapturingHttpsURLConnection(u, conn, sink, captureFilter, maxBodySize)
                 } else if (conn is HttpURLConnection) {
-                    CapturingHttpURLConnection(u, conn, sink, maxBodySize)
+                    CapturingHttpURLConnection(u, conn, sink, captureFilter, maxBodySize)
                 } else {
                     conn
                 }
@@ -150,6 +153,7 @@ internal class HttpUrlConnectionCapture(
         private val url: URL,
         private val connection: HttpURLConnection,
         private val sink: NetworkCaptureSink,
+        private val captureFilter: SafeCaptureFilter,
         private val maxBodySize: Int,
     ) {
         private val startTime = System.currentTimeMillis()
@@ -161,6 +165,10 @@ internal class HttpUrlConnectionCapture(
         private val bodyFinalized = AtomicBoolean(false)
         private val responseBodyBuffer = ByteArrayOutputStream()
         private var transactionId: TransactionId? = null
+
+        // The capture filter's answer, asked once the app can no longer change the
+        // request: when it opens the body stream or connects. Null until then.
+        private var filterAnswer: Boolean? = null
 
         fun onSetHeader(key: String, value: String?) {
             if (value == null) requestHeaders.remove(key) else requestHeaders[key] = value
@@ -174,6 +182,9 @@ internal class HttpUrlConnectionCapture(
             // The platform returns the same OutputStream on repeated getOutputStream() calls, so we
             // must too — a fresh buffer per call would drop earlier writes from the captured body.
             wrappedOutput?.let { return it }
+            // Not copied when the filter skips the request. The platform's own stream is
+            // the same on every call already.
+            if (!passesFilter()) return real
             val buffer = ByteArrayOutputStream()
             requestBodyBuffer = buffer
             return BoundedTeeOutputStream(real, buffer, maxBodySize).also { wrappedOutput = it }
@@ -182,14 +193,13 @@ internal class HttpUrlConnectionCapture(
         fun recordRequestOnce() {
             if (!requestRecorded.compareAndSet(false, true)) return
             try {
+                if (!passesFilter()) return
                 val bodyBytes = requestBodyBuffer?.toByteArray()
                 val contentType = contentTypeOf(requestHeaders)
                 transactionId =
                     sink.beginRequest(
                         url = url.toString(),
-                        // Read from the real connection so the verb reflects e.g. doOutput->POST
-                        // promotion, not just whatever setRequestMethod tracked.
-                        method = connection.requestMethod,
+                        method = requestMethod(),
                         headers = headersOf(requestHeaders),
                         requestBody = bodyBytes?.let { platformCapturedBody(it, maxBodySize, contentType) },
                         contentType = contentType,
@@ -214,6 +224,7 @@ internal class HttpUrlConnectionCapture(
         }
 
         fun wrapInput(real: InputStream, statusCode: Int, headers: Map<String, List<String>>): InputStream {
+            if (filterAnswer == false) return real
             recordResponseHeaders(statusCode, headers)
             return BoundedTeeInputStream(real, responseBodyBuffer, maxBodySize) {
                 finalizeBody(statusCode, headers)
@@ -256,6 +267,17 @@ internal class HttpUrlConnectionCapture(
             }
         }
 
+        private fun passesFilter(): Boolean =
+            filterAnswer
+                ?: captureFilter.shouldCapture(url.toString(), requestMethod(), headersOf(requestHeaders))
+                    .also { filterAnswer = it }
+
+        // The method that goes on the wire. The platform sends a GET with doOutput set
+        // as a POST, but switches the method only when it connects, and an explicit
+        // connect() records the request before that.
+        private fun requestMethod(): String =
+            connection.requestMethod.let { if (it == "GET" && connection.doOutput) "POST" else it }
+
         private fun headersOf(headers: Map<String, String>): Headers {
             val builder = Headers.Builder()
             headers.forEach { (k, v) -> builder.add(k, v) }
@@ -285,9 +307,10 @@ internal class HttpUrlConnectionCapture(
         url: URL,
         private val real: HttpURLConnection,
         sink: NetworkCaptureSink,
+        captureFilter: SafeCaptureFilter,
         maxBodySize: Int,
     ) : HttpURLConnection(url) {
-        private val capture = CaptureState(url, real, sink, maxBodySize)
+        private val capture = CaptureState(url, real, sink, captureFilter, maxBodySize)
 
         override fun connect() {
             capture.recordRequestOnce()
@@ -434,9 +457,10 @@ internal class HttpUrlConnectionCapture(
         url: URL,
         private val real: HttpsURLConnection,
         sink: NetworkCaptureSink,
+        captureFilter: SafeCaptureFilter,
         maxBodySize: Int,
     ) : HttpsURLConnection(url) {
-        private val capture = CaptureState(url, real, sink, maxBodySize)
+        private val capture = CaptureState(url, real, sink, captureFilter, maxBodySize)
 
         override fun connect() {
             capture.recordRequestOnce()

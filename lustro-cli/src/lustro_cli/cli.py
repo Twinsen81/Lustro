@@ -165,6 +165,13 @@ def cmd_net_list(args: argparse.Namespace) -> int:
             state.get("paused"), state.get("overwriteMode"), state.get("throttleDelayMs")
         )
     )
+    capture_filter = state.get("captureFilter")
+    if isinstance(capture_filter, dict):
+        print(
+            "capture filter: skipped={} failed={} ({})".format(
+                capture_filter.get("skipped"), capture_filter.get("failed"), capture_filter.get("description")
+            )
+        )
     for tx in data.get("items") or []:
         _print_transaction_row(tx)
     return 0

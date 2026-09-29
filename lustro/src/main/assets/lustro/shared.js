@@ -576,7 +576,11 @@ window.debugModal = function(modalId) {
 
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
-        document.querySelectorAll('.dc-modal-scrim:not([hidden])').forEach(function(m) {
+        var open = document.querySelectorAll('.dc-modal-scrim:not([hidden])');
+        // A tab's own Escape handler runs after this one, when no dialog is open
+        // any more, so mark the key as used: the tab then leaves its state alone.
+        if (open.length) e.preventDefault();
+        open.forEach(function(m) {
             m.hidden = true;
         });
     }

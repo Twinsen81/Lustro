@@ -4,6 +4,7 @@
   <CurrentIssues>
     <ID>UnusedParameter:Lustro.kt$Lustro.Builder$config: DebugConfig</ID>
     <ID>UnusedParameter:Lustro.kt$Lustro.Builder$tab: DebugTab</ID>
+    <ID>UnusedParameter:NetworkDebugTab.kt$NetworkDebugTab.Companion$captureFilter: NetworkCaptureFilter = NoOpNetworkCaptureFilter</ID>
     <ID>UnusedParameter:NetworkDebugTab.kt$NetworkDebugTab.Companion$capturePlatformHttp: Boolean</ID>
     <ID>UnusedParameter:NetworkDebugTab.kt$NetworkDebugTab.Companion$classifier: NetworkClassifier = NoOpNetworkClassifier</ID>
     <ID>UnusedParameter:NetworkDebugTab.kt$NetworkDebugTab.Companion$mockRuleStorage: MockRuleStorage? = null</ID>

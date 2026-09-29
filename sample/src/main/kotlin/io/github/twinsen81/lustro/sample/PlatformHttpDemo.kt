@@ -22,11 +22,13 @@ import java.net.URL
  */
 public object PlatformHttpDemo {
     /**
-     * Fires a GET with a raw [HttpURLConnection]. Blocks, so call off the main
-     * thread. Drains the response body so it is captured before disconnecting.
+     * Fires a GET with a raw [HttpURLConnection], with [headers] set on it.
+     * Blocks, so call off the main thread. Drains the response body so it is
+     * captured before disconnecting.
      */
     public fun rawGet(
         url: String,
+        headers: Map<String, String> = emptyMap(),
         onResult: (status: String) -> Unit,
         onError: (message: String) -> Unit,
     ) {
@@ -35,6 +37,7 @@ public object PlatformHttpDemo {
             connection.requestMethod = "GET"
             connection.connectTimeout = TIMEOUT_MS
             connection.readTimeout = TIMEOUT_MS
+            headers.forEach { (name, value) -> connection.setRequestProperty(name, value) }
             val code = connection.responseCode
             val stream =
                 if (code < HttpURLConnection.HTTP_BAD_REQUEST) {

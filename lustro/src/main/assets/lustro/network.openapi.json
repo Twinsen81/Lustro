@@ -13,7 +13,7 @@
       "get": {
         "operationId": "listTransactions",
         "summary": "Poll captured transactions with an opaque cursor.",
-        "description": "Short-polling. Send the last cursor back each call. status=reset returns the full current list; status=delta returns the current list after a change; status=unchanged omits items. Treat unknown statuses as reset. The cursor advances when the transaction list changes: a capture, a response or streaming progress, a failure, an eviction, or clear. Pause, overwrite mode, throttle, and mock-rule changes don't advance it; state reports them on every response, unchanged ones included. A cursor from before an app restart gets a reset.",
+        "description": "Short-polling. Send the last cursor back each call. status=reset returns the full current list; status=delta returns the current list after a change; status=unchanged omits items. Treat unknown statuses as reset. The cursor advances when the transaction list changes: a capture, a response or streaming progress, a failure, an eviction, or clear. Pause, overwrite mode, throttle, mock-rule changes, and the capture filter's counts don't advance it; state reports them on every response, unchanged ones included. A cursor from before an app restart gets a reset. A request the app's capture filter skips is never listed; mock rules and the throttle still apply to it, and state.captureFilter counts it.",
         "parameters": [
           { "name": "cursor", "in": "query", "required": false, "schema": { "type": "string" }, "description": "Opaque cursor from the previous response. Omit on first poll." },
           { "name": "search", "in": "query", "required": false, "schema": { "type": "string" }, "description": "Case-insensitive filter over URL, method, and captured bodies." }
@@ -76,7 +76,7 @@
     "/api/v1/network/clear": {
       "post": {
         "operationId": "clearTransactions",
-        "summary": "Clear the captured transaction list. Mock rules and settings are preserved.",
+        "summary": "Clear the captured transaction list and start the capture filter's counts again. Mock rules and settings are preserved.",
         "responses": { "200": { "$ref": "#/components/responses/Ok" }, "401": { "$ref": "#/components/responses/Error" }, "403": { "$ref": "#/components/responses/Error" }, "413": { "$ref": "#/components/responses/Error" }, "503": { "$ref": "#/components/responses/Error" } }
       }
     },
@@ -234,7 +234,18 @@
             "properties": {
               "paused": { "type": "boolean" },
               "overwriteMode": { "type": "boolean" },
-              "throttleDelayMs": { "type": "integer" }
+              "throttleDelayMs": { "type": "integer" },
+              "captureFilter": {
+                "type": ["object", "null"],
+                "description": "The capture filter the app set in its code, or null when it set none. The counts start again on clear.",
+                "required": ["description", "skipped", "failed"],
+                "properties": {
+                  "description": { "type": "string", "description": "What the filter leaves out, as the app describes it." },
+                  "skipped": { "type": "integer", "minimum": 0, "description": "Requests the filter left out of the list." },
+                  "failed": { "type": "integer", "minimum": 0, "description": "Requests the filter threw on. They were captured." }
+                },
+                "additionalProperties": false
+              }
             }
           }
         }

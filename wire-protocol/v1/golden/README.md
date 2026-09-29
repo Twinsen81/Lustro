@@ -28,7 +28,9 @@ with no source checkout required.
 - **Cursor envelope.** `cursor` is opaque; clients echo it on the next poll and
   treat any unknown `status` as `reset`. The Network tab extends the generic
   envelope with a top-level `state` object (`paused`, `overwriteMode`,
-  `throttleDelayMs`). `cursor-unchanged.json` deliberately omits `items`.
+  `throttleDelayMs`, `captureFilter`). `cursor-unchanged.json` deliberately
+  omits `items`, and models an app that set a capture filter; the other two
+  model one that didn't (`captureFilter: null`).
 - **Redaction.** Captured values are redacted at capture time; the
   `transaction.json` `Authorization` request header shows `<redacted>` to model
   this — clients must never assume bodies/headers are raw.

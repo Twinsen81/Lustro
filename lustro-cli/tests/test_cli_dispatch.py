@@ -65,6 +65,31 @@ def test_net_list_route(rec):
     assert params["search"] == "orders"
 
 
+def test_net_list_shows_the_capture_filter_when_the_app_set_one(rec, capsys):
+    rec.response = {
+        "cursor": "c:1",
+        "status": "unchanged",
+        "state": {
+            "paused": False,
+            "overwriteMode": False,
+            "throttleDelayMs": 0,
+            "captureFilter": {"description": "Analytics calls", "skipped": 12, "failed": 1},
+        },
+    }
+    assert run(["net", "list"]) == 0
+    assert "capture filter: skipped=12 failed=1 (Analytics calls)" in capsys.readouterr().out
+
+
+def test_net_list_omits_the_capture_filter_line_when_none_is_set(rec, capsys):
+    rec.response = {
+        "cursor": "c:1",
+        "status": "unchanged",
+        "state": {"paused": False, "overwriteMode": False, "throttleDelayMs": 0, "captureFilter": None},
+    }
+    assert run(["net", "list"]) == 0
+    assert "capture filter" not in capsys.readouterr().out
+
+
 def test_net_poll_once_route(rec):
     run(["net", "poll", "--once"])
     method, path, _, _ = rec.calls[-1]

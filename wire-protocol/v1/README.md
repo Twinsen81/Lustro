@@ -54,7 +54,9 @@ gets a `reset`.
   `requestBodyBinary` and `responseBodyBinary`, `true` when that body was kept
   as bytes (an image), and the new route
   `GET network/transactions/{id}/body/{request|response}` returns a body as it
-  is stored.
+  is stored. The poll `state` gains `captureFilter`: `null` when the app set no
+  capture filter, or its `description` and how many requests it `skipped` and
+  `failed` on, counted since the list was last cleared.
 
 ## Status
 

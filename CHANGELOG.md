@@ -31,8 +31,9 @@ see [DECISIONS.md](DECISIONS.md).
 - **Public SPI** (`:lustro-api`): `DebugTab`, `DebugRequest`, `DebugResponse`
   (+ `ok`/`text`/`bytes`/`json`/`notFound`/`error` factories), `Headers`,
   `MediaType`, and the network seams `NetworkCaptureSink`, `NetworkSender`,
-  `NetworkClassifier`, `Redactor`, `MockRule`, `NetworkSendRequest`,
-  `NetworkSendResult`, `TransactionId`, `CapturedBody`, `CapturedResponse`, plus
+  `NetworkCaptureFilter`, `NetworkCaptureRequest`, `NetworkClassifier`,
+  `Redactor`, `MockRule`, `NetworkSendRequest`, `NetworkSendResult`,
+  `TransactionId`, `CapturedBody`, `CapturedResponse`, plus
   `escapeForJson`/`escapeHtml`. Explicit-API strict, BCV-validated.
 - **NanoHTTPD-backed debug server** with a browser tab UI and a tab plugin model:
   `Lustro.builder(...)`, `DebugConfig`, the `DebugTabRegistry`, asset loading, and
@@ -42,7 +43,8 @@ see [DECISIONS.md](DECISIONS.md).
   capture, event-stream progressive capture, opt-in platform `HttpURLConnection`
   capture (`@ExperimentalPlatformCapture`), mock rules (incl. atomic
   `rules/_/sync`), throttling, capture-only pause, overwrite mode, synchronous
-  Send Request, a pluggable `NetworkClassifier`/`Redactor`, and `MockRuleStorage`.
+  Send Request, a pluggable `NetworkCaptureFilter`/`NetworkClassifier`/`Redactor`,
+  and `MockRuleStorage`.
 - **Security & lifecycle**: always-on token auth (Bearer + `HttpOnly; SameSite=Strict`
   cookie, machine-parseable `LustroToken` startup log), browser fragment bootstrap,
   CSP, origin/`Sec-Fetch-Site` checks, loopback-default binding with LAN opt-in and
@@ -84,6 +86,28 @@ see [DECISIONS.md](DECISIONS.md).
   `responseBodyBinary` (wire protocol 1.2). The console shows an image body in
   the detail, and `lustro net body <id> [request|response] -o FILE` saves a
   body to a file.
+- **A capture filter, to leave traffic out of the Network tab.**
+  `NetworkCaptureFilter` joins `NetworkClassifier` and `Redactor` in
+  `:lustro-api`, with `NoOpNetworkCaptureFilter` as the default that captures
+  everything, and both `NetworkDebugTab.create` overloads take it as
+  `captureFilter`. Its `shouldCapture` gets a read-only `NetworkCaptureRequest`
+  with the URL, method, and headers, so a later field doesn't change the
+  signature. A filter has a required `description`;
+  `NetworkCaptureFilter.of(description) { request -> ... }` builds one from a
+  lambda. Once the filter skips a request, the Network tab shows a ⚠ next to
+  the request count, with the number skipped in its tooltip, and a click shows
+  the description and how many requests the filter skipped and failed on. The
+  poll `state` carries the same as `captureFilter` (`null` when the app set no
+  filter; wire protocol 1.2), `lustro net list` prints it, and `POST clear`
+  starts the counts again. The OkHttp interceptor and platform `HttpURLConnection` capture
+  ask it before they capture anything, so a request it skips is never stored,
+  redacted, or counted toward `captureBudgetBytes`, and platform capture
+  doesn't copy its bodies. The filter decides capture only: mock rules and the
+  throttle still apply to a skipped request, as they do while capture is
+  paused. It runs on the thread that makes the call. A filter that throws
+  doesn't fail the call: the request is captured, and the first failure is
+  logged. The sample skips an analytics host and requests marked with an
+  `X-No-Capture` header.
 - **Request cancellation for tabs**: `DebugRequest.isCancelled`, `onCancel(Runnable)`, and
   `cancel()`. The runtime cancels a request when it times out or the server shuts down, so a
   handler can abort blocking work that ignores thread interrupts, such as a SQLite query
@@ -322,6 +346,11 @@ see [DECISIONS.md](DECISIONS.md).
   `200 OK` as it. The status line now reads `HTTP/1.1 200 OK`, and the `504` a
   request timeout gets reads `504 Gateway Timeout`, a reason phrase NanoHTTPD
   doesn't supply.
+- **Platform capture could record a POST as a GET.** The platform sends a GET
+  with `doOutput` set as a POST, but switches the method only when it connects.
+  An app that called `connect()` before writing the body had the request
+  recorded before the switch, so it was listed as a GET. It is now recorded,
+  and shown to a capture filter, as the POST that goes on the wire.
 
 ### Changed
 
