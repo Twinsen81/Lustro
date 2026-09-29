@@ -4,8 +4,9 @@
 // or version resolves to the wrong artifact or to none.
 //
 // It reads every `group:lustro...[:version]` coordinate, every version-catalog
-// library with a Lustro name, and every `lustro = "<version>"` catalog entry in
-// the docs below. It fails when a group is not GROUP, when the docs name more
+// library with a Lustro name (its group, its inline `version`, and the entry its
+// `version.ref` names), and every `lustro = "<version>"` catalog entry in the
+// docs below. It fails when a group is not GROUP, when the docs name more
 // than one version, or when the version is not VERSION_NAME. One exception:
 // while VERSION_NAME is the -SNAPSHOT that follows a release, the docs can keep
 // that earlier release, which people can resolve from Maven Central. A release
@@ -15,7 +16,11 @@ val docsWithVersion = listOf("README.md", "llms.txt", ".agents/skills/lustro/SKI
 val docsWithCoordinates = docsWithVersion + "context7.json"
 
 val coordinatePattern = Regex("""\b([A-Za-z][\w-]*(?:\.[\w-]+)+):(lustro[\w-]*)(?::(\d[\w.+-]*))?""")
-val catalogLibraryPattern = Regex("""\bgroup\s*=\s*"([^"]+)"\s*,\s*name\s*=\s*"(lustro[\w-]*)"""")
+val catalogTablePattern = Regex("""\{[^{}\n]*}""")
+val lustroLibraryPattern = Regex("""\bname\s*=\s*"lustro[\w-]*"|\bmodule\s*=\s*"[^"]*:lustro[\w-]*"""")
+val tableGroupPattern = Regex("""\bgroup\s*=\s*"([^"]+)"""")
+val tableVersionPattern = Regex("""\bversion\s*=\s*"([^"]+)"""")
+val tableVersionRefPattern = Regex("""\bversion\.ref\s*=\s*"([^"]+)"""")
 val catalogVersionPattern = Regex("""(?m)^[ \t]*lustro[ \t]*=[ \t]*"([^"]+)"""")
 val numericCorePattern = Regex("""^(\d+)\.(\d+)\.(\d+)""")
 
@@ -68,9 +73,19 @@ tasks.register("checkDocsVersion") {
                     versions += Found(path, line, it)
                 }
             }
-            catalogLibraryPattern.findAll(text).forEach { match ->
-                groups += Found(path, lineOf(text, match.range.first), match.groupValues[1])
-            }
+            catalogTablePattern.findAll(text)
+                .filter { lustroLibraryPattern.containsMatchIn(it.value) }
+                .forEach { table ->
+                    val line = lineOf(text, table.range.first)
+                    tableGroupPattern.find(table.value)?.let { groups += Found(path, line, it.groupValues[1]) }
+                    tableVersionPattern.find(table.value)?.let { versions += Found(path, line, it.groupValues[1]) }
+                    tableVersionRefPattern.find(table.value)?.let { ref ->
+                        val key = Regex.escape(ref.groupValues[1])
+                        Regex("""(?m)^[ \t]*$key[ \t]*=[ \t]*"([^"]+)"""").findAll(text).forEach {
+                            versions += Found(path, lineOf(text, it.range.first), it.groupValues[1])
+                        }
+                    }
+                }
             catalogVersionPattern.findAll(text).forEach { match ->
                 versions += Found(path, lineOf(text, match.range.first), match.groupValues[1])
             }
@@ -79,7 +94,11 @@ tasks.register("checkDocsVersion") {
         val docOrder = docsWithCoordinates.withIndex().associate { it.value to it.index }
         val byPlace = compareBy<Found>({ docOrder.getValue(it.file) }, { it.line })
         groups.sortWith(byPlace)
-        versions.sortWith(byPlace)
+        // The `lustro = "..."` entry is found both on its own and through a
+        // `version.ref`, so drop the second copy.
+        val sortedVersions = versions.distinct().sortedWith(byPlace)
+        versions.clear()
+        versions += sortedVersions
 
         val problems = mutableListOf<String>()
         groups.filter { it.value != group }.forEach {

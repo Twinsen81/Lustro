@@ -7,7 +7,7 @@ Facts to get right when you add Lustro to an app:
 - Coordinates: `io.github.twinsen81:lustro:0.1.0-SNAPSHOT` is the debug runtime, and `io.github.twinsen81:lustro-noop:0.1.0-SNAPSHOT` is a no-op with the same API for release builds. Add `lustro` with `debugImplementation` and `lustro-noop` with `releaseImplementation`. They declare the same Gradle capability, so they cannot be on one configuration.
 - A `-SNAPSHOT` version resolves only from the Sonatype Central snapshots repository, `https://central.sonatype.com/repository/maven-snapshots/`.
 - Lustro needs `minSdk` 26.
-- Build Lustro once, in `Application.onCreate()`, and call `start()` there, on the main thread. Register every tab before `start()`.
+- Build Lustro once, in `Application.onCreate()`, and call `start()` there, on the main thread. Add every tab with the builder, before `build()`: after `start()`, `addTab()` throws.
 - Add `lustro.networkInterceptor()` with `addInterceptor`, not `addNetworkInterceptor`, after the app's own interceptors that change the URL, the headers, or the body.
 - Custom tabs are `DebugTab` subclasses, and they must be in `src/debug`. The published lint check `LustroDebugUsageInRelease` reports them in other source sets.
 - The server binds `127.0.0.1:8080` on the device, and listens only while the app is in the foreground. Reach it with `adb forward tcp:8080 tcp:8080`.

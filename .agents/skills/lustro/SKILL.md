@@ -22,7 +22,8 @@ the capture options).
   on one configuration: they declare the same Gradle capability, so dependency resolution fails.
 - Build Lustro once per process, in `Application.onCreate()`, and call `start()` there. `start()`
   must run on the main thread: from another thread it returns `LustroStatus.DISABLED`.
-- Register every tab before `start()`. Lustro ignores tabs added after it.
+- Add every tab with the builder, before `build()`. After `start()`, `addTab()` throws
+  `IllegalStateException`.
 - Add `lustro.networkInterceptor()` with `addInterceptor`, not `addNetworkInterceptor`, and add it
   after the app's own interceptors.
 - The client you pass as `senderClient` exists before `lustro` does, so it cannot have Lustro's
@@ -286,17 +287,25 @@ The README's "Custom tabs" section and `docs/STYLEGUIDE.md` have the rest.
 
    Lustro logs this line each time the server starts to listen. If it is missing, see
    [Troubleshooting](#troubleshooting).
-6. Forward the port from the endpoint, and call the API with the token:
+6. Forward a local port to the device port from the endpoint, and call the API with the token.
+   `--no-rebind` stops adb from taking over a forward that a different tool set up for a
+   different device:
 
    ```bash
-   adb forward tcp:8080 tcp:8080
+   adb forward --no-rebind tcp:8080 tcp:8080
    curl -s -H "Authorization: Bearer <token>" http://localhost:8080/api/v1/_meta
    ```
 
-   The response lists the `network` tab. If `adb forward` fails with "Address already in use",
-   another program uses that local port. Forward a free local port to the same device port, for
-   example `adb forward tcp:18080 tcp:8080`, and use `http://localhost:18080`. Current browsers
-   open the console on that port too.
+   The response lists the `network` tab. If `adb forward` fails:
+
+   - "cannot rebind existing socket": a forward from that local port exists. If
+     `adb forward --list` shows it for your device and `tcp:8080`, use it. If not, use a free
+     local port.
+   - "Address already in use": a different program uses that local port. Use a free local port.
+
+   To use a free local port, forward it to the same device port, for example
+   `adb forward --no-rebind tcp:18080 tcp:8080`, and use `http://localhost:18080`. Current
+   browsers open the console on that port too.
 7. Make the app send a request, then read the captured traffic. A request shows up a moment after
    it completes, so read again if it is not there yet:
 
@@ -329,9 +338,8 @@ The README's "Custom tabs" section and `docs/STYLEGUIDE.md` have the rest.
   If `Lustro` logged nothing, make sure that the code calls `start()` and that the app is in the
   foreground. The line can also be gone from the log buffer: put the app in the background and
   back in the foreground, and Lustro logs it again.
-- **Cannot connect.** Run `adb forward tcp:8080 tcp:8080`, and make sure that the app is in the
-  foreground. Use the device port from `endpoint=` in the `LustroToken` line. If the local port is
-  in use, forward a different local port (Step 5).
+- **Cannot connect.** Forward the port as Step 5 shows, and make sure that the app is in the
+  foreground. Use the device port from `endpoint=` in the `LustroToken` line.
 - **`401 unauthorized`.** The request has no valid token. In a browser, open the page with
   `#lustro_token=<token>` once, or use `lustro open`. Other clients send
   `Authorization: Bearer <token>`. The token stays the same until the app's data is cleared.
