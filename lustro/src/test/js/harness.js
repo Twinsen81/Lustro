@@ -41,6 +41,7 @@ function stubLocalStorage() {
 }
 
 function loadSharedJs() {
+    const documentListeners = {};
     const sandbox = {
         console,
         setTimeout,
@@ -56,10 +57,14 @@ function loadSharedJs() {
             querySelector: () => null,
             querySelectorAll: () => [],
             createElement: stubElement,
-            addEventListener() {},
+            addEventListener(type, listener) {
+                (documentListeners[type] = documentListeners[type] || []).push(listener);
+            },
             getSelection: () => null,
         },
     };
+    // The listeners shared.js puts on document, by event type, so a test can fire them.
+    sandbox.documentListeners = documentListeners;
     sandbox.window = sandbox;
     sandbox.globalThis = sandbox;
     sandbox.isSecureContext = false;

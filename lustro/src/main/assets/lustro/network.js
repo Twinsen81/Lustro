@@ -1305,7 +1305,7 @@
             if (search) { search.focus(); search.select(); }
             return;
         }
-        if (e.key === 'Escape' && !document.querySelector('.dc-modal-scrim:not([hidden])')) {
+        if (e.key === 'Escape' && !e.defaultPrevented && !document.querySelector('.dc-modal-scrim:not([hidden])')) {
             if (selectedTxId) {
                 selectedTxId = null;
                 currentDetailTx = null;
