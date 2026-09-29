@@ -199,9 +199,7 @@ internal class HttpUrlConnectionCapture(
                 transactionId =
                     sink.beginRequest(
                         url = url.toString(),
-                        // Read from the real connection so the verb reflects e.g. doOutput->POST
-                        // promotion, not just whatever setRequestMethod tracked.
-                        method = connection.requestMethod,
+                        method = requestMethod(),
                         headers = headersOf(requestHeaders),
                         requestBody = bodyBytes?.let { platformCapturedBody(it, maxBodySize, contentType) },
                         contentType = contentType,
@@ -269,11 +267,16 @@ internal class HttpUrlConnectionCapture(
             }
         }
 
-        // Sees the method as beginRequest records it, read from the real connection.
         private fun passesFilter(): Boolean =
             filterAnswer
-                ?: captureFilter.shouldCapture(url.toString(), connection.requestMethod, headersOf(requestHeaders))
+                ?: captureFilter.shouldCapture(url.toString(), requestMethod(), headersOf(requestHeaders))
                     .also { filterAnswer = it }
+
+        // The method that goes on the wire. The platform sends a GET with doOutput set
+        // as a POST, but switches the method only when it connects, and an explicit
+        // connect() records the request before that.
+        private fun requestMethod(): String =
+            connection.requestMethod.let { if (it == "GET" && connection.doOutput) "POST" else it }
 
         private fun headersOf(headers: Map<String, String>): Headers {
             val builder = Headers.Builder()

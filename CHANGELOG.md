@@ -339,6 +339,11 @@ see [DECISIONS.md](DECISIONS.md).
   `200 OK` as it. The status line now reads `HTTP/1.1 200 OK`, and the `504` a
   request timeout gets reads `504 Gateway Timeout`, a reason phrase NanoHTTPD
   doesn't supply.
+- **Platform capture could record a POST as a GET.** The platform sends a GET
+  with `doOutput` set as a POST, but switches the method only when it connects.
+  An app that called `connect()` before writing the body had the request
+  recorded before the switch, so it was listed as a GET. It is now recorded,
+  and shown to a capture filter, as the POST that goes on the wire.
 
 ### Changed
 

@@ -90,6 +90,25 @@ class HttpUrlConnectionCaptureFilterTest {
         assertEquals("hello", sink.completions.last().body?.text)
     }
 
+    @Test
+    fun `a doOutput GET that connects before writing is filtered and recorded as the POST it sends`() {
+        val seen = mutableListOf<String>()
+        val sink = RecordingSink()
+        val connection =
+            open(sink, FakeHandler()) {
+                seen += it.method
+                true
+            }
+        connection.doOutput = true
+
+        connection.connect()
+        connection.outputStream.write("{}".toByteArray())
+        connection.responseCode
+
+        assertEquals(listOf("POST"), seen)
+        assertEquals(listOf("POST http://example.com/events"), sink.begun)
+    }
+
     private fun open(sink: NetworkCaptureSink, platform: FakeHandler, filter: NetworkCaptureFilter): HttpURLConnection {
         val handler =
             HttpUrlConnectionCapture.CapturingStreamHandler(
