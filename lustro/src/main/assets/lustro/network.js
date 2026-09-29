@@ -712,8 +712,10 @@
         var headers = tx.requestHeaders || {};
         var hasBody = tx.requestBody && tx.method !== 'GET' && tx.method !== 'HEAD';
         Object.keys(headers).forEach(function(k) {
-            // The captured body is stored inflated, so it goes out without its coding.
-            if (hasBody && k.toLowerCase() === 'content-encoding') return;
+            // The captured body is stored inflated and redacted, so it goes out
+            // without its coding, and curl works out its length.
+            var name = k.toLowerCase();
+            if (hasBody && (name === 'content-encoding' || name === 'content-length')) return;
             parts.push('-H');
             parts.push(shellQuote(k + ': ' + headers[k]));
         });
