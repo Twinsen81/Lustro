@@ -21,6 +21,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.random.Random
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import okio.utf8Size
 
 /**
  * Thread-safe in-memory store for captured HTTP transactions and mock rules.
@@ -272,20 +273,10 @@ internal class NetworkTrafficStore(
         bodyBytes(tx.requestBodyBytes, tx.requestBody, tx.requestBinaryBody) +
             bodyBytes(tx.responseBodyBytes, tx.responseBody, tx.responseBinaryBody)
 
-    // The text's length in chars is a lower bound of its UTF-8 size that costs
-    // nothing to read. Encoding it instead would re-encode a stream's whole body
-    // on every progress update.
-    private fun bodyBytes(wireSize: Long?, text: String?, bytes: ByteArray?): Long =
-        if (wireSize == null) {
-            retainedSize(text, bytes)
-        } else {
-            maxOf(wireSize, text?.length?.toLong() ?: bytes?.size?.toLong() ?: 0L)
-        }
-
-    private fun retainedSize(text: String?, bytes: ByteArray?): Long =
-        text?.let { utf8Len(it) } ?: bytes?.size?.toLong() ?: 0L
-
-    private fun utf8Len(text: String): Long = text.toByteArray(Charsets.UTF_8).size.toLong()
+    private fun bodyBytes(wireSize: Long?, text: String?, bytes: ByteArray?): Long {
+        val retained = text?.utf8Size() ?: bytes?.size?.toLong() ?: 0L
+        return if (wireSize == null) retained else maxOf(wireSize, retained)
+    }
 
     private fun identityKey(method: String, url: String): String {
         val path = url.toHttpUrlOrNull()?.encodedPath ?: url
