@@ -4,7 +4,8 @@
   "state": {
     "paused": false,
     "overwriteMode": false,
-    "throttleDelayMs": 250
+    "throttleDelayMs": 250,
+    "captureFilter": null
   },
   "items": [
     {

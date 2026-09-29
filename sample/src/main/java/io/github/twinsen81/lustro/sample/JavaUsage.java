@@ -4,6 +4,7 @@ import io.github.twinsen81.lustro.DebugConfig;
 import io.github.twinsen81.lustro.DebugResponse;
 import io.github.twinsen81.lustro.Headers;
 import io.github.twinsen81.lustro.network.DefaultRedactor;
+import io.github.twinsen81.lustro.network.NetworkCaptureFilter;
 import io.github.twinsen81.lustro.network.NetworkClassifierKt;
 import io.github.twinsen81.lustro.network.NetworkDebugTab;
 import okhttp3.OkHttpClient;
@@ -38,14 +39,14 @@ public final class JavaUsage {
         // overload above is the documented entry point.
         NetworkDebugTab tabWithFlag = tabWithSender;
 
-        // A capture filter as a Java lambda, through the SAM conversion. It is the
-        // last parameter, so Java passes the ones before it too.
+        // A capture filter from a Java lambda and the description the Network tab
+        // shows. It is the last parameter, so Java passes the ones before it too.
         NetworkDebugTab filtered = NetworkDebugTab.create(
                 null,
                 NetworkClassifierKt.getNoOpNetworkClassifier(),
                 DefaultRedactor.INSTANCE,
                 null,
-                request -> !request.getUrl().contains("/analytics/"));
+                NetworkCaptureFilter.of("Analytics calls", request -> !request.getUrl().contains("/analytics/")));
 
         // @JvmStatic / @JvmField factories on the api facades.
         Headers headers = Headers.of();

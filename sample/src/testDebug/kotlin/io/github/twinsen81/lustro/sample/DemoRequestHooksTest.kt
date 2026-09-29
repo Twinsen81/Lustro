@@ -46,6 +46,7 @@ class DemoRequestHooksTest {
     fun `sample capture filter skips the analytics host and marked requests`() {
         val filter = SampleCaptureFilter()
 
+        assertEquals("Calls to analytics.example, and requests marked X-No-Capture", filter.description)
         assertTrue(filter.shouldCapture(request("https://httpbingo.org/get")))
         assertFalse(filter.shouldCapture(request("https://analytics.example/collect")))
         assertFalse(filter.shouldCapture(request("https://httpbingo.org/get", Headers.of(NO_CAPTURE_HEADER to "1"))))

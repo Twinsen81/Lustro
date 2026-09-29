@@ -109,13 +109,17 @@ class HttpUrlConnectionCaptureFilterTest {
         assertEquals(listOf("POST http://example.com/events"), sink.begun)
     }
 
-    private fun open(sink: NetworkCaptureSink, platform: FakeHandler, filter: NetworkCaptureFilter): HttpURLConnection {
+    private fun open(
+        sink: NetworkCaptureSink,
+        platform: FakeHandler,
+        shouldCapture: (NetworkCaptureRequest) -> Boolean,
+    ): HttpURLConnection {
         val handler =
             HttpUrlConnectionCapture.CapturingStreamHandler(
                 real = platform,
                 sink = sink,
                 isPaused = { false },
-                captureFilter = SafeCaptureFilter(filter),
+                captureFilter = SafeCaptureFilter(NetworkCaptureFilter.of("test filter", shouldCapture)),
                 maxBodySize = 1024,
                 secure = false,
             )

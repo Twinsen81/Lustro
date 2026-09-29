@@ -178,12 +178,18 @@ with a header of its own:
 ```kotlin
 NetworkDebugTab.create(
     senderClient = client,
-    captureFilter = { request ->
+    captureFilter = NetworkCaptureFilter.of("Analytics calls, and requests marked X-No-Capture") { request ->
         request.url.toHttpUrlOrNull()?.host != "analytics.example.com" &&
             request.headers.get("X-No-Capture") == null
     },
 )
 ```
+
+The description is required, because a teammate who doesn't know about your filter needs it.
+Once the filter skips a request, the Network tab shows a ⚠ next to the request count, with the
+number skipped in its tooltip, and a click on it shows the description, how many requests the
+filter skipped, and how many it failed on. The counts start again when you clear the list. The
+poll `state` reports the same as `captureFilter`, for the CLI and agents.
 
 The filter decides capture only: mock rules and the throttle still apply to a request it skips,
 as they do while capture is paused. It applies to platform `HttpURLConnection` capture too. It

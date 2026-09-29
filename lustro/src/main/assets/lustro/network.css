@@ -17,6 +17,25 @@
     color: var(--accent-2);
     font-size: 12px;
 }
+
+/* Capture filter flag: shown only once the app's filter skipped a request.
+   Small, but in the warning color on a tinted fill so it stands out. .dc-btn
+   sets display, so [hidden] needs its own rule. */
+.net-filter-flag {
+    color: var(--lvl-w);
+    background: color-mix(in srgb, var(--lvl-w) 16%, transparent);
+    border-radius: var(--radius);
+    padding: 2px 6px;
+    font-size: 13px;
+    line-height: 1.2;
+}
+.net-filter-flag:hover { color: var(--lvl-w); background: color-mix(in srgb, var(--lvl-w) 28%, transparent); }
+.net-filter-flag[hidden] { display: none; }
+.net-filter-note { margin: 0; color: var(--t2); font-size: 12px; line-height: 1.5; }
+.net-filter-field { display: flex; flex-direction: column; gap: 6px; }
+.net-filter-description { margin: 0; color: var(--t1); font-size: 13px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.net-filter-counts { display: flex; gap: 40px; }
+.net-filter-count { color: var(--t1); font-family: var(--font-mono); font-size: 18px; }
 .net-search { padding: 13px 22px 0; }
 .net-category-bar {
     display: flex;

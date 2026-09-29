@@ -92,7 +92,14 @@ see [DECISIONS.md](DECISIONS.md).
   everything, and both `NetworkDebugTab.create` overloads take it as
   `captureFilter`. Its `shouldCapture` gets a read-only `NetworkCaptureRequest`
   with the URL, method, and headers, so a later field doesn't change the
-  signature. The OkHttp interceptor and platform `HttpURLConnection` capture
+  signature. A filter has a required `description`;
+  `NetworkCaptureFilter.of(description) { request -> ... }` builds one from a
+  lambda. Once the filter skips a request, the Network tab shows a ⚠ next to
+  the request count, with the number skipped in its tooltip, and a click shows
+  the description and how many requests the filter skipped and failed on. The
+  poll `state` carries the same as `captureFilter` (`null` when the app set no
+  filter; wire protocol 1.2), `lustro net list` prints it, and `POST clear`
+  starts the counts again. The OkHttp interceptor and platform `HttpURLConnection` capture
   ask it before they capture anything, so a request it skips is never stored,
   redacted, or counted toward `captureBudgetBytes`, and platform capture
   doesn't copy its bodies. The filter decides capture only: mock rules and the

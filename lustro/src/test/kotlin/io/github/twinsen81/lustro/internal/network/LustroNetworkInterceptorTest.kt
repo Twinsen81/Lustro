@@ -79,7 +79,7 @@ class LustroNetworkInterceptorTest {
     private fun interceptor(
         sink: NetworkCaptureSink,
         captureEnabled: Boolean = true,
-        captureFilter: NetworkCaptureFilter = NoOpNetworkCaptureFilter,
+        shouldCapture: ((NetworkCaptureRequest) -> Boolean)? = null,
         throttleDelayMs: Int = 0,
         onMockHit: (String) -> Unit = {},
         maxBodySize: Long = 256L * 1024,
@@ -87,7 +87,7 @@ class LustroNetworkInterceptorTest {
         LustroNetworkInterceptor(
             sink = sink,
             captureEnabled = { captureEnabled },
-            captureFilter = SafeCaptureFilter(captureFilter),
+            captureFilter = SafeCaptureFilter(shouldCapture?.let { NetworkCaptureFilter.of("test filter", it) } ?: NoOpNetworkCaptureFilter),
             throttleDelayMs = { throttleDelayMs },
             incrementMockHit = onMockHit,
             maxBodySize = maxBodySize,
@@ -206,7 +206,7 @@ class LustroNetworkInterceptorTest {
     @Test
     fun `a request the filter skips passes through without being read or recorded`() {
         val store = store()
-        val interceptor = interceptor(store, captureFilter = { false })
+        val interceptor = interceptor(store, shouldCapture = { false })
         val requestBody = TrackingRequestBody("""{"event":"open"}""")
         val request = Request.Builder().url("https://analytics.example.com/collect").post(requestBody).build()
         val body = TrackingResponseBody("application/json".toMediaType(), "{}", chunkSize = 2)
@@ -226,7 +226,7 @@ class LustroNetworkInterceptorTest {
         val interceptor =
             interceptor(
                 RecordingSink(),
-                captureFilter = {
+                shouldCapture = {
                     seen = it
                     true
                 },
@@ -250,7 +250,7 @@ class LustroNetworkInterceptorTest {
         val rule = MockRuleImpl(id = "rule-1", name = "mocked", urlPattern = "example.com/mocked", statusCode = 201)
         var hitId: String? = null
         val sink = RecordingSink(mockRule = rule)
-        val interceptor = interceptor(sink, captureFilter = { false }, throttleDelayMs = 120, onMockHit = { hitId = it })
+        val interceptor = interceptor(sink, shouldCapture = { false }, throttleDelayMs = 120, onMockHit = { hitId = it })
         val request = Request.Builder().url("https://example.com/mocked/x").build()
         val chain = FakeChain(request, responseFor(request, TrackingResponseBody("text/plain".toMediaType(), "real", 4)))
 
@@ -269,7 +269,7 @@ class LustroNetworkInterceptorTest {
     @Test
     fun `a filter that throws does not fail the call, and the request is captured`() {
         val store = store()
-        val interceptor = interceptor(store, captureFilter = { error("filter bug") })
+        val interceptor = interceptor(store, shouldCapture = { error("filter bug") })
         val request = Request.Builder().url("https://example.com/status").build()
         val response = responseFor(request, TrackingResponseBody("text/plain".toMediaType(), "ok", 2))
 
@@ -286,7 +286,7 @@ class LustroNetworkInterceptorTest {
             interceptor(
                 RecordingSink(),
                 captureEnabled = false,
-                captureFilter = {
+                shouldCapture = {
                     asked++
                     true
                 },

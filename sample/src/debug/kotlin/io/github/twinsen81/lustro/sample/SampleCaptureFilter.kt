@@ -11,6 +11,8 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
  * them, but doesn't record them.
  */
 public class SampleCaptureFilter : NetworkCaptureFilter {
+    override val description: String = "Calls to $ANALYTICS_HOST, and requests marked $NO_CAPTURE_HEADER"
+
     override fun shouldCapture(request: NetworkCaptureRequest): Boolean =
         request.url.toHttpUrlOrNull()?.host != ANALYTICS_HOST && request.headers.get(NO_CAPTURE_HEADER) == null
 

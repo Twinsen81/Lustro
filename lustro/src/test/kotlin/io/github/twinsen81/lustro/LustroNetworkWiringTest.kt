@@ -3,6 +3,7 @@ package io.github.twinsen81.lustro
 import android.app.Application
 import androidx.test.core.app.ApplicationProvider
 import io.github.twinsen81.lustro.internal.network.NetworkTrafficStore
+import io.github.twinsen81.lustro.network.NetworkCaptureFilter
 import io.github.twinsen81.lustro.network.NetworkDebugTab
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -62,7 +63,10 @@ class LustroNetworkWiringTest {
         mockServer.enqueue(MockResponse().setResponseCode(200).setBody("from the server"))
         mockServer.start()
         try {
-            val tab = NetworkDebugTab.create(captureFilter = { it.headers.get("X-No-Capture") == null })
+            val tab =
+                NetworkDebugTab.create(
+                    captureFilter = NetworkCaptureFilter.of("Requests marked X-No-Capture") { it.headers.get("X-No-Capture") == null },
+                )
             val lustro = Lustro.builder(app).addTab(tab).build()
             val client = OkHttpClient.Builder().addInterceptor(lustro.networkInterceptor()).build()
             val rule = """{"id":"skipped","urlPattern":"/skipped","statusCode":418,"responseBody":"from the rule"}"""
@@ -82,6 +86,14 @@ class LustroNetworkWiringTest {
             assertEquals(listOf(mockServer.url("/kept").toString()), urls)
             val rules = tab.handle(DebugRequest(path = "rules", method = "GET")).json().getJSONArray("items")
             assertEquals(1, rules.getJSONObject(0).getInt("hitCount"))
+            // The poll state tells a teammate why a request is missing, until the list is cleared.
+            val filter = tab.handle(DebugRequest(path = "transactions", method = "GET")).json().getJSONObject("state").getJSONObject("captureFilter")
+            assertEquals("Requests marked X-No-Capture", filter.getString("description"))
+            assertEquals(1, filter.getInt("skipped"))
+            assertEquals(0, filter.getInt("failed"))
+            tab.handle(DebugRequest(path = "clear", method = "POST"))
+            val cleared = tab.handle(DebugRequest(path = "transactions", method = "GET")).json().getJSONObject("state").getJSONObject("captureFilter")
+            assertEquals(0, cleared.getInt("skipped"))
         } finally {
             mockServer.shutdown()
         }

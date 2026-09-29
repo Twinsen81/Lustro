@@ -66,6 +66,9 @@ class NetworkDebugTabTest {
         assertFalse(state.getBoolean("paused"))
         assertFalse(state.getBoolean("overwriteMode"))
         assertEquals(0, state.getInt("throttleDelayMs"))
+        // No filter set: null, not an object with zero counts.
+        assertTrue(state.has("captureFilter"))
+        assertTrue(state.isNull("captureFilter"))
     }
 
     @Test

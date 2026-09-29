@@ -204,7 +204,14 @@ public abstract interface class io/github/twinsen81/lustro/network/MockRule {
 }
 
 public abstract interface class io/github/twinsen81/lustro/network/NetworkCaptureFilter {
+	public static final field Companion Lio/github/twinsen81/lustro/network/NetworkCaptureFilter$Companion;
+	public abstract fun getDescription ()Ljava/lang/String;
+	public static fun of (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lio/github/twinsen81/lustro/network/NetworkCaptureFilter;
 	public abstract fun shouldCapture (Lio/github/twinsen81/lustro/network/NetworkCaptureRequest;)Z
+}
+
+public final class io/github/twinsen81/lustro/network/NetworkCaptureFilter$Companion {
+	public final fun of (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lio/github/twinsen81/lustro/network/NetworkCaptureFilter;
 }
 
 public final class io/github/twinsen81/lustro/network/NetworkCaptureFilterKt {

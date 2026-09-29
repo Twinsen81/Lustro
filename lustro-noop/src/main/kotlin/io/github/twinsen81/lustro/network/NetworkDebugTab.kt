@@ -51,7 +51,8 @@ public class NetworkDebugTab private constructor() : DebugTab() {
          * @param mockRuleStorage persists mock rules; `null` keeps them in memory.
          * @param captureFilter decides which requests are captured (default: all).
          *   It affects capture only: mock rules and the throttle still apply to a
-         *   request it skips.
+         *   request it skips. The Network tab shows how many it skipped, with its
+         *   description.
          *
          * No-op build: all parameters are accepted for API parity but never used.
          */
@@ -86,6 +87,7 @@ public class NetworkDebugTab private constructor() : DebugTab() {
          * @param captureFilter decides which requests are captured, OkHttp and
          *   `HttpURLConnection` alike (default: all). It affects capture only:
          *   mock rules and the throttle still apply to an OkHttp request it skips.
+         *   The Network tab shows how many it skipped, with its description.
          *
          * No-op build: all parameters are accepted for API parity but never used.
          */
