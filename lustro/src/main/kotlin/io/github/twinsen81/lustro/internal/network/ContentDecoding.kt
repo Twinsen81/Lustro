@@ -49,11 +49,12 @@ internal fun decodeBody(
     if (raw.isEmpty()) return asArrived()
     return when (codingOf(contentEncoding)) {
         ContentCoding.UNSUPPORTED -> null
-        ContentCoding.GZIP -> inflate(raw, maxBodySize, inflater = null) ?: asArrived()
         ContentCoding.DEFLATE -> inflate(raw, maxBodySize, Inflater(!raw.hasZlibHeader())) ?: asArrived()
-        // A body compressed by code that didn't say so, such as a gzip request
-        // body sent without the header. Text never starts with these bytes.
-        ContentCoding.IDENTITY -> (if (raw.hasGzipMagic()) inflate(raw, maxBodySize, inflater = null) else null) ?: asArrived()
+        // With no coding named, this finds a body compressed by code that didn't
+        // say so, such as a gzip request body sent without the header: text never
+        // starts with the gzip magic bytes. A "gzip" body without them isn't gzip.
+        ContentCoding.GZIP, ContentCoding.IDENTITY ->
+            (if (raw.hasGzipMagic()) inflate(raw, maxBodySize, inflater = null) else null) ?: asArrived()
     }
 }
 
