@@ -96,6 +96,16 @@ def in_flight(n, **fields):
     return transaction(n, **values)
 
 
+# An id as the Lustro runtime makes it. The other tests use ids such as tx_1,
+# which are shorter than a row's short id.
+TX = "3f2a9c1d-5b7e-4c8a-9d6f-1e2b3c4d5e6f"
+
+
+def full_id(start):
+    """A full id that starts with ``start``."""
+    return start + TX[len(start) :]
+
+
 def envelope(items, *, status="reset", cursor="c:1", paused=False):
     """A transactions poll response. ``items`` are oldest first, and the envelope
     lists them newest first, as the server does."""
@@ -338,42 +348,44 @@ def test_list_notes_on_stderr_when_capture_is_paused(client, capsys):
 
 
 def _detail(request_body=None, response_body=None):
-    tx = transaction(1, requestHeaders={}, responseHeaders={"Content-Type": "application/json"})
+    tx = transaction(1, id=TX, requestHeaders={}, responseHeaders={"Content-Type": "application/json"})
     tx.update(requestBody=request_body, responseBody=response_body)
     return tx
 
 
 def test_get_cuts_each_body_at_2_kb_and_names_the_command_for_the_rest(client, capsys):
     client.responses = [_detail(request_body="q" * 3000, response_body="r" * 20299)]
-    assert cli.main(["net", "get", "tx_1"]) == 0
+    assert cli.main(["net", "get", TX]) == 0
     tx = json.loads(capsys.readouterr().out)
-    assert tx["requestBody"] == "q" * 2048 + "[... 952 more bytes: lustro net body tx_1 request]"
-    assert tx["responseBody"] == "r" * 2048 + "[... 18251 more bytes: lustro net body tx_1 response]"
+    # The marker has the full id, as the rest of the JSON does.
+    assert tx["requestBody"] == "q" * 2048 + "[... 952 more bytes: lustro net body {} request]".format(TX)
+    assert tx["responseBody"] == "r" * 2048 + "[... 18251 more bytes: lustro net body {} response]".format(TX)
 
 
 def test_get_keeps_a_body_that_fits(client, capsys):
     client.responses = [_detail(response_body="r" * 2048)]
-    cli.main(["net", "get", "tx_1"])
+    cli.main(["net", "get", TX])
     assert json.loads(capsys.readouterr().out)["responseBody"] == "r" * 2048
 
 
 def test_get_cuts_at_a_character_boundary_and_counts_bytes(client, capsys):
     # "é" is 2 bytes in UTF-8, so byte 5 is inside the third one.
     client.responses = [_detail(response_body="ééééé")]
-    cli.main(["net", "get", "tx_1", "--max-body", "5"])
+    cli.main(["net", "get", TX, "--max-body", "5"])
     body = json.loads(capsys.readouterr().out)["responseBody"]
-    assert body == "éé[... 6 more bytes: lustro net body tx_1 response]"
+    assert body == "éé[... 6 more bytes: lustro net body {} response]".format(TX)
 
 
 def test_get_max_body_zero_keeps_only_the_marker(client, capsys):
     client.responses = [_detail(response_body="abc")]
-    cli.main(["net", "get", "tx_1", "--max-body", "0"])
-    assert json.loads(capsys.readouterr().out)["responseBody"] == "[... 3 more bytes: lustro net body tx_1 response]"
+    cli.main(["net", "get", TX, "--max-body", "0"])
+    marker = "[... 3 more bytes: lustro net body {} response]".format(TX)
+    assert json.loads(capsys.readouterr().out)["responseBody"] == marker
 
 
 def test_get_no_body_leaves_the_bodies_out(client, capsys):
     client.responses = [_detail(request_body="q", response_body="r" * 5000)]
-    cli.main(["net", "get", "tx_1", "--no-body"])
+    cli.main(["net", "get", TX, "--no-body"])
     tx = json.loads(capsys.readouterr().out)
     assert "requestBody" not in tx and "responseBody" not in tx
     assert tx["responseHeaders"] == {"Content-Type": "application/json"}
@@ -381,27 +393,106 @@ def test_get_no_body_leaves_the_bodies_out(client, capsys):
 
 def test_get_full_prints_the_bodies_whole(client, capsys):
     client.responses = [_detail(response_body="r" * 5000)]
-    cli.main(["net", "get", "tx_1", "--full"])
+    cli.main(["net", "get", TX, "--full"])
     assert json.loads(capsys.readouterr().out)["responseBody"] == "r" * 5000
 
 
 def test_get_body_options_exclude_each_other(client):
     with pytest.raises(SystemExit):
-        cli.main(["net", "get", "tx_1", "--full", "--no-body"])
+        cli.main(["net", "get", TX, "--full", "--no-body"])
 
 
 def test_json_is_compact_for_a_pipe_and_indented_for_a_terminal(client, capsys, monkeypatch):
     client.responses = [_detail(response_body="{}")] * 2
-    cli.main(["net", "get", "tx_1"])
+    cli.main(["net", "get", TX])
     piped = capsys.readouterr().out
     assert len(lines(piped)) == 1
-    assert '"id":"tx_1"' in piped
+    assert '"id":"{}"'.format(TX) in piped
 
     monkeypatch.setattr(cli.sys.stdout, "isatty", lambda: True)
-    cli.main(["net", "get", "tx_1", "--json"])
+    cli.main(["net", "get", TX, "--json"])
     terminal = capsys.readouterr().out
-    assert '\n  "id": "tx_1",\n' in terminal
+    assert '\n  "id": "{}",\n'.format(TX) in terminal
     assert json.loads(terminal) == json.loads(piped)
+
+
+# ── short ids ──────────────────────────────────────────────────────────────────
+
+
+def test_rows_show_the_first_8_characters_of_the_id_and_json_the_full_id(client, capsys):
+    client.responses = [envelope([transaction(1, id=TX)])] * 2
+    cli.main(["net", "list"])
+    assert lines(capsys.readouterr().out) == [
+        "3f2a9c1d  14:22:01.000  GET     200   100ms  https://api.example.com/v1/items/1"
+    ]
+    cli.main(["net", "list", "--fields", "id"])
+    assert json_lines(capsys.readouterr().out) == [{"id": TX}]
+
+
+@pytest.mark.parametrize("command", [["net", "list"], ["net", "poll", "--once"], ["net", "wait"]])
+def test_short_ids_are_longer_when_two_listed_ids_start_with_the_same_8(client, clock, capsys, command):
+    # --method leaves the GET row out, but its id counts, because net get looks
+    # for an id in the whole list.
+    older, newer = full_id("3f2a9c1d-5"), full_id("3f2a9c1d-9")
+    client.responses = [
+        envelope([transaction(1, id=older), in_flight(2, id=newer, method="POST")]),
+        envelope([transaction(1, id=older), transaction(2, id=newer, method="POST")], status="delta", cursor="c:2"),
+    ]
+    assert cli.main(command + ["--method", "POST"]) == 0
+    assert _ids(capsys.readouterr().out) == ["3f2a9c1d-9"]
+
+
+def test_get_takes_the_start_of_an_id(client, capsys):
+    client.responses = [envelope([transaction(1, id=TX), transaction(2, id=full_id("77e2c014"))]), _detail()]
+    assert cli.main(["net", "get", "3f2a9c1d"]) == 0
+    assert [call[1] for call in client.calls] == [cli.TRANSACTIONS, cli.TRANSACTIONS + "/" + TX]
+    assert json.loads(capsys.readouterr().out)["id"] == TX
+
+
+def test_get_prints_the_matches_of_an_ambiguous_start_and_exits_2(client, capsys):
+    client.responses = [
+        envelope([transaction(1, id=full_id("3f2a9c1d-5")), transaction(2, id=full_id("3f2a9c1d-9"), method="POST")])
+    ]
+    assert cli.main(["net", "get", "3f2a9c1d"]) == 2
+    out, err = capsys.readouterr()
+    assert out == ""
+    assert lines(err) == [
+        "error: 2 transaction ids start with 3f2a9c1d. Give more characters of the id:",
+        "  3f2a9c1d-9b7e-4c8a-9d6f-1e2b3c4d5e6f  14:22:02.000  POST    200   100ms  https://api.example.com/v1/items/2",
+        "  3f2a9c1d-5b7e-4c8a-9d6f-1e2b3c4d5e6f  14:22:01.000  GET     200   100ms  https://api.example.com/v1/items/1",
+    ]
+    assert len(client.calls) == 1
+
+
+def test_an_ambiguous_start_prints_at_most_10_matches(client, capsys):
+    client.responses = [envelope([transaction(n, id=full_id("3f2a{:04x}".format(n))) for n in range(25)])]
+    assert cli.main(["net", "body", "3f2a"]) == 2
+    err = lines(capsys.readouterr().err)
+    assert err[0] == "error: 25 transaction ids start with 3f2a. Give more characters of the id:"
+    assert err[1].startswith("  3f2a0018-5b7e-")
+    assert len(err) == 12
+    assert err[-1] == "  and 15 more"
+
+
+def test_get_exits_1_when_no_id_starts_with_the_given_characters(client, capsys):
+    client.responses = [envelope([transaction(1, id=TX)])]
+    assert cli.main(["net", "get", "77e2c014"]) == 1
+    assert capsys.readouterr().err == (
+        "error: not_found: no transaction id starts with 77e2c014\n"
+        "  hint: `lustro net list` prints the transactions that the app has now\n"
+    )
+
+
+def test_an_id_that_is_the_start_of_another_id_names_its_own_transaction(client, capsys):
+    client.responses = [envelope([transaction(1), transaction(10)]), transaction(1)]
+    assert cli.main(["net", "get", "tx_1"]) == 0
+    assert client.calls[-1][1] == cli.TRANSACTIONS + "/tx_1"
+
+
+def test_get_rejects_an_empty_id(client, capsys):
+    assert cli.main(["net", "get", ""]) == 2
+    assert capsys.readouterr().err == "error: expected a transaction id, or the start of one\n"
+    assert client.calls == []
 
 
 # ── net poll ───────────────────────────────────────────────────────────────────

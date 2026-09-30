@@ -106,9 +106,16 @@ the app's port.
 
 The output is small by default, because an agent reads all of it.
 
-- **Rows.** Each `net list`, `net poll`, and `net wait` row starts with the
+- **Rows.** Each `net list`, `net poll`, and `net wait` row starts with a short
   transaction id, then the start time, the method, the status (`...` in flight,
-  `ERR` for a failed request), the duration, and the URL.
+  `ERR` for a failed request), the duration, and the URL. The short id is the
+  first 8 characters of the id, or more characters when two listed ids start
+  with the same 8. JSON output has the full id.
+- **Ids.** `net get` and `net body` take a full id, or the start of one, such as
+  the short id of a row. They find the id that starts with it in the transaction
+  list, which is one more request. When more than one id starts with it, they
+  print the matches and exit 2. When no id starts with it, they exit 1. The wire
+  routes take only the full id.
 - **The newest 50.** `net list` prints the newest 50 transactions, and says on
   stderr how many it left out. `--last N` prints the newest N, and `--all`
   prints every one.

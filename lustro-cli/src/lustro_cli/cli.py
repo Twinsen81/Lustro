@@ -5,8 +5,8 @@ maps to a route in ``network.openapi.json`` or a framework route
 (``/api/v1/_meta``, ``/api/v1/_schema``, ``/api/v1/<id>/_schema``).
 
 The output is small by default, because agents read all of it: ``net list``
-prints the newest rows only, ``net get`` cuts long bodies, and JSON is compact
-unless stdout is a terminal.
+prints the newest rows only, a row shows a short id, ``net get`` cuts long
+bodies, and JSON is compact unless stdout is a terminal.
 """
 
 from __future__ import annotations
@@ -51,6 +51,15 @@ GLOBAL_DEFAULTS: Dict[str, Any] = {
 
 DEFAULT_LAST = 50
 DEFAULT_MAX_BODY = 2048
+SHORT_ID_LENGTH = 8
+# How many of the matches an ambiguous id prints.
+AMBIGUOUS_ROWS = 10
+ID_HELP = "a transaction id, or its start, such as the short id of a row"
+
+# The Lustro runtime makes each transaction id with UUID.randomUUID(). An id of
+# this shape goes to the server as it is, without the list request that a
+# shorter one needs.
+_FULL_ID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 
 
 class UsageError(Exception):
@@ -97,7 +106,19 @@ def _is_error(tx: dict) -> bool:
     return bool(tx.get("error")) or (isinstance(status, int) and status >= 400)
 
 
-def _format_row(tx: dict, *, update: bool = False) -> str:
+def _short_id_length(items: Iterable[Any]) -> int:
+    """How many characters of each id the rows show: 8, or more when two of the
+    listed ids start with the same 8, so that each row's id names one transaction."""
+    ids = sorted({tx["id"] for tx in items if isinstance(tx, dict) and isinstance(tx.get("id"), str)})
+    length = SHORT_ID_LENGTH
+    # In sorted order, the two ids with the longest common start are neighbours.
+    for first, second in zip(ids, ids[1:]):
+        length = max(length, len(os.path.commonprefix([first, second])) + 1)
+    return length
+
+
+def _format_row(tx: dict, id_length: Optional[int] = None, *, update: bool = False) -> str:
+    """One table row. The id keeps its first ``id_length`` characters, or all of them."""
     status = tx.get("statusCode")
     if tx.get("error"):
         status_str = "ERR"
@@ -114,7 +135,7 @@ def _format_row(tx: dict, *, update: bool = False) -> str:
     if update:
         flags += " [update]"
     return "{id}  {ts:>12}  {method:<6} {status:>4} {duration:>7}  {url}{flags}".format(
-        id=tx.get("id", ""),
+        id=str(tx.get("id", ""))[:id_length],
         ts=tx.get("timestamp", ""),
         method=tx.get("method", ""),
         status=status_str,
@@ -128,15 +149,16 @@ def _prints_json_lines(args: argparse.Namespace) -> bool:
     return args.json or args.fields is not None
 
 
-def _print_transaction(tx: dict, args: argparse.Namespace, *, update: bool = False) -> None:
-    """Print one transaction as a table row, or as one compact JSON line. A JSON
-    line has no update mark: the later line for an id replaces the earlier one."""
+def _print_transaction(tx: dict, args: argparse.Namespace, id_length: int, *, update: bool = False) -> None:
+    """Print one transaction as a table row with a short id, or as one compact
+    JSON line with the full id. A JSON line has no update mark: the later line
+    for an id replaces the earlier one."""
     if _prints_json_lines(args):
         if args.fields is not None:
             tx = {name: tx.get(name) for name in args.fields}
         print(_dumps(tx, indent=False))
     else:
-        print(_format_row(tx, update=update))
+        print(_format_row(tx, id_length, update=update))
 
 
 def _matches(tx: dict, args: argparse.Namespace) -> bool:
@@ -205,6 +227,37 @@ def _cut_bodies(tx: dict, limit: int) -> None:
         tx[key] = "{}[... {} more bytes: lustro net body {} {}]".format(
             data[:cut].decode("utf-8", "surrogatepass"), len(data) - cut, tx.get("id"), direction
         )
+
+
+def _resolve_id(client: LustroClient, given: str) -> str:
+    """The full id of the transaction that ``given`` names: the id itself, or
+    the start of only one id, such as the short id of a row. A start costs one
+    list request, because the wire routes take only a full id."""
+    if _FULL_ID.fullmatch(given):
+        return given
+    if not given:
+        raise UsageError("expected a transaction id, or the start of one")
+    items = _list_items(client.get(TRANSACTIONS))
+    matches = [tx for tx in items if isinstance(tx.get("id"), str) and tx["id"].startswith(given)]
+    # An id of another shape can also be the start of a longer one.
+    if any(tx["id"] == given for tx in matches):
+        return given
+    if len(matches) == 1:
+        return matches[0]["id"]
+    if not matches:
+        raise LustroError(
+            "not_found",
+            "no transaction id starts with {}".format(given),
+            hint="`lustro net list` prints the transactions that the app has now",
+        )
+    rows = [_format_row(tx) for tx in matches[:AMBIGUOUS_ROWS]]
+    if len(matches) > AMBIGUOUS_ROWS:
+        rows.append("and {} more".format(len(matches) - AMBIGUOUS_ROWS))
+    raise UsageError(
+        "{} transaction ids start with {}. Give more characters of the id:\n  {}".format(
+            len(matches), given, "\n  ".join(rows)
+        )
+    )
 
 
 # ── argument types ─────────────────────────────────────────────────────────────
@@ -423,8 +476,9 @@ def cmd_net_list(args: argparse.Namespace) -> int:
     # The server lists the newest transaction first.
     matched = [tx for tx in items if _matches(tx, args)]
     shown = matched if args.all else matched[: args.last]
+    id_length = _short_id_length(items)
     for tx in shown:
-        _print_transaction(tx, args)
+        _print_transaction(tx, args, id_length)
     if len(shown) < len(matched):
         # stderr, so that the JSON Lines on stdout stay one object per line. The
         # flush puts it after the rows when a reader merges the two streams.
@@ -471,15 +525,16 @@ def _print_changes(items: List[Any], printed: Dict[Any, bool], args: argparse.Na
     the transactions still listed.
     """
     listed: Dict[Any, bool] = {}
+    id_length = _short_id_length(items)
     for tx in reversed(items):
         if not isinstance(tx, dict) or not _matches(tx, args):
             continue
         tx_id = tx.get("id")
         complete = _is_complete(tx)
         if tx_id not in printed:
-            _print_transaction(tx, args)
+            _print_transaction(tx, args, id_length)
         elif complete and not printed[tx_id]:
-            _print_transaction(tx, args, update=True)
+            _print_transaction(tx, args, id_length, update=True)
         listed[tx_id] = complete
     return listed
 
@@ -581,7 +636,7 @@ def cmd_net_wait(args: argparse.Namespace) -> int:
     while True:
         match = _first_new_match(poller.items, finished_before, args)
         if match is not None:
-            _print_transaction(match, args)
+            _print_transaction(match, args, _short_id_length(poller.items))
             return 0
         remaining = deadline - time.monotonic()
         if remaining <= 0:
@@ -610,7 +665,7 @@ def cmd_net_wait(args: argparse.Namespace) -> int:
 
 def cmd_net_get(args: argparse.Namespace) -> int:
     client = _build_client(args)
-    tx = client.get(TRANSACTIONS + "/" + args.id)
+    tx = client.get(TRANSACTIONS + "/" + _resolve_id(client, args.id))
     if isinstance(tx, dict):
         if args.no_body:
             tx.pop("requestBody", None)
@@ -624,7 +679,7 @@ def cmd_net_get(args: argparse.Namespace) -> int:
 def cmd_net_body(args: argparse.Namespace) -> int:
     """Save one captured body to a file, or write it to stdout."""
     client = _build_client(args)
-    tx_path = TRANSACTIONS + "/" + args.id
+    tx_path = TRANSACTIONS + "/" + _resolve_id(client, args.id)
     # The detail says whether the body is binary and whether capture cut it off.
     tx = client.get(tx_path)
     direction = args.direction
@@ -936,7 +991,7 @@ def build_parser() -> argparse.ArgumentParser:
     n_wait.set_defaults(func=cmd_net_wait)
 
     n_get = net_sub.add_parser("get", parents=[common], help="GET transactions/<id>, with long bodies cut")
-    n_get.add_argument("id")
+    n_get.add_argument("id", help=ID_HELP)
     bodies = n_get.add_mutually_exclusive_group()
     bodies.add_argument(
         "--max-body",
@@ -954,7 +1009,7 @@ def build_parser() -> argparse.ArgumentParser:
         parents=[common],
         help="GET transactions/<id>/body/<direction>: save a captured body as it is stored",
     )
-    n_body.add_argument("id")
+    n_body.add_argument("id", help=ID_HELP)
     n_body.add_argument(
         "direction", nargs="?", default="response", choices=["request", "response"], help="default: response"
     )

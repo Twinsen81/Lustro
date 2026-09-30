@@ -140,4 +140,17 @@ fi
 lustro_to net-get.json --json net get "$id"
 check transaction "$RULES" < "$OUT/net-get.json"
 
+# A table row starts with a short id, and net get takes it.
+lustro_to net-list-row.txt net list --url "$pattern" --last 1
+short="$(cut -d ' ' -f 1 "$OUT/net-list-row.txt")"
+case "$id" in
+  "$short"?*) ;;
+  *)
+    echo "error: the row starts with $short, which is not a short form of $id" >&2
+    exit 1
+    ;;
+esac
+lustro_to net-get-short.json --json net get "$short"
+check transaction "$RULES" < "$OUT/net-get-short.json"
+
 step "The CLI end to end passed"

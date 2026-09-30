@@ -40,10 +40,14 @@ lustro net get <id> --no-body     # one transaction, without its bodies
 lustro net wait --url /v1/orders -- adb shell input tap 540 1200
 ```
 
-Each row of `net list` starts with the transaction id, which `net get` and `net body` take. The
-filters `--url`, `--method`, `--status` (a code such as `404`, or a class such as `5xx`), and
-`--errors` combine with each other and with `--search`, which the server runs over the URL, the
-method, and the bodies. Global flags, such as `--json` and `--port`, go before or after the command.
+Each row of `net list` starts with a short transaction id: the first 8 characters of the id, or more
+when two listed ids start with the same 8. `net get` and `net body` take the short id, the full id,
+or any start of an id that only one transaction has. When more than one id starts with it, they
+print the matches and exit 2; when no id does, they exit 1. JSON output has the full id, which the
+wire routes in the curl examples need. The filters `--url`, `--method`, `--status` (a code such as
+`404`, or a class such as `5xx`), and `--errors` combine with each other and with `--search`, which
+the server runs over the URL, the method, and the bodies. Global flags, such as `--json` and
+`--port`, go before or after the command.
 
 `lustro open` forwards a local port to the app's port on the device. When another process holds
 local port 8080, `--local-port 0` lets adb choose a free local port, and `--local-port N` forwards
