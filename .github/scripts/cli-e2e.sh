@@ -18,10 +18,11 @@ OUT="${CLI_E2E_OUT:-build/cli-e2e}"
 PYTHON="${PYTHON:-python3}"
 PACKAGE="io.github.twinsen81.lustro.sample"
 CHECK=".github/scripts/cli_e2e_check.py"
-RULES="$OUT/rules-to-sync.json"
 
 rm -rf "$OUT"
 mkdir -p "$OUT"
+OUT="$(cd "$OUT" && pwd)"
+RULES="$OUT/rules-to-sync.json"
 trap 'adb logcat -d -v threadtime > "$OUT/logcat.txt" 2>&1 || true' EXIT
 
 step() {
@@ -71,7 +72,7 @@ fi
 step "Install the CLI from the checkout"
 "$PYTHON" -m venv "$OUT/venv"
 "$OUT/venv/bin/python" -m pip install --quiet --disable-pip-version-check "./lustro-cli[test]"
-export PATH="$PWD/$OUT/venv/bin:$PATH"
+export PATH="$OUT/venv/bin:$PATH"
 
 # Also runs `adb forward` for the discovered port, but reports a failed forward
 # only with --device, so the check reads the forward list.

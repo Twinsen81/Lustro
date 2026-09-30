@@ -203,8 +203,9 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      # The action runs each line of `script` as its own `sh -c` command, so
-      # the end-to-end steps live in a script file.
+      # The action runs each line of `script` as its own `sh -c` command and
+      # stops at the first one that fails. So the end-to-end steps live in a
+      # script file, and a failed connectedCheck saves logcat itself.
       - name: connectedCheck, then the CLI end to end
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
         with:
@@ -212,7 +213,7 @@ jobs:
           arch: x86_64
           profile: Nexus 6
           script: |
-            ./gradlew connectedCheck --console=plain --stacktrace
+            ./gradlew connectedCheck --console=plain --stacktrace || { mkdir -p build; adb logcat -d -v threadtime > build/connected-logcat.txt; exit 1; }
             .github/scripts/cli-e2e.sh
 
       - name: Upload test reports and logcat
@@ -223,6 +224,7 @@ jobs:
           path: |
             **/build/reports/androidTests/**
             **/build/outputs/androidTest-results/**
+            build/connected-logcat.txt
             build/cli-e2e/*.json
             build/cli-e2e/*.txt
           if-no-files-found: ignore
