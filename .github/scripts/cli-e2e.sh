@@ -13,6 +13,9 @@
 # directory keeps each command's output and, at exit, logcat.
 set -euo pipefail
 
+# A token in the environment would win over the one in the logcat line.
+unset LUSTRO_TOKEN
+
 cd "$(dirname "$0")/../.."
 OUT="${CLI_E2E_OUT:-build/cli-e2e}"
 PYTHON="${PYTHON:-python3}"
