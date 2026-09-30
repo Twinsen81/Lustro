@@ -15,7 +15,8 @@ TOKEN = "test-token-123"
 
 # The signature and IHDR chunk of a 1x1 PNG: enough to tell bytes from text.
 PNG_BYTES = bytes.fromhex("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489")
-IMAGE_TX = "tx_c81f5e02"
+# A UUID, as the Lustro runtime makes it, so that `net body` needs no list request.
+IMAGE_TX = "c81f5e02-6f3a-4b7e-9d21-5a0c3e8b7f14"
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -50,7 +51,7 @@ class _Handler(BaseHTTPRequestHandler):
             if tx_id == "tx_77e2c014":
                 self._send_json(200, wire.load_golden("transaction.json"))
             elif tx_id == IMAGE_TX:
-                self._send_json(200, wire.load_golden("transaction-image.json"))
+                self._send_json(200, dict(wire.load_golden("transaction-image.json"), id=IMAGE_TX))
             else:
                 self._send_json(
                     404, wire.load_golden("error-envelope.json")

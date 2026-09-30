@@ -10,6 +10,8 @@ from lustro_cli import cli
 from lustro_cli.client import LustroClient, RawBody
 from lustro_cli.discovery import Endpoint
 
+TX = "0c6f8e3a-2b1d-4f5e-9a7c-3e2d1b0a9f8e"
+
 
 class _RecordingClient(LustroClient):
     """Captures requests instead of issuing them; returns a canned body."""
@@ -116,37 +118,57 @@ def test_net_poll_once_route(rec):
 
 
 def test_net_get_route(rec):
-    run(["net", "get", "tx_1"])
-    assert rec.calls[-1][:2] == ("GET", "/api/v1/network/transactions/tx_1")
+    run(["net", "get", TX])
+    # A full id needs no list request.
+    assert [call[:2] for call in rec.calls] == [("GET", "/api/v1/network/transactions/" + TX)]
+
+
+def test_net_get_finds_the_start_of_an_id_in_the_list(rec):
+    rec.response = {"cursor": "c:1", "status": "reset", "items": [{"id": TX}]}
+    assert run(["net", "get", TX[:8]]) == 0
+    assert [call[:2] for call in rec.calls] == [
+        ("GET", "/api/v1/network/transactions"),
+        ("GET", "/api/v1/network/transactions/" + TX),
+    ]
+
+
+def test_net_body_finds_the_start_of_an_id_in_the_list(rec, tmp_path):
+    rec.response = {"cursor": "c:1", "status": "reset", "items": [{"id": TX}]}
+    assert run(["net", "body", TX[:8], "-o", str(tmp_path / "body.png")]) == 0
+    assert [call[:2] for call in rec.calls] == [
+        ("GET", "/api/v1/network/transactions"),
+        ("GET", "/api/v1/network/transactions/" + TX),
+        ("GET", "/api/v1/network/transactions/" + TX + "/body/response"),
+    ]
 
 
 def test_net_body_saves_the_response_body_by_default(rec, tmp_path, capsys):
     out = tmp_path / "body.png"
-    assert run(["net", "body", "tx_1", "-o", str(out)]) == 0
+    assert run(["net", "body", TX, "-o", str(out)]) == 0
     # The detail first, for the binary and truncated flags, then the body itself.
     assert [call[:2] for call in rec.calls] == [
-        ("GET", "/api/v1/network/transactions/tx_1"),
-        ("GET", "/api/v1/network/transactions/tx_1/body/response"),
+        ("GET", "/api/v1/network/transactions/" + TX),
+        ("GET", "/api/v1/network/transactions/" + TX + "/body/response"),
     ]
     assert out.read_bytes() == rec.raw.data
     assert "saved 8 bytes (image/png) to" in capsys.readouterr().out
 
 
 def test_net_body_request_direction(rec, tmp_path):
-    run(["net", "body", "tx_1", "request", "-o", str(tmp_path / "req.bin")])
-    assert rec.calls[-1][:2] == ("GET", "/api/v1/network/transactions/tx_1/body/request")
+    run(["net", "body", TX, "request", "-o", str(tmp_path / "req.bin")])
+    assert rec.calls[-1][:2] == ("GET", "/api/v1/network/transactions/" + TX + "/body/request")
 
 
 def test_net_body_writes_to_stdout_without_an_output_file(rec, capsysbinary):
     rec.raw = RawBody(b'{"ok":true}', "application/json; charset=utf-8")
-    assert run(["net", "body", "tx_1"]) == 0
+    assert run(["net", "body", TX]) == 0
     assert capsysbinary.readouterr().out == b'{"ok":true}'
 
 
 def test_net_body_json_summary(rec, tmp_path, capsys):
     rec.response = {"responseBodyBinary": True, "responseBodyTruncated": False}
     out = tmp_path / "body.png"
-    run(["--json", "net", "body", "tx_1", "-o", str(out)])
+    run(["--json", "net", "body", TX, "-o", str(out)])
     summary = json.loads(capsys.readouterr().out)
     assert summary == {
         "path": str(out),
@@ -159,24 +181,24 @@ def test_net_body_json_summary(rec, tmp_path, capsys):
 
 def test_net_body_warns_when_capture_cut_the_body(rec, tmp_path, capsys):
     rec.response = {"responseBodyTruncated": True, "responseBodyBytes": 4096}
-    run(["net", "body", "tx_1", "-o", str(tmp_path / "body.png")])
+    run(["net", "body", TX, "-o", str(tmp_path / "body.png")])
     err = capsys.readouterr().err
     assert "kept only the first 8 bytes of the response body (4096 bytes in full)" in err
 
 
 def test_net_body_reports_an_output_file_it_cannot_write(rec, tmp_path, capsys):
     out = tmp_path / "missing" / "body.png"
-    assert run(["net", "body", "tx_1", "-o", str(out)]) == 2
+    assert run(["net", "body", TX, "-o", str(out)]) == 2
     assert "could not write body file {}".format(out) in capsys.readouterr().err
 
 
 def test_net_body_refuses_to_write_binary_to_a_terminal(rec, capsys, monkeypatch):
     rec.response = {"responseBodyBinary": True, "responseContentType": "image/png"}
     monkeypatch.setattr(cli.sys.stdout, "isatty", lambda: True)
-    assert run(["net", "body", "tx_1"]) == 2
+    assert run(["net", "body", TX]) == 2
     assert "binary (image/png)" in capsys.readouterr().err
     # Refused before the body was fetched.
-    assert rec.calls[-1][:2] == ("GET", "/api/v1/network/transactions/tx_1")
+    assert rec.calls[-1][:2] == ("GET", "/api/v1/network/transactions/" + TX)
 
 
 def test_net_clear_route(rec):

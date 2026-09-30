@@ -145,7 +145,10 @@ see [DECISIONS.md](DECISIONS.md).
 - **CLI output that agents can afford to read.** With 1,000 captured
   transactions, `lustro --json net list` printed about 600 KB of indented JSON,
   and `lustro net get` printed both bodies whole, up to 256 KB each. Now each
-  table row starts with the transaction id and shows the duration, and
+  table row starts with a short transaction id, the first 8 characters of the
+  id, and shows the duration. `lustro net get` and `lustro net body` take the
+  short id, or any start of an id that only one transaction has, and print the
+  matches when more than one id starts with it. JSON output keeps the full id.
   `lustro net list` prints the newest 50 transactions and says on stderr how
   many it left out; `--last N` and `--all` print more. The filters `--url`,
   `--method`, `--status` (a code such as `404`, or a class such as `5xx`), and
