@@ -178,6 +178,9 @@ jobs:
   emulator:
     name: Instrumented tests (API ${{ matrix.api-level }})
     runs-on: ubuntu-latest
+    # An emulator or adb call that stalls would otherwise hold the check for
+    # GitHub's default limit of 6 hours.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
