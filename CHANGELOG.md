@@ -134,14 +134,35 @@ see [DECISIONS.md](DECISIONS.md).
   `com.android.okhttp` handler class, so a release that blocks it fails the test
   instead of turning capture off with only a log line. Then
   `.github/scripts/cli-e2e.sh` installs the debug sample, runs `lustro open`,
-  `meta`, `schema network`, `mock sync`, `mock list`, `net list`, and `net get`
-  against it with discovery through logcat, and checks each output against the
-  CLI's wire schemas. Launched with a `request` extra that names a button, the
+  `meta`, `schema network`, `mock sync`, `mock list`, `net list`, `net state`,
+  `net wait`, and `net get` against it with discovery through logcat, and checks
+  each output against the CLI's wire schemas. Launched with a `request` extra that names a button, the
   sample fires that button's request; a mock rule serves it, so the run needs no
   internet. The job uploads the test reports, the CLI outputs, and logcat. One
   more job, `Instrumented tests`, passes only when the emulator job passed on
   every API level, so a required check can use a name that does not change with
   the matrix.
+- **CLI output that agents can afford to read.** With 1,000 captured
+  transactions, `lustro --json net list` printed about 600 KB of indented JSON,
+  and `lustro net get` printed both bodies whole, up to 256 KB each. Now each
+  table row starts with the transaction id and shows the duration, and
+  `lustro net list` prints the newest 50 transactions and says on stderr how
+  many it left out; `--last N` and `--all` print more. The filters `--url`,
+  `--method`, `--status` (a code such as `404`, or a class such as `5xx`), and
+  `--errors` combine with each other and with `--search`. With `--json`, a list
+  prints as JSON Lines, one compact object per transaction, and
+  `--fields id,statusCode,url` keeps only those keys. Other JSON prints compact
+  when stdout is not a terminal. `lustro net get` cuts each body at 2 KB and
+  ends it with a marker that names the `lustro net body` command for the rest;
+  `--max-body`, `--no-body`, and `--full` change that. The capture state that
+  `net list` printed above its rows moves to `lustro net state`. The new
+  `lustro net wait` polls until a matching request finishes, prints it, and
+  exits 0, or exits 1 at `--timeout`. It ignores requests that finished before
+  it started, so it runs a command given after `--`, such as
+  `adb shell input tap`, after its first poll, and a mocked request that
+  finishes in milliseconds can't finish first. The global flags, such as
+  `--json`, now also work after the command. `docs/AGENTS.md` recommends the
+  CLI before the curl examples and shows how to keep its output small.
 
 ### Fixed
 
@@ -370,6 +391,20 @@ see [DECISIONS.md](DECISIONS.md).
   matters beyond a dead fallback: the `run-as` read is the only discovery channel
   another app on the device cannot write to — any app can print a line under the
   `LustroToken` log tag, and the CLI takes the last one it finds.
+- **CLI failures that looked like success, or ended in a traceback.**
+  `lustro net poll` printed each transaction only the first time it saw it, so
+  a request in flight at that poll stayed `...` and its outcome never appeared.
+  It now prints the row again, marked `[update]`, when the request finishes or
+  fails, and it no longer marks every request in flight as `[streaming]`.
+  `lustro open` ignored a failed `adb forward` unless `--device` was given, so
+  when another process held the local port, it printed a URL that reached that
+  process and exited 0. It now prints adb's error and exits 1; a missing adb is
+  still only a warning. A connection that closed without a response, which
+  `adb forward` gives while the app is in the background, ended in a Python
+  traceback (`http.client.RemoteDisconnected`) instead of the
+  `connection_failed` error and its hint. `net poll` kept its rows in a buffer
+  when stdout was a pipe or a file, and a reader that closed the pipe early, as
+  `head` does, got a traceback.
 - **Every API response repeated its status code in the status line.** It read
   `HTTP/1.1 200 200 OK`, so a client that shows the reason phrase showed
   `200 OK` as it. The status line now reads `HTTP/1.1 200 OK`, and the `504` a

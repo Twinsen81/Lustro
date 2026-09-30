@@ -92,18 +92,30 @@ def check_rules(text: str, rules: List[dict]) -> None:
     expect(ids == expected, "the app lists rules {}, the file has {}".format(ids, expected))
 
 
+def json_lines(text: str) -> List[Any]:
+    return [json.loads(line) for line in text.splitlines()]
+
+
 def check_list(text: str, rules: List[dict]) -> None:
-    envelope = json.loads(text)
-    shared("cursor-envelope.schema.json").validate(envelope)
-    component("TransactionCursorEnvelope").validate(envelope)
+    """``--json net list`` and ``net wait`` print JSON Lines: one list item per line."""
+    items = json_lines(text)
+    expect(len(items) <= 50, "{} lines, and net list prints the newest 50 by default".format(len(items)))
+    for item in items:
+        component("Transaction").validate(item)
+
+
+def check_state(text: str, rules: List[dict]) -> None:
+    state = json.loads(text)
+    _resolving(OPENAPI["components"]["schemas"]["TransactionCursorEnvelope"]["properties"]["state"]).validate(state)
+    expect(state.get("paused") is False, "capture is paused")
 
 
 def find(text: str, rules: List[dict]) -> None:
-    """Prints the id of the newest listed transaction that the first rule matches."""
+    """Prints the id of the first listed transaction that the first rule matches."""
     pattern = rules[0]["urlPattern"]
-    matches = [tx for tx in json.loads(text).get("items") or [] if pattern in tx["url"]]
+    matches = [tx for tx in json_lines(text) if pattern in tx["url"]]
     expect(bool(matches), "no transaction matches {}".format(pattern))
-    # The app lists the newest transaction first.
+    # The CLI lists the newest transaction first.
     print(matches[0]["id"])
 
 
@@ -124,6 +136,7 @@ CHECKS: Dict[str, Callable[[str, List[dict]], None]] = {
     "sync": check_sync,
     "rules": check_rules,
     "list": check_list,
+    "state": check_state,
     "find": find,
     "transaction": check_transaction,
 }

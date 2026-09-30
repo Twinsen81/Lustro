@@ -27,6 +27,7 @@ Facts to get right when you add Lustro to an app:
 ## Tools
 
 - [lustro CLI](https://raw.githubusercontent.com/Twinsen81/Lustro/main/lustro-cli/README.md): a Python command-line client for the HTTP API. `lustro open` forwards the port and opens the console with the token
+- Agents: use the `lustro` CLI rather than curl, and keep its output small with `lustro net list --errors --last 20`, `lustro net get <id> --no-body`, and `lustro net body <id> | head -c 4000`. `lustro net wait --url <text> -- <command>` runs the command and waits for the request it causes
 
 ## Optional
 

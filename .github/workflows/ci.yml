@@ -229,6 +229,7 @@ jobs:
             **/build/outputs/androidTest-results/**
             build/connected-logcat.txt
             build/cli-e2e/*.json
+            build/cli-e2e/*.jsonl
             build/cli-e2e/*.txt
           if-no-files-found: ignore
 
