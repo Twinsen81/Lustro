@@ -103,7 +103,8 @@ def find(text: str, rules: List[dict]) -> None:
     pattern = rules[0]["urlPattern"]
     matches = [tx for tx in json.loads(text).get("items") or [] if pattern in tx["url"]]
     expect(bool(matches), "no transaction matches {}".format(pattern))
-    print(matches[-1]["id"])
+    # The app lists the newest transaction first.
+    print(matches[0]["id"])
 
 
 def check_transaction(text: str, rules: List[dict]) -> None:
