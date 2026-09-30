@@ -8,6 +8,7 @@ typed :class:`LustroError` parsed from the uniform error envelope
 
 from __future__ import annotations
 
+import http.client
 import json
 import urllib.error
 import urllib.parse
@@ -171,16 +172,12 @@ class LustroClient:
         except urllib.error.HTTPError as exc:  # non-2xx
             raise _error_from_http(exc) from None
         except urllib.error.URLError as exc:
-            reason = getattr(exc, "reason", exc)
-            raise LustroError(
-                "connection_failed",
-                "could not reach {}: {}".format(url, reason),
-                hint=(
-                    "Is the app running and foregrounded? For a device, run "
-                    "`adb forward tcp:<port> tcp:<port>` and check the "
-                    "`LustroToken` log line for the live endpoint."
-                ),
-            ) from None
+            raise _connection_failed(url, getattr(exc, "reason", exc)) from None
+        except (http.client.HTTPException, OSError) as exc:
+            # A connection that closes before the response raises these, not
+            # URLError. adb forward does that while nothing listens on the device
+            # port, for example while the app is in the background.
+            raise _connection_failed(url, exc) from None
 
     # ── convenience verbs ─────────────────────────────────────────────────────
 
@@ -262,6 +259,19 @@ class CursorState:
             else:
                 fresh.append(item)
         return fresh
+
+
+def _connection_failed(url: str, reason: Any) -> LustroError:
+    return LustroError(
+        "connection_failed",
+        "could not reach {}: {}".format(url, reason),
+        hint=(
+            "Is the app running and foregrounded? For a device, run "
+            "`lustro open --print-only`: it forwards the port and reports a local "
+            "port that another process holds. The `LustroToken` log line gives "
+            "the live endpoint."
+        ),
+    )
 
 
 def _decode_json(raw: bytes) -> Any:

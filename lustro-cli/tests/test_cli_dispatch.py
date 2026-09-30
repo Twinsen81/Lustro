@@ -65,7 +65,13 @@ def test_net_list_route(rec):
     assert params["search"] == "orders"
 
 
-def test_net_list_shows_the_capture_filter_when_the_app_set_one(rec, capsys):
+def test_net_state_route(rec):
+    rec.response = {"cursor": "c:1", "status": "reset", "state": {}}
+    assert run(["net", "state"]) == 0
+    assert rec.calls[-1] == ("GET", "/api/v1/network/transactions", {}, None)
+
+
+def test_net_state_shows_the_capture_filter_when_the_app_set_one(rec, capsys):
     rec.response = {
         "cursor": "c:1",
         "status": "unchanged",
@@ -76,18 +82,31 @@ def test_net_list_shows_the_capture_filter_when_the_app_set_one(rec, capsys):
             "captureFilter": {"description": "Analytics calls", "skipped": 12, "failed": 1},
         },
     }
-    assert run(["net", "list"]) == 0
-    assert "capture filter: skipped=12 failed=1 (Analytics calls)" in capsys.readouterr().out
+    assert run(["net", "state"]) == 0
+    assert capsys.readouterr().out.splitlines() == [
+        "paused=false overwriteMode=false throttleDelayMs=0",
+        "capture filter: skipped=12 failed=1 (Analytics calls)",
+    ]
 
 
-def test_net_list_omits_the_capture_filter_line_when_none_is_set(rec, capsys):
+def test_net_state_says_when_no_capture_filter_is_set(rec, capsys):
     rec.response = {
         "cursor": "c:1",
         "status": "unchanged",
-        "state": {"paused": False, "overwriteMode": False, "throttleDelayMs": 0, "captureFilter": None},
+        "state": {"paused": True, "overwriteMode": False, "throttleDelayMs": 250, "captureFilter": None},
     }
-    assert run(["net", "list"]) == 0
-    assert "capture filter" not in capsys.readouterr().out
+    assert run(["net", "state"]) == 0
+    assert capsys.readouterr().out.splitlines() == [
+        "paused=true overwriteMode=false throttleDelayMs=250",
+        "capture filter: none",
+    ]
+
+
+def test_net_state_json_prints_the_state_object(rec, capsys):
+    state = {"paused": False, "overwriteMode": True, "throttleDelayMs": 0, "captureFilter": None}
+    rec.response = {"cursor": "c:1", "status": "reset", "items": [{"id": "tx_1"}], "state": state}
+    assert run(["net", "state", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out) == state
 
 
 def test_net_poll_once_route(rec):

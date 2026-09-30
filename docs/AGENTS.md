@@ -23,6 +23,58 @@ This document is about using a running Lustro. To add Lustro to an app, follow t
 - **Built-in tab.** v1 ships exactly one built-in tab: `network` (capture, inspect, mock,
   throttle, replay). Its contract is `lustro/src/main/assets/lustro/network.openapi.json`.
 
+## Use the `lustro` CLI
+
+Agents should drive Lustro with the `lustro` CLI. It is a Python client in `lustro-cli/`, and each
+release publishes it to PyPI; until the first release, install it from a checkout with
+`pip install ./lustro-cli`. It reads the token and the endpoint from the `LustroToken` log line,
+and it prints much less than the routes return: `GET transactions` returns every captured
+transaction with all its fields, up to 1,000 of them, and `lustro net list` prints 50 short rows.
+The wire protocol in the sections below stays the stable contract, and the curl examples use it
+directly.
+
+```bash
+lustro open --print-only          # forward the port; exits 1 when adb forward fails
+lustro net list                   # the newest 50 transactions, newest first
+lustro net get <id> --no-body     # one transaction, without its bodies
+lustro net wait --url /v1/orders -- adb shell input tap 540 1200
+```
+
+Each row of `net list` starts with the transaction id, which `net get` and `net body` take. The
+filters `--url`, `--method`, `--status` (a code such as `404`, or a class such as `5xx`), and
+`--errors` combine with each other and with `--search`, which the server runs over the URL, the
+method, and the bodies. Global flags, such as `--json` and `--port`, go before or after the command.
+
+### Keep the output small
+
+An agent reads all of the output, so ask for only what you need:
+
+- `lustro net list --errors --last 20`: the 20 newest requests that failed or got a status of 400
+  or higher.
+- `lustro net get <id> --no-body`: one transaction with its headers, without its bodies. Without
+  `--no-body`, `net get` cuts each body at 2 KB and ends it with a marker such as
+  `[... 18251 more bytes: lustro net body <id> response]`. `--full` prints the bodies whole.
+- `lustro net body <id> | head -c 4000`: the first 4,000 bytes of the response body.
+
+`net list` says on stderr how many transactions it left out, and `--last N` or `--all` prints more.
+With `--json`, a list prints as JSON Lines, one compact object per transaction, so `head` and `jq`
+can cut it, and `--fields id,statusCode,url` keeps only those keys. A single JSON object prints
+compact when stdout is not a terminal. `lustro net state` prints the capture state: pause,
+overwrite mode, throttle, and the capture filter.
+
+### Wait for a request
+
+`lustro net wait` takes the same filters as `net list`. It polls until a matching request
+finishes, prints it, and exits 0, or exits 1 after `--timeout` seconds (30 by default). It ignores
+the requests that finished before it started, and a mocked request finishes in a few
+milliseconds. So give the command that makes the app send the request after `--`, as above:
+`net wait` runs it after its first poll. When the action is not a shell command, start
+`lustro net wait` in the background before the action.
+
+`lustro net poll` prints transactions as they arrive. When a request that was in flight finishes
+or fails, it prints its row again, marked `[update]`; with `--json`, the later line for an id
+replaces the earlier one.
+
 ## Auth and token discovery
 
 Token auth is **always on**. Every `/api/v1/*` route except `/api/v1/_auth` requires a valid
@@ -213,7 +265,7 @@ Reusing the same `id` updates the rule in place (idempotent). Remove it with
 
 A request is listed once its capture is redacted, which happens off the app's call: usually
 milliseconds after the call returns, longer for large bodies. Right after making a request, keep
-polling rather than reading the list once.
+polling rather than reading the list once. `lustro net wait` does this.
 
 The app can also leave requests out with a capture filter, set in its code. Such a request is
 never listed, but mock rules and the throttle still apply to it. `state.captureFilter` says
@@ -267,11 +319,4 @@ Errors use the shared envelope; key statuses:
   foregrounded) or `adb forward` isn't set up. Re-check the `LustroToken` log line for the live
   endpoint. A connection closed without a response can also mean the server is at its
   open-connection limit (concurrency + queue + 16, 96 by default); close idle connections and retry.
-
-## The `lustro` CLI
-
-A Python `lustro` CLI lives at `lustro-cli/` and is published to PyPI alongside each release
-(run it from a checkout until the first one lands). It wraps these
-endpoints (token discovery from the `LustroToken` log line, `lustro open`, etc.). The CLI is a
-convenience over the HTTP API — **the wire protocol described here is the stable contract**, so
-agents can target the endpoints directly without waiting for the CLI.
+  The CLI reports both cases as `connection_failed`, with a hint.

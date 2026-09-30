@@ -39,18 +39,21 @@ If none of these determine the token, the CLI prints a clear, actionable error.
 
 `--host` (default `127.0.0.1`), `--port` (default `8080`), `--token` (else
 `$LUSTRO_TOKEN`), `--device <serial>` (adb `-s`), `--package <id>` (run-as
-discovery), `--json` (raw JSON output).
+discovery), `--json` (JSON output). They go before or after the command:
+`lustro --json net list` and `lustro net list --json` are the same.
 
 ## Commands
 
 | Command | Route |
 | --- | --- |
-| `lustro open` | discovery + `adb forward` + print/open `…/#lustro_token=<token>` |
+| `lustro open` | discovery + `adb forward` + print/open `…/#lustro_token=<token>`; exits 1 when `adb forward` fails |
 | `lustro meta` | `GET /api/v1/_meta` |
 | `lustro schema [tabId]` | `GET /api/v1/_schema` or `/api/v1/<tab>/_schema` |
-| `lustro net list` | `GET network/transactions` (one poll) |
-| `lustro net poll` | cursor loop; prints new transactions |
-| `lustro net get <id>` | `GET network/transactions/<id>` |
+| `lustro net list` | `GET network/transactions` (one poll): the newest 50 transactions, newest first |
+| `lustro net state` | the capture state from `GET network/transactions`: pause, overwrite mode, throttle, capture filter |
+| `lustro net poll` | cursor loop; prints new transactions, and prints one again when it finishes |
+| `lustro net wait [-- COMMAND]` | cursor loop; runs `COMMAND`, prints the first matching request that finishes, and exits |
+| `lustro net get <id>` | `GET network/transactions/<id>`, with each body cut at 2 KB |
 | `lustro net body <id> [request\|response] [-o FILE]` | `GET network/transactions/<id>/body/<direction>`: saves a body as it is stored, the response by default; stdout without `-o` |
 | `lustro net clear` | `POST network/clear` |
 | `lustro net pause` | `POST network/pause` |
@@ -67,6 +70,44 @@ discovery), `--json` (raw JSON output).
 > while the app is foregrounded, and discovery reads the `LustroToken` log line
 > via `adb`. With no device, discovery falls back to flags / `LUSTRO_TOKEN`.
 
+## Output
+
+The output is small by default, because an agent reads all of it.
+
+- **Rows.** Each `net list`, `net poll`, and `net wait` row starts with the
+  transaction id, then the start time, the method, the status (`...` in flight,
+  `ERR` for a failed request), the duration, and the URL.
+- **The newest 50.** `net list` prints the newest 50 transactions, and says on
+  stderr how many it left out. `--last N` prints the newest N, and `--all`
+  prints every one.
+- **Filters.** `net list`, `net poll`, and `net wait` take `--url TEXT` (the URL
+  contains it, ignoring case), `--method`, `--status` (a code such as `404`, or a
+  class such as `5xx`), and `--errors` (status 400 or higher, or a failed
+  request). They combine with each other and with `--search`, which the server
+  runs over the URL, the method, and the bodies.
+- **JSON Lines.** With `--json`, these commands print one compact JSON object
+  per transaction, so `head` and `jq` can cut the output. `--fields
+  id,statusCode,url` keeps only those keys, and implies `--json`. Other
+  commands print one JSON document: compact when stdout is not a terminal, and
+  indented when it is.
+- **Bodies.** `net get` cuts each body at 2 KB and ends it with a marker such as
+  `[... 18251 more bytes: lustro net body <id> response]`. `--max-body BYTES`
+  sets the cut, `--no-body` leaves the bodies out, and `--full` prints them
+  whole. `net body` prints one body as it is stored.
+- **Updates.** `net poll` prints a transaction again, marked `[update]`, when it
+  was in flight and finishes or fails. With `--json`, the later line for an id
+  replaces the earlier one.
+
+`net wait` polls until a matching request finishes, prints it, and exits 0. It
+exits 1 after `--timeout` seconds (30 by default). It ignores the requests that
+finished before it started, and a mocked request finishes in a few
+milliseconds, so give the action that sends the request after `--`. `net wait`
+runs it after its first poll:
+
+```bash
+lustro net wait --url /v1/orders --errors -- adb shell input tap 540 1200
+```
+
 ## Contract tests
 
 ```bash
@@ -76,5 +117,5 @@ pytest
 
 The tests validate every golden fixture against its JSON Schema / OpenAPI
 component, exercise the cursor-polling state machine, the error-envelope parser,
-the `LustroToken` log-line parser, and a client smoke test against a local
-`http.server`.
+the `LustroToken` log-line parser, the output of each command, and a client
+smoke test against a local `http.server`.

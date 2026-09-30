@@ -78,15 +78,10 @@ step "Install the CLI from the checkout"
 "$OUT/venv/bin/python" -m pip install --quiet --disable-pip-version-check "./lustro-cli[test]"
 export PATH="$OUT/venv/bin:$PATH"
 
-# Also runs `adb forward` for the discovered port, but reports a failed forward
-# only with --device, so the check reads the forward list.
+# Also runs `adb forward` for the discovered port, and fails when the forward
+# fails, for example when another process holds the local port.
 lustro_to open.txt open --print-only
 check open < "$OUT/open.txt"
-port="$(printf '%s\n' "$ready" | sed -n 's|.*endpoint=http://[^ ]*:\([0-9][0-9]*\) .*|\1|p' | tail -n 1)"
-if ! adb forward --list | grep -q "^$(adb get-serialno) tcp:$port tcp:$port\$"; then
-  echo "error: lustro open did not forward port $port; is another process listening on it?" >&2
-  exit 1
-fi
 
 lustro_to meta.json --json meta
 check meta < "$OUT/meta.json"
@@ -97,6 +92,7 @@ check schema-network < "$OUT/schema-network.json"
 echo "matches the CLI's copy ($(wc -c < "$OUT/schema-network.json") bytes)"
 
 # The rule serves the sample's "GET /get" request, so the step needs no internet.
+pattern="https://httpbingo.org/get"
 cat > "$RULES" <<'EOF'
 [
   {
@@ -116,22 +112,27 @@ check sync "$RULES" < "$OUT/mock-sync.json"
 lustro_to mock-list.json --json mock list
 check rules "$RULES" < "$OUT/mock-list.json"
 
-lustro_to net-list.json --json net list
-check list < "$OUT/net-list.json"
+lustro_to net-list.jsonl --json net list
+check list < "$OUT/net-list.jsonl"
 
-step "Fire the sample's GET /get and wait for it in net list"
-adb shell am start -W --activity-single-top -n "$PACKAGE/.MainActivity" --es request "'GET /get'"
-id=""
-for _ in $(seq 30); do
-  lustro --json net list > "$OUT/net-list-after.json"
-  check list < "$OUT/net-list-after.json"
-  id="$(check find "$RULES" < "$OUT/net-list-after.json" 2> /dev/null || true)"
-  [ -n "$id" ] && break
-  sleep 1
-done
-if [ -z "$id" ]; then
-  cat "$OUT/net-list-after.json"
-  echo "error: the fired request did not reach net list within 30 s" >&2
+lustro_to net-state.json --json net state
+check state < "$OUT/net-state.json"
+
+# net wait reads the list before it runs the command, so the mocked request
+# can't finish before wait starts to look for it.
+step "lustro --json net wait: fire the sample's GET /get and wait for it"
+lustro --json net wait --url "$pattern" --timeout 30 -- \
+  adb shell am start -W --activity-single-top -n "$PACKAGE/.MainActivity" --es request "'GET /get'" \
+  > "$OUT/net-wait.jsonl"
+cat "$OUT/net-wait.jsonl"
+check list < "$OUT/net-wait.jsonl"
+id="$(check find "$RULES" < "$OUT/net-wait.jsonl")"
+
+lustro_to net-list-after.jsonl --json net list --url "$pattern" --last 1
+check list < "$OUT/net-list-after.jsonl"
+listed="$(check find "$RULES" < "$OUT/net-list-after.jsonl")"
+if [ "$listed" != "$id" ]; then
+  echo "error: net wait printed $id, but net list shows $listed as the newest match" >&2
   exit 1
 fi
 
