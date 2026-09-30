@@ -543,6 +543,45 @@ def test_wait_timeout_after_an_action_has_no_hint_about_the_action(client, clock
     assert capsys.readouterr().err == "error: no matching request finished within 1 s\n"
 
 
+def test_wait_bounds_each_poll_by_the_time_left(client, clock, capsys):
+    from lustro_cli.client import LustroError
+
+    timeouts = []
+
+    def no_answer():
+        # The app accepts the connection and never answers, so the request uses
+        # its whole timeout.
+        timeouts.append(client.timeout)
+        clock.now += client.timeout
+        raise LustroError("connection_failed", "timed out")
+
+    client.responses = [envelope([])] + [no_answer] * 5
+    assert cli.main(["net", "wait", "--timeout", "3"]) == 1
+    assert timeouts == [2.5]
+    assert clock.now - 1000.0 == pytest.approx(3)
+
+
+def test_wait_counts_the_action_in_the_timeout(client, clock, monkeypatch, capsys):
+    seen = {}
+
+    def run_action(command, timeout):
+        seen["timeout"] = timeout
+        clock.now += 2
+        return None
+
+    monkeypatch.setattr(cli, "_run_action", run_action)
+    client.responses = [envelope([])]
+    assert cli.main(["net", "wait", "--timeout", "3", "--", "tap"]) == 1
+    assert seen["timeout"] == 3
+    assert clock.now - 1000.0 == pytest.approx(3)
+
+
+def test_ctrl_c_in_wait_exits_130_without_a_traceback(client, clock):
+    client.responses = [envelope([])]
+    client.then = KeyboardInterrupt
+    assert cli.main(["net", "wait"]) == 130
+
+
 def test_wait_keeps_polling_through_a_connection_error(client, clock, capsys):
     from lustro_cli.client import LustroError
 

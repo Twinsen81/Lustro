@@ -296,8 +296,11 @@ def _adb_forward(port: int, device: Optional[str]) -> Optional[str]:
 def cmd_open(args: argparse.Namespace) -> int:
     """Discover token+endpoint, adb-forward the port, print/open the browser URL."""
     endpoint = _build_endpoint(args)
+    # Browser uses the loopback host (forwarded), regardless of the device bind host.
+    browser_host = "localhost" if endpoint.host in ("127.0.0.1", "0.0.0.0", "::1") else endpoint.host
 
-    if not args.no_forward:
+    # A LAN host reaches the device without the forward, so only a loopback URL needs it.
+    if not args.no_forward and browser_host == "localhost":
         try:
             err = _adb_forward(endpoint.port, args.device)
         except FileNotFoundError:
@@ -314,8 +317,6 @@ def cmd_open(args: argparse.Namespace) -> int:
             )
             return 1
 
-    # Browser uses the loopback host (forwarded), regardless of the device bind host.
-    browser_host = "localhost" if endpoint.host in ("127.0.0.1", "0.0.0.0", "::1") else endpoint.host
     # Percent-encode the token so special chars (#, &, %, =) can't corrupt the fragment.
     encoded_token = urllib.parse.quote(endpoint.token, safe="")
     url = "{}://{}:{}/#lustro_token={}".format(
@@ -492,18 +493,29 @@ def _first_new_match(items: List[Any], finished_before: Set[Any], args: argparse
 def cmd_net_wait(args: argparse.Namespace) -> int:
     """Wait until a matching request finishes, print it, and exit 0; exit 1 at the timeout."""
     client = _build_client(args)
+    deadline = time.monotonic() + args.timeout
+
+    def time_left() -> float:
+        # At least one interval, so that the last poll can still get an answer.
+        return max(deadline - time.monotonic(), args.interval)
+
+    def poll(cursor: Optional[str]) -> Any:
+        # An app that doesn't answer, such as one stopped at a breakpoint, would
+        # otherwise hold each request for the client's own timeout.
+        client.timeout = time_left()
+        return client.get(TRANSACTIONS, params={"cursor": cursor, "search": args.search})
+
     poller = CursorState()
-    data = client.get(TRANSACTIONS, params={"search": args.search})
+    data = poll(None)
     _note_if_paused(data)
     poller.apply(data)
     _check_fields(args, poller.items)
     finished_before = {tx.get("id") for tx in _list_items(data) if _is_complete(tx)}
     if args.action:
-        error = _run_action(args.action, args.timeout)
+        error = _run_action(args.action, time_left())
         if error:
             print("error: {}".format(error), file=sys.stderr)
             return 2
-    deadline = time.monotonic() + args.timeout
     last_error = None
     while True:
         match = _first_new_match(poller.items, finished_before, args)
@@ -515,7 +527,7 @@ def cmd_net_wait(args: argparse.Namespace) -> int:
             break
         time.sleep(min(args.interval, remaining))
         try:
-            poller.apply(client.get(TRANSACTIONS, params={"cursor": poller.cursor, "search": args.search}))
+            poller.apply(poll(poller.cursor))
         except LustroError as exc:
             # The action can put the app in the background for a moment, so keep polling.
             if str(exc) != last_error:
@@ -941,7 +953,11 @@ def main(argv: Optional[List[str]] = None) -> int:
         if not hasattr(args, name):
             setattr(args, name, default)
     try:
-        return args.func(args)
+        code = args.func(args)
+        # Flush here, not at exit, so that a reader that closed the pipe early
+        # reaches the BrokenPipeError handler below.
+        sys.stdout.flush()
+        return code
     except UsageError as exc:
         print("error: {}".format(exc), file=sys.stderr)
         return 2
@@ -957,6 +973,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         devnull = os.open(os.devnull, os.O_WRONLY)
         os.dup2(devnull, sys.stdout.fileno())
         return 1
+    except KeyboardInterrupt:
+        return 130
 
 
 if __name__ == "__main__":  # pragma: no cover

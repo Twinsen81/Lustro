@@ -118,6 +118,13 @@ def test_open_warns_and_goes_on_without_adb(endpoint, monkeypatch, capsys):
     assert err == "warning: adb is not installed, so the port was not forwarded\n"
 
 
+def test_open_does_not_forward_for_a_lan_host(monkeypatch, capsys):
+    monkeypatch.setattr(cli, "_build_endpoint", lambda args: Endpoint("192.168.1.50", 8080, TOKEN))
+    monkeypatch.setattr(cli, "_adb_forward", lambda port, device: pytest.fail("adb forward ran"))
+    assert cli.main(["open", "--print-only"]) == 0
+    assert capsys.readouterr().out.strip() == "http://192.168.1.50:8080/#lustro_token=tok"
+
+
 def test_open_no_forward_skips_adb(endpoint, monkeypatch, capsys):
     monkeypatch.setattr(cli, "_adb_forward", lambda port, device: pytest.fail("adb forward ran"))
     assert cli.main(["open", "--no-forward", "--print-only"]) == 0
@@ -190,3 +197,16 @@ def test_a_reader_that_closes_the_pipe_early_gets_no_traceback():
     finally:
         httpd.shutdown()
         httpd.server_close()
+
+
+def test_a_reader_that_closed_the_pipe_before_any_output_gets_no_traceback():
+    code = "import sys; from lustro_cli.cli import main; sys.exit(main(sys.argv[1:]))"
+    argv = ["--host", "127.0.0.1", "--port", "8080", "--token", TOKEN, "open", "--no-forward", "--print-only"]
+    proc = subprocess.Popen([sys.executable, "-c", code] + argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    # Closed before the CLI writes, as `true` or `head -c 0` does. The URL is
+    # short, so it stays in the buffer until the command returns.
+    proc.stdout.close()
+    err = proc.stderr.read().decode("utf-8")
+    proc.stderr.close()
+    assert proc.wait(timeout=30) == 1
+    assert err == ""
