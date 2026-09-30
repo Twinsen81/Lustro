@@ -9,8 +9,9 @@
 # Needs adb, one connected device (set ANDROID_SERIAL when there are more), and
 # Python 3.9 or later. The CLI goes into a virtual environment in the output
 # directory. adb forwards host port 8080 to the device, so run one device at a
-# time. The run replaces the sample's mock rules with its own. The output
-# directory keeps each command's output and, at exit, logcat.
+# time. The run replaces the sample's mock rules with its own and sets the device
+# to stay awake while it charges. The output directory keeps each command's
+# output and, at exit, logcat.
 set -euo pipefail
 
 # A token in the environment would win over the one in the logcat line.
