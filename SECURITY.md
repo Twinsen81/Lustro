@@ -133,7 +133,7 @@ build, and that even in debug builds it stays bound to the local device.
 
 An external review of the auth, CSP, and capture implementation is part of the
 work remaining before the first public release (`0.1.0`), alongside the
-publishing and emulator-matrix items listed in `CHANGELOG.md`.
+publishing items listed in `CHANGELOG.md`.
 
 ## NanoHTTPD Vendor-Patch Process
 

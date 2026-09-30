@@ -293,6 +293,10 @@ platform detail (a process-global URL stream handler):
   need, such as an analytics SDK's.
 - **Not covered** by the library's binary- or behaviour-compatibility guarantees, and may
   degrade across OS/SDK versions.
+- **Checked on each release in CI**: the capture creates the platform's internal
+  `com.android.okhttp` URL handlers by reflection. Every release checked, from API 26 to 37,
+  allows this, but Android lists these constructors as unsupported hidden APIs, so a later
+  release can block them. An instrumented test on API 26, 35, and 36 fails when one does.
 
 ## Security model
 

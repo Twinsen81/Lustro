@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- The platform capture test sends plain HTTP to a MockWebServer on 127.0.0.1. -->
+    <application android:networkSecurityConfig="@xml/lustro_test_network_security_config" />
+
+</manifest>

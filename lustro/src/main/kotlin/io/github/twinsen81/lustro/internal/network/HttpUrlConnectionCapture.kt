@@ -56,13 +56,27 @@ internal class HttpUrlConnectionCapture(
 ) {
     private val installed = AtomicBoolean(false)
 
+    /**
+     * How [install] got the platform's http handler, or null when capture is not
+     * installed for http. The instrumented test reads it, so a release that
+     * blocks a path fails that test instead of turning capture off without notice.
+     */
+    @Volatile
+    var httpSource: HandlerSource? = null
+        private set
+
+    /** How [install] got the platform's https handler, as [httpSource] does for http. */
+    @Volatile
+    var httpsSource: HandlerSource? = null
+        private set
+
     fun install() {
         if (!installed.compareAndSet(false, true)) return
 
         // Capture the platform's real handlers BEFORE installing our factory, otherwise
         // later lookups would resolve back into us.
-        val realHttps = realHandler("HttpsHandler") ?: handlerOf("https://localhost")
-        val realHttp = realHandler("HttpHandler") ?: handlerOf("http://localhost")
+        val realHttps = platformHandler("HttpsHandler", "https://localhost")
+        val realHttp = platformHandler("HttpHandler", "http://localhost")
 
         if (realHttps == null && realHttp == null) {
             Log.w(TAG, "Could not obtain platform URL handlers (hidden-API blocked?); capture disabled")
@@ -73,24 +87,27 @@ internal class HttpUrlConnectionCapture(
         val factory =
             URLStreamHandlerFactory { protocol ->
                 when (protocol) {
-                    "https" -> realHttps?.let { CapturingStreamHandler(it, sink, isPaused, captureFilter, maxBodySize, secure = true) }
-                    "http" -> realHttp?.let { CapturingStreamHandler(it, sink, isPaused, captureFilter, maxBodySize, secure = false) }
+                    "https" -> realHttps?.let { CapturingStreamHandler(it.handler, sink, isPaused, captureFilter, maxBodySize, secure = true) }
+                    "http" -> realHttp?.let { CapturingStreamHandler(it.handler, sink, isPaused, captureFilter, maxBodySize, secure = false) }
                     else -> null
                 }
             }
 
         try {
             URL.setURLStreamHandlerFactory(factory)
-            Log.d(
-                TAG,
-                "HttpURLConnection capture installed (https=${realHttps != null}, http=${realHttp != null})",
-            )
+            httpsSource = realHttps?.source
+            httpSource = realHttp?.source
+            Log.d(TAG, "HttpURLConnection capture installed (https=${realHttps?.source}, http=${realHttp?.source})")
         } catch (t: Throwable) {
             // Already set by something else, or denied — leave the platform stack untouched.
             Log.w(TAG, "Failed to install URLStreamHandlerFactory; capture disabled", t)
             installed.set(false)
         }
     }
+
+    private fun platformHandler(className: String, spec: String): PlatformHandler? =
+        realHandler(className)?.let { PlatformHandler(it, HandlerSource.HANDLER_CLASS) }
+            ?: handlerOf(spec)?.let { PlatformHandler(it, HandlerSource.URL_FIELD) }
 
     /** Instantiate a platform-internal handler (e.g. com.android.okhttp.HttpHandler) reflectively. */
     private fun realHandler(simpleName: String): URLStreamHandler? =
@@ -111,6 +128,17 @@ internal class HttpUrlConnectionCapture(
         } catch (t: Throwable) {
             null
         }
+
+    /** The two ways [install] can get a platform handler. The hidden-API policy decides which works. */
+    enum class HandlerSource {
+        /** A new instance of the platform's `com.android.okhttp` handler class. */
+        HANDLER_CLASS,
+
+        /** The handler of a new [URL], read from its private `handler` field. */
+        URL_FIELD,
+    }
+
+    private class PlatformHandler(val handler: URLStreamHandler, val source: HandlerSource)
 
     // Internal for tests, which hand it a stand-in for the platform handler.
     internal class CapturingStreamHandler(

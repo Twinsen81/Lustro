@@ -35,6 +35,7 @@ mockk = "1.14.11"
 turbine = "1.2.1"
 json = "20260814"
 androidxTestCore = "1.7.0"
+androidxTestRunner = "1.7.0"
 androidxTestExtJunit = "1.3.0"
 
 [libraries]
@@ -60,6 +61,7 @@ turbine = { group = "app.cash.turbine", name = "turbine", version.ref = "turbine
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }
 json = { group = "org.json", name = "json", version.ref = "json" }
 androidx-test-core = { group = "androidx.test", name = "core", version.ref = "androidxTestCore" }
+androidx-test-runner = { group = "androidx.test", name = "runner", version.ref = "androidxTestRunner" }
 androidx-test-ext-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidxTestExtJunit" }
 
 # Lint check authoring (:lustro-lint).

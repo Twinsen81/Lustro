@@ -167,26 +167,34 @@ jobs:
       - name: Run tests
         run: node --test lustro/src/test/js/*.test.js
 
-  # --- Emulator matrix: instrumented connectedCheck on real Android images ----
-  # IMPORTANT: this job runs ONLY on GitHub-hosted runners. The KVM-accelerated
-  # Android emulator (reactivecircus/android-emulator-runner) needs nested
-  # virtualization that is NOT available in this local/sandbox environment, so
-  # this job is UNVERIFIED locally — it is exercised only in GitHub Actions.
+  # --- Emulator matrix: instrumented tests and the CLI end to end ------------
+  # Only a real Android image can check the platform HttpURLConnection capture,
+  # which reaches the platform's URL handlers by reflection, and the CLI's
+  # discovery, which reads the line the runtime logs at the LustroToken tag. In
+  # a public repository, standard runners are free, and ubuntu-latest exposes
+  # /dev/kvm, so the x86_64 emulator runs with hardware acceleration. The job
+  # needs no secrets, so it runs on fork PRs too. It has no path filter because
+  # a required check that a filter skips stays pending on the PR.
   emulator:
     name: Instrumented tests (API ${{ matrix.api-level }})
     runs-on: ubuntu-latest
-    # connectedCheck is slow; gate it to pushes to main and labeled PRs so it does
-    # not run on every push, but still protects the default branch.
-    if: ${{ github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'run-emulator') }}
     strategy:
       fail-fast: false
       matrix:
-        api-level: [26, 34]
+        # minSdk, the target SDK, and the newest level with a `default` image.
+        api-level: [26, 35, 36]
     steps:
       - uses: actions/checkout@v7
 
       - name: Set up JDK + Gradle
         uses: ./.github/actions/setup
+
+      # The CLI end to end installs the CLI with pip, which the runner's system
+      # Python refuses (PEP 668).
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.x"
 
       - name: Enable KVM
         run: |
@@ -195,10 +203,26 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Run connectedCheck on emulator
+      # The action runs each line of `script` as its own `sh -c` command, so
+      # the end-to-end steps live in a script file.
+      - name: connectedCheck, then the CLI end to end
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
         with:
           api-level: ${{ matrix.api-level }}
           arch: x86_64
           profile: Nexus 6
-          script: ./gradlew connectedCheck --console=plain --stacktrace
+          script: |
+            ./gradlew connectedCheck --console=plain --stacktrace
+            .github/scripts/cli-e2e.sh
+
+      - name: Upload test reports and logcat
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: emulator-api-${{ matrix.api-level }}
+          path: |
+            **/build/reports/androidTests/**
+            **/build/outputs/androidTest-results/**
+            build/cli-e2e/*.json
+            build/cli-e2e/*.txt
+          if-no-files-found: ignore
