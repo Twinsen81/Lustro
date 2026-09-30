@@ -138,7 +138,10 @@ see [DECISIONS.md](DECISIONS.md).
   against it with discovery through logcat, and checks each output against the
   CLI's wire schemas. Launched with a `request` extra that names a button, the
   sample fires that button's request; a mock rule serves it, so the run needs no
-  internet. The job uploads the test reports, the CLI outputs, and logcat.
+  internet. The job uploads the test reports, the CLI outputs, and logcat. One
+  more job, `Instrumented tests`, passes only when the emulator job passed on
+  every API level, so a required check can use a name that does not change with
+  the matrix.
 
 ### Fixed
 

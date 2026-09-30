@@ -231,3 +231,23 @@ jobs:
             build/cli-e2e/*.json
             build/cli-e2e/*.txt
           if-no-files-found: ignore
+
+  # --- Emulator result: one check with a name the matrix does not change -----
+  # Each matrix job above has its API level in its name. A branch ruleset that
+  # requires those names needs an edit each time the matrix changes, and an
+  # open PR with the old matrix then waits for a check that it never runs. So
+  # the ruleset requires this job instead. It needs `always()`: without it,
+  # GitHub skips this job when a matrix job fails, and a required check that is
+  # skipped counts as passed.
+  emulator-result:
+    name: Instrumented tests
+    runs-on: ubuntu-latest
+    needs: emulator
+    if: ${{ always() }}
+    steps:
+      - name: Every emulator job passed
+        env:
+          RESULT: ${{ needs.emulator.result }}
+        run: |
+          echo "Result of the emulator jobs: $RESULT"
+          test "$RESULT" = "success"
