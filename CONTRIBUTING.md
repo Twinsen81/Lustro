@@ -57,6 +57,27 @@ or as markup. DOM wiring, resizers, toasts, modals, and one-line helpers are
 deliberately left untested. Please keep it that way when adding to them, and
 keep the suite dependency-free.
 
+The platform `HttpURLConnection` capture gets the platform's URL handlers by
+reflection, so it has an instrumented test that needs a device or emulator:
+
+```bash
+./gradlew connectedCheck
+```
+
+The test asserts which way the capture got the handlers, so a release that
+blocks it fails the test instead of turning capture off. When a new release
+fails it, update the expectation in `PlatformHttpCaptureTest`.
+
+`.github/scripts/cli-e2e.sh` runs the CLI against the debug sample on the
+connected device. It installs the sample, installs the CLI from the checkout
+into a virtual environment, and checks the output of the main commands against
+the CLI's wire schemas. No command passes `--token`, so it also tests discovery
+through logcat. It needs `adb`, Python 3.9 or later, and a free host port 8080
+for `adb forward`. The run changes the device and does not change it back: it
+replaces the sample's mock rules with one rule that mocks `GET /get`, and it
+sets the device to stay awake while it charges. CI runs both on API 26, 35, and
+36 emulators.
+
 ## Module layout
 
 - **`:lustro-api`** — pure-Kotlin JAR with the public SPI only: `DebugTab`,

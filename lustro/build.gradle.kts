@@ -29,6 +29,7 @@ android {
         // INTERNET is declared in the library manifest; loopback-bound by default.
         // R8 rules shipped to consumers (keep public API + the NanoHTTPD engine).
         consumerProguardFiles("consumer-rules.pro")
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     // No library BuildConfig — protocol/library constants are generated into
@@ -43,6 +44,9 @@ android {
     }
 
     testOptions {
+        // The hidden-API policy depends on the target SDK, so the instrumented
+        // test APK targets what an app built with this library would.
+        targetSdk = libs.versions.targetSdk.get().toInt()
         unitTests {
             isIncludeAndroidResources = true
             isReturnDefaultValues = true
@@ -140,6 +144,11 @@ dependencies {
     testImplementation(libs.json)
     testImplementation(libs.androidx.test.core)
     testImplementation(libs.androidx.test.ext.junit)
+
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.okhttp.mockwebserver)
+    androidTestImplementation(libs.okhttp.tls)
 }
 
 // --- Mutual-exclusion capability ---------------------------------------------

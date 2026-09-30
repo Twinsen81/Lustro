@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Everything below is implemented and building toward the first public release
 (`0.1.0`). The remaining work is execution that needs credentials/infrastructure
-(Sonatype Central publish, PyPI, the emulator matrix, external security review) —
+(Sonatype Central publish, PyPI, external security review) —
 see [DECISIONS.md](DECISIONS.md).
 
 ### Added
@@ -122,6 +122,26 @@ see [DECISIONS.md](DECISIONS.md).
   `context7.json` differ from `GROUP` and `VERSION_NAME` in `gradle.properties`.
   The README and the `start()` KDoc now say that `start()` must run on the main
   thread, and the README says that `addTab()` after `start()` throws.
+- **Tests on emulators.** The emulator CI job ran no tests, and only on pushes
+  to `main`. It now runs on every PR and push, on API 26, 35, and 36. An
+  instrumented test installs the platform `HttpURLConnection` capture on the
+  device's own HTTP stack and checks that a GET and a POST to a local
+  MockWebServer reach the capture sink with their method, URL, status, headers,
+  and bodies. A GET over HTTPS must reach the sink too, through a connection
+  that the app can still cast to `HttpsURLConnection` to set its trust and read
+  the server's certificate. The test also asserts which way the capture got the
+  platform's URL handlers: every release checked, from API 26 to 37, allows the
+  `com.android.okhttp` handler class, so a release that blocks it fails the test
+  instead of turning capture off with only a log line. Then
+  `.github/scripts/cli-e2e.sh` installs the debug sample, runs `lustro open`,
+  `meta`, `schema network`, `mock sync`, `mock list`, `net list`, and `net get`
+  against it with discovery through logcat, and checks each output against the
+  CLI's wire schemas. Launched with a `request` extra that names a button, the
+  sample fires that button's request; a mock rule serves it, so the run needs no
+  internet. The job uploads the test reports, the CLI outputs, and logcat. One
+  more job, `Instrumented tests`, passes only when the emulator job passed on
+  every API level, so a required check can use a name that does not change with
+  the matrix.
 
 ### Fixed
 

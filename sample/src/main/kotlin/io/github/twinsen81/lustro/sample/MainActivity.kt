@@ -1,6 +1,7 @@
 package io.github.twinsen81.lustro.sample
 
 import android.app.Activity
+import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -24,10 +25,18 @@ import okio.Buffer
 import okio.GzipSink
 import okio.buffer
 
-/** Launcher activity with one button per sample HTTP request shape. */
+/**
+ * Launcher activity with one button per sample HTTP request shape.
+ *
+ * A launch with a `request` extra that names a button clicks that button, so a
+ * script can fire a request without the UI. `--activity-single-top` delivers
+ * the extra when the sample is already open:
+ * `adb shell am start --activity-single-top -n io.github.twinsen81.lustro.sample/.MainActivity --es request "'GET /get'"`.
+ */
 public class MainActivity : Activity() {
     private val ioExecutor = Executors.newFixedThreadPool(IO_THREADS)
     private val syncHandler = Handler(Looper.getMainLooper())
+    private val buttonsByLabel = HashMap<String, Button>()
     private lateinit var statusView: TextView
 
     private var syncing = false
@@ -53,6 +62,19 @@ public class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(buildUi())
+        // A recreated activity, after a rotation for example, must not click it again.
+        if (savedInstanceState == null) clickButtonNamedIn(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        clickButtonNamedIn(intent)
+    }
+
+    private fun clickButtonNamedIn(intent: Intent) {
+        val label = intent.getStringExtra(EXTRA_REQUEST) ?: return
+        val button = buttonsByLabel[label]
+        if (button == null) setStatus("No button is labelled \"$label\"") else button.performClick()
     }
 
     override fun onDestroy() {
@@ -161,6 +183,7 @@ public class MainActivity : Activity() {
                 setOnClickListener { onClick() }
             }
         parent.addView(button)
+        buttonsByLabel[label] = button
         return button
     }
 
@@ -317,6 +340,7 @@ public class MainActivity : Activity() {
     }
 
     private companion object {
+        private const val EXTRA_REQUEST = "request"
         private const val BASE = "https://httpbingo.org"
         private val JSON = "application/json; charset=utf-8".toMediaType()
         private const val PADDING = 48
