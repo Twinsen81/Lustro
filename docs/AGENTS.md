@@ -45,6 +45,11 @@ filters `--url`, `--method`, `--status` (a code such as `404`, or a class such a
 `--errors` combine with each other and with `--search`, which the server runs over the URL, the
 method, and the bodies. Global flags, such as `--json` and `--port`, go before or after the command.
 
+`lustro open` forwards a local port to the app's port on the device. When another process holds
+local port 8080, `--local-port 0` lets adb choose a free local port, and `--local-port N` forwards
+port N. The other commands find the forward in `adb forward --list`, also one that you made
+yourself, so they need no `--port`.
+
 ### Keep the output small
 
 An agent reads all of the output, so ask for only what you need:
@@ -125,7 +130,8 @@ The server binds to `127.0.0.1:8080` by default and only listens while the app i
   Then talk to `http://localhost:8080`. If the local port is taken ("Address already in use", or
   "cannot rebind existing socket" for a forward that `adb forward --list` doesn't show for your
   device), forward a free local port to the same device port, for example
-  `adb forward --no-rebind tcp:18080 tcp:8080`, and use `http://localhost:18080`.
+  `adb forward --no-rebind tcp:18080 tcp:8080`, and use `http://localhost:18080`. The `lustro`
+  CLI finds such a forward without `--port`.
 - With more than one device connected, use the device in `ANDROID_SERIAL`, or pass
   `adb -s <serial>`; don't choose one that other tools may be using. Don't clear the device log
   (`adb logcat -c`) to find the `LustroToken` line: read it with `-d` and take the last one.

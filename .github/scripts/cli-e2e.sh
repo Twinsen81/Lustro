@@ -8,10 +8,11 @@
 #
 # Needs adb, one connected device (set ANDROID_SERIAL when there are more), and
 # Python 3.9 or later. The CLI goes into a virtual environment in the output
-# directory. adb forwards host port 8080 to the device, so run one device at a
-# time. The run replaces the sample's mock rules with its own and sets the device
-# to stay awake while it charges. The output directory keeps each command's
-# output and, at exit, logcat.
+# directory. `lustro open` forwards local port 8080 to the app, or
+# CLI_E2E_LOCAL_PORT when it is set; 0 lets adb choose a free port. The other
+# commands find that forward, so none of them passes --port. The run replaces the
+# sample's mock rules with its own and sets the device to stay awake while it
+# charges. The output directory keeps each command's output and, at exit, logcat.
 set -euo pipefail
 
 # A token in the environment would win over the one in the logcat line.
@@ -78,9 +79,9 @@ step "Install the CLI from the checkout"
 "$OUT/venv/bin/python" -m pip install --quiet --disable-pip-version-check "./lustro-cli[test]"
 export PATH="$OUT/venv/bin:$PATH"
 
-# Also runs `adb forward` for the discovered port, and fails when the forward
+# Also runs `adb forward` to the discovered port, and fails when the forward
 # fails, for example when another process holds the local port.
-lustro_to open.txt open --print-only
+lustro_to open.txt open --print-only ${CLI_E2E_LOCAL_PORT:+--local-port "$CLI_E2E_LOCAL_PORT"}
 check open < "$OUT/open.txt"
 
 lustro_to meta.json --json meta

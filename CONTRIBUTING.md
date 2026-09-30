@@ -73,7 +73,8 @@ connected device. It installs the sample, installs the CLI from the checkout
 into a virtual environment, and checks the output of the main commands against
 the CLI's wire schemas. No command passes `--token`, so it also tests discovery
 through logcat. It needs `adb`, Python 3.9 or later, and a free host port 8080
-for `adb forward`. The run changes the device and does not change it back: it
+for `adb forward`, or another free port in `CLI_E2E_LOCAL_PORT`; `0` lets adb
+choose one. The run changes the device and does not change it back: it
 replaces the sample's mock rules with one rule that mocks `GET /get`, and it
 sets the device to stay awake while it charges. CI runs both on API 26, 35, and
 36 emulators.

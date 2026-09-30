@@ -28,8 +28,10 @@ from .client import CursorState, LustroClient, LustroError
 from .discovery import (
     DEFAULT_HOST,
     DEFAULT_PORT,
+    LOOPBACK_HOSTS,
     DiscoveryError,
     Endpoint,
+    forwarded_port,
     resolve,
 )
 
@@ -239,6 +241,16 @@ def _whole_number(minimum: int):
     return parse
 
 
+def _port_number(value: str) -> int:
+    try:
+        number = int(value)
+    except ValueError:
+        number = -1
+    if not 0 <= number <= 65535:
+        raise argparse.ArgumentTypeError("expected a port number from 0 to 65535")
+    return number
+
+
 def _positive_seconds(value: str) -> float:
     try:
         seconds = float(value)
@@ -253,6 +265,7 @@ def _positive_seconds(value: str) -> float:
 
 
 def _build_endpoint(args: argparse.Namespace) -> Endpoint:
+    """The app's endpoint: from the flags, $LUSTRO_TOKEN, and the LustroToken line."""
     return resolve(
         host=args.host,
         port=args.port,
@@ -264,19 +277,29 @@ def _build_endpoint(args: argparse.Namespace) -> Endpoint:
 
 def _build_client(args: argparse.Namespace) -> LustroClient:
     endpoint = _build_endpoint(args)
+    # The app's port is on the device. Without --port, connect through the adb
+    # forward to it, which `lustro open --local-port` can put on another local port.
+    if args.port is None and endpoint.host in LOOPBACK_HOSTS:
+        local_port = forwarded_port(endpoint.port, args.device)
+        if local_port is not None:
+            endpoint = endpoint._replace(host=DEFAULT_HOST, port=local_port)
     return LustroClient(endpoint.base_url, endpoint.token)
 
 
 # ── adb helpers ────────────────────────────────────────────────────────────────
 
 
-def _adb_forward(port: int, device: Optional[str]) -> Optional[str]:
-    """Run ``adb forward tcp:<port> tcp:<port>``. Returns the error, or None when
-    the forward works. Raises FileNotFoundError when adb isn't installed."""
+def _adb_forward(local_port: int, device_port: int, device: Optional[str]) -> Tuple[int, Optional[str]]:
+    """Run ``adb forward --no-rebind tcp:<local_port> tcp:<device_port>``. Returns
+    the local port, which adb chooses when ``local_port`` is 0, and the error, or
+    None when the forward works. Raises FileNotFoundError when adb isn't installed.
+
+    --no-rebind keeps adb from taking over a local port that another device's
+    forward holds."""
     cmd = ["adb"]
     if device:
         cmd += ["-s", device]
-    cmd += ["forward", "tcp:{}".format(port), "tcp:{}".format(port)]
+    cmd += ["forward", "--no-rebind", "tcp:{}".format(local_port), "tcp:{}".format(device_port)]
     try:
         proc = subprocess.run(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False, timeout=10
@@ -284,46 +307,83 @@ def _adb_forward(port: int, device: Optional[str]) -> Optional[str]:
     except FileNotFoundError:
         raise
     except (OSError, subprocess.SubprocessError) as exc:
-        return str(exc)
+        return local_port, str(exc)
     if proc.returncode != 0:
-        return proc.stderr.decode("utf-8", "replace").strip() or "adb exited with status {}".format(proc.returncode)
-    return None
+        return local_port, (
+            proc.stderr.decode("utf-8", "replace").strip() or "adb exited with status {}".format(proc.returncode)
+        )
+    if local_port == 0:
+        chosen = proc.stdout.decode("utf-8", "replace").strip()
+        if not chosen.isdigit():
+            return 0, "adb did not print the local port that it chose: {!r}".format(chosen)
+        return int(chosen), None
+    return local_port, None
+
+
+def _forward_local_port(args: argparse.Namespace, device_port: int) -> Optional[int]:
+    """Choose the local port for the console URL, and forward it to the app's
+    ``device_port``. Returns the local port, or None after it prints why the
+    forward failed."""
+    if args.no_forward:
+        if args.local_port == 0:
+            raise UsageError("--local-port 0 lets adb choose the port, so it can't go with --no-forward")
+        return device_port if args.local_port is None else args.local_port
+    # Without a port number from --local-port, keep an existing forward to the app.
+    forwarded = forwarded_port(device_port, args.device)
+    if args.local_port:
+        local_port = args.local_port
+    elif forwarded is not None:
+        local_port = forwarded
+    else:
+        local_port = device_port if args.local_port is None else 0
+    if local_port == forwarded:
+        return local_port
+    try:
+        local_port, err = _adb_forward(local_port, device_port, args.device)
+    except FileNotFoundError:
+        if args.local_port is not None:
+            print("error: adb is not installed, so --local-port can't forward a port", file=sys.stderr)
+            return None
+        # Without adb there is no device to forward to: the server is local.
+        print("warning: adb is not installed, so the port was not forwarded", file=sys.stderr)
+        return local_port
+    if err:
+        # The URL would reach whatever holds the local port, not the app.
+        print("error: adb forward tcp:{} tcp:{} failed: {}".format(local_port, device_port, err), file=sys.stderr)
+        if local_port:
+            print(
+                "  hint: the console URL would not reach the app. If local port {} is taken, pass "
+                "--local-port 0 to let adb choose a free port, or --local-port N. Use --no-forward when "
+                "you forward the port yourself.".format(local_port),
+                file=sys.stderr,
+            )
+        return None
+    return local_port
 
 
 # ── command implementations ────────────────────────────────────────────────────
 
 
 def cmd_open(args: argparse.Namespace) -> int:
-    """Discover token+endpoint, adb-forward the port, print/open the browser URL."""
+    """Discover token+endpoint, forward a local port to the app, print/open the browser URL."""
     endpoint = _build_endpoint(args)
-    # Browser uses the loopback host (forwarded), regardless of the device bind host.
-    browser_host = "localhost" if endpoint.host in ("127.0.0.1", "0.0.0.0", "::1") else endpoint.host
-
-    # A LAN host reaches the device without the forward, so only a loopback URL needs it.
-    if not args.no_forward and browser_host == "localhost":
-        try:
-            err = _adb_forward(endpoint.port, args.device)
-        except FileNotFoundError:
-            # Without adb there is no device to forward to: the server is local.
-            print("warning: adb is not installed, so the port was not forwarded", file=sys.stderr)
-            err = None
-        if err:
-            # The URL would reach whatever holds the local port, not the app.
-            print("error: adb forward tcp:{0} tcp:{0} failed: {1}".format(endpoint.port, err), file=sys.stderr)
-            print(
-                "  hint: the console URL would not reach the app. If another process holds "
-                "local port {}, stop it. Use --no-forward when you forward the port yourself.".format(endpoint.port),
-                file=sys.stderr,
-            )
+    browser_host = endpoint.host
+    port = endpoint.port
+    # A LAN host reaches the device without a forward, so only a loopback URL needs one.
+    if endpoint.host in LOOPBACK_HOSTS:
+        # The browser uses the local end of the forward, whatever host the app binds on the device.
+        browser_host = "localhost"
+        port = _forward_local_port(args, endpoint.port)
+        if port is None:
             return 1
 
     # Percent-encode the token so special chars (#, &, %, =) can't corrupt the fragment.
     encoded_token = urllib.parse.quote(endpoint.token, safe="")
     url = "{}://{}:{}/#lustro_token={}".format(
-        endpoint.scheme, browser_host, endpoint.port, encoded_token
+        endpoint.scheme, browser_host, port, encoded_token
     )
     if args.json:
-        _emit({"url": url, "token": endpoint.token, "host": browser_host, "port": endpoint.port}, raw_json=True)
+        _emit({"url": url, "token": endpoint.token, "host": browser_host, "port": port}, raw_json=True)
     else:
         print(url)
     if not args.print_only:
@@ -796,6 +856,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     # open
     p_open = sub.add_parser("open", parents=[common], help="discover endpoint+token, adb-forward, open browser URL")
+    p_open.add_argument(
+        "--local-port",
+        type=_port_number,
+        default=None,
+        metavar="N",
+        help="forward local port N to the app's port; 0 lets adb choose a free port "
+        "(default: the local port of an existing forward to the app, else the app's port)",
+    )
     p_open.add_argument("--no-forward", action="store_true", help="skip `adb forward`")
     p_open.add_argument("--print-only", action="store_true", help="print the URL without opening a browser")
     p_open.set_defaults(func=cmd_open)

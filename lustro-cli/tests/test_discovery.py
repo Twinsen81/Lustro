@@ -147,3 +147,78 @@ def test_discover_from_run_as_ignores_an_unrelated_token_key(monkeypatch):
 def test_discover_from_run_as_none_when_no_match(monkeypatch):
     monkeypatch.setattr(discovery, "_run", lambda cmd, timeout=10.0: "<map/>")
     assert discovery.discover_from_run_as("com.example.app") is None
+
+
+# ── adb forward --list ─────────────────────────────────────────────────────────
+
+# Forwards of two devices, as adb lists them, with one that isn't TCP.
+_FORWARD_LIST = (
+    "0A1B2C3D4E5F tcp:18080 tcp:8080\n"
+    "emulator-5554 tcp:18181 tcp:8080\n"
+    "emulator-5554 localabstract:chrome tcp:8080\n"
+    "emulator-5554 tcp:9222 localabstract:chrome_devtools_remote\n"
+    "emulator-5554 tcp:18282 tcp:8080\n"
+    "emulator-5554 tcp:19000 tcp:9000\r\n"
+)
+
+
+def test_parse_forwards_keeps_the_tcp_forwards_to_the_port_in_order():
+    assert discovery.parse_forwards(_FORWARD_LIST, 8080) == [
+        ("0A1B2C3D4E5F", 18080),
+        ("emulator-5554", 18181),
+        ("emulator-5554", 18282),
+    ]
+    assert discovery.parse_forwards(_FORWARD_LIST, 9000) == [("emulator-5554", 19000)]
+    assert discovery.parse_forwards("", 8080) == []
+
+
+def _fake_adb_run(monkeypatch, outputs):
+    """Answer each adb command from ``outputs``, keyed by its arguments; record them."""
+    calls = []
+
+    def run(cmd, timeout=10.0):
+        calls.append(cmd)
+        return outputs.get(" ".join(cmd))
+
+    monkeypatch.setattr(discovery, "_run", run)
+    return calls
+
+
+def test_forwarded_port_takes_the_first_forward_on_the_selected_device(monkeypatch):
+    calls = _fake_adb_run(
+        monkeypatch, {"adb forward --list": _FORWARD_LIST, "adb get-serialno": "emulator-5554\n"}
+    )
+    assert discovery.forwarded_port(8080) == 18181
+    assert calls == [["adb", "forward", "--list"], ["adb", "get-serialno"]]
+
+
+def test_forwarded_port_asks_adb_for_the_serial_of_the_device_flag(monkeypatch):
+    # adb -s also takes qualifiers such as model:X, and the list shows serials.
+    calls = _fake_adb_run(
+        monkeypatch,
+        {"adb forward --list": _FORWARD_LIST, "adb -s model:sdk_gphone64_arm64 get-serialno": "0A1B2C3D4E5F\n"},
+    )
+    assert discovery.forwarded_port(8080, "model:sdk_gphone64_arm64") == 18080
+    assert calls[-1] == ["adb", "-s", "model:sdk_gphone64_arm64", "get-serialno"]
+
+
+def test_forwarded_port_ignores_the_forwards_of_other_devices(monkeypatch):
+    _fake_adb_run(monkeypatch, {"adb forward --list": _FORWARD_LIST, "adb get-serialno": "emulator-5556\n"})
+    assert discovery.forwarded_port(8080) is None
+
+
+def test_forwarded_port_without_a_forward_to_the_port_asks_for_no_serial(monkeypatch):
+    calls = _fake_adb_run(monkeypatch, {"adb forward --list": _FORWARD_LIST})
+    assert discovery.forwarded_port(7000) is None
+    assert calls == [["adb", "forward", "--list"]]
+
+
+def test_forwarded_port_is_none_when_adb_can_not_select_a_device(monkeypatch):
+    # adb get-serialno fails with more than one device and no ANDROID_SERIAL.
+    _fake_adb_run(monkeypatch, {"adb forward --list": _FORWARD_LIST})
+    assert discovery.forwarded_port(8080) is None
+
+
+def test_forwarded_port_is_none_without_adb(monkeypatch):
+    _fake_adb_run(monkeypatch, {})
+    assert discovery.forwarded_port(8080) is None
