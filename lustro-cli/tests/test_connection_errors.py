@@ -88,7 +88,7 @@ def test_the_cli_reports_a_closed_connection_without_a_traceback(broken_server, 
 @pytest.fixture
 def endpoint(monkeypatch):
     monkeypatch.setattr(cli, "_build_endpoint", lambda args: Endpoint("127.0.0.1", 8080, TOKEN))
-    monkeypatch.setattr(cli, "forwarded_port", lambda device_port, device: None)
+    monkeypatch.setattr(cli, "forwarded_ports", lambda device_port, device: [])
 
 
 def test_open_fails_when_adb_forward_fails(endpoint, monkeypatch, capsys):
@@ -122,14 +122,14 @@ def test_open_warns_and_goes_on_without_adb(endpoint, monkeypatch, capsys):
 
 def test_open_does_not_forward_for_a_lan_host(monkeypatch, capsys):
     monkeypatch.setattr(cli, "_build_endpoint", lambda args: Endpoint("192.168.1.50", 8080, TOKEN))
-    monkeypatch.setattr(cli, "forwarded_port", lambda device_port, device: pytest.fail("adb forward --list ran"))
+    monkeypatch.setattr(cli, "forwarded_ports", lambda device_port, device: pytest.fail("adb forward --list ran"))
     monkeypatch.setattr(cli, "_adb_forward", lambda *args: pytest.fail("adb forward ran"))
     assert cli.main(["open", "--print-only"]) == 0
     assert capsys.readouterr().out.strip() == "http://192.168.1.50:8080/#lustro_token=tok"
 
 
 def test_open_no_forward_skips_adb(endpoint, monkeypatch, capsys):
-    monkeypatch.setattr(cli, "forwarded_port", lambda device_port, device: pytest.fail("adb forward --list ran"))
+    monkeypatch.setattr(cli, "forwarded_ports", lambda device_port, device: pytest.fail("adb forward --list ran"))
     monkeypatch.setattr(cli, "_adb_forward", lambda *args: pytest.fail("adb forward ran"))
     assert cli.main(["open", "--no-forward", "--print-only"]) == 0
 

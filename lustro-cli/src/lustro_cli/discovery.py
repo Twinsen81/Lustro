@@ -15,7 +15,7 @@ If none of these determine the endpoint/token, a clear, actionable error is
 raised.
 
 The port that these give is the app's port. On a device, the CLI reaches it
-through an ``adb forward``, whose local port can differ: :func:`forwarded_port`
+through an ``adb forward``, whose local port can differ: :func:`forwarded_ports`
 finds it in ``adb forward --list``.
 """
 
@@ -150,20 +150,21 @@ def parse_forwards(text: str, device_port: int) -> List[Tuple[str, int]]:
     return forwards
 
 
-def forwarded_port(device_port: int, device: Optional[str] = None) -> Optional[int]:
-    """The local port of the first ``adb forward`` to ``tcp:<device_port>`` on the
-    selected device, or ``None`` when there is none or adb can't tell.
+def forwarded_ports(device_port: int, device: Optional[str] = None) -> List[int]:
+    """The local ports of the ``adb forward``s to ``tcp:<device_port>`` on the
+    selected device, in the order that adb lists them. Empty when there is none,
+    or adb can't tell.
 
     ``adb forward --list`` lists the forwards of every device, so this asks adb
     which device it selects: ``device``, else ``ANDROID_SERIAL``, else the only one.
     """
     forwards = parse_forwards(_run(["adb", "forward", "--list"]) or "", device_port)
     if not forwards:
-        return None
+        return []
     serial = _run(_adb_base(device) + ["get-serialno"])
     if not serial:
-        return None
-    return next((local for listed, local in forwards if listed == serial.strip()), None)
+        return []
+    return [local for listed, local in forwards if listed == serial.strip()]
 
 
 def resolve(

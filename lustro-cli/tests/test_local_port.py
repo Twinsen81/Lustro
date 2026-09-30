@@ -15,16 +15,16 @@ TOKEN = "tok"
 class _Adb:
     """Stands in for the adb forward list and for ``adb forward``."""
 
-    def __init__(self, monkeypatch, forwarded=None, chosen=51234, error=None):
-        self.forwarded = forwarded
+    def __init__(self, monkeypatch, forwarded=(), chosen=51234, error=None):
+        self.forwarded = list(forwarded)
         self.chosen = chosen
         self.error = error
         self.lookups = []
         self.forwards = []
-        monkeypatch.setattr(cli, "forwarded_port", self.forwarded_port)
+        monkeypatch.setattr(cli, "forwarded_ports", self.forwarded_ports)
         monkeypatch.setattr(cli, "_adb_forward", self.forward)
 
-    def forwarded_port(self, device_port, device):
+    def forwarded_ports(self, device_port, device):
         self.lookups.append((device_port, device))
         return self.forwarded
 
@@ -72,27 +72,39 @@ def test_open_json_reports_the_local_port(app, monkeypatch, capsys):
 
 
 def test_open_keeps_a_forward_to_the_app_that_is_there_already(app, monkeypatch, capsys):
-    adb = _Adb(monkeypatch, forwarded=18181)
+    adb = _Adb(monkeypatch, forwarded=[18181])
     assert open_url(["open", "--print-only"], capsys) == "http://localhost:18181/#lustro_token=tok"
     assert adb.lookups == [(8080, None)]
     assert adb.forwards == []
 
 
 def test_open_local_port_0_keeps_a_forward_to_the_app_too(app, monkeypatch, capsys):
-    adb = _Adb(monkeypatch, forwarded=18181)
+    adb = _Adb(monkeypatch, forwarded=[18181])
     assert open_url(["open", "--local-port", "0", "--print-only"], capsys) == "http://localhost:18181/#lustro_token=tok"
     assert adb.forwards == []
 
 
 def test_open_local_port_that_already_forwards_to_the_app_runs_no_forward(app, monkeypatch, capsys):
     # With --no-rebind, a second forward of the same port would fail.
-    adb = _Adb(monkeypatch, forwarded=18080)
+    adb = _Adb(monkeypatch, forwarded=[18080])
     assert open_url(["open", "--local-port", "18080", "--print-only"], capsys) == "http://localhost:18080/#lustro_token=tok"
     assert adb.forwards == []
 
 
+def test_open_local_port_that_is_not_the_first_forward_to_the_app_runs_no_forward(app, monkeypatch, capsys):
+    adb = _Adb(monkeypatch, forwarded=[18080, 18181])
+    assert open_url(["open", "--local-port", "18181", "--print-only"], capsys) == "http://localhost:18181/#lustro_token=tok"
+    assert adb.forwards == []
+
+
+def test_open_keeps_the_first_of_the_forwards_to_the_app(app, monkeypatch, capsys):
+    adb = _Adb(monkeypatch, forwarded=[18080, 18181])
+    assert open_url(["open", "--print-only"], capsys) == "http://localhost:18080/#lustro_token=tok"
+    assert adb.forwards == []
+
+
 def test_open_local_port_forwards_even_when_another_port_forwards_to_the_app(app, monkeypatch, capsys):
-    adb = _Adb(monkeypatch, forwarded=18181)
+    adb = _Adb(monkeypatch, forwarded=[18181])
     assert open_url(["open", "--local-port", "18080", "--print-only"], capsys) == "http://localhost:18080/#lustro_token=tok"
     assert adb.forwards == [(18080, 8080, None)]
 
@@ -192,7 +204,7 @@ def base_urls(monkeypatch):
 
 
 def test_commands_connect_through_the_forward_to_the_app(app, monkeypatch, base_urls):
-    adb = _Adb(monkeypatch, forwarded=18080)
+    adb = _Adb(monkeypatch, forwarded=[18080, 18181])
     assert cli.main(["--device", "emulator-5554", "meta"]) == 0
     assert base_urls == ["http://127.0.0.1:18080"]
     assert adb.lookups == [(8080, "emulator-5554")]
@@ -206,7 +218,7 @@ def test_commands_connect_to_the_app_port_without_a_forward(app, monkeypatch, ba
 
 def test_commands_use_the_loopback_for_an_app_on_all_interfaces(monkeypatch, base_urls):
     monkeypatch.setattr(cli, "_build_endpoint", lambda args: Endpoint("0.0.0.0", 8080, TOKEN))
-    _Adb(monkeypatch, forwarded=18080)
+    _Adb(monkeypatch, forwarded=[18080])
     assert cli.main(["meta"]) == 0
     assert base_urls == ["http://127.0.0.1:18080"]
 
@@ -214,7 +226,7 @@ def test_commands_use_the_loopback_for_an_app_on_all_interfaces(monkeypatch, bas
 def test_commands_use_port_as_it_is(monkeypatch, base_urls):
     # For a server on the computer, or a forward that adb doesn't list.
     monkeypatch.setattr(cli, "_build_endpoint", lambda args: Endpoint("127.0.0.1", args.port, TOKEN))
-    adb = _Adb(monkeypatch, forwarded=18080)
+    adb = _Adb(monkeypatch, forwarded=[18080])
     assert cli.main(["--port", "18181", "net", "list"]) == 0
     assert base_urls == ["http://127.0.0.1:18181"]
     assert adb.lookups == []
@@ -222,7 +234,7 @@ def test_commands_use_port_as_it_is(monkeypatch, base_urls):
 
 def test_commands_look_for_no_forward_for_a_lan_host(monkeypatch, base_urls):
     monkeypatch.setattr(cli, "_build_endpoint", lambda args: Endpoint("192.168.1.50", 8080, TOKEN))
-    adb = _Adb(monkeypatch, forwarded=18080)
+    adb = _Adb(monkeypatch, forwarded=[18080])
     assert cli.main(["meta"]) == 0
     assert base_urls == ["http://192.168.1.50:8080"]
     assert adb.lookups == []

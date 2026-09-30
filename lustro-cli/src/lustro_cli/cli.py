@@ -31,7 +31,7 @@ from .discovery import (
     LOOPBACK_HOSTS,
     DiscoveryError,
     Endpoint,
-    forwarded_port,
+    forwarded_ports,
     resolve,
 )
 
@@ -280,9 +280,9 @@ def _build_client(args: argparse.Namespace) -> LustroClient:
     # The app's port is on the device. Without --port, connect through the adb
     # forward to it, which `lustro open --local-port` can put on another local port.
     if args.port is None and endpoint.host in LOOPBACK_HOSTS:
-        local_port = forwarded_port(endpoint.port, args.device)
-        if local_port is not None:
-            endpoint = endpoint._replace(host=DEFAULT_HOST, port=local_port)
+        local_ports = forwarded_ports(endpoint.port, args.device)
+        if local_ports:
+            endpoint = endpoint._replace(host=DEFAULT_HOST, port=local_ports[0])
     return LustroClient(endpoint.base_url, endpoint.token)
 
 
@@ -329,14 +329,15 @@ def _forward_local_port(args: argparse.Namespace, device_port: int) -> Optional[
             raise UsageError("--local-port 0 lets adb choose the port, so it can't go with --no-forward")
         return device_port if args.local_port is None else args.local_port
     # Without a port number from --local-port, keep an existing forward to the app.
-    forwarded = forwarded_port(device_port, args.device)
+    forwarded = forwarded_ports(device_port, args.device)
     if args.local_port:
         local_port = args.local_port
-    elif forwarded is not None:
-        local_port = forwarded
+    elif forwarded:
+        local_port = forwarded[0]
     else:
         local_port = device_port if args.local_port is None else 0
-    if local_port == forwarded:
+    # adb forward --no-rebind fails for a forward that is there already.
+    if local_port in forwarded:
         return local_port
     try:
         local_port, err = _adb_forward(local_port, device_port, args.device)
