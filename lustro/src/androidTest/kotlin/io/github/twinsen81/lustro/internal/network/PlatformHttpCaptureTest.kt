@@ -14,8 +14,11 @@ import io.github.twinsen81.lustro.network.TransactionId
 import java.net.HttpURLConnection
 import java.net.InetAddress
 import java.net.URL
+import javax.net.ssl.HttpsURLConnection
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
+import okhttp3.tls.HandshakeCertificates
+import okhttp3.tls.HeldCertificate
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -136,6 +139,49 @@ class PlatformHttpCaptureTest {
         assertEquals(201, response.statusCode)
         assertEquals("application/json", response.headers.get("Content-Type"))
         assertEquals("""{"id":7}""", response.body?.text)
+        assertNull(tx.error)
+    }
+
+    @Test
+    fun httpsGetReachesTheSinkAndKeepsTheTlsConnection() {
+        val certificate = HeldCertificate.Builder().addSubjectAlternativeName(LOOPBACK).build()
+        val serverTls = HandshakeCertificates.Builder().heldCertificate(certificate).build()
+        val clientTls = HandshakeCertificates.Builder().addTrustedCertificate(certificate.certificate).build()
+        server.useHttps(serverTls.sslSocketFactory(), false)
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "text/plain; charset=utf-8")
+                .setBody("hello over TLS"),
+        )
+        val url = URL("https://$LOOPBACK:${server.port}/items")
+
+        // An app casts the connection to set its own trust and to read the TLS
+        // session, so the capture must hand back an HttpsURLConnection that does both.
+        val connection = url.openConnection() as HttpsURLConnection
+        connection.sslSocketFactory = clientTls.sslSocketFactory()
+        connection.setRequestProperty("X-Trace", "trace-2")
+        val code = connection.responseCode
+        val serverCertificate = connection.serverCertificates.first()
+        val body = connection.inputStream.use { it.readBytes().decodeToString() }
+        connection.disconnect()
+
+        assertEquals(200, code)
+        assertEquals("hello over TLS", body)
+        assertEquals(certificate.certificate, serverCertificate)
+        assertEquals("trace-2", server.takeRequest().getHeader("X-Trace"))
+
+        if (capture.httpsSource == null) {
+            assertTrue(sink.transactions.isEmpty())
+            return
+        }
+        val tx = sink.transactions.single()
+        assertEquals("GET", tx.method)
+        assertEquals(url.toString(), tx.url)
+        assertEquals("trace-2", tx.requestHeaders.get("X-Trace"))
+        val response = requireNotNull(tx.response) { "no response was captured" }
+        assertEquals(200, response.statusCode)
+        assertEquals("text/plain; charset=utf-8", response.headers.get("Content-Type"))
+        assertEquals("hello over TLS", response.body?.text)
         assertNull(tx.error)
     }
 

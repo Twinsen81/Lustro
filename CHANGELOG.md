@@ -127,8 +127,10 @@ see [DECISIONS.md](DECISIONS.md).
   instrumented test installs the platform `HttpURLConnection` capture on the
   device's own HTTP stack and checks that a GET and a POST to a local
   MockWebServer reach the capture sink with their method, URL, status, headers,
-  and bodies. It also asserts which way the capture got the platform's URL
-  handlers: every release checked, from API 26 to 37, allows the
+  and bodies. A GET over HTTPS must reach the sink too, through a connection
+  that the app can still cast to `HttpsURLConnection` to set its trust and read
+  the server's certificate. The test also asserts which way the capture got the
+  platform's URL handlers: every release checked, from API 26 to 37, allows the
   `com.android.okhttp` handler class, so a release that blocks it fails the test
   instead of turning capture off with only a log line. Then
   `.github/scripts/cli-e2e.sh` installs the debug sample, runs `lustro open`,
