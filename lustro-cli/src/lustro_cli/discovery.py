@@ -13,6 +13,10 @@ Resolution order (first that yields a value wins, per field):
 
 If none of these determine the endpoint/token, a clear, actionable error is
 raised.
+
+The port that these give is the app's port. On a device, the CLI reaches it
+through an ``adb forward``, whose local port can differ: :func:`forwarded_ports`
+finds it in ``adb forward --list``.
 """
 
 from __future__ import annotations
@@ -20,7 +24,7 @@ from __future__ import annotations
 import os
 import re
 import subprocess
-from typing import List, NamedTuple, Optional
+from typing import List, NamedTuple, Optional, Tuple
 
 # Matches the single machine-parseable line Lustro logs at tag LustroToken:
 #   Lustro ready endpoint=http://127.0.0.1:8080 token=AbC123...
@@ -29,8 +33,15 @@ _READY_LINE = re.compile(
     r"Lustro\s+ready\s+endpoint=(?P<scheme>https?)://(?P<host>[^\s:/]+):(?P<port>\d+)\s+token=(?P<token>\S+)"
 )
 
+# One ``adb forward --list`` line: ``<serial> tcp:<local port> tcp:<device port>``.
+_FORWARD_LINE = re.compile(r"^(?P<serial>\S+)\s+tcp:(?P<local>\d+)\s+tcp:(?P<remote>\d+)\s*$")
+
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8080
+
+# Hosts that the computer reaches through an adb forward. An app that binds
+# 0.0.0.0 on the device listens on its loopback too.
+LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "::1", "0.0.0.0")
 
 
 class Endpoint(NamedTuple):
@@ -126,6 +137,34 @@ def discover_from_run_as(
     if not match:
         return None
     return Endpoint(host=DEFAULT_HOST, port=DEFAULT_PORT, token=match.group(1))
+
+
+def parse_forwards(text: str, device_port: int) -> List[Tuple[str, int]]:
+    """The device serial and the local port of each forward to ``tcp:<device_port>``
+    in ``adb forward --list`` output, in the order that adb lists them."""
+    forwards = []
+    for line in text.splitlines():
+        match = _FORWARD_LINE.match(line)
+        if match and int(match.group("remote")) == device_port:
+            forwards.append((match.group("serial"), int(match.group("local"))))
+    return forwards
+
+
+def forwarded_ports(device_port: int, device: Optional[str] = None) -> List[int]:
+    """The local ports of the ``adb forward``s to ``tcp:<device_port>`` on the
+    selected device, in the order that adb lists them. Empty when there is none,
+    or adb can't tell.
+
+    ``adb forward --list`` lists the forwards of every device, so this asks adb
+    which device it selects: ``device``, else ``ANDROID_SERIAL``, else the only one.
+    """
+    forwards = parse_forwards(_run(["adb", "forward", "--list"]) or "", device_port)
+    if not forwards:
+        return []
+    serial = _run(_adb_base(device) + ["get-serialno"])
+    if not serial:
+        return []
+    return [local for listed, local in forwards if listed == serial.strip()]
 
 
 def resolve(

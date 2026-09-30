@@ -163,6 +163,17 @@ see [DECISIONS.md](DECISIONS.md).
   finishes in milliseconds can't finish first. The global flags, such as
   `--json`, now also work after the command. `docs/AGENTS.md` recommends the
   CLI before the curl examples and shows how to keep its output small.
+- **A free local port for `lustro open`.** `lustro open` forwarded the app's
+  port to the same port number on the computer, so it failed while another
+  process, such as a local development server, held that port. `--port` did not
+  help, because it set both ports. `lustro open --local-port N` forwards local
+  port N to the app's port on the device, and `--local-port 0` lets adb choose a
+  free port. The other commands find the forward in `adb forward --list` and
+  connect to its local port without `--port`, also after a manual
+  `adb forward`. `open` keeps an existing forward to the app, and runs
+  `adb forward --no-rebind`, so it no longer takes over a local port that a
+  forward of another device holds. `.github/scripts/cli-e2e.sh` takes its local
+  port from `CLI_E2E_LOCAL_PORT`.
 
 ### Fixed
 

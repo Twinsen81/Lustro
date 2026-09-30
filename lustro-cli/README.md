@@ -35,6 +35,16 @@ The CLI resolves the endpoint+token in this order (first hit wins, per field):
 
 If none of these determine the token, the CLI prints a clear, actionable error.
 
+The port that discovery finds is the app's port on the device. The CLI reaches
+it through an `adb forward`, and the local port of the forward can be a
+different number. So when the host is a loopback address and `--port` is not
+given, the CLI reads `adb forward --list` and connects to the local port of the
+first forward to the app's port on the selected device: `--device`, else
+`ANDROID_SERIAL`, else the only device. Without such a forward, it connects to
+the same port number on the computer. A command with `--port` connects to that
+port and looks for no forward, for example when the server runs on the
+computer. For `lustro open`, `--port` is the app's port, which it forwards to.
+
 ## Global flags
 
 `--host` (default `127.0.0.1`), `--port` (default `8080`), `--token` (else
@@ -46,7 +56,7 @@ discovery), `--json` (JSON output). They go before or after the command:
 
 | Command | Route |
 | --- | --- |
-| `lustro open` | discovery + `adb forward` + print/open `…/#lustro_token=<token>`; exits 1 when `adb forward` fails |
+| `lustro open [--local-port N]` | discovery + `adb forward` + print/open `…/#lustro_token=<token>`; exits 1 when `adb forward` fails |
 | `lustro meta` | `GET /api/v1/_meta` |
 | `lustro schema [tabId]` | `GET /api/v1/_schema` or `/api/v1/<tab>/_schema` |
 | `lustro net list` | `GET network/transactions` (one poll): the newest 50 transactions, newest first |
@@ -69,6 +79,28 @@ discovery), `--json` (JSON output). They go before or after the command:
 > **Live use of `lustro open`** requires a running app: the server only listens
 > while the app is foregrounded, and discovery reads the `LustroToken` log line
 > via `adb`. With no device, discovery falls back to flags / `LUSTRO_TOKEN`.
+
+## The local port
+
+`lustro open` forwards a local port to the app's port on the device, and prints
+the console URL with the local port. It keeps an existing forward to the app.
+Without one, it forwards the same port number, 8080 by default, and exits 1
+when another process, such as a local development server, holds that port on
+the computer. Then choose the local port:
+
+```bash
+lustro open --local-port 18080   # forward local port 18080 to the app's port
+lustro open --local-port 0       # adb chooses a free local port
+lustro net list                  # connects through the forward, without --port
+```
+
+The other commands find the forward in `adb forward --list`, as
+[discovery](#endpoint-and-token-discovery) describes, so they need no `--port`.
+This also applies to a forward that you make yourself, such as
+`adb forward tcp:18080 tcp:8080`. `open` runs `adb forward --no-rebind`, so it
+does not take over a local port that a forward of another device holds.
+`--no-forward` skips the forward, and the URL then uses `--local-port N`, else
+the app's port.
 
 ## Output
 
