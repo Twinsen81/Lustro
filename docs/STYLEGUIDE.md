@@ -90,7 +90,7 @@ too. Semantic color is passed via the `--c` custom property where noted:
   `--active` = accent-tinted.
 - `.dc-seg` / `.dc-seg__item(--active)`: segmented control on a recessed track;
   the selected segment is solid accent. `.dc-seg--sm` is the compact one, for a
-  mode switch inside a panel.
+  mode switch inside a panel; its items keep a 30px hit target.
 - `.dc-tabs` / `.dc-tab(--active)` / `.dc-tabpanel`: connected panel tabs. The
   active tab lifts onto `--raise`, takes a top accent bar, and visually joins
   its panel.
@@ -134,7 +134,8 @@ too. Semantic color is passed via the `--c` custom property where noted:
     nothing else. An element that holds text is shown as it arrived; only the
     elements that hold elements are indented.
   - `.dc-lines` (`.dc-lines__line` rows): `debugLineNumbered(text)` numbers the
-    lines with CSS counters, which are never selected or copied.
+    lines with CSS counters, which are never selected or copied. Each row keeps
+    its line break, so a copied selection keeps empty lines.
   - `.dc-kv` (`.dc-kv__key`, `.dc-kv__value`, and `.dc-kv__raw` for a part that
     is not valid percent-encoding): a key and value table.
     `debugFormTable(text)` builds one from an

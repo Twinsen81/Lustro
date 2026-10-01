@@ -374,7 +374,8 @@ select.dc-btn {
 .dc-seg__item:where(:hover) { color: var(--t1); }
 .dc-seg__item--active { background: var(--accent); color: #fff; font-weight: 600; }
 .dc-seg--sm { padding: 2px; gap: 2px; }                     /* a mode switch inside a panel */
-.dc-seg--sm .dc-seg__item { padding: 3px 10px; font-size: 10.5px; }
+.dc-seg--sm .dc-seg__item { position: relative; padding: 3px 10px; font-size: 10.5px; }
+.dc-seg--sm .dc-seg__item::after { content: ''; position: absolute; inset: -6px 0; } /* a 30px hit target on an 18px item */
 
 /* ---------- Connected panel tabs (active tab merges into content) ---------- */
 .dc-tabs { flex: none; display: flex; align-items: stretch; gap: 3px; height: 46px; padding: 7px 8px 0; background: var(--tabbar); border-bottom: 1px solid var(--border); }

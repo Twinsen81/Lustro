@@ -54,6 +54,7 @@ const ink = (text) => text.replace(/[ \t\n\r\f]/g, '');
 
 // Text to XML and HTML, though JavaScript's trim() takes it for whitespace.
 const NBSP = String.fromCharCode(0xa0);
+const BOM_PREFIX = String.fromCharCode(0xfeff);
 
 // The queries most likely to land inside a viewer's own markup if matching ran
 // over it instead of over each piece of text.
@@ -99,18 +100,26 @@ test('a body gets the viewer for its media type', async (t) => {
         }
     });
 
-    await t.test('a body of no known type that starts like JSON gets the JSON viewer', () => {
-        assert.strictEqual(debugBodyKind('text/plain', '{"a":1}', false), 'json');
+    await t.test('an object or array that is valid JSON gets the JSON viewer, whatever the type says', () => {
+        const body = '{"ok":true,"items":[1,2]}';
+        const types = ['text/plain', null, undefined, '', 'text/html; charset=UTF-8', 'application/xml',
+            'image/svg+xml', 'application/x-www-form-urlencoded'];
+        for (const type of types) {
+            assert.strictEqual(debugBodyKind(type, body, false), 'json', String(type));
+        }
         assert.strictEqual(debugBodyKind(null, ' \n[1,2]', false), 'json');
-        assert.strictEqual(debugBodyKind(undefined, '{', false), 'json', 'the caller falls back when it does not scan');
-        assert.strictEqual(debugBodyKind(null, 'plain', false), 'text');
-        assert.strictEqual(debugBodyKind(null, null, false), 'text');
     });
 
-    await t.test('a stated type wins over the look of the body', () => {
-        assert.strictEqual(debugBodyKind('text/html', '{"a":1}', false), 'html');
-        assert.strictEqual(debugBodyKind('application/x-www-form-urlencoded', '[1]', false), 'form');
-        assert.strictEqual(debugBodyKind('application/xml', '{"a":1}', false), 'xml');
+    await t.test('the type wins when the body is not valid JSON', () => {
+        assert.strictEqual(debugBodyKind('text/html', '{"a":', false), 'html');
+        assert.strictEqual(debugBodyKind('application/x-www-form-urlencoded', '[a]=1&b=2', false), 'form');
+        assert.strictEqual(debugBodyKind('application/xml', '{x}', false), 'xml');
+        assert.strictEqual(debugBodyKind('text/plain', '{', false), 'text');
+        assert.strictEqual(debugBodyKind(null, 'plain', false), 'text');
+        assert.strictEqual(debugBodyKind(null, null, false), 'text');
+        assert.strictEqual(debugBodyKind('text/plain', '42', false), 'text', 'valid JSON, but not an object or array');
+        assert.strictEqual(debugBodyKind('text/plain', BOM_PREFIX + '{}', false), 'text', 'JSON.parse rejects a BOM');
+        assert.strictEqual(debugBodyKind('application/json', '{"cut', false), 'json', 'the caller falls back to text');
     });
 });
 
@@ -369,6 +378,21 @@ test('the markup printer', async (t) => {
         }
     });
 
+    await t.test('a search is marked across the parts of a tag', () => {
+        const marked = (html) => (html.match(/<mark>[\s\S]*?<\/mark>/g) || []).map(textOf).join('');
+        const source = '<slide type="all"><title>x</title></slide>';
+        const cases = [['type="all"', 'type="all"'], ['TYPE="ALL"', 'type="all"'], ['<title', '<title'], ['</title>', '</title>']];
+        for (const [query, expected] of cases) {
+            const html = debugHighlightMarkup(source, { searchText: query });
+            assertSafe(html, query);
+            assert.strictEqual(textOf(html), textOf(debugHighlightMarkup(source)), `query ${query} changed the text`);
+            assert.strictEqual(marked(html), expected, query);
+        }
+        const html = debugHighlightMarkup('<a title="x<b>y">z</a>', { searchText: 'title="x<b>y"' });
+        assertSafe(html, 'a query with markup in it');
+        assert.strictEqual(marked(html), 'title="x<b>y"');
+    });
+
     await t.test('search marks land in the text, never in the viewer\'s markup', () => {
         for (const query of MARKUP_QUERIES) {
             for (const html of [true, false]) {
@@ -418,8 +442,16 @@ test('the markup printer', async (t) => {
 });
 
 test('line-numbered text', async (t) => {
-    const lineTexts = (html) => (html.match(/<span class="dc-lines__line">[\s\S]*?<\/span>/g) || [])
-        .map((line) => textOf(line));
+    const rows = (html) => (html.match(/<span class="dc-lines__line">[\s\S]*?<\/span>/g) || []).map(textOf);
+    const lineTexts = (html) => rows(html).map((row) => row.replace(/\n$/, ''));
+
+    await t.test('each row keeps its line break, so a copied selection keeps empty lines', () => {
+        assert.deepStrictEqual(rows(debugLineNumbered('a\n\nb')), ['a\n', '\n', 'b']);
+        assert.deepStrictEqual(rows(debugLineNumbered('a\r\n\r\nb\r\n')), ['a\n', '\n', 'b\n']);
+        for (const body of ['data: 1\n\ndata: 2\n\n', 'x', '\n', 'a\nb', 'a\r\nb\rc\n', '']) {
+            assert.strictEqual(textOf(debugLineNumbered(body)), body.replace(/\r\n|\r/g, '\n'), JSON.stringify(body));
+        }
+    });
 
     await t.test('one row per line, whatever ends the lines', () => {
         assert.deepStrictEqual(lineTexts(debugLineNumbered('a\nb\r\nc\rd')), ['a', 'b', 'c', 'd']);

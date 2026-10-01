@@ -569,19 +569,31 @@ var DEBUG_PREVIEW_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/
 
 // Which viewer suits a body: 'image' for a previewable image kept as bytes,
 // 'binary' for any other body kept as bytes, then by the media type 'json',
-// 'form', 'html', 'xml', or 'text'. A body of another type, or of none, that
-// starts like a JSON object or array is 'json'; a caller still shows it as
-// text when it does not scan as JSON.
+// 'form', 'html', 'xml', or 'text'. A JSON type wins even over text that is
+// not JSON, such as a body cut at the capture cap, and a caller shows that as
+// text. An object or array that is valid JSON is 'json' whatever the type
+// says, because servers send JSON as text/html, and apps send it as a form.
 window.debugBodyKind = function(contentType, text, binary) {
     var essence = String(contentType == null ? '' : contentType).split(';')[0].trim().toLowerCase();
     if (binary) return DEBUG_PREVIEW_IMAGE_TYPES.indexOf(essence) >= 0 ? 'image' : 'binary';
     var subtype = essence.slice(essence.indexOf('/') + 1);
-    if (subtype === 'json' || /\+json$/.test(subtype)) return 'json';
+    if (subtype === 'json' || /\+json$/.test(subtype) || debugIsJsonContainer(text)) return 'json';
     if (essence === 'application/x-www-form-urlencoded') return 'form';
     if (essence === 'text/html') return 'html';
     if (subtype === 'xml' || /\+xml$/.test(subtype)) return 'xml';
-    return /^\s*[{[]/.test(String(text == null ? '' : text)) ? 'json' : 'text';
+    return 'text';
 };
+
+// JSON.parse accepts the grammar debugScanJsonSource does, and answers sooner.
+function debugIsJsonContainer(text) {
+    if (typeof text !== 'string' || !/^\s*[{[]/.test(text)) return false;
+    try {
+        JSON.parse(text);
+        return true;
+    } catch(e) {
+        return false;
+    }
+}
 
 // JSON text as a tree that folds by object and array. Expanded, it is the text
 // debugSyntaxHighlightJson shows, built from the same debugScanJsonSource
@@ -723,12 +735,43 @@ window.debugHighlightMarkup = function(src, options) {
     function highlight(tok) {
         if (tok.type === 'text') return debugHighlightPlain(tok.text, searchText);
         if (tok.type === 'other') return '<span class="c">' + debugHighlightPlain(tok.text, searchText) + '</span>';
+        // A tag is searched as a whole, so a query such as type="all" or <title
+        // is marked across the spans of its parts.
+        var matches = debugMatchRanges(tok.pieces.map(function(p) { return p.text; }).join(''), searchText);
+        var offset = 0;
         return '<span class="g">' + tok.pieces.map(function(p) {
-            var marked = debugHighlightPlain(p.text, searchText);
+            var marked = markSlice(p.text, offset, matches);
+            offset += p.text.length;
             return p.cls ? '<span class="' + p.cls + '">' + marked + '</span>' : marked;
         }).join('') + '</span>';
     }
+    // The part of the matches that falls in text, which starts at offset.
+    function markSlice(text, offset, matches) {
+        var out = '';
+        var at = 0;
+        matches.forEach(function(match) {
+            var start = Math.max(match[0] - offset, at);
+            var end = Math.min(match[1] - offset, text.length);
+            if (end <= start) return;
+            out += debugHighlightPlain(text.slice(at, start), '')
+                + '<mark>' + debugHighlightPlain(text.slice(start, end), '') + '</mark>';
+            at = end;
+        });
+        return out + debugHighlightPlain(text.slice(at), '');
+    }
 };
+
+// Where searchText occurs in text, as [start, end) pairs, with the matching
+// highlightMatches uses: literal and case-insensitive.
+function debugMatchRanges(text, searchText) {
+    var matches = [];
+    if (!searchText) return matches;
+    var re = new RegExp(String(searchText).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+    for (var match = re.exec(text); match; match = re.exec(text)) {
+        matches.push([match.index, match.index + match[0].length]);
+    }
+    return matches;
+}
 
 // Elements a body leaves open, such as an XML body's <br>s, nest deeper with
 // each one. Past this depth an element takes no children, so what follows it
@@ -930,16 +973,19 @@ function debugScanMarkup(src, html) {
 window.debugScanMarkup = debugScanMarkup;
 
 // Text with a number before each line. The numbers are CSS counters, so they
-// cost nothing and are never selected or copied with the text. A final line
-// break ends the last line rather than starting an empty one. Returns a
-// <pre class="dc-code dc-lines">.
+// cost nothing and are never selected or copied with the text. Each row is a
+// block that keeps its line break, because a selection copied from rows
+// without one loses every empty line. A final line break ends the last line
+// rather than starting an empty one. Returns a <pre class="dc-code dc-lines">.
 window.debugLineNumbered = function(text, options) {
     var searchText = (options && options.searchText) || '';
     var lines = String(text == null ? '' : text).split(/\r\n|\r|\n/);
-    if (lines.length > 1 && lines[lines.length - 1] === '') lines.pop();
+    var endsWithBreak = lines.length > 1 && lines[lines.length - 1] === '';
+    if (endsWithBreak) lines.pop();
     return '<pre class="dc-code dc-lines" style="--dc-lines-digits: ' + String(lines.length).length + '">'
-        + lines.map(function(lineText) {
-            return '<span class="dc-lines__line">' + debugHighlightPlain(lineText, searchText) + '</span>';
+        + lines.map(function(lineText, i) {
+            var lineBreak = i < lines.length - 1 || endsWithBreak ? '\n' : '';
+            return '<span class="dc-lines__line">' + debugHighlightPlain(lineText, searchText) + lineBreak + '</span>';
         }).join('')
         + '</pre>';
 };

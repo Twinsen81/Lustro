@@ -680,7 +680,8 @@
         var notJson = false;
         if (kind === 'json') {
             content = view === 'tree' ? debugJsonTree(text, options) : null;
-            // Cut at the capture cap, or text that only starts like JSON.
+            // A JSON type on text that is not JSON, such as a body cut at the
+            // capture cap.
             if (!content && (view === 'tree' || !debugScanJsonSource(text, 0))) {
                 notJson = debugBodyKind(contentType, '', false) === 'json';
                 kind = 'text';
