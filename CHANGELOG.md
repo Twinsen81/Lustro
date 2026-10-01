@@ -193,8 +193,8 @@ see [DECISIONS.md](DECISIONS.md).
   `shared.css` gains `.dc-tree`, `.dc-markup`, `.dc-lines`, `.dc-kv`, and
   `.dc-seg--sm`, and `shared.js` the functions that build them, documented in
   `docs/STYLEGUIDE.md`. The JavaScript tests cover the escaping of each viewer.
-  The sample has a request for each viewer, and one that sends a 250 KB JSON
-  body.
+  The sample has a request for each viewer, a PNG and a BMP that it sends as
+  request bodies, and a request that sends a 250 KB JSON body.
 
 ### Fixed
 
