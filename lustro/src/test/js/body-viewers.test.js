@@ -52,6 +52,9 @@ function textOf(html) {
 // What a printer may not change: every character but XML's whitespace.
 const ink = (text) => text.replace(/[ \t\n\r\f]/g, '');
 
+// Text to XML and HTML, though JavaScript's trim() takes it for whitespace.
+const NBSP = String.fromCharCode(0xa0);
+
 // The queries most likely to land inside a viewer's own markup if matching ran
 // over it instead of over each piece of text.
 const MARKUP_QUERIES = ['span', 'class', 'mark', 'dc-fold', 'data-count', 'keys', 'items', 'dc-lines', 'style',
@@ -232,11 +235,51 @@ test('the markup printer', async (t) => {
         );
     });
 
-    await t.test('the input\'s own indentation gives way to the printer\'s', () => {
+    await t.test('the input\'s own indentation between elements gives way to the printer\'s', () => {
         assert.strictEqual(
             textOf(debugHighlightMarkup('<a>\n\t\t<b>x</b>\n      <c>  y  </c>\n</a>\n')),
-            '<a>\n  <b>x</b>\n  <c>y</c>\n</a>',
+            '<a>\n  <b>x</b>\n  <c>  y  </c>\n</a>',
         );
+    });
+
+    await t.test('an element that holds text is shown as it arrived', () => {
+        const cases = [
+            ['<value>  padded  </value>', '<value>  padded  </value>'],
+            [`<v>${NBSP}x${NBSP}</v>`, `<v>${NBSP}x${NBSP}</v>`],
+            ['<r><item>Why <em>W</em> are great</item></r>', '<r>\n  <item>Why <em>W</em> are great</item>\n</r>'],
+            ['<r>\n  <note>\n    one\n    two\n  </note>\n</r>', '<r>\n  <note>\n    one\n    two\n  </note>\n</r>'],
+            ['<r><e> </e><f></f><g>\n</g></r>', '<r>\n  <e> </e>\n  <f></f>\n  <g>\n</g>\n</r>'],
+            ['<r><d>\n  <![CDATA[ x ]]>\n</d></r>', '<r>\n  <d>\n  <![CDATA[ x ]]>\n</d>\n</r>'],
+            ['<r><p>a <!-- c --> b</p></r>', '<r>\n  <p>a <!-- c --> b</p>\n</r>'],
+        ];
+        for (const [source, expected] of cases) {
+            assert.strictEqual(textOf(debugHighlightMarkup(source)), expected, source);
+        }
+    });
+
+    await t.test('every element that holds text keeps its exact slice', () => {
+        const random = seeded(0x2545f491);
+        const pick = (list) => list[Math.floor(random() * list.length)];
+        const values = ['x', ' x', 'x ', '  two  words  ', '\n  x\n', '\t', '', 'a & b', '1 < 2'];
+        const slices = [];
+        const element = (depth) => {
+            const name = pick(['a', 'b', 'item', 'name']);
+            if (depth > 2 || random() < 0.4) {
+                const leaf = `<${name}>${pick(values).replace(/&/g, '&amp;').replace(/</g, '&lt;')}</${name}>`;
+                slices.push(leaf);
+                return leaf;
+            }
+            let children = '';
+            for (let n = 1 + Math.floor(random() * 3); n > 0; n--) children += pick(['', '\n', '\n    ', ' ']) + element(depth + 1);
+            return `<${name}>${children}${pick(['', '\n'])}</${name}>`;
+        };
+        for (let n = 0; n < 500; n++) {
+            slices.length = 0;
+            const source = element(0);
+            const out = textOf(debugHighlightMarkup(source));
+            for (const slice of slices) assert.ok(out.includes(slice), `${JSON.stringify(slice)} lost in ${JSON.stringify(out)}`);
+            assert.strictEqual(ink(out), ink(source));
+        }
     });
 
     await t.test('a tag, comment, CDATA section, or declaration is kept as it was sent', () => {
@@ -258,8 +301,12 @@ test('the markup printer', async (t) => {
         assert.ok(out.includes('<script>if (a<b && c>d) { document.write("</div>"); }</script>'), 'script text is not markup');
         assert.ok(out.includes('<style>p > a { color: red }</style>'), 'style text is not markup');
         assert.ok(out.includes('<pre>  keep\n    this   layout </pre>'), 'pre keeps its whitespace');
-        assert.ok(out.includes('\n      <li>\n        one\n      <li>\n        two\n    </ul>'), 'an li ends the open li');
-        assert.ok(out.includes('\n    <p>\n      first\n    <p>\n      second\n      <br>\n      <img'), 'a p ends the open p');
+        assert.ok(out.includes('\n    <ul>\n      <li>one\n      <li>two\n    </ul>'), 'an li ends the open li');
+        assert.ok(out.includes('\n    <p>first\n    <p>second<br><img src="x.png" alt="a > b"></p>'), 'a p ends the open p');
+        assert.ok(
+            out.includes('\n    <table>\n      <tr>\n        <td>1\n        <td>2\n      <tr>\n        <td>3\n    </table>'),
+            'a td ends the open td, and a tr the open tr',
+        );
         assert.ok(out.endsWith('\n  </body>\n</html>'));
     });
 

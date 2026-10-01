@@ -663,83 +663,117 @@ document.addEventListener('click', function(e) {
 
 // XML or HTML text, indented. As in the JSON viewer, whitespace is the only
 // thing added: every tag, comment, and run of text is the exact slice of the
-// input, and whitespace-only text between tags, the input's own layout, gives
-// way to the printer's. options.html applies HTML's rules: elements such as
-// <br> have no end tag, an open <li> or <p> ends at the next one, and the text
-// of <script>, <style>, <pre>, <textarea>, and <title> is not markup and sits
-// between its tags as it arrived. Returns a <pre class="dc-code dc-markup">.
+// input. An element that holds text, even in part, is shown as it arrived,
+// because its whitespace is part of the text. An element that holds only
+// elements and the like gets one line for each, and the whitespace between
+// them, the input's own layout, gives way to the printer's. options.html
+// applies HTML's rules: elements such as <br> have no end tag, an open <li> or
+// <p> ends at the next one, and the text of <script>, <style>, <pre>,
+// <textarea>, and <title> is not markup. Returns a
+// <pre class="dc-code dc-markup">.
 window.debugHighlightMarkup = function(src, options) {
     options = options || {};
     var html = !!options.html;
     var searchText = options.searchText || '';
     var indent = options.indent || 2;
-    src = String(src == null ? '' : src);
-    // XML's whitespace, which is also HTML's: a no-break space is text.
-    var LAYOUT = /^[ \t\n\r\f]+|[ \t\n\r\f]+$/g;
-    var tokens = debugScanMarkup(src, html).filter(function(t) {
-        return t.type !== 'text' || t.raw || /[^ \t\n\r\f]/.test(t.text);
-    });
+    var root = debugMarkupTree(debugScanMarkup(String(src == null ? '' : src), html), html);
     var out = [];
-    var stack = [];
-    for (var i = 0; i < tokens.length; i++) {
-        var tok = tokens[i];
-        if (tok.type === 'close') {
-            var at = stack.lastIndexOf(tok.name);
-            // An end tag with no open element of its name changes nothing.
-            if (at >= 0) stack.length = at;
-            line(tag(tok));
-        } else if (tok.type === 'open') {
-            if (html) endImplied(tok.name);
-            line(tag(tok));
-            if (tok.selfClosing || (html && DEBUG_HTML_VOID[tok.name])) continue;
-            var next = tokens[i + 1];
-            var after = tokens[i + 2];
-            if (next && next.raw) {
-                // Raw text sits between its tags exactly as it arrived.
-                out.push(text(next.text));
-                i++;
-                if (after && after.type === 'close' && after.name === tok.name) { out.push(tag(after)); i++; }
-            } else if (next && next.type === 'close' && next.name === tok.name) {
-                out.push(tag(next));
-                i++;
-            } else if (next && next.type === 'text' && after && after.type === 'close' && after.name === tok.name) {
-                // An element holding only text stays on one line.
-                out.push(text(next.text.replace(LAYOUT, '')), tag(after));
-                i += 2;
-            } else if (stack.length < DEBUG_MARKUP_MAX_DEPTH) {
-                stack.push(tok.name);
-            }
-        } else if (tok.type === 'text') {
-            line(text(tok.raw ? tok.text : tok.text.replace(LAYOUT, '')));
-        } else {
-            line('<span class="c">' + debugHighlightPlain(tok.text, searchText) + '</span>');
-        }
-    }
+    root.children.forEach(function(node) { print(node, 0); });
     return '<pre class="dc-code dc-markup">' + out.join('') + '</pre>';
 
-    function line(htmlText) {
-        if (out.length) out.push('\n' + new Array(stack.length * indent + 1).join(' '));
+    function print(node, depth) {
+        if (node.type === 'element' && holdsText(node)) {
+            line(depth, verbatim(node));
+        } else if (node.type === 'element') {
+            line(depth, highlight(node.open));
+            node.children.forEach(function(child) { print(child, depth + 1); });
+            if (node.close) line(depth, highlight(node.close));
+        } else if (node.type !== 'text' || node.cut) {
+            line(depth, highlight(node));
+        } else if (/[^ \t\n\r\f]/.test(node.text)) {
+            // Text outside every element, which belongs to none of them.
+            line(depth, highlight({ type: 'text', text: node.text.replace(/^[ \t\n\r\f]+|[ \t\n\r\f]+$/g, '') }));
+        }
+    }
+    // Text in XML's sense, which is also HTML's: a no-break space is text, and
+    // a CDATA section is. An element with nothing in it, or only whitespace,
+    // holds text too, so it is shown as it arrived.
+    function holdsText(element) {
+        var markup = false;
+        for (var i = 0; i < element.children.length; i++) {
+            var child = element.children[i];
+            if (child.type === 'text' && !child.cut) {
+                if (child.raw || /[^ \t\n\r\f]/.test(child.text)) return true;
+            } else if (child.type === 'other' && child.text.startsWith('<![CDATA[')) {
+                return true;
+            } else {
+                markup = true;
+            }
+        }
+        return !markup;
+    }
+    function verbatim(node) {
+        if (node.type !== 'element') return highlight(node);
+        return highlight(node.open) + node.children.map(verbatim).join('') + (node.close ? highlight(node.close) : '');
+    }
+    function line(depth, htmlText) {
+        if (out.length) out.push('\n' + new Array(depth * indent + 1).join(' '));
         out.push(htmlText);
     }
-    function endImplied(name) {
-        var ends = DEBUG_HTML_IMPLIED_END[name];
-        while (ends && stack.length && ends.indexOf(stack[stack.length - 1]) >= 0) stack.pop();
-    }
-    function tag(tok) {
+    function highlight(tok) {
+        if (tok.type === 'text') return debugHighlightPlain(tok.text, searchText);
+        if (tok.type === 'other') return '<span class="c">' + debugHighlightPlain(tok.text, searchText) + '</span>';
         return '<span class="g">' + tok.pieces.map(function(p) {
             var marked = debugHighlightPlain(p.text, searchText);
             return p.cls ? '<span class="' + p.cls + '">' + marked + '</span>' : marked;
         }).join('') + '</span>';
     }
-    function text(value) {
-        return debugHighlightPlain(value, searchText);
-    }
 };
 
 // Elements a body leaves open, such as an XML body's <br>s, nest deeper with
-// each one, and each line's indentation grows with them. Past this depth the
-// lines stop moving right, so the output stays linear in the input.
+// each one. Past this depth an element takes no children, so what follows it
+// stays at its depth: the lines stop moving right, and the output and the
+// printer's recursion stay bounded.
 var DEBUG_MARKUP_MAX_DEPTH = 32;
+
+// The elements of debugScanMarkup's tokens, as the printer needs them: an
+// element is { type: 'element', open, close, children }, and the children are
+// elements and tokens. An end tag closes the innermost open element of its
+// name, and the ones inside it; one with no open element of its name is a
+// child like any token.
+function debugMarkupTree(tokens, html) {
+    var root = { type: 'element', children: [] };
+    var stack = [root];
+    tokens.forEach(function(tok) {
+        var top = stack[stack.length - 1];
+        if (tok.type === 'open') {
+            if (html) {
+                var ends = DEBUG_HTML_IMPLIED_END[tok.name];
+                while (ends && stack.length > 1 && ends.indexOf(stack[stack.length - 1].open.name) >= 0) stack.pop();
+                top = stack[stack.length - 1];
+            }
+            if (tok.selfClosing || (html && DEBUG_HTML_VOID[tok.name])) {
+                top.children.push(tok);
+                return;
+            }
+            var element = { type: 'element', open: tok, close: null, children: [] };
+            top.children.push(element);
+            if (stack.length <= DEBUG_MARKUP_MAX_DEPTH) stack.push(element);
+        } else if (tok.type === 'close') {
+            var at = stack.length - 1;
+            while (at > 0 && stack[at].open.name !== tok.name) at--;
+            if (at > 0) {
+                stack[at].close = tok;
+                stack.length = at;
+            } else {
+                top.children.push(tok);
+            }
+        } else {
+            top.children.push(tok);
+        }
+    });
+    return root;
+}
 
 // Looked up by tag names from the body, so they have no prototype: a tag
 // named <constructor> must not find Object's.
@@ -763,8 +797,9 @@ var DEBUG_HTML_IMPLIED_END = debugTagTable({
 
 // Splits XML or HTML into tags, comments and other <! ?> constructs, and the
 // text between them, each the exact slice of the input. A '<' that starts none
-// of those is text. An unterminated tag, which a body cut at the capture cap
-// ends with, makes the rest of the input text, so the scan stays linear.
+// of those is text. A tag that never ends, as in a body cut at the capture
+// cap, makes the rest of the input one text token marked cut, so the scan
+// stays linear.
 function debugScanMarkup(src, html) {
     var tokens = [];
     var textStart = 0;
@@ -774,8 +809,11 @@ function debugScanMarkup(src, html) {
         if (lt < 0) break;
         var tok = construct(lt);
         if (tok === undefined) { i = lt + 1; continue; }
-        if (tok === null) break;
         if (lt > textStart) tokens.push({ type: 'text', text: src.slice(textStart, lt) });
+        if (tok === null) {
+            tokens.push({ type: 'text', text: src.slice(lt), cut: true });
+            return tokens;
+        }
         tokens.push(tok);
         i = textStart = tok.end;
         if (html && tok.type === 'open' && !tok.selfClosing && DEBUG_HTML_RAW_TEXT[tok.name]) {

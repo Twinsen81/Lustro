@@ -131,7 +131,8 @@ too. Semantic color is passed via the `--c` custom property where noted:
   - `.dc-markup` (`.g/.t/.a/.s/.c` spans: a tag, its name, an attribute name,
     an attribute value, a comment or declaration): `debugHighlightMarkup(text,
     { html })` indents XML, or HTML with `html: true`, and adds whitespace and
-    nothing else.
+    nothing else. An element that holds text is shown as it arrived; only the
+    elements that hold elements are indented.
   - `.dc-lines` (`.dc-lines__line` rows): `debugLineNumbered(text)` numbers the
     lines with CSS counters, which are never selected or copied.
   - `.dc-kv` (`.dc-kv__key`, `.dc-kv__value`, and `.dc-kv__raw` for a part that
