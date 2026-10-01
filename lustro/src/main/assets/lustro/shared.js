@@ -559,6 +559,399 @@ function highlightMatches(html, searchText) {
     }
 }
 
+// The body viewers below each take a captured body's text and return the HTML
+// of one element. They escape every character of the body, and only the
+// viewer's own spans are markup; options.searchText wraps matches in <mark>.
+
+// The raster types a browser draws in an <img>. The body route serves only
+// these inline, so they are the only bytes the console can preview.
+var DEBUG_PREVIEW_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+
+// Which viewer suits a body: 'image' for a previewable image kept as bytes,
+// 'binary' for any other body kept as bytes, then by the media type 'json',
+// 'form', 'html', 'xml', or 'text'. A body of another type, or of none, that
+// starts like a JSON object or array is 'json'; a caller still shows it as
+// text when it does not scan as JSON.
+window.debugBodyKind = function(contentType, text, binary) {
+    var essence = String(contentType == null ? '' : contentType).split(';')[0].trim().toLowerCase();
+    if (binary) return DEBUG_PREVIEW_IMAGE_TYPES.indexOf(essence) >= 0 ? 'image' : 'binary';
+    var subtype = essence.slice(essence.indexOf('/') + 1);
+    if (subtype === 'json' || /\+json$/.test(subtype)) return 'json';
+    if (essence === 'application/x-www-form-urlencoded') return 'form';
+    if (essence === 'text/html') return 'html';
+    if (subtype === 'xml' || /\+xml$/.test(subtype)) return 'xml';
+    return /^\s*[{[]/.test(String(text == null ? '' : text)) ? 'json' : 'text';
+};
+
+// JSON text as a tree that folds by object and array. Expanded, it is the text
+// debugSyntaxHighlightJson shows, built from the same debugScanJsonSource
+// pieces. Each object or array with members has a .dc-fold, its first line up
+// to the bracket, followed by a .dc-fold__body with the rest up to the closing
+// bracket; folded, the first line counts what the body hides. Returns a
+// <pre class="dc-code dc-json dc-tree">, or null when the text is not JSON.
+// shared.js handles the clicks that fold and unfold it.
+window.debugJsonTree = function(src, options) {
+    options = options || {};
+    var pieces = debugScanJsonSource(src, options.indent || 2);
+    if (!pieces) return null;
+    var searchText = options.searchText || '';
+    var out = [];
+    // One frame per open object or array: where its .dc-fold tag goes in out,
+    // and how many members it has, which is only known when it closes.
+    var stack = [];
+    for (var i = 0; i < pieces.length; i++) {
+        var piece = pieces[i];
+        var top = stack[stack.length - 1];
+        if (piece.cls === 'k') {
+            top.count++;
+            if (opens(pieces[i + 2])) {
+                // A member whose value is an object or array folds from its key.
+                openFold(pieces[i + 2]);
+                out.push(token(piece), plain(pieces[i + 1].text), token(pieces[i + 2]), '</span><span class="dc-fold__body">');
+                i += 2;
+            } else {
+                out.push(token(piece));
+            }
+        } else if (opens(piece)) {
+            if (top) top.count++;
+            openFold(piece);
+            out.push(token(piece), '</span><span class="dc-fold__body">');
+        } else if (piece.cls === 'p' && (piece.text === '}' || piece.text === ']')) {
+            var frame = stack.pop();
+            var noun = frame.object ? 'key' : 'item';
+            out[frame.head] = '<span class="dc-fold" data-count="' + frame.count + ' ' + noun + (frame.count === 1 ? '' : 's') + '">';
+            out.push('</span>', token(piece));
+        } else {
+            // In an object a value was counted at its key; in an array, here.
+            if (piece.cls && top && !top.object) top.count++;
+            out.push(piece.cls ? token(piece) : plain(piece.text));
+        }
+    }
+    return '<pre class="dc-code dc-json dc-tree">' + out.join('') + '</pre>';
+
+    function opens(p) {
+        return !!p && p.cls === 'p' && (p.text === '{' || p.text === '[');
+    }
+    function openFold(bracket) {
+        stack.push({ head: out.length, count: 0, object: bracket.text === '{' });
+        out.push('');
+    }
+    function token(p) {
+        return '<span class="' + p.cls + '">' + debugHighlightPlain(p.text, searchText) + '</span>';
+    }
+    function plain(text) {
+        return debugHighlightPlain(text, '');
+    }
+};
+
+// Folding for every .dc-tree on the page. A click that ends a text selection
+// leaves the tree alone, so a key can still be selected and copied; Alt-click
+// also folds or unfolds everything inside the node.
+document.addEventListener('click', function(e) {
+    var fold = e.target && e.target.closest ? e.target.closest('.dc-tree .dc-fold') : null;
+    if (!fold) return;
+    var selection = document.getSelection();
+    if (selection && !selection.isCollapsed) return;
+    var close = !fold.classList.contains('dc-fold--closed');
+    if (e.altKey && fold.nextElementSibling) {
+        fold.nextElementSibling.querySelectorAll('.dc-fold').forEach(function(inner) {
+            inner.classList.toggle('dc-fold--closed', close);
+        });
+    }
+    fold.classList.toggle('dc-fold--closed', close);
+});
+
+// XML or HTML text, indented. As in the JSON viewer, whitespace is the only
+// thing added: every tag, comment, and run of text is the exact slice of the
+// input, and whitespace-only text between tags, the input's own layout, gives
+// way to the printer's. options.html applies HTML's rules: elements such as
+// <br> have no end tag, an open <li> or <p> ends at the next one, and the text
+// of <script>, <style>, <pre>, <textarea>, and <title> is not markup and sits
+// between its tags as it arrived. Returns a <pre class="dc-code dc-markup">.
+window.debugHighlightMarkup = function(src, options) {
+    options = options || {};
+    var html = !!options.html;
+    var searchText = options.searchText || '';
+    var indent = options.indent || 2;
+    src = String(src == null ? '' : src);
+    // XML's whitespace, which is also HTML's: a no-break space is text.
+    var LAYOUT = /^[ \t\n\r\f]+|[ \t\n\r\f]+$/g;
+    var tokens = debugScanMarkup(src, html).filter(function(t) {
+        return t.type !== 'text' || t.raw || /[^ \t\n\r\f]/.test(t.text);
+    });
+    var out = [];
+    var stack = [];
+    for (var i = 0; i < tokens.length; i++) {
+        var tok = tokens[i];
+        if (tok.type === 'close') {
+            var at = stack.lastIndexOf(tok.name);
+            // An end tag with no open element of its name changes nothing.
+            if (at >= 0) stack.length = at;
+            line(tag(tok));
+        } else if (tok.type === 'open') {
+            if (html) endImplied(tok.name);
+            line(tag(tok));
+            if (tok.selfClosing || (html && DEBUG_HTML_VOID[tok.name])) continue;
+            var next = tokens[i + 1];
+            var after = tokens[i + 2];
+            if (next && next.raw) {
+                // Raw text sits between its tags exactly as it arrived.
+                out.push(text(next.text));
+                i++;
+                if (after && after.type === 'close' && after.name === tok.name) { out.push(tag(after)); i++; }
+            } else if (next && next.type === 'close' && next.name === tok.name) {
+                out.push(tag(next));
+                i++;
+            } else if (next && next.type === 'text' && after && after.type === 'close' && after.name === tok.name) {
+                // An element holding only text stays on one line.
+                out.push(text(next.text.replace(LAYOUT, '')), tag(after));
+                i += 2;
+            } else if (stack.length < DEBUG_MARKUP_MAX_DEPTH) {
+                stack.push(tok.name);
+            }
+        } else if (tok.type === 'text') {
+            line(text(tok.raw ? tok.text : tok.text.replace(LAYOUT, '')));
+        } else {
+            line('<span class="c">' + debugHighlightPlain(tok.text, searchText) + '</span>');
+        }
+    }
+    return '<pre class="dc-code dc-markup">' + out.join('') + '</pre>';
+
+    function line(htmlText) {
+        if (out.length) out.push('\n' + new Array(stack.length * indent + 1).join(' '));
+        out.push(htmlText);
+    }
+    function endImplied(name) {
+        var ends = DEBUG_HTML_IMPLIED_END[name];
+        while (ends && stack.length && ends.indexOf(stack[stack.length - 1]) >= 0) stack.pop();
+    }
+    function tag(tok) {
+        return '<span class="g">' + tok.pieces.map(function(p) {
+            var marked = debugHighlightPlain(p.text, searchText);
+            return p.cls ? '<span class="' + p.cls + '">' + marked + '</span>' : marked;
+        }).join('') + '</span>';
+    }
+    function text(value) {
+        return debugHighlightPlain(value, searchText);
+    }
+};
+
+// Elements a body leaves open, such as an XML body's <br>s, nest deeper with
+// each one, and each line's indentation grows with them. Past this depth the
+// lines stop moving right, so the output stays linear in the input.
+var DEBUG_MARKUP_MAX_DEPTH = 32;
+
+// Looked up by tag names from the body, so they have no prototype: a tag
+// named <constructor> must not find Object's.
+function debugTagTable(entries) {
+    return Object.assign(Object.create(null), entries);
+}
+var DEBUG_HTML_VOID = debugTagTable({
+    area: 1, base: 1, br: 1, col: 1, embed: 1, hr: 1, img: 1, input: 1, link: 1, meta: 1,
+    param: 1, source: 1, track: 1, wbr: 1, basefont: 1, bgsound: 1, frame: 1, keygen: 1,
+});
+// The elements whose text is not markup, or whose whitespace is part of the page.
+var DEBUG_HTML_RAW_TEXT = debugTagTable({ script: 1, style: 1, textarea: 1, title: 1, pre: 1, xmp: 1, listing: 1 });
+// For an opening tag, the open elements it ends: HTML leaves out these end tags.
+var DEBUG_HTML_IMPLIED_END = debugTagTable({
+    li: ['li'], p: ['p'], dt: ['dt', 'dd'], dd: ['dt', 'dd'], option: ['option'],
+    td: ['td', 'th'], th: ['td', 'th'], tr: ['td', 'th', 'tr'],
+    thead: ['td', 'th', 'tr', 'thead', 'tbody', 'tfoot'],
+    tbody: ['td', 'th', 'tr', 'thead', 'tbody', 'tfoot'],
+    tfoot: ['td', 'th', 'tr', 'thead', 'tbody', 'tfoot'],
+});
+
+// Splits XML or HTML into tags, comments and other <! ?> constructs, and the
+// text between them, each the exact slice of the input. A '<' that starts none
+// of those is text. An unterminated tag, which a body cut at the capture cap
+// ends with, makes the rest of the input text, so the scan stays linear.
+function debugScanMarkup(src, html) {
+    var tokens = [];
+    var textStart = 0;
+    var i = 0;
+    while (i < src.length) {
+        var lt = src.indexOf('<', i);
+        if (lt < 0) break;
+        var tok = construct(lt);
+        if (tok === undefined) { i = lt + 1; continue; }
+        if (tok === null) break;
+        if (lt > textStart) tokens.push({ type: 'text', text: src.slice(textStart, lt) });
+        tokens.push(tok);
+        i = textStart = tok.end;
+        if (html && tok.type === 'open' && !tok.selfClosing && DEBUG_HTML_RAW_TEXT[tok.name]) {
+            var close = rawTextEnd(tok.end, tok.name);
+            if (close > tok.end) tokens.push({ type: 'text', text: src.slice(tok.end, close), raw: true });
+            i = textStart = close;
+        }
+    }
+    if (textStart < src.length) tokens.push({ type: 'text', text: src.slice(textStart) });
+    return tokens;
+
+    // The construct at lt; undefined when the '<' is text, null when it starts
+    // a tag that never ends.
+    function construct(lt) {
+        if (src.startsWith('<!--', lt)) return other(lt, src.indexOf('-->', lt + 4), 3);
+        if (src.startsWith('<![CDATA[', lt)) return other(lt, src.indexOf(']]>', lt + 9), 3);
+        if (src.startsWith('<?', lt)) {
+            var pi = src.indexOf('?>', lt + 2);
+            return pi >= 0 ? other(lt, pi, 2) : other(lt, src.indexOf('>', lt + 2), 1);
+        }
+        if (src.startsWith('<!', lt)) return other(lt, src.indexOf('>', lt + 2), 1);
+        var nameAt = src.charAt(lt + 1) === '/' ? lt + 2 : lt + 1;
+        if (!startsName(src.charAt(nameAt))) return undefined;
+        return scanTag(lt);
+    }
+
+    function other(lt, end, endLength) {
+        var stop = end < 0 ? src.length : end + endLength;
+        return { type: 'other', text: src.slice(lt, stop), end: stop };
+    }
+
+    function startsName(c) {
+        if (!c) return false;
+        if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) return true;
+        return !html && (c === '_' || c === ':' || c.charCodeAt(0) > 127);
+    }
+
+    function isSpace(c) {
+        return c === ' ' || c === '\n' || c === '\t' || c === '\r' || c === '\f';
+    }
+
+    // A tag's pieces partition its text: '<' or '</', the name, then attribute
+    // names, '=', values and the whitespace between them, then '>' or '/>'.
+    function scanTag(start) {
+        var pieces = [];
+        var i = start + 1;
+        var closing = src.charAt(i) === '/';
+        if (closing) i++;
+        pieces.push({ cls: null, text: src.slice(start, i) });
+        var from = i;
+        while (i < src.length && !isSpace(src.charAt(i)) && src.charAt(i) !== '/' && src.charAt(i) !== '>') i++;
+        var name = src.slice(from, i);
+        pieces.push({ cls: 't', text: name });
+        for (;;) {
+            from = i;
+            while (i < src.length && isSpace(src.charAt(i))) i++;
+            if (i > from) pieces.push({ cls: null, text: src.slice(from, i) });
+            if (i >= src.length) return null;
+            var c = src.charAt(i);
+            if (c === '>' || (c === '/' && src.charAt(i + 1) === '>')) {
+                var selfClosing = c === '/';
+                var end = i + (selfClosing ? 2 : 1);
+                pieces.push({ cls: null, text: src.slice(i, end) });
+                return {
+                    type: closing ? 'close' : 'open',
+                    name: html ? name.toLowerCase() : name,
+                    selfClosing: selfClosing,
+                    pieces: pieces,
+                    end: end,
+                };
+            }
+            if (c === '/') {
+                pieces.push({ cls: null, text: '/' });
+                i++;
+                continue;
+            }
+            from = i;
+            while (i < src.length && !isSpace(src.charAt(i)) && '/>='.indexOf(src.charAt(i)) < 0) i++;
+            if (i > from) pieces.push({ cls: 'a', text: src.slice(from, i) });
+            var beforeEquals = i;
+            while (i < src.length && isSpace(src.charAt(i))) i++;
+            if (src.charAt(i) !== '=') {
+                i = beforeEquals;
+                continue;
+            }
+            if (i > beforeEquals) pieces.push({ cls: null, text: src.slice(beforeEquals, i) });
+            pieces.push({ cls: null, text: '=' });
+            from = ++i;
+            while (i < src.length && isSpace(src.charAt(i))) i++;
+            if (i > from) pieces.push({ cls: null, text: src.slice(from, i) });
+            if (i >= src.length) return null;
+            var quote = src.charAt(i);
+            from = i;
+            if (quote === '"' || quote === "'") {
+                var closeQuote = src.indexOf(quote, i + 1);
+                if (closeQuote < 0) return null;
+                i = closeQuote + 1;
+            } else {
+                while (i < src.length && !isSpace(src.charAt(i)) && src.charAt(i) !== '>') i++;
+            }
+            pieces.push({ cls: 's', text: src.slice(from, i) });
+        }
+    }
+
+    // Where the raw text of an element ends: at its end tag, in any case, or at
+    // the end of the input.
+    function rawTextEnd(from, name) {
+        var end = new RegExp('</' + name + '(?=[\\s/>])', 'ig');
+        end.lastIndex = from;
+        var match = end.exec(src);
+        return match ? match.index : src.length;
+    }
+}
+window.debugScanMarkup = debugScanMarkup;
+
+// Text with a number before each line. The numbers are CSS counters, so they
+// cost nothing and are never selected or copied with the text. A final line
+// break ends the last line rather than starting an empty one. Returns a
+// <pre class="dc-code dc-lines">.
+window.debugLineNumbered = function(text, options) {
+    var searchText = (options && options.searchText) || '';
+    var lines = String(text == null ? '' : text).split(/\r\n|\r|\n/);
+    if (lines.length > 1 && lines[lines.length - 1] === '') lines.pop();
+    return '<pre class="dc-code dc-lines" style="--dc-lines-digits: ' + String(lines.length).length + '">'
+        + lines.map(function(lineText) {
+            return '<span class="dc-lines__line">' + debugHighlightPlain(lineText, searchText) + '</span>';
+        }).join('')
+        + '</pre>';
+};
+
+// An application/x-www-form-urlencoded body as a table of its fields, in the
+// order they were sent, names and values decoded. A part that is not valid
+// percent-encoding is shown as it was sent. Returns a <table class="dc-kv">.
+window.debugFormTable = function(text, options) {
+    var searchText = (options && options.searchText) || '';
+    var rows = String(text == null ? '' : text).split('&').filter(Boolean).map(function(pair) {
+        var eq = pair.indexOf('=');
+        var name = eq < 0 ? pair : pair.slice(0, eq);
+        var value = eq < 0 ? '' : pair.slice(eq + 1);
+        return '<tr><th class="dc-kv__key">' + cell(name) + '</th><td class="dc-kv__value">' + cell(value) + '</td></tr>';
+    });
+    return '<table class="dc-kv">' + rows.join('') + '</table>';
+
+    function cell(part) {
+        try {
+            return debugHighlightPlain(decodeURIComponent(part.replace(/\+/g, ' ')), searchText);
+        } catch(e) {
+            return '<span class="dc-kv__raw" title="Not valid percent-encoding, shown as sent">'
+                + debugHighlightPlain(part, searchText) + '</span>';
+        }
+    }
+};
+
+// Bytes as hexdump -C prints them: the offset, sixteen bytes in hex, and the
+// same bytes as ASCII with a dot for each one that is not printable. Returns
+// text, for textContent.
+window.debugHexDump = function(bytes) {
+    var lines = [];
+    for (var offset = 0; offset < bytes.length; offset += 16) {
+        var hex = '';
+        var ascii = '';
+        for (var j = 0; j < 16; j++) {
+            if (j === 8) hex += ' ';
+            if (offset + j < bytes.length) {
+                var b = bytes[offset + j];
+                hex += (b < 16 ? '0' : '') + b.toString(16) + ' ';
+                ascii += b >= 0x20 && b < 0x7f ? String.fromCharCode(b) : '.';
+            } else {
+                hex += '   ';
+            }
+        }
+        lines.push(('0000000' + offset.toString(16)).slice(-8) + '  ' + hex + ' |' + ascii + '|');
+    }
+    return lines.join('\n');
+};
+
 // Controls a .dc-modal-scrim kept in the tab markup with the hidden attribute.
 window.debugModal = function(modalId) {
     var el = document.getElementById(modalId);

@@ -13,22 +13,10 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const { loadSharedJs } = require('./harness.js');
+const { PAYLOADS } = require('./payloads.js');
 
 const shared = loadSharedJs();
 const { debugEscapeHtml, debugHighlightPlain, debugSyntaxHighlightJson } = shared;
-
-const PAYLOADS = [
-    '<img src=x onerror=alert(1)>',
-    '<script>alert(1)</script>',
-    '</span><script>alert(1)</script>',
-    '</mark><img src=x onerror=1><mark>',
-    '"><img src=x onerror=1>',
-    "'><img src=x onerror=1>",
-    '<svg/onload=alert(1)>',
-    '&lt;script&gt;',
-    '&amp;lt;script&amp;gt;',
-    '<!--<script>-->',
-];
 
 // Every tag the two highlighters are allowed to emit. Anything else in the
 // output came from the body or the query, which would mean escaping failed.
