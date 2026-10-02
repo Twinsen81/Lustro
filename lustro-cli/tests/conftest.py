@@ -16,6 +16,10 @@ GOLDEN_SCHEMA_FILES = {
     "cursor-reset.json": ("schema", "cursor-envelope.schema.json"),
     "cursor-delta.json": ("schema", "cursor-envelope.schema.json"),
     "cursor-unchanged.json": ("schema", "cursor-envelope.schema.json"),
+    "websockets-reset.json": ("schema", "cursor-envelope.schema.json"),
+    "stream-reset.json": ("schema", "stream-envelope.schema.json"),
+    "stream-delta.json": ("schema", "stream-envelope.schema.json"),
+    "stream-unchanged.json": ("schema", "stream-envelope.schema.json"),
 }
 
 # Golden fixtures validated against an OpenAPI component schema.
@@ -29,6 +33,12 @@ GOLDEN_OPENAPI_COMPONENTS = {
     "rules-list.json": None,  # validated against the inline listMockRules 200 schema
     "error-envelope.json": "ErrorEnvelope",
     "export-har.json": "HarDocument",
+    "export-har-websocket.json": "HarDocument",
+    "websockets-reset.json": "WebSocketCursorEnvelope",
+    "websocket.json": "WebSocketConnection",
+    "stream-reset.json": "WebSocketEventStreamEnvelope",
+    "stream-delta.json": "WebSocketEventStreamEnvelope",
+    "stream-unchanged.json": "WebSocketEventStreamEnvelope",
 }
 
 

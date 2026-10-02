@@ -10,8 +10,8 @@
 Lustro embeds a small web server in your app's debug builds and serves its tools as tabs you
 open in a desktop browser — so you inspect on a full screen instead of a cramped on-device
 overlay. The built-in network inspector captures traffic and lets you mock responses, throttle
-connections, and replay requests. Every tab is also a JSON API, so AI agents and scripts can
-drive Lustro directly rather than scraping HTML.
+connections, and replay requests, and it shows the messages of WebSocket connections. Every tab is
+also a JSON API, so AI agents and scripts can drive Lustro directly rather than scraping HTML.
 
 It's built as an extensible tab platform: the network inspector ships in the box, and you add
 your own tabs against a stable plugin contract.
@@ -94,6 +94,9 @@ val httpClient = OkHttpClient.Builder()
 lustro.start()
 ```
 
+If the app uses WebSockets, create them with `lustro.webSocketFactory(httpClient)` to see their
+messages too: see [WebSocket messages](#websocket-messages).
+
 Add every tab before `build()`. `start()` freezes the tab registry, and `addTab()` after it
 throws `IllegalStateException`.
 `start()` returns a `LustroStatus` (`ENABLED` once armed, `DISABLED` if it cannot start) and is
@@ -117,7 +120,8 @@ Three things keep that snippet out of production, in order of how much they depe
 
 > **The release swap makes the API inert.** With `releaseImplementation(libs.lustro.noop)`, the
 > `Lustro.builder(...)` / `.addTab(...)` / `start()` calls in the snippet compile unchanged and
-> do nothing: no socket, no capture, and `networkInterceptor()` forwards every request.
+> do nothing: no socket, no capture, `networkInterceptor()` forwards every request, and
+> `webSocketFactory(client)` returns `client` itself.
 
 > **The runtime refuses to start in a non-debuggable build.** If the real `:lustro` runtime ever
 > reaches a build without `android:debuggable`, `start()` logs a WARN and returns
@@ -223,6 +227,84 @@ and the first failure is logged. A marker header still goes out with the request
 
 To label traffic instead of leaving it out, pass a `NetworkClassifier` as `classifier`. Its labels
 show as category filters in the Network tab and in each transaction's `categories`.
+
+## WebSocket messages
+
+The interceptor shows only the handshake of a WebSocket, as a request with the status `101`,
+because OkHttp sends nothing else through interceptors. To see the messages, create your sockets
+with the factory that `lustro.webSocketFactory(...)` returns:
+
+```kotlin
+val sockets: WebSocket.Factory = lustro.webSocketFactory(httpClient)
+
+val socket = sockets.newWebSocket(request, listener)
+```
+
+`OkHttpClient` is a `WebSocket.Factory`, and the returned factory wraps the one you pass. The
+Network tab's **WebSockets** view then lists each connection with its state, its close code or the
+exception it failed with, and a log of its events in order: each message, text or binary, sent or
+received, and the open, the close frames, `cancel()`, and the failure. A click on a message shows its
+payload in the viewers that bodies use, or as a hex dump for a binary one. When `httpClient` also
+carries `lustro.networkInterceptor()`, the connection and its handshake request link to each other.
+In release, the no-op artifact returns `httpClient` itself.
+
+**A socket from the factory behaves as one from the client.** Your listener gets the same calls,
+with the socket that `newWebSocket` returned. `send`, `close`, and `queueSize` return what OkHttp
+returns, and what your listener throws reaches OkHttp. Capture adds a small, constant cost to each
+message on the thread that sends or receives it: it cuts, redacts, and stores the payload on a
+thread of its own. When that thread is behind, capture drops messages and counts them, and the view
+says how many. It never makes the socket wait.
+
+**A sent message is not a delivered message.** `send()` returns `true` when OkHttp put the message
+in its queue. The log shows that return value, and it marks a message that `send()` refused as not
+sent.
+
+**Give the factory to a library that takes one.** These accept a `WebSocket.Factory`:
+
+| Library | Where the factory goes |
+| --- | --- |
+| Ktor client, OkHttp engine | `HttpClient(OkHttp) { engine { preconfigured = httpClient; webSocketFactory = sockets } }` |
+| Apollo Kotlin 3 and 4 | `ApolloClient.Builder().webSocketEngine(DefaultWebSocketEngine(sockets))` |
+| Apollo Kotlin 5 | `WebSocketNetworkTransport.Builder().webSocketEngine(WebSocketEngine(sockets))`, passed to `subscriptionNetworkTransport(...)` after `okHttpClient(...)` |
+| socket.io-client-java | `IO.Options().apply { webSocketFactory = sockets; callFactory = httpClient }` |
+| Scarlet 0.1.x | `OkHttpWebSocket.Factory(establisher)`, where your `OkHttpWebSocket.ConnectionEstablisher` calls `sockets.newWebSocket(request, listener)` |
+
+A library that takes only an `OkHttpClient`, or that builds its own, can't use the factory. Lustro
+then shows only the handshake, when that client carries the interceptor.
+
+**The hooks you already have apply to sockets.** The [capture filter](#okhttp-capture-setup) is
+asked once for each socket, when the app creates it, with the request you passed to
+`newWebSocket`; a socket it skips is not listed, and neither is its handshake. The classifier
+labels a connection by its URL. **Pause** stops the recording of messages, and **Clear** removes
+the connections. A socket lives for a long time, so one that is still open is listed again with
+its next message, after a clear and after a pause. A close or a failure of a listed connection is
+recorded while capture is paused, so a connection never shows as open after it closed.
+
+**Redaction.** The URL and the handshake headers go through the `Redactor`, as a request's do. The
+text of a message goes through `redactBody`, with no content type, so the default redactor masks a
+`token` or a `password` field in a JSON message. Then `Redactor.redactWebSocketText` gets the
+result, and can mask more or keep the payload out of the store:
+
+```kotlin
+object MyRedactor : Redactor by DefaultRedactor {
+    override fun redactWebSocketText(text: String, message: WebSocketMessageInfo): String? =
+        if (message.isOutgoing && text.startsWith("AUTH ")) null else text // null stores only the size
+}
+```
+
+A binary message is stored as it arrived, because a redactor that matches on names can't read it.
+Override `redactWebSocketBinary` to change its bytes, or return `null` to store only its size.
+
+**Limits.** A long-lived socket must not fill the heap. A payload is cut at
+`DebugConfig.maxBodyCaptureBytes` (256 KB), and the log keeps its whole size. A connection keeps its
+last `maxWebSocketEvents` events (1000), Lustro keeps `maxCaptureWebSockets` connections (100), and
+all stored payloads together stay under `webSocketCaptureBudgetBytes` (16 MB): past it, the
+connection that holds the most loses its oldest events. The view says how many events a log no
+longer has.
+
+**Not covered.** Lustro records complete messages, as OkHttp's public API gives them. It does not
+show frames, fragmentation, compression, or the ping and pong frames that OkHttp sends on its own,
+and it records only OkHttp sockets.
 
 ## Send Request
 
@@ -338,7 +420,8 @@ Lustro deliberately surfaces app internals, so its defaults are conservative. Se
   name it recognizes: see [SECURITY.md](SECURITY.md#threat-model) for the known gaps, and pass
   your own `Redactor` when your traffic needs more, or a capture filter to keep a request out of
   capture entirely. A JSON body with no sensitive field in it is stored exactly as it arrived, so
-  what you inspect and copy is what was on the wire.
+  what you inspect and copy is what was on the wire. The text of a WebSocket message is redacted as
+  a body is; a binary message is stored as it arrived (see [WebSocket messages](#websocket-messages)).
 - **Nothing persisted to disk except mock rules.** Captured traffic lives only in a bounded
   in-memory ring buffer and is lost when the process dies; the sole persisted state is your mock
   rules, and only when you give the tab a `MockRuleStorage` (see [Mock rules](#mock-rules)). The
@@ -431,7 +514,9 @@ Lustro.builder(application)
   `DebugResponse.cursorEnvelope(currentSequence, clientCursor) { /* items */ }` implements the
   cursor envelope's `reset`/`unchanged`/`delta` contract — with `CursorCodec` for the opaque
   tokens — so tabs don't hand-roll it. Advance the sequence only when the list changes, since
-  each advance re-sends the whole list; other observable values go in its `state`.
+  each advance re-sends the whole list; other observable values go in its `state`. For a list
+  that only grows at its end, such as a log, `DebugResponse.streamEnvelope(...)` implements the
+  stream envelope: a poll gets only the entries after its cursor.
 - **Change state only on `POST`, `PUT`, `PATCH`, or `DELETE`, never on `GET` or `HEAD`.** The
   runtime rejects browser requests from other origins on every method, but for a `GET` or `HEAD`
   it can go only by `Sec-Fetch-Site`, which browsers send only to loopback and HTTPS addresses,
@@ -461,7 +546,9 @@ Every tab is a JSON API under `/api/v1/`. Framework routes:
 Shared shapes: a uniform **error envelope** `{ error, message, code?, field?, hint? }`, a
 **list pagination** envelope `{ items, nextCursor }`, and a live-polling **cursor envelope**
 `{ cursor, status, items? }` where `status` is `delta` / `unchanged` / `reset` (unknown values →
-`reset`) and the cursor advances when the route's list changes. The schemas and the SemVer
+`reset`) and the cursor advances when the route's list changes. A **stream envelope**
+`{ cursor, status, items?, dropped? }` has the same statuses for a list that only grows at its
+end: its `delta` carries only the entries after the cursor. The schemas and the SemVer
 policy live in [`wire-protocol/v1/`](wire-protocol/v1/); the Network tab's contract is
 [`lustro/src/main/assets/lustro/network.openapi.json`](lustro/src/main/assets/lustro/network.openapi.json).
 
@@ -481,6 +568,9 @@ For driving Lustro from agents, scripts, or the `lustro` CLI, see
   actually makes the calls, **after** any URL/header/body-mutating interceptors. Check that
   capture isn't **paused** in the Network tab. For `HttpURLConnection` traffic, you must opt in
   with `capturePlatformHttp = true`.
+- **A WebSocket shows only its handshake.** The interceptor can't see messages. Create the socket
+  with `lustro.webSocketFactory(httpClient)`, or give that factory to the library that creates it:
+  see [WebSocket messages](#websocket-messages).
 
 ## Modules
 

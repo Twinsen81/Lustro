@@ -1,0 +1,145 @@
+{
+  "log": {
+    "version": "1.2",
+    "creator": {
+      "name": "Lustro",
+      "version": "0.1.0"
+    },
+    "entries": [
+      {
+        "startedDateTime": "2026-09-28T14:22:17.100Z",
+        "time": 142,
+        "request": {
+          "method": "GET",
+          "url": "https://chat.example.com/socket?token=%5BREDACTED%5D",
+          "httpVersion": "http/1.1",
+          "cookies": [],
+          "headers": [
+            {
+              "name": "Upgrade",
+              "value": "websocket"
+            },
+            {
+              "name": "Connection",
+              "value": "Upgrade"
+            },
+            {
+              "name": "Sec-WebSocket-Key",
+              "value": "[REDACTED]"
+            },
+            {
+              "name": "Sec-WebSocket-Version",
+              "value": "13"
+            },
+            {
+              "name": "Sec-WebSocket-Extensions",
+              "value": "permessage-deflate"
+            }
+          ],
+          "queryString": [
+            {
+              "name": "token",
+              "value": "[REDACTED]"
+            }
+          ],
+          "headersSize": -1,
+          "bodySize": -1
+        },
+        "response": {
+          "status": 101,
+          "statusText": "",
+          "httpVersion": "http/1.1",
+          "cookies": [],
+          "headers": [
+            {
+              "name": "Upgrade",
+              "value": "websocket"
+            },
+            {
+              "name": "Connection",
+              "value": "Upgrade"
+            },
+            {
+              "name": "Sec-WebSocket-Accept",
+              "value": "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
+            }
+          ],
+          "content": {
+            "size": 0,
+            "mimeType": "x-unknown"
+          },
+          "redirectURL": "",
+          "headersSize": -1,
+          "bodySize": 0
+        },
+        "cache": {},
+        "timings": {
+          "blocked": -1,
+          "dns": -1,
+          "connect": -1,
+          "ssl": -1,
+          "send": 0,
+          "wait": 142,
+          "receive": 0
+        },
+        "_resourceType": "websocket",
+        "_webSocketMessages": [
+          {
+            "type": "send",
+            "time": 1790605337.250,
+            "opcode": 1,
+            "data": "{\"type\":\"auth\",\"token\":\"[REDACTED]\"}",
+            "_payloadBytes": 36
+          },
+          {
+            "type": "receive",
+            "time": 1790605337.391,
+            "opcode": 1,
+            "data": "{\"type\":\"ready\"}",
+            "_payloadBytes": 16
+          },
+          {
+            "type": "send",
+            "time": 1790605338.004,
+            "opcode": 2,
+            "data": "3q2+7w==",
+            "_payloadBytes": 4
+          },
+          {
+            "type": "receive",
+            "time": 1790605339.112,
+            "opcode": 1,
+            "data": "{\"type\":\"snapshot\",\"items\":[{\"id\":1,\"na",
+            "_payloadBytes": 300000,
+            "_truncated": true
+          }
+        ],
+        "_lustro": {
+          "id": "tx_a81c3f09",
+          "isMocked": false,
+          "categories": [
+            "chat"
+          ],
+          "requestBodyTruncated": false,
+          "responseBodyTruncated": false,
+          "responseComplete": true,
+          "error": null,
+          "webSocket": {
+            "id": "ws_3d2a7f10",
+            "url": "wss://chat.example.com/socket?token=%5BREDACTED%5D",
+            "state": "closed",
+            "closeCode": 1000,
+            "closeReason": "bye",
+            "closedBy": "app",
+            "canceled": false,
+            "error": null,
+            "sentCount": 2,
+            "receivedCount": 2,
+            "evictedEvents": 0,
+            "droppedEvents": 0
+          }
+        }
+      }
+    ]
+  }
+}

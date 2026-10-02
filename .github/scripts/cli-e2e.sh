@@ -92,8 +92,11 @@ lustro --json schema network > "$OUT/schema-network.json"
 check schema-network < "$OUT/schema-network.json"
 echo "matches the CLI's copy ($(wc -c < "$OUT/schema-network.json") bytes)"
 
-# The rule serves the sample's "GET /get" request, so the step needs no internet.
+# The first rule serves the sample's "GET /get" request, and the second one
+# answers the handshake of its "upgrade refused" WebSocket, so the steps need no
+# internet.
 pattern="https://httpbingo.org/get"
+ws_pattern="https://httpbingo.org/status/403"
 cat > "$RULES" <<'EOF'
 [
   {
@@ -104,6 +107,14 @@ cat > "$RULES" <<'EOF'
     "statusCode": 200,
     "responseHeaders": {"Content-Type": "application/json"},
     "responseBody": "{\"mocked\":true}"
+  },
+  {
+    "id": "cli-e2e-websocket",
+    "name": "CLI end to end, WebSocket handshake",
+    "urlPattern": "https://httpbingo.org/status/403",
+    "method": "GET",
+    "statusCode": 403,
+    "responseBody": ""
   }
 ]
 EOF
@@ -164,5 +175,44 @@ if [ "$entries" != "1" ]; then
 fi
 lustro net export --har "$OUT/export-all.har"
 check har "$RULES" < "$OUT/export-all.har"
+
+# The sample creates its sockets with the factory from Lustro.webSocketFactory.
+# The mocked 403 fails this one's handshake, so it is listed as failed, with the
+# handshake's transaction.
+step "lustro --json net wait: connect the sample's refused WebSocket and wait for its handshake"
+lustro --json net wait --url "$ws_pattern" --timeout 30 -- \
+  adb shell am start -W --activity-single-top -n "$PACKAGE/.MainActivity" \
+  --es request "'WS connect, upgrade refused (/status/403)'" \
+  > "$OUT/ws-wait.jsonl"
+cat "$OUT/ws-wait.jsonl"
+check list < "$OUT/ws-wait.jsonl"
+
+# The capture thread stores the failure a moment after the handshake.
+ws_id=""
+for _ in $(seq 20); do
+  lustro --json net ws list > "$OUT/ws-list.jsonl"
+  ws_id="$(check ws-find "$RULES" < "$OUT/ws-list.jsonl" 2> /dev/null || true)"
+  [ -n "$ws_id" ] && break
+  sleep 0.5
+done
+cat "$OUT/ws-list.jsonl"
+check ws-list < "$OUT/ws-list.jsonl"
+if [ -z "$ws_id" ]; then
+  echo "error: net ws list shows no failed connection to $ws_pattern" >&2
+  exit 1
+fi
+
+# A table row starts with a short id, and net ws get takes it.
+lustro_to ws-list-row.txt net ws list
+ws_short="$(grep "/status/403" "$OUT/ws-list-row.txt" | head -n 1 | cut -d ' ' -f 1)"
+lustro_to ws-get.json --json net ws get "$ws_short"
+check ws-connection "$RULES" < "$OUT/ws-get.json"
+
+lustro_to ws-events.jsonl --json net ws events "$ws_id"
+check ws-events < "$OUT/ws-events.jsonl"
+
+step "lustro net export --har: the handshake carries the WebSocket"
+lustro net export --har "$OUT/export-ws.har"
+check ws-har "$RULES" < "$OUT/export-ws.har"
 
 step "The CLI end to end passed"

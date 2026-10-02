@@ -60,6 +60,22 @@ internal class CaptureWorker(
         }
     }
 
+    /**
+     * Queues [task], which carries [chars] of captured text for [key], and
+     * returns `true`. Returns `false` without running it when more than
+     * [maxBacklogChars] is waiting. Unlike [submit], the task never runs on the
+     * caller's thread: a WebSocket's reader thread must not wait for a
+     * redactor, so its captures are dropped while this thread is behind.
+     * [always] queues the task whatever is waiting, for one too small to count.
+     */
+    fun offer(key: String, chars: Long, always: Boolean = false, task: () -> Unit): Boolean {
+        val weight = chars + TASK_OVERHEAD_CHARS
+        val backlog = backlogChars.get()
+        if (!always && backlog != 0L && backlog + weight > maxBacklogChars) return false
+        enqueue(key, weight, task)
+        return true
+    }
+
     /** Waits up to [timeoutMs] for everything queued so far to run. For tests. */
     fun awaitIdle(timeoutMs: Long): Boolean {
         val done = CountDownLatch(1)
@@ -109,7 +125,7 @@ internal class CaptureWorker(
         }
     }
 
-    private companion object {
+    companion object {
         // About 16 bodies at the default 256 KB capture cap.
         private const val DEFAULT_MAX_BACKLOG_CHARS = 4L * 1024 * 1024
 
@@ -119,9 +135,9 @@ internal class CaptureWorker(
         // still fills the backlog.
         private const val TASK_OVERHEAD_CHARS = 1024L
 
-        private fun newCaptureExecutor(): Executor =
+        fun newCaptureExecutor(threadName: String = "lustro-capture"): Executor =
             Executors.newSingleThreadExecutor { runnable ->
-                Thread(runnable, "lustro-capture").apply { isDaemon = true }
+                Thread(runnable, threadName).apply { isDaemon = true }
             }
     }
 }

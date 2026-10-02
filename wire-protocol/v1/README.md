@@ -11,7 +11,7 @@ the protocol a stable public contract independent of the library's Kotlin API.
   A future incompatible revision becomes `/api/v2/`, and the old major stays
   alive for at least one major release.
 - The **minor** protocol version is reported at runtime in
-  `GET /api/v1/_meta` as `_meta.protocolVersion` (currently `1.2`).
+  `GET /api/v1/_meta` as `_meta.protocolVersion` (currently `1.3`).
 
 ## Contents
 
@@ -30,11 +30,19 @@ the protocol a stable public contract independent of the library's Kotlin API.
 | Error envelope | every `/api/v1/*` error | `{ error, message, code, field?, hint? }` |
 | List pagination | list endpoints | `{ items: [...], nextCursor: "<opaque>" \| null }` |
 | Live polling cursor | observable endpoints | `{ cursor, status: "delta" \| "unchanged" \| "reset", items? }` |
+| Live polling stream | endpoints whose list only grows at its end | `{ cursor, status: "delta" \| "unchanged" \| "reset", items?, dropped? }` |
 | Framework metadata | `GET /api/v1/_meta` | `{ libraryVersion, protocolVersion, tabs: [...] }` |
 
 Cursor tokens are opaque and advance when the route's list changes; clients
 treat unknown `status` values as `reset`. A cursor from before an app restart
 gets a `reset`.
+
+The two polling envelopes differ in what `delta` carries. In the cursor
+envelope it is the whole current list, which fits a list whose items change. In
+the stream envelope it is only the entries after the cursor, oldest first, which
+fits a log: the client appends them. A stream `reset` carries the last entries
+of the list, and `dropped` counts the entries the list evicted before the
+client got them.
 
 ## Minor revisions
 
@@ -60,6 +68,20 @@ gets a `reset`.
   `GET network/transactions/_/export?format=har&ids=...` returns the
   transactions as a HAR 1.2 document, every one when `ids` is left out, with
   the transaction id and the fields HAR has no place for in `_lustro`.
+
+- **1.3** - WebSocket connections and their messages, for the sockets an app
+  creates with the factory from `Lustro.webSocketFactory`. The new route
+  `GET network/websockets` lists the connections in a cursor envelope, and
+  `GET network/websockets/{id}` adds the handshake headers of one. The new
+  route `GET network/websockets/{id}/events` returns a connection's log, its
+  messages and lifecycle events in order, in the new stream envelope, and
+  `GET network/websockets/{id}/events/{seq}/payload` returns one message's
+  payload as it is stored. Every transaction carries `webSocketId`: the id of
+  the connection when the transaction is the handshake of a listed socket, and
+  `null` otherwise. `POST network/clear` clears the connections too, and pause
+  stops the capture of messages. In the HAR export, the entry of a handshake
+  carries the socket's messages in `_webSocketMessages` and the connection in
+  `_lustro.webSocket`, and its `_resourceType` is `websocket`.
 
 ## Status
 

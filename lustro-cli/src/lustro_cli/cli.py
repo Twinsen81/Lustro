@@ -38,6 +38,7 @@ from .discovery import (
 NETWORK = "/api/v1/network"
 TRANSACTIONS = NETWORK + "/transactions"
 EXPORT = TRANSACTIONS + "/_/export"
+WEBSOCKETS = NETWORK + "/websockets"
 
 # The flags that every command takes, before or after its name, and their values
 # when they are not given. See _global_options for why main() sets these.
@@ -56,6 +57,9 @@ SHORT_ID_LENGTH = 8
 # How many of the matches an ambiguous id prints.
 AMBIGUOUS_ROWS = 10
 ID_HELP = "a transaction id, or its start, such as the short id of a row"
+WS_ID_HELP = "a connection id, or its start, such as the short id of a row"
+# More than a log can hold, so that the server sends all of it.
+ALL_EVENTS = 1_000_000
 # How many ids one export request names. The server takes a request line and
 # headers of up to 8 KB, and a full id is 36 characters.
 EXPORT_BATCH = 50
@@ -179,13 +183,15 @@ def _matches(tx: dict, args: argparse.Namespace) -> bool:
     return not args.errors or _is_error(tx)
 
 
-def _check_fields(args: argparse.Namespace, items: Iterable[Any]) -> None:
-    """Reject a ``--fields`` key that no transaction has, so that a typo such as
+def _check_fields(
+    args: argparse.Namespace, items: Iterable[Any], *, component: str = "Transaction", noun: str = "transactions"
+) -> None:
+    """Reject a ``--fields`` key that no item has, so that a typo such as
     ``status`` for ``statusCode`` fails instead of printing null on every line.
     A key that the server sends but this CLI doesn't know yet passes."""
     if args.fields is None:
         return
-    known = list(wire.load_openapi()["components"]["schemas"]["Transaction"]["properties"])
+    known = list(wire.load_openapi()["components"]["schemas"][component]["properties"])
     seen = set(known)
     for tx in items:
         for key in tx if isinstance(tx, dict) else ():
@@ -195,15 +201,15 @@ def _check_fields(args: argparse.Namespace, items: Iterable[Any]) -> None:
     unknown = [name for name in args.fields if name not in seen]
     if unknown:
         raise UsageError(
-            "--fields: transactions have no {}. They have: {}".format(", ".join(unknown), ",".join(known))
+            "--fields: {} have no {}. They have: {}".format(noun, ", ".join(unknown), ",".join(known))
         )
 
 
-def _note_if_paused(data: Any) -> None:
+def _note_if_paused(data: Any, what: str = "new requests are not listed") -> None:
     state = data.get("state") if isinstance(data, dict) else None
     if isinstance(state, dict) and state.get("paused") is True:
         print(
-            "note: capture is paused, so new requests are not listed; `lustro net pause` resumes it",
+            "note: capture is paused, so {}; `lustro net pause` resumes it".format(what),
             file=sys.stderr,
         )
 
@@ -257,7 +263,9 @@ def _resolve_ids(client: LustroClient, given: List[str]) -> List[str]:
     return resolved
 
 
-def _match_id(items: List[dict], given: str) -> str:
+def _match_id(
+    items: List[dict], given: str, *, noun: str = "transaction", list_command: str = "lustro net list", row=None
+) -> str:
     matches = [tx for tx in items if isinstance(tx.get("id"), str) and tx["id"].startswith(given)]
     # An id of another shape can also be the start of a longer one.
     if any(tx["id"] == given for tx in matches):
@@ -267,16 +275,106 @@ def _match_id(items: List[dict], given: str) -> str:
     if not matches:
         raise LustroError(
             "not_found",
-            "no transaction id starts with {}".format(given),
-            hint="`lustro net list` prints the transactions that the app has now",
+            "no {} id starts with {}".format(noun, given),
+            hint="`{}` prints the {}s that the app has now".format(list_command, noun),
         )
-    rows = [_format_row(tx) for tx in matches[:AMBIGUOUS_ROWS]]
+    rows = [(row or _format_row)(tx) for tx in matches[:AMBIGUOUS_ROWS]]
     if len(matches) > AMBIGUOUS_ROWS:
         rows.append("and {} more".format(len(matches) - AMBIGUOUS_ROWS))
     raise UsageError(
-        "{} transaction ids start with {}. Give more characters of the id:\n  {}".format(
-            len(matches), given, "\n  ".join(rows)
+        "{} {} ids start with {}. Give more characters of the id:\n  {}".format(
+            len(matches), noun, given, "\n  ".join(rows)
         )
+    )
+
+
+# ── WebSockets: rows ───────────────────────────────────────────────────────────
+
+
+def _ws_state(connection: dict) -> str:
+    """The state as a row shows it: with the close code, or with what made the socket fail."""
+    state = str(connection.get("state", ""))
+    if state == "closed" and connection.get("closeCode") is not None:
+        return "closed {}".format(connection["closeCode"])
+    if state == "failed":
+        if connection.get("canceled"):
+            return "canceled"
+        status = connection.get("statusCode")
+        if isinstance(status, int) and status != 101:
+            return "failed {}".format(status)
+    return state
+
+
+def _format_ws_row(connection: dict, id_length: Optional[int] = None) -> str:
+    """One table row. The id keeps its first ``id_length`` characters, or all of them."""
+    return "{id}  {ts:>12}  {state:<11} sent={sent} received={received}  {url}".format(
+        id=str(connection.get("id", ""))[:id_length],
+        ts=connection.get("timestamp", ""),
+        state=_ws_state(connection),
+        sent=connection.get("sentCount", 0),
+        received=connection.get("receivedCount", 0),
+        url=connection.get("url", ""),
+    )
+
+
+def _one_line(text: str) -> str:
+    return " ".join(text.split())
+
+
+def _format_event_row(event: dict, connection_id: str) -> str:
+    """One row of a connection's log. A message shows its direction, type, size,
+    and the start of its payload; a lifecycle event shows what happened."""
+    head = "{seq:>5}  {ts:>12}  ".format(seq=event.get("seq", ""), ts=event.get("timestamp", ""))
+    kind = event.get("kind")
+    sent = event.get("direction") == "sent"
+    if kind != "message":
+        parts = [str(kind)]
+        if kind == "close":
+            parts.append("sent" if sent else "received")
+        for key in ("code", "statusCode", "reason", "error"):
+            if event.get(key) not in (None, ""):
+                parts.append(str(event[key]))
+        if event.get("enqueued") is False:
+            parts.append("[refused]")
+        return head + "--  " + " ".join(parts)
+    if event.get("type") == "binary":
+        text = str(event.get("hexPreview", ""))
+    else:
+        text = _one_line(str(event.get("preview", "")))
+        if event.get("previewComplete") is False:
+            # The same marker as a cut body: what is left out, and the command that prints it.
+            more = int(event.get("payloadBytes") or 0) - len(str(event.get("preview", "")).encode("utf-8", "surrogatepass"))
+            text += "[... {} more bytes: lustro net ws payload {} {}]".format(
+                max(more, 0), connection_id[:SHORT_ID_LENGTH], event.get("seq")
+            )
+    flags = ""
+    if event.get("enqueued") is False:
+        flags += " [not sent]"
+    if event.get("truncated"):
+        flags += " [truncated]"
+    if event.get("stored") is False:
+        flags += " [not stored]"
+    return head + "{arrow}  {type:<6} {size:>9}  {text}{flags}".format(
+        arrow="->" if sent else "<-",
+        type=event.get("type", ""),
+        size="{}B".format(event.get("payloadBytes", 0)),
+        text=text,
+        flags=flags,
+    )
+
+
+def _resolve_ws_id(client: LustroClient, given: str) -> str:
+    """The full id of the connection that ``given`` names, as _resolve_id finds a transaction's."""
+    if not given:
+        raise UsageError("expected a connection id, or the start of one")
+    if _FULL_ID.fullmatch(given):
+        return given
+    return _match_id(
+        _list_items(client.get(WEBSOCKETS)),
+        given,
+        noun="connection",
+        list_command="lustro net ws list",
+        row=_format_ws_row,
     )
 
 
@@ -819,6 +917,115 @@ def cmd_net_export(args: argparse.Namespace) -> int:
     return 0
 
 
+# ── net ws subcommands ─────────────────────────────────────────────────────────
+
+
+def cmd_net_ws_list(args: argparse.Namespace) -> int:
+    client = _build_client(args)
+    data = client.get(WEBSOCKETS)
+    _note_if_paused(data, "no new socket is listed and no message is recorded")
+    items = _list_items(data)
+    _check_fields(args, items, component="WebSocketConnection", noun="connections")
+    id_length = _short_id_length(items)
+    # The server lists the newest connection first.
+    for connection in items:
+        if _prints_json_lines(args):
+            if args.fields is not None:
+                connection = {name: connection.get(name) for name in args.fields}
+            print(_dumps(connection, indent=False))
+        else:
+            print(_format_ws_row(connection, id_length))
+    return 0
+
+
+def cmd_net_ws_get(args: argparse.Namespace) -> int:
+    client = _build_client(args)
+    _emit(client.get(WEBSOCKETS + "/" + _resolve_ws_id(client, args.id)), raw_json=args.json)
+    return 0
+
+
+def _print_events(items: List[dict], connection_id: str, args: argparse.Namespace) -> None:
+    for event in items:
+        if _prints_json_lines(args):
+            if args.fields is not None:
+                event = {name: event.get(name) for name in args.fields}
+            print(_dumps(event, indent=False))
+        else:
+            print(_format_event_row(event, connection_id))
+
+
+def cmd_net_ws_events(args: argparse.Namespace) -> int:
+    """Print a connection's log, oldest first, and with --follow each new event as it comes."""
+    client = _build_client(args)
+    connection_id = _resolve_ws_id(client, args.id)
+    path = WEBSOCKETS + "/" + connection_id + "/events"
+    filters = {
+        "direction": "sent" if args.sent else "received" if args.received else None,
+        "search": args.search,
+    }
+    data = client.get(path, params=dict(filters, limit=ALL_EVENTS if args.all else args.last))
+    items = _list_items(data)
+    _check_fields(args, items, component="WebSocketEvent", noun="events")
+    _print_events(items, connection_id, args)
+    if not args.follow:
+        return 0
+    cursor = data.get("cursor") if isinstance(data, dict) else None
+    try:
+        while True:
+            # A reader at the other end of a pipe gets each batch as it comes.
+            sys.stdout.flush()
+            time.sleep(args.interval)
+            try:
+                data = client.get(path, params=dict(filters, cursor=cursor, limit=ALL_EVENTS))
+            except LustroError as exc:
+                if exc.error == "not_found":
+                    # The app cleared or evicted the connection.
+                    raise
+                print("poll error: {}".format(exc), file=sys.stderr)
+                continue
+            if not isinstance(data, dict):
+                continue
+            status = data.get("status")
+            if status != "unchanged":
+                if status != "delta":
+                    print("note: the log started again, so these are its last events", file=sys.stderr)
+                elif data.get("dropped"):
+                    print(
+                        "note: the log evicted {} events before this command got them".format(data["dropped"]),
+                        file=sys.stderr,
+                    )
+                _print_events(_list_items(data), connection_id, args)
+            cursor = data.get("cursor", cursor)
+    except KeyboardInterrupt:  # pragma: no cover - interactive
+        return 0
+
+
+def cmd_net_ws_payload(args: argparse.Namespace) -> int:
+    """Save one message's payload to a file, or write it to stdout."""
+    client = _build_client(args)
+    connection_id = _resolve_ws_id(client, args.id)
+    payload = client.get_raw("{}/{}/events/{}/payload".format(WEBSOCKETS, connection_id, args.seq))
+    binary = not str(payload.content_type or "").startswith("text/")
+    if args.output is None and binary and sys.stdout.isatty():
+        print("error: the payload is binary; save it with -o FILE or redirect stdout", file=sys.stderr)
+        return 2
+    if args.output is None:
+        sys.stdout.buffer.write(payload.data)
+        sys.stdout.flush()
+        return 0
+    try:
+        with open(args.output, "wb") as fh:
+            fh.write(payload.data)
+    except OSError as exc:
+        print("could not write payload file {}: {}".format(args.output, exc), file=sys.stderr)
+        return 2
+    if args.json:
+        _emit({"path": args.output, "bytes": len(payload.data), "binary": binary}, raw_json=True)
+    else:
+        print("saved {} bytes ({}) to {}".format(len(payload.data), "binary" if binary else "text", args.output))
+    return 0
+
+
 def cmd_net_clear(args: argparse.Namespace) -> int:
     client = _build_client(args)
     _emit(client.post(NETWORK + "/clear"), raw_json=args.json)
@@ -989,6 +1196,19 @@ def _selection_options() -> argparse.ArgumentParser:
     return parent
 
 
+def _fields_option() -> argparse.ArgumentParser:
+    """--fields, for the commands that print a list of other items."""
+    parent = argparse.ArgumentParser(add_help=False)
+    parent.add_argument_group("output").add_argument(
+        "--fields",
+        type=_field_names,
+        default=None,
+        metavar="KEYS",
+        help="print JSON Lines with only these keys, such as id,state,url",
+    )
+    return parent
+
+
 def build_parser() -> argparse.ArgumentParser:
     common = _global_options()
     selection = _selection_options()
@@ -1129,7 +1349,73 @@ def build_parser() -> argparse.ArgumentParser:
     )
     n_export.set_defaults(func=cmd_net_export)
 
-    n_clear = net_sub.add_parser("clear", parents=[common], help="POST clear")
+    n_ws = net_sub.add_parser(
+        "ws",
+        parents=[common],
+        help="WebSocket connections and their messages",
+        description="Inspect the WebSockets that the app creates with the factory from Lustro.webSocketFactory. "
+        "A socket that the app creates in another way shows only its handshake, in `lustro net list`.",
+    )
+    ws_sub = n_ws.add_subparsers(dest="ws_command", metavar="<op>")
+    ws_sub.required = True
+    fields = _fields_option()
+
+    w_list = ws_sub.add_parser("list", parents=[common, fields], help="the connections, newest first (GET websockets)")
+    w_list.set_defaults(func=cmd_net_ws_list)
+
+    w_get = ws_sub.add_parser(
+        "get", parents=[common], help="GET websockets/<id>: one connection, with the headers of its handshake"
+    )
+    w_get.add_argument("id", help=WS_ID_HELP)
+    w_get.set_defaults(func=cmd_net_ws_get)
+
+    w_events = ws_sub.add_parser(
+        "events",
+        parents=[common, fields],
+        help="GET websockets/<id>/events: a connection's messages and lifecycle events, oldest first",
+        description="Print a connection's log, oldest first: each message with its direction, type, size, and the "
+        "start of its payload, and each lifecycle event. `->` is a message the app sent. OkHttp queued it, which "
+        "does not show that the server received it.",
+    )
+    w_events.add_argument("id", help=WS_ID_HELP)
+    event_rows = w_events.add_mutually_exclusive_group()
+    event_rows.add_argument(
+        "--last",
+        type=_whole_number(1),
+        default=DEFAULT_LAST,
+        metavar="N",
+        help="print the last N (default {})".format(DEFAULT_LAST),
+    )
+    event_rows.add_argument("--all", action="store_true", help="print every event the log has")
+    event_direction = w_events.add_mutually_exclusive_group()
+    event_direction.add_argument("--sent", action="store_true", help="only what the app sent")
+    event_direction.add_argument("--received", action="store_true", help="only what the app received")
+    w_events.add_argument(
+        "--search", default=None, metavar="TEXT", help="only the text messages that contain TEXT (on the server)"
+    )
+    w_events.add_argument("--follow", action="store_true", help="then print each new event as it comes, until Ctrl-C")
+    w_events.add_argument(
+        "--interval",
+        type=_positive_seconds,
+        default=1.0,
+        metavar="SECONDS",
+        help="with --follow: seconds between polls (default 1)",
+    )
+    w_events.set_defaults(func=cmd_net_ws_events)
+
+    w_payload = ws_sub.add_parser(
+        "payload",
+        parents=[common],
+        help="GET websockets/<id>/events/<seq>/payload: save one message's payload as it is stored",
+    )
+    w_payload.add_argument("id", help=WS_ID_HELP)
+    w_payload.add_argument("seq", type=_whole_number(1), help="the message's seq, the first column of `net ws events`")
+    w_payload.add_argument(
+        "-o", "--output", default=None, metavar="FILE", help="write the payload to FILE (default: stdout)"
+    )
+    w_payload.set_defaults(func=cmd_net_ws_payload)
+
+    n_clear = net_sub.add_parser("clear", parents=[common], help="POST clear (transactions and WebSocket connections)")
     n_clear.set_defaults(func=cmd_net_clear)
 
     n_pause = net_sub.add_parser("pause", parents=[common], help="POST pause (toggle capture-only pause)")

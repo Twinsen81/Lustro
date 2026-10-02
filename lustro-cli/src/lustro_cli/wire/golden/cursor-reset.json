@@ -25,6 +25,7 @@
       "requestBodyBytes": 0,
       "responseBodyBytes": 256,
       "responseComplete": true,
+      "webSocketId": null,
       "error": null
     },
     {
@@ -44,6 +45,7 @@
       "requestBodyBytes": 64,
       "responseBodyBytes": 128,
       "responseComplete": true,
+      "webSocketId": null,
       "error": null
     }
   ]

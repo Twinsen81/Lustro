@@ -474,6 +474,9 @@ class NetworkDebugTabTest {
                     appServerBaseUrl = null,
                     captureBudgetBytes = 50L * 1024 * 1024,
                     requestTimeoutMs = requestTimeoutMs,
+                    maxCaptureWebSockets = 100,
+                    maxWebSocketEvents = 1000,
+                    webSocketCaptureBudgetBytes = 16L * 1024 * 1024,
                 )
             }
 

@@ -67,6 +67,8 @@ public class MainActivity : Activity() {
     private val client: OkHttpClient
         get() = (application as SampleApplication).httpClient
 
+    private val webSocketDemo by lazy { WebSocketDemo((application as SampleApplication).webSockets, ::setStatus) }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(buildUi())
@@ -126,6 +128,21 @@ public class MainActivity : Activity() {
 
         addSection(root, "Streaming")
         addButton(root, "Stream SSE (/sse)") { streamSse() }
+
+        // The sockets come from the factory Lustro wraps, so the console shows
+        // their messages; the interceptor alone would show only the handshake.
+        addSection(root, "WebSocket")
+        // This server sends a greeting, then each message back, and keeps the
+        // connection open. The echo route of the HTTP fixture host closes one after 10 s.
+        addButton(root, "WS connect (echo.websocket.org)") { webSocketDemo.connect(WS_ECHO) }
+        addButton(root, "WS send text") { webSocketDemo.sendText() }
+        addButton(root, "WS send JSON with a token") { webSocketDemo.sendJsonWithToken() }
+        addButton(root, "WS send binary") { webSocketDemo.sendBinary() }
+        addButton(root, "WS send a 300 KB text") { webSocketDemo.sendLargeText() }
+        addButton(root, "WS send 20 messages") { webSocketDemo.sendMany() }
+        addButton(root, "WS close (1000)") { webSocketDemo.close() }
+        addButton(root, "WS cancel") { webSocketDemo.cancel() }
+        addButton(root, "WS connect, upgrade refused (/status/403)") { webSocketDemo.connect(WS_REFUSED) }
 
         // OkHttp decompresses a response on its own only when it asked for gzip
         // itself. An app that sets Accept-Encoding gets the compressed bytes, and
@@ -436,6 +453,8 @@ public class MainActivity : Activity() {
     private companion object {
         private const val EXTRA_REQUEST = "request"
         private const val BASE = "https://httpbingo.org"
+        private const val WS_ECHO = "wss://echo.websocket.org/"
+        private const val WS_REFUSED = "wss://httpbingo.org/status/403"
         private val JSON = "application/json; charset=utf-8".toMediaType()
         private const val PADDING = 48
         private const val SECTION_TEXT_SIZE = 16f

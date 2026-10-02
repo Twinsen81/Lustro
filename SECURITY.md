@@ -84,7 +84,9 @@ build, and that even in debug builds it stays bound to the local device.
   one of them as a page. Every other type, SVG and HTML included, is sent with
   `Content-Disposition: attachment` and the policy
   `default-src 'none'; sandbox` as well, so no script in it runs even if a
-  browser renders it.
+  browser renders it. The payload of a WebSocket message, from
+  `GET /api/v1/network/websockets/{id}/events/{seq}/payload`, is always sent that way, as plain
+  text or as bytes.
 - **Capture-time redaction, best-effort.** A `Redactor` SPI runs at capture
   time, before anything is stored, so whatever it masks never enters the
   in-memory capture store and cannot leak through the API, the UI, or fixtures.
@@ -117,16 +119,31 @@ build, and that even in debug builds it stays bound to the local device.
     An image can carry a secret in its pixels or its metadata, such as a photo's
     location. SVG is XML, so it is captured as text and redacted like any other.
     OkHttp capture keeps no other binary body, such as protobuf or an octet
-    stream; platform `HttpURLConnection` capture decodes one as text.
+    stream; platform `HttpURLConnection` capture decodes one as text;
+  - a binary WebSocket message. The capture keeps it as bytes, up to the capture
+    cap, and the name-based rules can't read it. A binary protocol can carry a
+    credential, such as the password in an MQTT `CONNECT` packet. Unlike an
+    image, a custom redactor can cover it: `Redactor.redactWebSocketBinary`
+    gets the bytes, and can change them or keep them out of the store;
+  - a credential in a WebSocket text message that no sensitive name points at,
+    such as a message that is a bare token. The text of a message is redacted
+    as a body with no content type, with the same gaps as a body;
+  - the `Sec-WebSocket-Protocol` header, which some apps use to carry a token,
+    because a browser can set no other header on a WebSocket;
+  - the close reason of a WebSocket and the exception of a failed one, which
+    are stored verbatim, as the error text of a failed request is.
 
-  Treat a capture as sensitive. For everything above except the error text and
-  image bodies, a stricter `Redactor` passed to `NetworkDebugTab.create(...)`
-  closes the gap for traffic whose secrets the name heuristic will not find.
-  For a request that no redactor can make safe, a `NetworkCaptureFilter` passed
-  as `captureFilter` keeps the whole request out of capture, error text and
-  image bodies included.
-- **Nothing persisted to disk except mock rules.** Captured traffic lives only
-  in a bounded in-memory ring buffer and is lost when the process dies. The sole
+  Treat a capture as sensitive. For everything above except the error text,
+  image bodies, and a WebSocket's close reason, a stricter `Redactor` passed to
+  `NetworkDebugTab.create(...)` closes the gap for traffic whose secrets the
+  name heuristic will not find. For a request that no redactor can make safe, a
+  `NetworkCaptureFilter` passed as `captureFilter` keeps the whole request out
+  of capture, error text and image bodies included. It does the same for a
+  WebSocket: a socket it skips has neither its handshake nor a message
+  captured.
+- **Nothing persisted to disk except mock rules.** Captured traffic, WebSocket
+  messages included, lives only in bounded in-memory buffers and is lost when
+  the process dies. The sole
   persisted state is user-authored mock rules.
 - **Exceptions are contained.** Library exceptions do not escape into the host
   app; server-level errors are logged through `android.util.Log` at WARN.

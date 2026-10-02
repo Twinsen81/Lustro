@@ -72,7 +72,7 @@ internal fun String.foldCase(): String = String(CharArray(length) { this[it].fol
 // Folds as it scans instead of lowercasing a copy of every body it searches.
 // contains(ignoreCase = true) avoids the copy too, but it calls regionMatches at
 // every offset and measured slower than the copy on Android.
-private fun String.containsFolded(needle: String): Boolean {
+internal fun String.containsFolded(needle: String): Boolean {
     if (needle.isEmpty()) return true
     val first = needle[0]
     for (start in 0..length - needle.length) {

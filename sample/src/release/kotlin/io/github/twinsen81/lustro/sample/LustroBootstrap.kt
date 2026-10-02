@@ -8,6 +8,7 @@ import io.github.twinsen81.lustro.LustroStatus
 import io.github.twinsen81.lustro.network.NetworkDebugTab
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
+import okhttp3.WebSocket
 
 /**
  * Release-variant Lustro bootstrap.
@@ -29,6 +30,9 @@ import okhttp3.OkHttpClient
 // drive the cross-variant facade-parity gate. No suppression is needed: the check
 // flags DebugTab subclasses outside src/debug, and this file declares none.
 public object LustroBootstrap {
+    @Volatile
+    private var lustro: Lustro? = null
+
     /**
      * No-op equivalent of the debug bootstrap. Builds Lustro against the no-op
      * facade and returns its pass-through interceptor. Releasing apps add this
@@ -57,10 +61,17 @@ public object LustroBootstrap {
                 .build()
 
         val interceptor = instance.networkInterceptor()
+        lustro = instance
         val status: LustroStatus = instance.start()
         android.util.Log.i("LustroSample", "Lustro start() returned $status")
         return interceptor
     }
+
+    /**
+     * No-op equivalent of the debug bootstrap's factory: the no-op facade
+     * returns [client] itself, so release sockets are plain OkHttp sockets.
+     */
+    public fun webSocketFactory(client: OkHttpClient): WebSocket.Factory = lustro?.webSocketFactory(client) ?: client
 
     /** No-op stop; the no-op build never binds a socket. Idempotent. */
     public fun stop() {

@@ -1,0 +1,37 @@
+{
+  "id": "ws_3d2a7f10",
+  "url": "wss://chat.example.com/socket?token=%5BREDACTED%5D",
+  "state": "open",
+  "timestamp": "14:22:17.098",
+  "startedAt": 1790605337098,
+  "openedAt": 1790605337243,
+  "closedAt": null,
+  "statusCode": 101,
+  "closeCode": null,
+  "closeReason": null,
+  "closedBy": null,
+  "canceled": false,
+  "error": null,
+  "transactionId": "tx_a81c3f09",
+  "categories": [
+    "chat"
+  ],
+  "sentCount": 2,
+  "sentBytes": 40,
+  "receivedCount": 2,
+  "receivedBytes": 300016,
+  "storedEvents": 5,
+  "evictedEvents": 0,
+  "droppedEvents": 0,
+  "protocol": "http/1.1",
+  "requestHeaders": {
+    "Authorization": "[REDACTED]",
+    "Sec-WebSocket-Protocol": "chat.v2"
+  },
+  "responseHeaders": {
+    "Upgrade": "websocket",
+    "Connection": "Upgrade",
+    "Sec-WebSocket-Accept": "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=",
+    "Sec-WebSocket-Protocol": "chat.v2"
+  }
+}

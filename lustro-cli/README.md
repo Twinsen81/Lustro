@@ -66,6 +66,10 @@ discovery), `--json` (JSON output). They go before or after the command:
 | `lustro net get <id>` | `GET network/transactions/<id>`, with each body cut at 2 KB |
 | `lustro net body <id> [request\|response] [-o FILE]` | `GET network/transactions/<id>/body/<direction>`: saves a body as it is stored, the response by default; stdout without `-o` |
 | `lustro net export --har FILE [--ids ID ...]` | `GET network/transactions/_/export`: saves the transactions, or only those in `--ids`, as a HAR file; stdout for `--har -` |
+| `lustro net ws list` | `GET network/websockets`: the WebSocket connections, newest first |
+| `lustro net ws get <id>` | `GET network/websockets/<id>`: one connection, with the headers of its handshake |
+| `lustro net ws events <id> [--follow]` | `GET network/websockets/<id>/events`: the last 50 messages and lifecycle events, oldest first; with `--follow`, each new one as it comes |
+| `lustro net ws payload <id> <seq> [-o FILE]` | `GET network/websockets/<id>/events/<seq>/payload`: saves a message's payload as it is stored; stdout without `-o` |
 | `lustro net clear` | `POST network/clear` |
 | `lustro net pause` | `POST network/pause` |
 | `lustro net overwrite` | `POST network/overwrite-mode` |
@@ -137,6 +141,21 @@ The output is small by default, because an agent reads all of it.
 - **Updates.** `net poll` prints a transaction again, marked `[update]`, when it
   was in flight and finishes or fails. With `--json`, the later line for an id
   replaces the earlier one.
+- **WebSockets.** `net ws list` prints a row for each connection: a short id,
+  the start time, the state (`open`, `closed 1000`, `failed 403`, `canceled`),
+  the counts of sent and received messages, and the URL. `net ws events` prints
+  the last 50 events of one connection, oldest first; `--last N` and `--all`
+  set how many. A message row has `->` for sent or `<-` for received, the type,
+  the size, and the start of the payload; a lifecycle row has `--`. A sent
+  message means that OkHttp queued it, which does not show that the server
+  received it, and `[not sent]` marks one that `send()` refused. A long text
+  ends with a marker such as
+  `[... 299961 more bytes: lustro net ws payload 3d2a7f10 5]`, and
+  `net ws payload` prints a payload as it is stored. `--sent`, `--received`,
+  and `--search TEXT` select events on the server. `--follow` then prints each
+  new event as it comes, until Ctrl-C or until the app clears the connection.
+  `--json` prints JSON Lines for both commands, and `--fields` keeps only the
+  keys you name. A connection id can be its start, as for a transaction.
 
 `net wait` polls until a matching request finishes, prints it, and exits 0. It
 exits 1 after `--timeout` seconds (30 by default). It ignores the requests that

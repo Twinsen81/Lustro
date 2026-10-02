@@ -16,6 +16,10 @@ import okio.utf8Size
  * `wait`. Headers, the URL, and text bodies are the redacted values the store
  * keeps, and a body kept as bytes goes out in base64. What HAR has no field
  * for goes in `_lustro`, the prefix HAR reserves for a tool's own fields.
+ *
+ * HAR has no field for WebSocket messages either. The entry of a socket's
+ * handshake carries them in `_webSocketMessages`, the field Chrome DevTools
+ * writes and reads.
  */
 internal object HarExport {
     private val STARTED_DATE_TIME: DateTimeFormatter =
@@ -24,19 +28,24 @@ internal object HarExport {
     // What browser devtools write when a response has no media type.
     private const val UNKNOWN_MIME_TYPE = "x-unknown"
 
-    fun write(transactions: List<NetworkTransaction>, creatorVersion: String): String =
+    /** [webSocketOf] gives the socket a transaction is the handshake of, or `null` for any other transaction. */
+    fun write(
+        transactions: List<NetworkTransaction>,
+        creatorVersion: String,
+        webSocketOf: (NetworkTransaction) -> HarWebSocket? = { null },
+    ): String =
         buildString {
             append("{\"log\":{\"version\":\"1.2\",")
             append("\"creator\":{\"name\":\"Lustro\",\"version\":").appendString(creatorVersion).append("},")
             append("\"entries\":[")
             transactions.forEachIndexed { index, tx ->
                 if (index > 0) append(',')
-                appendEntry(tx)
+                appendEntry(tx, webSocketOf(tx))
             }
             append("]}}")
         }
 
-    private fun StringBuilder.appendEntry(tx: NetworkTransaction) {
+    private fun StringBuilder.appendEntry(tx: NetworkTransaction, webSocket: HarWebSocket?) {
         // An in-flight request has no duration yet, and HAR has no null for one.
         val durationMs = (tx.durationMs ?: 0L).coerceAtLeast(0L)
         append('{')
@@ -51,7 +60,13 @@ internal object HarExport {
         // Chrome's import files a request by this, and by the media type without
         // it, which would list a JSON response as a script.
         val image = tx.responseContentType?.startsWith("image/", ignoreCase = true) == true
-        append("\"_resourceType\":\"").append(if (image) "image" else "fetch").append("\",")
+        val resourceType = if (webSocket != null) "websocket" else if (image) "image" else "fetch"
+        append("\"_resourceType\":\"").append(resourceType).append("\",")
+        if (webSocket != null) {
+            append("\"_webSocketMessages\":")
+            appendWebSocketMessages(webSocket.events)
+            append(',')
+        }
         append("\"_lustro\":{")
         append("\"id\":").appendString(tx.id).append(',')
         append("\"isMocked\":").append(tx.isMocked).append(',')
@@ -66,7 +81,51 @@ internal object HarExport {
         append("\"responseComplete\":").append(tx.responseComplete).append(',')
         append("\"error\":")
         tx.error?.let { appendString(it) } ?: append("null")
+        if (webSocket != null) {
+            append(",\"webSocket\":")
+            appendWebSocket(webSocket.connection)
+        }
         append("}}")
+    }
+
+    // type, time, opcode, and data are the keys Chrome reads. A text message
+    // has opcode 1, and a binary one has opcode 2 and its data in base64.
+    private fun StringBuilder.appendWebSocketMessages(events: List<WebSocketEvent>) {
+        append('[')
+        var written = 0
+        for (event in events) {
+            // A message that send() refused never left the app.
+            if (event.kind != WebSocketEventKind.MESSAGE || event.enqueued == false) continue
+            if (written++ > 0) append(',')
+            append("{\"type\":\"").append(if (event.outgoing == true) "send" else "receive").append("\",")
+            // Seconds since the Unix epoch, written without floating point.
+            append("\"time\":").append(event.at / MILLIS_PER_SECOND).append('.')
+            append((event.at % MILLIS_PER_SECOND).toString().padStart(MILLIS_DIGITS, '0')).append(',')
+            append("\"opcode\":").append(if (event.binary) OPCODE_BINARY else OPCODE_TEXT).append(',')
+            append("\"data\":").appendString(event.text ?: base64(event.bytes))
+            append(",\"_payloadBytes\":").append(event.payloadBytes)
+            if (event.truncated) append(",\"_truncated\":true")
+            if (event.text == null && event.bytes == null) append(",\"_stored\":false")
+            append('}')
+        }
+        append(']')
+    }
+
+    private fun StringBuilder.appendWebSocket(connection: WebSocketConnection) {
+        val lifecycle = connection.lifecycle
+        append("{\"id\":").appendString(connection.id).append(',')
+        append("\"url\":").appendString(connection.url).append(',')
+        append("\"state\":").appendString(lifecycle.state.wireName).append(',')
+        append("\"closeCode\":").append(lifecycle.closeCode ?: "null").append(',')
+        append("\"closeReason\":").appendNullable(lifecycle.closeReason).append(',')
+        append("\"closedBy\":").appendNullable(lifecycle.closedBy).append(',')
+        append("\"canceled\":").append(lifecycle.canceled).append(',')
+        append("\"error\":").appendNullable(lifecycle.error).append(',')
+        append("\"sentCount\":").append(connection.sentCount).append(',')
+        append("\"receivedCount\":").append(connection.receivedCount).append(',')
+        append("\"evictedEvents\":").append(connection.evictedEvents).append(',')
+        append("\"droppedEvents\":").append(connection.droppedEvents)
+        append('}')
     }
 
     private fun StringBuilder.appendRequest(tx: NetworkTransaction) {
@@ -156,4 +215,14 @@ internal object HarExport {
 
     private fun StringBuilder.appendString(value: String): StringBuilder =
         append('"').append(value.escapeForJson()).append('"')
+
+    private fun StringBuilder.appendNullable(value: String?): StringBuilder = if (value == null) append("null") else appendString(value)
+
+    private const val MILLIS_PER_SECOND = 1000
+    private const val MILLIS_DIGITS = 3
+    private const val OPCODE_TEXT = 1
+    private const val OPCODE_BINARY = 2
 }
+
+/** A socket's connection and its log, for the HAR entry of its handshake. */
+internal class HarWebSocket(val connection: WebSocketConnection, val events: List<WebSocketEvent>)

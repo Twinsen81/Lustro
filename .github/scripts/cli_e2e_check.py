@@ -87,8 +87,9 @@ def check_sync(text: str, rules: List[dict]) -> None:
 def check_rules(text: str, rules: List[dict]) -> None:
     listed = json.loads(text)
     response("/api/v1/network/rules", "get").validate(listed)
-    ids = [rule["id"] for rule in listed["items"]]
-    expected = [rule["id"] for rule in rules]
+    # The app lists its rules in no fixed order.
+    ids = sorted(rule["id"] for rule in listed["items"])
+    expected = sorted(rule["id"] for rule in rules)
     expect(ids == expected, "the app lists rules {}, the file has {}".format(ids, expected))
 
 
@@ -142,6 +143,59 @@ def check_har(text: str, rules: List[dict]) -> None:
         expect(entry["response"]["content"].get("text") == rule["responseBody"], "body {!r}".format(entry["response"]["content"].get("text")))
 
 
+def _ws_path(rules: List[dict]) -> str:
+    """The path of the socket whose handshake the second rule answers."""
+    return rules[1]["urlPattern"].split("//", 1)[1].split("/", 1)[1]
+
+
+def _refused(connection: dict, rules: List[dict]) -> bool:
+    return connection["url"].endswith("/" + _ws_path(rules)) and connection["state"] == "failed"
+
+
+def check_ws_list(text: str, rules: List[dict]) -> None:
+    """``--json net ws list`` prints JSON Lines: one connection per line."""
+    for item in json_lines(text):
+        component("WebSocketConnection").validate(item)
+
+
+def ws_find(text: str, rules: List[dict]) -> None:
+    """Prints the id of the newest failed connection to the URL that the second rule answers."""
+    matches = [connection for connection in json_lines(text) if _refused(connection, rules)]
+    expect(bool(matches), "no failed connection to {}".format(rules[1]["urlPattern"]))
+    print(matches[0]["id"])
+
+
+def check_ws_connection(text: str, rules: List[dict]) -> None:
+    connection = json.loads(text)
+    component("WebSocketConnection").validate(connection)
+    rule = rules[1]
+    expect(_refused(connection, rules), "{} {} is not the refused socket".format(connection["state"], connection["url"]))
+    expect(connection["url"].startswith("wss://"), "{} does not have the scheme the app asked for".format(connection["url"]))
+    expect(connection["statusCode"] == rule["statusCode"], "status {}, the rule sets {}".format(connection["statusCode"], rule["statusCode"]))
+    expect(bool(connection["transactionId"]), "the connection has no handshake transaction")
+    expect("Expected HTTP 101" in (connection["error"] or ""), "error {!r}".format(connection["error"]))
+    expect(isinstance(connection.get("requestHeaders"), dict), "the detail has no requestHeaders")
+
+
+def check_ws_events(text: str, rules: List[dict]) -> None:
+    """``--json net ws events`` prints JSON Lines: one event per line. A refused socket has one, its failure."""
+    events = json_lines(text)
+    for event in events:
+        component("WebSocketEvent").validate(event)
+    expect([event["kind"] for event in events] == ["failure"], "events {}".format([event["kind"] for event in events]))
+
+
+def check_ws_har(text: str, rules: List[dict]) -> None:
+    """The export has the handshake of the refused socket as a websocket entry, with no message."""
+    har = json.loads(text)
+    component("HarDocument").validate(har)
+    entries = [entry for entry in har["log"]["entries"] if entry["_resourceType"] == "websocket"]
+    expect(bool(entries), "no entry is a websocket")
+    for entry in entries:
+        expect(entry["_webSocketMessages"] == [], "messages {}".format(entry["_webSocketMessages"]))
+        expect(entry["_lustro"]["webSocket"]["state"] == "failed", "state {}".format(entry["_lustro"]["webSocket"]["state"]))
+
+
 CHECKS: Dict[str, Callable[[str, List[dict]], None]] = {
     "open": check_open,
     "meta": check_meta,
@@ -153,6 +207,11 @@ CHECKS: Dict[str, Callable[[str, List[dict]], None]] = {
     "find": find,
     "transaction": check_transaction,
     "har": check_har,
+    "ws-list": check_ws_list,
+    "ws-find": ws_find,
+    "ws-connection": check_ws_connection,
+    "ws-events": check_ws_events,
+    "ws-har": check_ws_har,
 }
 
 

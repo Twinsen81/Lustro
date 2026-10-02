@@ -10,6 +10,7 @@ import io.github.twinsen81.lustro.network.NetworkDebugTab
 import io.github.twinsen81.lustro.network.SharedPreferencesMockRuleStorage
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
+import okhttp3.WebSocket
 
 /**
  * Debug-variant Lustro bootstrap.
@@ -99,6 +100,14 @@ public object LustroBootstrap {
         android.util.Log.i("LustroSample", "Lustro start() returned $status")
         return captured
     }
+
+    /**
+     * Returns the factory the app creates its WebSockets with, so their messages
+     * appear in the Network tab. The interceptor alone shows only a socket's
+     * handshake. Call it after [start], with the client that carries the
+     * interceptor: the console then links each socket to its handshake request.
+     */
+    public fun webSocketFactory(client: OkHttpClient): WebSocket.Factory = lustro?.webSocketFactory(client) ?: client
 
     /** Stops the debug runtime. Idempotent; safe to call from any variant. */
     public fun stop() {

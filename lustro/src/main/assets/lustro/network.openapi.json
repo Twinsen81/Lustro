@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Lustro Network debug tab",
-    "version": "1.2",
-    "description": "Capture, inspect, mock, throttle, and replay HTTP traffic. All routes are token-authenticated (Bearer header or HttpOnly cookie) and live under /api/v1/network. Errors use the shared error envelope."
+    "version": "1.3",
+    "description": "Capture, inspect, mock, throttle, and replay HTTP traffic, and inspect the messages of WebSocket connections. All routes are token-authenticated (Bearer header or HttpOnly cookie) and live under /api/v1/network. Errors use the shared error envelope."
   },
   "servers": [
     { "url": "/", "description": "The Lustro debug server (loopback by default)." }
@@ -77,7 +77,7 @@
       "get": {
         "operationId": "exportTransactions",
         "summary": "Captured transactions as a HAR 1.2 document.",
-        "description": "Returns the transactions that ids names, or every one when ids is left out, as a HAR 1.2 document that browser devtools and HTTP tools import, oldest first. It is built from the store, so headers, the URL, and text bodies are redacted as in the detail. An id the store no longer has is left out, and an ids parameter that names none returns no entries. Each entry spends its whole durationMs in timings.wait, with send and receive at 0 and the other phases at -1. A body kept as bytes goes out in base64: content.encoding is base64 for a response, and postData._encoding for a request, which HAR gives no encoding field. _lustro on each entry carries the transaction id and what HAR has no field for: isMocked, categories, the truncation flags, responseComplete, and error. A request still in flight has status 0 and time 0. The request line and headers must stay under 8 KB, so a client that exports many ids sends them in batches.",
+        "description": "Returns the transactions that ids names, or every one when ids is left out, as a HAR 1.2 document that browser devtools and HTTP tools import, oldest first. The entry of a WebSocket's handshake carries the socket's messages in _webSocketMessages, the field Chrome DevTools writes and reads, and its _resourceType is websocket. It is built from the store, so headers, the URL, and text bodies are redacted as in the detail. An id the store no longer has is left out, and an ids parameter that names none returns no entries. Each entry spends its whole durationMs in timings.wait, with send and receive at 0 and the other phases at -1. A body kept as bytes goes out in base64: content.encoding is base64 for a response, and postData._encoding for a request, which HAR gives no encoding field. _lustro on each entry carries the transaction id and what HAR has no field for: isMocked, categories, the truncation flags, responseComplete, and error. A request still in flight has status 0 and time 0. The request line and headers must stay under 8 KB, so a client that exports many ids sends them in batches.",
         "parameters": [
           { "name": "format", "in": "query", "required": false, "schema": { "type": "string", "enum": ["har"], "default": "har" }, "description": "The export format. 400 for any other." },
           { "name": "ids", "in": "query", "required": false, "schema": { "type": "string" }, "description": "Transaction ids separated by commas; the parameter can also repeat. Left out, the export has every transaction." }
@@ -92,10 +92,93 @@
         }
       }
     },
+    "/api/v1/network/websockets": {
+      "get": {
+        "operationId": "listWebSockets",
+        "summary": "Poll captured WebSocket connections with an opaque cursor.",
+        "description": "Short-polling, as for transactions: status=reset and status=delta carry the full current list, newest first, and status=unchanged omits items. The cursor advances when a connection is listed, changes state, or gets an event, and on clear. A connection is listed when the app creates its socket with the factory from Lustro.webSocketFactory; the interceptor alone shows only the handshake, as a transaction. A socket the app's capture filter skips is never listed. While capture is paused, no socket is listed and no message is recorded; a close or a failure of a listed connection still is. A connection that was cleared or evicted is listed again with its next message, with counts that start again.",
+        "parameters": [
+          { "name": "cursor", "in": "query", "required": false, "schema": { "type": "string" }, "description": "Opaque cursor from the previous response. Omit on first poll." }
+        ],
+        "responses": {
+          "200": { "description": "Cursor envelope.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WebSocketCursorEnvelope" } } } },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "413": { "$ref": "#/components/responses/Error" },
+          "503": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/v1/network/websockets/{id}": {
+      "get": {
+        "operationId": "getWebSocket",
+        "summary": "One WebSocket connection, with the headers of its handshake.",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Connection detail.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WebSocketConnection" } } } },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" },
+          "413": { "$ref": "#/components/responses/Error" },
+          "503": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/v1/network/websockets/{id}/events": {
+      "get": {
+        "operationId": "listWebSocketEvents",
+        "summary": "Poll a connection's log: its messages and lifecycle events, in order.",
+        "description": "A stream envelope. The first poll (no cursor, or one from another log) gets status=reset with the last events of the log, at most limit of them. A poll with the returned cursor gets status=delta with only the events after it, oldest first, or status=unchanged. When more than limit events are new, the delta has the oldest limit of them, and the next poll goes on from there. dropped counts the events the log evicted before this client got them. direction and search leave events out of items; the cursor still moves past them. Clear starts a new log, so a cursor from before it gets a reset.",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "cursor", "in": "query", "required": false, "schema": { "type": "string" }, "description": "Opaque cursor from the previous response. Omit on first poll." },
+          { "name": "limit", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 1, "default": 100 }, "description": "The most events in one response. A limit above the size of the log returns the whole log. 400 when it is not a whole number of 1 or more." },
+          { "name": "direction", "in": "query", "required": false, "schema": { "type": "string", "enum": ["sent", "received"] }, "description": "Only the events with this direction: messages, and close frames. 400 for any other value." },
+          { "name": "search", "in": "query", "required": false, "schema": { "type": "string" }, "description": "Only the text messages whose stored text contains this, ignoring case." }
+        ],
+        "responses": {
+          "200": { "description": "Stream envelope.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WebSocketEventStreamEnvelope" } } } },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" },
+          "413": { "$ref": "#/components/responses/Error" },
+          "503": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/v1/network/websockets/{id}/events/{seq}/payload": {
+      "get": {
+        "operationId": "getWebSocketPayload",
+        "summary": "The payload of one message, as it is stored.",
+        "description": "Returns the bytes of a binary message as application/octet-stream, or the redacted text of a text message as text/plain; charset=utf-8. A payload cut at the capture cap comes back as the part that was kept; the event's truncated says when. Every payload carries Content-Disposition: attachment and the Content-Security-Policy default-src 'none'; sandbox, enforced alongside the server's own policy, so a captured payload can't run script under the console's origin. 404 when the connection or the event is unknown, when the event is not a message, or when no payload is stored for it.",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "seq", "in": "path", "required": true, "schema": { "type": "integer" }, "description": "The event's seq." }
+        ],
+        "responses": {
+          "200": {
+            "description": "The payload.",
+            "headers": {
+              "Content-Disposition": { "description": "attachment, always.", "schema": { "type": "string" } },
+              "Content-Security-Policy": { "description": "The server's policy and default-src 'none'; sandbox, in one header.", "schema": { "type": "string" } }
+            },
+            "content": { "*/*": { "schema": {} } }
+          },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" },
+          "413": { "$ref": "#/components/responses/Error" },
+          "503": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
     "/api/v1/network/clear": {
       "post": {
         "operationId": "clearTransactions",
-        "summary": "Clear the captured transaction list and start the capture filter's counts again. Mock rules and settings are preserved.",
+        "summary": "Clear the captured transactions and WebSocket connections, and start the capture filter's counts again. Mock rules and settings are preserved.",
         "responses": { "200": { "$ref": "#/components/responses/Ok" }, "401": { "$ref": "#/components/responses/Error" }, "403": { "$ref": "#/components/responses/Error" }, "413": { "$ref": "#/components/responses/Error" }, "503": { "$ref": "#/components/responses/Error" } }
       }
     },
@@ -160,7 +243,7 @@
     "/api/v1/network/pause": {
       "post": {
         "operationId": "togglePause",
-        "summary": "Toggle capture pause (capture-only; mocks and throttle still apply while paused).",
+        "summary": "Toggle capture pause (capture-only; mocks and throttle still apply while paused). It pauses WebSocket messages too.",
         "responses": { "200": { "description": "New state.", "content": { "application/json": { "schema": { "type": "object", "required": ["status", "paused"], "properties": { "status": { "const": "ok" }, "paused": { "type": "boolean" } } } } } }, "401": { "$ref": "#/components/responses/Error" }, "403": { "$ref": "#/components/responses/Error" }, "413": { "$ref": "#/components/responses/Error" }, "503": { "$ref": "#/components/responses/Error" } }
       }
     },
@@ -289,6 +372,7 @@
           "requestBodyBytes": { "type": ["integer", "null"], "description": "Size of the request body on the wire, before a gzip or deflate Content-Encoding is inflated; null when not known." },
           "responseBodyBytes": { "type": ["integer", "null"], "description": "Size of the response body on the wire, before a gzip or deflate Content-Encoding is inflated; null when not known." },
           "responseComplete": { "type": "boolean" },
+          "webSocketId": { "type": ["string", "null"], "description": "Set on the handshake of a WebSocket that is listed under websockets: the id of that connection. null for every other transaction, and once the connection is cleared or evicted." },
           "error": { "type": ["string", "null"] },
           "requestHeaders": { "type": "object", "additionalProperties": { "type": "string" } },
           "requestBody": { "type": ["string", "null"], "description": "The body as redacted text. A gzip or deflate body is stored inflated; one in another Content-Encoding, such as br, is null." },
@@ -298,6 +382,81 @@
           "responseBody": { "type": ["string", "null"], "description": "The body as redacted text. A gzip or deflate body is stored inflated; one in another Content-Encoding, such as br, is null." },
           "responseBodyTruncated": { "type": "boolean" },
           "responseBodyBinary": { "type": "boolean", "description": "Detail only. true when the response body was kept as bytes, as it arrived, because the Redactor can't read it: an image. responseBody is then null; fetch the bytes from GET transactions/{id}/body/response." }
+        }
+      },
+      "WebSocketCursorEnvelope": {
+        "type": "object",
+        "required": ["cursor", "status"],
+        "properties": {
+          "cursor": { "type": "string", "description": "Opaque cursor token." },
+          "status": { "type": "string", "enum": ["delta", "unchanged", "reset"] },
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/WebSocketConnection" }, "description": "Newest first." },
+          "state": { "$ref": "#/components/schemas/TransactionCursorEnvelope/properties/state" }
+        }
+      },
+      "WebSocketConnection": {
+        "type": "object",
+        "required": ["id", "url", "state"],
+        "properties": {
+          "id": { "type": "string" },
+          "url": { "type": "string", "description": "The URL the app asked for, with the ws or wss scheme. Redacted at capture time. The handshake transaction has the same URL with http or https, as OkHttp holds it." },
+          "state": { "type": "string", "enum": ["connecting", "open", "closing", "closed", "failed"], "description": "connecting until the handshake response arrives; closing once either side sent a close frame; closed after both did; failed after an error, a refused handshake, or cancel()." },
+          "timestamp": { "type": "string", "description": "startedAt as HH:mm:ss.SSS in the device's time zone. For display; sort and correlate by startedAt." },
+          "startedAt": { "type": "integer", "description": "When the app created the socket, in milliseconds since the Unix epoch." },
+          "openedAt": { "type": ["integer", "null"], "description": "When the handshake response arrived; null before that, and for a socket that never opened." },
+          "closedAt": { "type": ["integer", "null"], "description": "When the socket closed or failed; null before that." },
+          "statusCode": { "type": ["integer", "null"], "description": "The status of the handshake response: 101, or the status of the response that refused the upgrade. null before a response, and when the socket failed without one." },
+          "closeCode": { "type": ["integer", "null"], "description": "The close code the server sent, or null when it sent none." },
+          "closeReason": { "type": ["string", "null"] },
+          "closedBy": { "type": ["string", "null"], "enum": ["app", "server", null], "description": "Whose close frame came first; null when neither side sent one." },
+          "canceled": { "type": "boolean", "description": "true when the app called cancel() before the socket ended. OkHttp then fails the socket, so state is failed." },
+          "error": { "type": ["string", "null"], "description": "For a failed socket: the exception it ended with, as class and message. Stored as it is, not redacted." },
+          "transactionId": { "type": ["string", "null"], "description": "The handshake's transaction, when the interceptor on the same client captured it; else null." },
+          "categories": { "type": "array", "items": { "type": "string" }, "description": "Labels from the configured NetworkClassifier (may be empty)." },
+          "sentCount": { "type": "integer", "minimum": 0, "description": "Messages the app sent since the connection was listed. A message that send() refused is not counted." },
+          "sentBytes": { "type": "integer", "minimum": 0, "description": "The payload bytes of those messages." },
+          "receivedCount": { "type": "integer", "minimum": 0, "description": "Messages the app received since the connection was listed." },
+          "receivedBytes": { "type": "integer", "minimum": 0 },
+          "storedEvents": { "type": "integer", "minimum": 0, "description": "Events in the log now." },
+          "evictedEvents": { "type": "integer", "minimum": 0, "description": "Events the log dropped at its limits, oldest first. They are still in the counts." },
+          "droppedEvents": { "type": "integer", "minimum": 0, "description": "Messages that were never stored, because capture was behind. They are in no count." },
+          "protocol": { "type": ["string", "null"], "description": "Detail only. The protocol of the handshake response, http/1.1." },
+          "requestHeaders": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Detail only. The headers the app set on the request, redacted. The handshake transaction also has the headers OkHttp adds." },
+          "responseHeaders": { "type": ["object", "null"], "additionalProperties": { "type": "string" }, "description": "Detail only. The headers of the handshake response, redacted; null before a response." }
+        }
+      },
+      "WebSocketEventStreamEnvelope": {
+        "type": "object",
+        "required": ["cursor", "status"],
+        "properties": {
+          "cursor": { "type": "string", "description": "Opaque cursor token." },
+          "status": { "type": "string", "enum": ["delta", "unchanged", "reset"] },
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/WebSocketEvent" }, "description": "Oldest first. For reset, the last events of the log; for delta, the events after the cursor." },
+          "dropped": { "type": "integer", "minimum": 0, "description": "For delta: events the log evicted before this client got them." }
+        }
+      },
+      "WebSocketEvent": {
+        "type": "object",
+        "description": "One entry of a connection's log: a message, or a lifecycle event. An event has only the keys of its kind.",
+        "required": ["seq", "at", "kind"],
+        "properties": {
+          "seq": { "type": "integer", "minimum": 1, "description": "The event's number in its connection, in the order the events happened. A number is never used again, and one can be missing, such as that of a message that was not captured." },
+          "at": { "type": "integer", "description": "When the event happened, in milliseconds since the Unix epoch. For a sent message, when the app called send()." },
+          "timestamp": { "type": "string", "description": "at as HH:mm:ss.SSS in the device's time zone. For display." },
+          "kind": { "type": "string", "enum": ["open", "message", "close", "closed", "cancel", "failure"], "description": "open = the handshake response arrived. message = a text or binary message. close = a close frame: with direction sent, the app called close(); with direction received, the server's frame arrived. closed = both sides closed. cancel = the app called cancel(). failure = the socket failed." },
+          "direction": { "type": "string", "enum": ["sent", "received"], "description": "For message and close." },
+          "type": { "type": "string", "enum": ["text", "binary"], "description": "For message." },
+          "payloadBytes": { "type": "integer", "minimum": 0, "description": "For message: the size of the whole payload, in UTF-8 for text, also when only its first part is stored." },
+          "stored": { "type": "boolean", "description": "For message: false when no payload is stored, because the app's Redactor left it out or failed on it." },
+          "truncated": { "type": "boolean", "description": "For message: true when the payload passed the capture cap, so only its first part is stored." },
+          "preview": { "type": "string", "description": "For a text message with a stored payload: its first 512 characters, redacted." },
+          "previewComplete": { "type": "boolean", "description": "With preview: true when it is the whole stored text. When false, GET websockets/{id}/events/{seq}/payload has all of it." },
+          "hexPreview": { "type": "string", "description": "For a binary message with a stored payload: its first 32 bytes in hexadecimal. The Redactor's default stores a binary payload as it arrived." },
+          "enqueued": { "type": "boolean", "description": "For a sent message and a sent close: what send() or close() returned. true means that OkHttp queued it, which does not show that the server received it. false means that OkHttp refused it, so it was not sent." },
+          "code": { "type": ["integer", "null"], "description": "For close and closed: the close code." },
+          "reason": { "type": ["string", "null"], "description": "For close and closed: the close reason." },
+          "statusCode": { "type": ["integer", "null"], "description": "For open: the status of the handshake response. For failure: the status of a response that refused the upgrade, or null." },
+          "error": { "type": ["string", "null"], "description": "For failure: the exception, as class and message." }
         }
       },
       "HarDocument": {
@@ -376,7 +535,24 @@
             }
           },
           "cache": { "type": "object", "maxProperties": 0 },
-          "_resourceType": { "type": "string", "enum": ["fetch", "image"], "description": "How Chrome DevTools files the request on import: image for an image/* response, else fetch." },
+          "_resourceType": { "type": "string", "enum": ["fetch", "image", "websocket"], "description": "How Chrome DevTools files the request on import: websocket for the handshake of a listed WebSocket, image for an image/* response, else fetch." },
+          "_webSocketMessages": {
+            "type": "array",
+            "description": "On the handshake of a listed WebSocket: the messages in its log, oldest first, in the form Chrome DevTools writes and reads. A message that send() refused is left out, because it was not sent. The connection's state and counts are in _lustro.webSocket.",
+            "items": {
+              "type": "object",
+              "required": ["type", "time", "opcode", "data"],
+              "properties": {
+                "type": { "type": "string", "enum": ["send", "receive"] },
+                "time": { "type": "number", "description": "When the message was sent or received, in seconds since the Unix epoch." },
+                "opcode": { "type": "integer", "enum": [1, 2], "description": "1 for a text message, 2 for a binary one." },
+                "data": { "type": "string", "description": "The redacted text, or the bytes in base64 when opcode is 2. Empty when no payload is stored." },
+                "_payloadBytes": { "type": "integer", "minimum": 0, "description": "The size of the whole payload." },
+                "_truncated": { "const": true, "description": "Present when data has only the first part of the payload." },
+                "_stored": { "const": false, "description": "Present when no payload is stored." }
+              }
+            }
+          },
           "timings": {
             "type": "object",
             "required": ["send", "wait", "receive"],
@@ -401,7 +577,26 @@
               "requestBodyTruncated": { "type": "boolean", "description": "true when postData has only the first part of the body." },
               "responseBodyTruncated": { "type": "boolean", "description": "true when content has only the first part of the body." },
               "responseComplete": { "type": "boolean", "description": "false while the request is in flight, including a streaming response." },
-              "error": { "type": ["string", "null"] }
+              "error": { "type": ["string", "null"] },
+              "webSocket": {
+                "type": "object",
+                "description": "On the handshake of a listed WebSocket: the connection, as GET websockets/{id} describes its fields.",
+                "required": ["id", "url", "state"],
+                "properties": {
+                  "id": { "type": "string" },
+                  "url": { "type": "string" },
+                  "state": { "type": "string", "enum": ["connecting", "open", "closing", "closed", "failed"] },
+                  "closeCode": { "type": ["integer", "null"] },
+                  "closeReason": { "type": ["string", "null"] },
+                  "closedBy": { "type": ["string", "null"] },
+                  "canceled": { "type": "boolean" },
+                  "error": { "type": ["string", "null"] },
+                  "sentCount": { "type": "integer" },
+                  "receivedCount": { "type": "integer" },
+                  "evictedEvents": { "type": "integer", "description": "Events the log no longer has, so _webSocketMessages can miss the socket's first messages." },
+                  "droppedEvents": { "type": "integer" }
+                }
+              }
             }
           }
         }

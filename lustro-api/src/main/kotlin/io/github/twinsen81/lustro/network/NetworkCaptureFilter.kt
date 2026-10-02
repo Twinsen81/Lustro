@@ -18,8 +18,10 @@ package io.github.twinsen81.lustro.network
  *
  * Lustro calls [shouldCapture] once per request, before it captures anything,
  * on the thread that makes the call: an OkHttp call's thread, or the thread that
- * uses an `HttpURLConnection` when platform capture is on. Keep it fast and
- * thread-safe. A filter that throws doesn't fail the call: the request is
+ * uses an `HttpURLConnection` when platform capture is on. For a WebSocket from
+ * `Lustro.webSocketFactory`, it calls it once, on the thread that creates the
+ * socket, with the request the app passed; a socket the filter skips has
+ * neither its handshake nor a message captured. Keep it fast and thread-safe. A filter that throws doesn't fail the call: the request is
  * captured, and Lustro logs the first failure only.
  */
 public interface NetworkCaptureFilter {

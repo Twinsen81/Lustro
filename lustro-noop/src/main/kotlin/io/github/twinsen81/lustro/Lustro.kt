@@ -2,6 +2,7 @@ package io.github.twinsen81.lustro
 
 import android.app.Application
 import okhttp3.Interceptor
+import okhttp3.WebSocket
 
 /**
  * The Lustro debug runtime facade (no-op build).
@@ -9,7 +10,8 @@ import okhttp3.Interceptor
  * This is the release-safe `:lustro-noop` mirror of the `:lustro` runtime
  * facade. It exposes byte-identical public signatures so consumer code compiles
  * unchanged, but every runtime body is a no-op: no socket is bound, no traffic
- * is captured, and [networkInterceptor] returns a pass-through interceptor.
+ * is captured, [networkInterceptor] returns a pass-through interceptor, and
+ * [webSocketFactory] returns the factory it is given.
  *
  * Build one with [builder], register [DebugTab]s, and [start] it. In this build
  * [start] returns [LustroStatus.DISABLED] and [stop] does nothing; both are
@@ -21,6 +23,12 @@ public class Lustro internal constructor() {
      * a pass-through interceptor that forwards the request unchanged.
      */
     public fun networkInterceptor(): Interceptor = Interceptor { it.proceed(it.request()) }
+
+    /**
+     * Returns a [WebSocket.Factory] for the app's sockets. In the no-op build
+     * this is [delegate] itself: nothing is wrapped and nothing is recorded.
+     */
+    public fun webSocketFactory(delegate: WebSocket.Factory): WebSocket.Factory = delegate
 
     /**
      * Starts the debug server. In the no-op build nothing binds and this always

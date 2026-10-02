@@ -2,6 +2,7 @@ package io.github.twinsen81.lustro.sample
 
 import android.app.Application
 import okhttp3.OkHttpClient
+import okhttp3.WebSocket
 
 /**
  * Sample app entry point.
@@ -32,6 +33,14 @@ public class SampleApplication : Application() {
     public lateinit var httpClient: OkHttpClient
         private set
 
+    /**
+     * Where the app's WebSockets come from. In the debug variant it wraps
+     * [httpClient] so the Network tab shows each socket's messages; in the
+     * release variant it is [httpClient] itself.
+     */
+    public lateinit var webSockets: WebSocket.Factory
+        private set
+
     override fun onCreate() {
         super.onCreate()
 
@@ -45,5 +54,6 @@ public class SampleApplication : Application() {
         val interceptor = LustroBootstrap.start(this, client)
 
         httpClient = builder.addInterceptor(interceptor).build()
+        webSockets = LustroBootstrap.webSocketFactory(httpClient)
     }
 }

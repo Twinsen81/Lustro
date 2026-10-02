@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://twinsen81.github.io/Lustro/wire-protocol/v1/stream-envelope.schema.json",
+  "title": "Stream envelope",
+  "description": "Live-polling envelope for an endpoint whose list only grows at its end, such as a log. A poll gets only the entries after its cursor, so a long list is not sent again each time it grows. The cursor is opaque; clients echo the last cursor on the next poll and treat any unknown status value as \"reset\". This generic envelope permits additional properties so an endpoint may extend it; a tab schema may pin those extensions.",
+  "type": "object",
+  "required": ["cursor", "status"],
+  "properties": {
+    "cursor": {
+      "type": "string",
+      "description": "Opaque cursor token. Echo it back on the next poll. It moves forward with the entries the client received; a cursor from another list, or from before the list was cleared, gets a reset."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["delta", "unchanged", "reset"],
+      "description": "delta = items are the entries after the cursor: append them. unchanged = no new entry, items omitted. reset = replace everything the client has with items, which are the last entries of the list."
+    },
+    "items": {
+      "type": "array",
+      "description": "Present for reset and delta, oldest first. An endpoint can send a delta in pages: poll again with the returned cursor until the status is unchanged. Element shape is endpoint-specific.",
+      "items": {}
+    },
+    "dropped": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Present for delta: how many entries the list evicted before this client received them. They come before the first item."
+    },
+    "state": {
+      "type": "object",
+      "description": "Optional endpoint-specific observable state. Tab schemas pin the exact shape."
+    }
+  }
+}

@@ -15,6 +15,7 @@
   "requestBodyBytes": null,
   "responseBodyBytes": 5184,
   "responseComplete": true,
+  "webSocketId": null,
   "error": null,
   "requestHeaders": {
     "Accept": "image/*"
