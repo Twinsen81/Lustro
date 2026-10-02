@@ -518,6 +518,14 @@
     };
 
     function renderDetail(tx) {
+        // A search or a refresh renders the bodies again; keep what was folded in
+        // each one that is the same, such as a request's while its response streams.
+        var previous = currentDetailTx;
+        var folded = previous && previous.id === tx.id ? foldedNodes() : {};
+        ['request', 'response'].forEach(function(dir) {
+            if (previous && previous[dir + 'Body'] !== tx[dir + 'Body']) delete folded[dir];
+        });
+        if (!previous || previous.id !== tx.id) hexDumps = {};
         currentDetailTx = tx;
         var copyAllEl = document.getElementById('copy-all-btn');
         if (copyAllEl) copyAllEl.style.display = '';
@@ -560,34 +568,14 @@
         if (tx.responseHeaders && Object.keys(tx.responseHeaders).length > 0) {
             html += formatHeaders(tx.responseHeaders);
         }
-        if (tx.responseBodyBinary) {
-            if (tx.responseBodyTruncated) html += '<div class="net-truncated-label">Truncated</div>';
-            html += binaryBody(tx, 'response');
-        } else if (tx.responseBody) {
-            var respFmt = debugFormatJson(tx.responseBody);
-            var respHtml = renderBody(tx.responseBody);
-            if (tx.responseBodyTruncated) html += '<div class="net-truncated-label">Truncated</div>';
-            html += '<div class="net-body-wrap">' + copyBtn(respFmt) + '<pre class="dc-code dc-json">' + respHtml + '</pre></div>';
-        } else {
-            html += missingBody(tx.responseHeaders, tx.responseBody, 'No response body');
-        }
+        html += bodySection(tx, 'response');
         html += '</div>';
 
         html += '<div class="net-dir-content" data-dir="request"' + vis('request') + '>';
         if (tx.requestHeaders && Object.keys(tx.requestHeaders).length > 0) {
             html += formatHeaders(tx.requestHeaders);
         }
-        if (tx.requestBodyBinary) {
-            if (tx.requestBodyTruncated) html += '<div class="net-truncated-label">Truncated</div>';
-            html += binaryBody(tx, 'request');
-        } else if (tx.requestBody) {
-            var reqFmt = debugFormatJson(tx.requestBody);
-            var reqHtml = renderBody(tx.requestBody);
-            if (tx.requestBodyTruncated) html += '<div class="net-truncated-label">Truncated</div>';
-            html += '<div class="net-body-wrap">' + copyBtn(reqFmt) + '<pre class="dc-code dc-json">' + reqHtml + '</pre></div>';
-        } else {
-            html += missingBody(tx.requestHeaders, tx.requestBody, 'No request body');
-        }
+        html += bodySection(tx, 'request');
         html += '</div>';
 
         html += '<div style="margin-top:16px">';
@@ -595,6 +583,8 @@
         html += '</div>';
 
         el.innerHTML = html;
+        refold(folded);
+        loadHexDumps();
     }
 
     var activeDir = 'response';
@@ -635,15 +625,223 @@
         });
     }
 
-    function renderBody(rawBody) {
-        return window.debugSyntaxHighlightJson(rawBody, { searchText: searchText });
+    // The views each kind of body has, the default first. Raw is the body as
+    // captured: its text with line numbers, or the bytes of a binary body.
+    var BODY_VIEWS = {
+        json: ['tree', 'raw'],
+        form: ['table', 'raw'],
+        xml: ['pretty', 'raw'],
+        html: ['pretty', 'raw'],
+        image: ['preview', 'raw'],
+        binary: ['raw'],
+        text: ['raw'],
+    };
+    var BODY_VIEW_LABELS = { tree: 'Tree', table: 'Table', pretty: 'Pretty', preview: 'Preview', raw: 'Raw' };
+    var BODY_VIEW_HELP = {
+        tree: 'Show the JSON as a tree. Click a key or bracket to fold it, and Alt-click to fold or unfold everything inside it.',
+        table: 'Show the form fields as a table, with names and values decoded.',
+        pretty: 'Show the markup indented. Only whitespace is added.',
+        preview: 'Show the image.',
+        raw: 'Show the body as captured, with line numbers.',
+    };
+
+    // The view chosen for each media type, remembered in the browser like the
+    // headers toggle.
+    var BODY_VIEWS_KEY = 'debug-network-body-views';
+    function savedBodyViews() {
+        try { return JSON.parse(localStorage.getItem(BODY_VIEWS_KEY)) || {}; } catch(e) { return {}; }
+    }
+    function bodyViewFor(contentType, kind) {
+        var saved = savedBodyViews()[mediaEssence(contentType)];
+        return BODY_VIEWS[kind].indexOf(saved) >= 0 ? saved : BODY_VIEWS[kind][0];
+    }
+    function saveBodyView(contentType, view) {
+        var views = savedBodyViews();
+        views[mediaEssence(contentType)] = view;
+        try { localStorage.setItem(BODY_VIEWS_KEY, JSON.stringify(views)); } catch(e) {}
+    }
+    function mediaEssence(contentType) {
+        return String(contentType || '').split(';')[0].trim().toLowerCase();
     }
 
-    // A body kept as bytes is an image. The browser loads it from the body
-    // route and sends the session cookie, as for any same-origin image.
-    function binaryBody(tx, dir) {
-        var src = netUrl('transactions/' + encodeURIComponent(tx.id) + '/body/' + dir);
-        return '<div class="net-body-image"><img src="' + debugEscapeHtml(src) + '" alt="' + dir + ' body"></div>';
+    // One direction's body: a bar with its views, then the view. Copy copies the
+    // body as captured in every view, because an inspector is opened to see the
+    // bytes, not a rendering of them.
+    function bodySection(tx, dir) {
+        var text = tx[dir + 'Body'];
+        var binary = !!tx[dir + 'BodyBinary'];
+        var open = '<div class="net-body" data-dir="' + dir + '">';
+        if (!binary && !text) {
+            return open + missingBody(tx[dir + 'Headers'], text, dir === 'response' ? 'No response body' : 'No request body') + '</div>';
+        }
+        var contentType = tx[dir + 'ContentType'];
+        var truncated = !!tx[dir + 'BodyTruncated'];
+        var kind = debugBodyKind(contentType, text, binary);
+        var view = bodyViewFor(contentType, kind);
+        var options = { searchText: searchText };
+        var content = null;
+        var notJson = false;
+        if (kind === 'json') {
+            content = view === 'tree' ? debugJsonTree(text, options) : null;
+            // A JSON type on text that is not JSON, such as a body cut at the
+            // capture cap.
+            if (!content && (view === 'tree' || !debugScanJsonSource(text, 0))) {
+                notJson = debugBodyKind(contentType, '', false) === 'json';
+                kind = 'text';
+                view = 'raw';
+            }
+        }
+
+        // A hex dump's text arrives later, and loadHexDumps gives it to the button.
+        var copy = binary && view !== 'raw' ? '' : copyBtn(binary ? null : text);
+        if (content == null) {
+            if (binary && view === 'raw') {
+                content = '<pre class="dc-code net-hexdump" data-hex-src="' + debugEscapeHtml(bodyUrl(tx, dir)) + '">Loading the bytes…</pre>';
+            } else if (view === 'preview') {
+                // The browser sends the session cookie with a same-origin image.
+                content = '<div class="net-body-image"><img class="net-body-img" src="'
+                    + debugEscapeHtml(bodyUrl(tx, dir)) + '" alt="' + dir + ' body"></div>';
+            } else if (view === 'table') {
+                content = debugFormTable(text, options);
+            } else if (view === 'pretty') {
+                content = debugHighlightMarkup(text, { searchText: searchText, html: kind === 'html' });
+            } else {
+                content = debugLineNumbered(text, options);
+            }
+        }
+
+        var bar = '<div class="net-body-bar">';
+        var views = BODY_VIEWS[kind];
+        if (views.length > 1) {
+            bar += '<div class="dc-seg dc-seg--sm" role="group" aria-label="' + (dir === 'response' ? 'Response' : 'Request') + ' body view">'
+                + views.map(function(v) {
+                    var help = v === 'raw' && binary ? 'Show the bytes as captured, as a hex dump.' : BODY_VIEW_HELP[v];
+                    return '<button class="dc-seg__item' + (v === view ? ' dc-seg__item--active' : '') + '" data-action="switchBodyView"'
+                        + ' data-dir="' + dir + '" data-view="' + v + '"'
+                        + ' title="' + debugEscapeHtml(help + ' Remembered for this content type.') + '">'
+                        + BODY_VIEW_LABELS[v] + '</button>';
+                }).join('')
+                + '</div>';
+        }
+        if (truncated) bar += '<span class="net-truncated-label" title="The body passed the capture cap, so only its first part was kept.">Truncated</span>';
+        if (notJson && !truncated) bar += '<span class="dc-comment">// not valid JSON</span>';
+        if (view === 'preview') {
+            var size = formatBytes(tx[dir + 'BodyBytes']);
+            bar += '<span class="net-body-meta" data-size="' + debugEscapeHtml(size) + '">' + debugEscapeHtml(size) + '</span>';
+        } else if (kind === 'binary') {
+            bar += '<span class="dc-comment">// ' + debugEscapeHtml(mediaEssence(contentType) || 'binary') + ' has no preview</span>';
+        }
+        bar += '<a class="dc-btn dc-btn--sm net-body-download" href="' + debugEscapeHtml(bodyUrl(tx, dir)) + '"'
+            + ' download="' + debugEscapeHtml(bodyFileName(tx, dir, contentType)) + '"'
+            + ' title="Save the body as captured to a file.">Download</a>';
+        bar += '</div>';
+
+        return open + bar + '<div class="net-body-wrap">' + copy + content + '</div></div>';
+    }
+
+    function bodyUrl(tx, dir) {
+        return netUrl('transactions/' + encodeURIComponent(tx.id) + '/body/' + dir);
+    }
+
+    // No prototype: the media type comes from the captured headers.
+    var BODY_FILE_EXTENSIONS = Object.assign(Object.create(null), {
+        'application/x-www-form-urlencoded': 'txt', 'text/plain': 'txt', 'text/event-stream': 'txt',
+        'application/javascript': 'js', 'text/javascript': 'js',
+        'image/jpeg': 'jpg', 'image/svg+xml': 'svg', 'image/x-icon': 'ico', 'image/vnd.microsoft.icon': 'ico',
+    });
+    function bodyFileName(tx, dir, contentType) {
+        var essence = mediaEssence(contentType);
+        var subtype = essence.slice(essence.indexOf('/') + 1);
+        var ext = BODY_FILE_EXTENSIONS[essence]
+            || subtype.slice(subtype.lastIndexOf('+') + 1).replace(/^(x-|vnd\.)/, '').replace(/[^a-z0-9]/g, '').slice(0, 8)
+            || (tx[dir + 'BodyBinary'] ? 'bin' : 'txt');
+        return 'lustro-' + String(tx.id).slice(0, 8) + '-' + dir + '.' + ext;
+    }
+
+    window.switchBodyView = function(dir, view) {
+        var tx = currentDetailTx;
+        if (!tx) return;
+        saveBodyView(tx[dir + 'ContentType'], view);
+        // Both directions, since they can share the content type.
+        var folded = foldedNodes();
+        document.querySelectorAll('.net-body').forEach(function(section) {
+            section.outerHTML = bodySection(tx, section.dataset.dir);
+        });
+        refold(folded);
+        loadHexDumps();
+    };
+
+    // The folded nodes of each tree on screen, by position.
+    function foldedNodes() {
+        var folded = {};
+        document.querySelectorAll('.net-body').forEach(function(section) {
+            var indexes = [];
+            section.querySelectorAll('.dc-fold').forEach(function(fold, i) {
+                if (fold.classList.contains('dc-fold--closed')) indexes.push(i);
+            });
+            folded[section.dataset.dir] = indexes;
+        });
+        return folded;
+    }
+    function refold(folded) {
+        document.querySelectorAll('.net-body').forEach(function(section) {
+            var indexes = folded[section.dataset.dir];
+            if (!indexes || !indexes.length) return;
+            var folds = section.querySelectorAll('.dc-fold');
+            indexes.forEach(function(i) { if (folds[i]) folds[i].classList.add('dc-fold--closed'); });
+        });
+    }
+
+    // A hex dump of a binary body, fetched from the body route. The dump is
+    // text in a <pre>, so it goes in through textContent and needs no escaping.
+    // Past the limit a dump is too long to read, and the download has it all.
+    var HEX_DUMP_LIMIT = 256 * 1024;
+    var hexDumps = {};
+    function loadHexDumps() {
+        document.querySelectorAll('.net-hexdump[data-hex-src]').forEach(function(pre) {
+            var src = pre.dataset.hexSrc;
+            pre.removeAttribute('data-hex-src');
+            var show = function(dump) {
+                // The detail may have been rendered again meanwhile, and the copy
+                // id given to another button.
+                if (!pre.isConnected) return;
+                pre.textContent = dump;
+                var copy = pre.parentNode.querySelector('.net-copy-btn');
+                if (copy) copyStore[copy.dataset.copyId] = dump;
+            };
+            if (hexDumps[src] != null) { show(hexDumps[src]); return; }
+            debugFetch(src)
+                .then(function(r) { return r.arrayBuffer(); })
+                .then(function(buffer) {
+                    var bytes = new Uint8Array(buffer);
+                    var dump = debugHexDump(bytes.subarray(0, HEX_DUMP_LIMIT));
+                    if (bytes.length > HEX_DUMP_LIMIT) {
+                        dump += '\n… ' + (bytes.length - HEX_DUMP_LIMIT) + ' more bytes. Download the body to see them all.';
+                    }
+                    hexDumps[src] = dump;
+                    show(dump);
+                })
+                .catch(function() {
+                    if (pre.isConnected) pre.textContent = 'Failed to load the body.';
+                });
+        });
+    }
+
+    // An image's pixel size is known once it loads; until then the bar shows its
+    // size in bytes. load and error don't bubble, so this listens in capture.
+    function onBodyImage(ev) {
+        var img = ev.target;
+        if (!img || !img.classList || !img.classList.contains('net-body-img')) return;
+        if (ev.type === 'error') {
+            img.parentNode.innerHTML = '<div class="net-empty-body">The browser could not show this image. Raw shows its bytes.</div>';
+            return;
+        }
+        var section = img.closest('.net-body');
+        var meta = section && section.querySelector('.net-body-meta');
+        if (meta) {
+            meta.textContent = (meta.dataset.size ? meta.dataset.size + ' · ' : '')
+                + img.naturalWidth + ' × ' + img.naturalHeight + ' px';
+        }
     }
 
     // Capture inflates a gzip or deflate body and keeps no body in another
@@ -1371,6 +1569,7 @@
         toggleMethodFilter: function(el) { window.toggleMethodFilter(el.dataset.method); },
         selectTransaction: function(el) { window.selectTransaction(el.dataset.txId); },
         switchDir: function(el) { window.switchDir(el.dataset.dir); },
+        switchBodyView: function(el) { window.switchBodyView(el.dataset.dir, el.dataset.view); },
         switchRightTab: function(el) { window.switchRightTab(el.dataset.tab); },
         mockThis: function() { window.mockThis(); },
         editRule: function(el) { window.editRule(el.dataset.ruleId); },
@@ -1432,8 +1631,11 @@
         delegationRoot.addEventListener('click', onDelegatedClick);
         delegationRoot.addEventListener('input', onDelegatedInput);
         delegationRoot.addEventListener('change', onDelegatedChange);
-        // capture: <details> toggle events do not bubble.
+        // capture: <details> toggle events and image load and error events do
+        // not bubble.
         delegationRoot.addEventListener('toggle', onHeadersToggle, true);
+        delegationRoot.addEventListener('load', onBodyImage, true);
+        delegationRoot.addEventListener('error', onBodyImage, true);
     }
 
     function init() {

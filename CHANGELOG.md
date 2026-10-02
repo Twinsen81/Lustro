@@ -177,6 +177,26 @@ see [DECISIONS.md](DECISIONS.md).
   `adb forward --no-rebind`, so it no longer takes over a local port that a
   forward of another device holds. `.github/scripts/cli-e2e.sh` takes its local
   port from `CLI_E2E_LOCAL_PORT`.
+- **A viewer for each kind of body in the Network tab.** The detail showed a
+  body as highlighted JSON, or as plain text when it was not JSON. It now picks
+  a viewer by the body's content type: a tree for JSON that folds by object and
+  array; the fields of a form body, decoded, in a table; XML and HTML indented,
+  with whitespace added and nothing else, as the JSON view does, and an element
+  that holds text shown as it arrived; the image for PNG, JPEG, GIF, and WebP,
+  with its size and pixel dimensions; and line numbers for other text. A body
+  that is a valid JSON object or array gets the tree whatever its content type
+  says, since servers send JSON as text/html. In the tree, Alt-click folds
+  everything inside a node, and a folded node that holds a search match is
+  highlighted. Each viewer has a Raw view: the body as captured with line
+  numbers, or an image's bytes as a hex dump. The browser remembers the view
+  chosen for each content type. Copy copies the body as captured in every view,
+  so for JSON it no longer adds indentation; the Copy button of the whole
+  transaction still does. Download saves the body from the body route.
+  `shared.css` gains `.dc-tree`, `.dc-markup`, `.dc-lines`, `.dc-kv`, and
+  `.dc-seg--sm`, and `shared.js` the functions that build them, documented in
+  `docs/STYLEGUIDE.md`. The JavaScript tests cover the escaping of each viewer.
+  The sample has a request for each viewer, a PNG and a BMP that it sends as
+  request bodies, and a request that sends a 250 KB JSON body.
 
 ### Fixed
 

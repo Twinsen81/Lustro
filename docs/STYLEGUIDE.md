@@ -89,7 +89,8 @@ too. Semantic color is passed via the `--c` custom property where noted:
 - `.dc-chip` + `.dc-chip__dot`: pill filters with a colored leading dot;
   `--active` = accent-tinted.
 - `.dc-seg` / `.dc-seg__item(--active)`: segmented control on a recessed track;
-  the selected segment is solid accent.
+  the selected segment is solid accent. `.dc-seg--sm` is the compact one, for a
+  mode switch inside a panel; its items keep a 30px hit target.
 - `.dc-tabs` / `.dc-tab(--active)` / `.dc-tabpanel`: connected panel tabs. The
   active tab lifts onto `--raise`, takes a top accent bar, and visually joins
   its panel.
@@ -118,6 +119,29 @@ too. Semantic color is passed via the `--c` custom property where noted:
   drag stops at each pane's CSS `min-width`.
 - `.dc-json` (`.k/.s/.n/.b/.p` spans, as `debugSyntaxHighlightJson()` emits
   them) in a `.dc-code` well: `<pre class="dc-code dc-json">`.
+- Body viewers. Each function takes a body's text, escapes all of it, and
+  returns one element's HTML; `{ searchText }` marks the matches.
+  `debugBodyKind(contentType, text, binary)` says which one suits a body.
+  - `.dc-tree`: `debugJsonTree(text)` returns a
+    `<pre class="dc-code dc-json dc-tree">`, or `null` when the text is not
+    JSON. Each object or array with members is a `.dc-fold` (its first line)
+    followed by a `.dc-fold__body`. `shared.js` folds a node on click
+    (`.dc-fold--closed`, which shows a count of what it hides), and Alt-click
+    folds or unfolds everything inside it.
+  - `.dc-markup` (`.g/.t/.a/.s/.c` spans: a tag, its name, an attribute name,
+    an attribute value, a comment or declaration): `debugHighlightMarkup(text,
+    { html })` indents XML, or HTML with `html: true`, and adds whitespace and
+    nothing else. An element that holds text is shown as it arrived; only the
+    elements that hold elements are indented.
+  - `.dc-lines` (`.dc-lines__line` rows): `debugLineNumbered(text)` numbers the
+    lines with CSS counters, which are never selected or copied. Each row keeps
+    its line break, so a copied selection keeps empty lines.
+  - `.dc-kv` (`.dc-kv__key`, `.dc-kv__value`, and `.dc-kv__raw` for a part that
+    is not valid percent-encoding): a key and value table.
+    `debugFormTable(text)` builds one from an
+    `application/x-www-form-urlencoded` body.
+  - `debugHexDump(bytes)` returns text in the `hexdump -C` layout. Put it in a
+    `.dc-code` well with `textContent`.
 - `.dc-listitem` (+ `.dc-star`), `.dc-comment`, `.dc-mono-label`, and the chrome
   shell: `.dc-app`, `.dc-topbar`, `.dc-nav`.
 

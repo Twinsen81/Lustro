@@ -353,8 +353,21 @@
     font-weight: 600;
     letter-spacing: .06em;
     text-transform: uppercase;
-    margin-bottom: 6px;
 }
+
+/* The bar above a body: its views, what it is, and Download on the right. */
+.net-body-bar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 8px;
+    font-size: 11.5px;
+}
+.net-body-meta { color: var(--t3); }
+.net-body-download { margin-left: auto; }
+/* A hex dump lines up by column, so it scrolls instead of wrapping. */
+.net-hexdump { white-space: pre; word-break: normal; }
 
 /* ── Mock rule cards ── */
 .net-rule-card {
@@ -540,6 +553,9 @@
     right: 8px;
     z-index: 1;
 }
+/* Room for the copy button, so a long first line doesn't run under it. */
+.net-body-wrap > .dc-code { padding-right: 36px; }
+.net-body-wrap > .dc-kv td { padding-right: 36px; }
 .net-copy-popup {
     position: fixed;
     transform: translate(-50%, -130%);

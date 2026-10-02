@@ -51,9 +51,10 @@ node --test lustro/src/test/js/*.test.js
 ```
 
 Those tests cover the code worth pinning rather than the file as a whole: the
-JSON viewer (`debugScanJsonSource` and the formatting and highlighting on top of
-it) and the HTML escaping that decides whether a captured body renders as text
-or as markup. DOM wiring, resizers, toasts, modals, and one-line helpers are
+body viewers (`debugScanJsonSource` and the JSON formatting, highlighting, and
+tree on top of it, the XML and HTML printer, the line-numbered text, the form
+table, and the hex dump) and the HTML escaping that decides whether a captured
+body renders as text or as markup. DOM wiring, resizers, toasts, modals, and one-line helpers are
 deliberately left untested. Please keep it that way when adding to them, and
 keep the suite dependency-free.
 

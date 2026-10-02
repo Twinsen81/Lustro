@@ -373,6 +373,9 @@ select.dc-btn {
 }
 .dc-seg__item:where(:hover) { color: var(--t1); }
 .dc-seg__item--active { background: var(--accent); color: #fff; font-weight: 600; }
+.dc-seg--sm { padding: 2px; gap: 2px; }                     /* a mode switch inside a panel */
+.dc-seg--sm .dc-seg__item { position: relative; padding: 3px 10px; font-size: 10.5px; }
+.dc-seg--sm .dc-seg__item::after { content: ''; position: absolute; inset: -6px 0; } /* a 30px hit target on an 18px item */
 
 /* ---------- Connected panel tabs (active tab merges into content) ---------- */
 .dc-tabs { flex: none; display: flex; align-items: stretch; gap: 3px; height: 46px; padding: 7px 8px 0; background: var(--tabbar); border-bottom: 1px solid var(--border); }
@@ -509,6 +512,43 @@ select.dc-btn {
 
 /* ---------- Code well (after .dc-json, so <pre class="dc-code dc-json"> wraps long lines) ---------- */
 .dc-code { background: var(--field); border: 1px solid var(--chip-border); border-radius: var(--radius); padding: 13px 14px; font-family: var(--font-mono); font-size: 12px; line-height: 1.65; color: var(--t2); overflow-x: auto; white-space: pre-wrap; word-break: break-word; }
+
+/* ---------- Folding JSON tree (debugJsonTree() emits it; shared.js folds it on click) ---------- */
+/* The caret sits in the indentation left of a key or bracket, so the text keeps its place.
+   An open node shows it on hover only, as code editors do: a large body has thousands. */
+.dc-fold { cursor: pointer; }
+.dc-fold:hover, .dc-fold--closed { position: relative; }
+.dc-fold:hover::before, .dc-fold--closed::before { content: '▾'; position: absolute; left: -1.6ch; width: 1.6ch; text-align: center; color: var(--accent-2); }
+.dc-fold--closed::before { content: '▸'; }
+.dc-fold--closed:not(:hover)::before { color: var(--t3); }
+.dc-fold--closed + .dc-fold__body { display: none; }
+.dc-fold--closed::after { content: '… ' attr(data-count); margin: 0 .3ch; padding: 0 .5ch; border-radius: var(--radius-sm); background: var(--accent-soft); color: var(--t3); }
+.dc-fold--closed:has(+ .dc-fold__body mark)::after { background: var(--search-highlight); color: var(--t1); } /* a search match is folded away */
+
+/* ---------- XML and HTML highlighting (debugHighlightMarkup() emits these spans) ---------- */
+.dc-markup .g { color: var(--syn-punc); } /* a whole tag: < / = > */
+.dc-markup .t { color: var(--syn-key); }  /* tag name */
+.dc-markup .a { color: var(--syn-bool); } /* attribute name */
+.dc-markup .s { color: var(--syn-str); }  /* attribute value */
+.dc-markup .c { color: var(--t4); }       /* comment, doctype, CDATA, <?xml ?> */
+
+/* ---------- Line-numbered text (debugLineNumbered()); the numbers are counters, never copied ---------- */
+.dc-lines { counter-reset: dc-line; --dc-lines-gutter: calc((var(--dc-lines-digits, 3) + 2) * 1ch); }
+/* The number is out of the line's flow, so a long line wraps from beside it, not below it. */
+.dc-lines__line { display: block; position: relative; min-height: 1.65em; padding-left: var(--dc-lines-gutter); }
+.dc-lines__line::before {
+  counter-increment: dc-line; content: counter(dc-line);
+  position: absolute; left: 0; top: 0; width: calc(var(--dc-lines-gutter) - 2ch);
+  text-align: right; color: var(--t5);
+}
+
+/* ---------- Key/value table, e.g. a form body (debugFormTable() emits it) ---------- */
+.dc-kv { width: 100%; border-collapse: separate; border-spacing: 0; background: var(--field); border: 1px solid var(--chip-border); border-radius: var(--radius); font-size: 12px; line-height: 1.6; }
+.dc-kv th, .dc-kv td { padding: 6px 14px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--row-border); overflow-wrap: anywhere; white-space: pre-wrap; }
+.dc-kv tr:last-child > * { border-bottom: none; }
+.dc-kv__key { width: 30%; color: var(--accent-2); font-weight: 400; }
+.dc-kv__value { color: var(--t2); }
+.dc-kv__raw { color: var(--status-3xx); } /* not valid percent-encoding: shown as sent */
 
 /* ---------- Helpers ---------- */
 .dc-comment { color: var(--t4); }                 /* // inline comments */

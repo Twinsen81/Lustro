@@ -2,6 +2,10 @@ package io.github.twinsen81.lustro.sample
 
 import android.app.Activity
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -11,11 +15,15 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import java.io.ByteArrayOutputStream
 import java.io.IOException
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import okhttp3.Call
 import okhttp3.Callback
+import okhttp3.FormBody
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -128,6 +136,19 @@ public class MainActivity : Activity() {
         addButton(root, "GET /get, app asks for br (not decoded)") { compressedGet("br") }
         addButton(root, "POST a gzip JSON body (/status/200)") { gzipPostRequest() }
 
+        // The Network tab picks a viewer for a body by its content type.
+        addSection(root, "Body viewers")
+        addButton(root, "GET /json") { getRequest("json") }
+        addButton(root, "GET /xml") { getRequest("xml") }
+        addButton(root, "GET /html") { getRequest("html") }
+        addButton(root, "GET /image/jpeg") { getRequest("image/jpeg") }
+        addButton(root, "GET /image/svg") { getRequest("image/svg") }
+        addButton(root, "GET /robots.txt") { getRequest("robots.txt") }
+        addButton(root, "POST a form (/post)") { formPostRequest() }
+        addButton(root, "POST a PNG (/anything)") { imagePostRequest(pngBody(), "image/png") }
+        addButton(root, "POST a BMP (/anything)") { imagePostRequest(bmpBody(), "image/bmp") }
+        addButton(root, "POST a 250 KB JSON body (/anything)") { largeJsonPostRequest() }
+
         addSection(root, "Periodic sync")
         val syncButton = addButton(root, START_SYNC_LABEL)
         syncButton.setOnClickListener { toggleSync(syncButton) }
@@ -187,8 +208,81 @@ public class MainActivity : Activity() {
         return button
     }
 
-    private fun getRequest() {
-        dispatch(Request.Builder().url("$BASE/get").get().build())
+    private fun getRequest(path: String = "get") {
+        dispatch(Request.Builder().url("$BASE/$path").get().build())
+    }
+
+    private fun formPostRequest() {
+        val form =
+            FormBody.Builder()
+                .add("name", "Ada Lovelace")
+                .add("email", "ada@example.com")
+                .add("password", "not-a-real-one")
+                .add("topic", "engines")
+                .add("topic", "poetry")
+                .add("note", "café & crème, 100% <real>")
+                .build()
+        dispatch(Request.Builder().url("$BASE/post").post(form).build())
+    }
+
+    private fun imagePostRequest(body: ByteArray, contentType: String) {
+        dispatch(Request.Builder().url("$BASE/anything").post(body.toRequestBody(contentType.toMediaType())).build())
+    }
+
+    private fun pngBody(): ByteArray {
+        val bitmap = Bitmap.createBitmap(IMAGE_WIDTH, IMAGE_HEIGHT, Bitmap.Config.ARGB_8888)
+        val dot = Paint().apply { color = Color.rgb(0xFB, 0xBF, 0x24) }
+        Canvas(bitmap).apply {
+            drawColor(Color.rgb(0x1E, 0x3A, 0x8A))
+            drawCircle(IMAGE_WIDTH / 2f, IMAGE_HEIGHT / 2f, IMAGE_HEIGHT / 3f, dot)
+        }
+        val out = ByteArrayOutputStream()
+        bitmap.compress(Bitmap.CompressFormat.PNG, PNG_QUALITY, out)
+        bitmap.recycle()
+        return out.toByteArray()
+    }
+
+    // Android has no BMP encoder, so this writes a 24-bit one: a file header, a
+    // BITMAPINFOHEADER, and rows of blue, green, and red bytes from the bottom up,
+    // each padded to 4 bytes. The console shows no preview for this type.
+    private fun bmpBody(): ByteArray {
+        val rowBytes = (IMAGE_WIDTH * 3 + 3) / 4 * 4
+        val pixelBytes = rowBytes * IMAGE_HEIGHT
+        val bmp = ByteBuffer.allocate(BMP_HEADER_BYTES + pixelBytes).order(ByteOrder.LITTLE_ENDIAN)
+        bmp.put('B'.code.toByte()).put('M'.code.toByte())
+        bmp.putInt(BMP_HEADER_BYTES + pixelBytes).putInt(0).putInt(BMP_HEADER_BYTES)
+        bmp.putInt(BMP_INFO_HEADER_BYTES).putInt(IMAGE_WIDTH).putInt(IMAGE_HEIGHT)
+        bmp.putShort(1).putShort(BMP_BITS_PER_PIXEL)
+        bmp.putInt(0).putInt(pixelBytes).putInt(0).putInt(0).putInt(0).putInt(0)
+        for (y in 0 until IMAGE_HEIGHT) {
+            for (x in 0 until IMAGE_WIDTH) {
+                val light = (x / BMP_SQUARE + y / BMP_SQUARE) % 2 == 0
+                val shade = (if (light) 0xF4 else 0x2A).toByte()
+                bmp.put(shade).put(shade).put(if (light) shade else 0xC0.toByte())
+            }
+            repeat(rowBytes - IMAGE_WIDTH * 3) { bmp.put(0) }
+        }
+        return bmp.array()
+    }
+
+    // Just under the default capture cap of 256 KiB, so it is kept whole.
+    private fun largeJsonPostRequest() {
+        val body =
+            buildString {
+                append("{\"items\":[")
+                var id = 0
+                while (length < LARGE_JSON_BYTES) {
+                    if (id > 0) append(',')
+                    append("{\"id\":").append(id)
+                    append(",\"name\":\"Item ").append(id).append('"')
+                    append(",\"price\":").append(id % 100).append(".10")
+                    append(",\"tags\":[\"red\",\"blue\"],\"inStock\":").append(id % 3 != 0)
+                    append(",\"size\":{\"w\":").append(id % 40).append(",\"h\":").append(id % 25).append("},\"note\":null}")
+                    id++
+                }
+                append("]}")
+            }
+        dispatch(Request.Builder().url("$BASE/anything").post(body.toRequestBody(JSON)).build())
     }
 
     private fun postRequest() {
@@ -350,6 +444,14 @@ public class MainActivity : Activity() {
         private const val TIMEOUT_SECONDS = 2L
         private const val SSE_EVENT_COUNT = 5
         private const val SSE_DURATION_SECONDS = 5
+        private const val LARGE_JSON_BYTES = 255_000
+        private const val IMAGE_WIDTH = 96
+        private const val IMAGE_HEIGHT = 64
+        private const val PNG_QUALITY = 100
+        private const val BMP_HEADER_BYTES = 54
+        private const val BMP_INFO_HEADER_BYTES = 40
+        private const val BMP_BITS_PER_PIXEL: Short = 24
+        private const val BMP_SQUARE = 8
         private const val START_SYNC_LABEL = "Start periodic sync"
         private const val STOP_SYNC_LABEL = "Stop periodic sync"
     }
