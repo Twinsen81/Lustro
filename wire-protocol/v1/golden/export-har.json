@@ -1,0 +1,339 @@
+{
+  "log": {
+    "version": "1.2",
+    "creator": {
+      "name": "Lustro",
+      "version": "0.1.0"
+    },
+    "entries": [
+      {
+        "startedDateTime": "2026-09-28T14:22:09.003Z",
+        "time": 322,
+        "request": {
+          "method": "POST",
+          "url": "https://api.example.com/v1/orders",
+          "httpVersion": "h2",
+          "cookies": [],
+          "headers": [
+            {
+              "name": "Content-Type",
+              "value": "application/json; charset=utf-8"
+            },
+            {
+              "name": "Authorization",
+              "value": "[REDACTED]"
+            }
+          ],
+          "queryString": [],
+          "postData": {
+            "mimeType": "application/json; charset=utf-8",
+            "text": "{\"sku\":\"A-1\",\"quantity\":2}"
+          },
+          "headersSize": -1,
+          "bodySize": 26
+        },
+        "response": {
+          "status": 201,
+          "statusText": "",
+          "httpVersion": "h2",
+          "cookies": [],
+          "headers": [
+            {
+              "name": "Content-Type",
+              "value": "application/json; charset=utf-8"
+            },
+            {
+              "name": "Location",
+              "value": "/v1/orders/9c2e"
+            }
+          ],
+          "content": {
+            "size": 54,
+            "mimeType": "application/json; charset=utf-8",
+            "text": "{\"id\":\"9c2e\",\"sku\":\"A-1\",\"quantity\":2,\"status\":\"open\"}"
+          },
+          "redirectURL": "/v1/orders/9c2e",
+          "headersSize": -1,
+          "bodySize": 54
+        },
+        "cache": {},
+        "timings": {
+          "blocked": -1,
+          "dns": -1,
+          "connect": -1,
+          "ssl": -1,
+          "send": 0,
+          "wait": 322,
+          "receive": 0
+        },
+        "_resourceType": "fetch",
+        "_lustro": {
+          "id": "tx_4b1d77a0",
+          "isMocked": false,
+          "categories": [
+            "api"
+          ],
+          "requestBodyTruncated": false,
+          "responseBodyTruncated": false,
+          "responseComplete": true,
+          "error": null
+        }
+      },
+      {
+        "startedDateTime": "2026-09-28T14:22:11.781Z",
+        "time": 41,
+        "request": {
+          "method": "GET",
+          "url": "https://api.example.com/v1/orders/77e2",
+          "httpVersion": "",
+          "cookies": [],
+          "headers": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "[REDACTED]"
+            }
+          ],
+          "queryString": [],
+          "headersSize": -1,
+          "bodySize": 0
+        },
+        "response": {
+          "status": 500,
+          "statusText": "",
+          "httpVersion": "",
+          "cookies": [],
+          "headers": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "content": {
+            "size": 16,
+            "mimeType": "application/json",
+            "text": "{\"error\":\"boom\"}"
+          },
+          "redirectURL": "",
+          "headersSize": -1,
+          "bodySize": 16
+        },
+        "cache": {},
+        "timings": {
+          "blocked": -1,
+          "dns": -1,
+          "connect": -1,
+          "ssl": -1,
+          "send": 0,
+          "wait": 41,
+          "receive": 0
+        },
+        "_resourceType": "fetch",
+        "_lustro": {
+          "id": "tx_77e2c014",
+          "isMocked": true,
+          "categories": [
+            "api"
+          ],
+          "requestBodyTruncated": false,
+          "responseBodyTruncated": false,
+          "responseComplete": true,
+          "error": null
+        }
+      },
+      {
+        "startedDateTime": "2026-09-28T14:22:13.140Z",
+        "time": 35,
+        "request": {
+          "method": "GET",
+          "url": "https://cdn.example.com/pixel.gif",
+          "httpVersion": "h2",
+          "cookies": [],
+          "headers": [
+            {
+              "name": "Accept",
+              "value": "image/*"
+            }
+          ],
+          "queryString": [],
+          "headersSize": -1,
+          "bodySize": -1
+        },
+        "response": {
+          "status": 200,
+          "statusText": "",
+          "httpVersion": "h2",
+          "cookies": [],
+          "headers": [
+            {
+              "name": "Content-Type",
+              "value": "image/gif"
+            },
+            {
+              "name": "Content-Length",
+              "value": "43"
+            }
+          ],
+          "content": {
+            "size": 43,
+            "mimeType": "image/gif",
+            "text": "R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==",
+            "encoding": "base64"
+          },
+          "redirectURL": "",
+          "headersSize": -1,
+          "bodySize": 43
+        },
+        "cache": {},
+        "timings": {
+          "blocked": -1,
+          "dns": -1,
+          "connect": -1,
+          "ssl": -1,
+          "send": 0,
+          "wait": 35,
+          "receive": 0
+        },
+        "_resourceType": "image",
+        "_lustro": {
+          "id": "tx_e6b0d413",
+          "isMocked": false,
+          "categories": [
+            "media"
+          ],
+          "requestBodyTruncated": false,
+          "responseBodyTruncated": false,
+          "responseComplete": true,
+          "error": null
+        }
+      },
+      {
+        "startedDateTime": "2026-09-28T14:22:14.022Z",
+        "time": 1210,
+        "request": {
+          "method": "GET",
+          "url": "https://api.example.com/v1/catalog?page=2&tag=new%20in",
+          "httpVersion": "h2",
+          "cookies": [],
+          "headers": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ],
+          "queryString": [
+            {
+              "name": "page",
+              "value": "2"
+            },
+            {
+              "name": "tag",
+              "value": "new in"
+            }
+          ],
+          "headersSize": -1,
+          "bodySize": -1
+        },
+        "response": {
+          "status": 200,
+          "statusText": "",
+          "httpVersion": "h2",
+          "cookies": [],
+          "headers": [
+            {
+              "name": "Content-Type",
+              "value": "application/json; charset=utf-8"
+            }
+          ],
+          "content": {
+            "size": 524288,
+            "mimeType": "application/json; charset=utf-8",
+            "text": "[{\"sku\":\"A-1\",\"name\":\"Desk lamp\"},{\"sku\":\"A-2\",\"na"
+          },
+          "redirectURL": "",
+          "headersSize": -1,
+          "bodySize": 524288
+        },
+        "cache": {},
+        "timings": {
+          "blocked": -1,
+          "dns": -1,
+          "connect": -1,
+          "ssl": -1,
+          "send": 0,
+          "wait": 1210,
+          "receive": 0
+        },
+        "_resourceType": "fetch",
+        "_lustro": {
+          "id": "tx_5e8a2f61",
+          "isMocked": false,
+          "categories": [
+            "api"
+          ],
+          "requestBodyTruncated": false,
+          "responseBodyTruncated": true,
+          "responseComplete": true,
+          "error": null
+        }
+      },
+      {
+        "startedDateTime": "2026-09-28T14:22:15.917Z",
+        "time": 8,
+        "request": {
+          "method": "GET",
+          "url": "https://telemetry.example.com/v1/events",
+          "httpVersion": "",
+          "cookies": [],
+          "headers": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ],
+          "queryString": [],
+          "headersSize": -1,
+          "bodySize": -1
+        },
+        "response": {
+          "status": 0,
+          "statusText": "",
+          "httpVersion": "",
+          "cookies": [],
+          "headers": [],
+          "content": {
+            "size": 0,
+            "mimeType": "x-unknown"
+          },
+          "redirectURL": "",
+          "headersSize": -1,
+          "bodySize": -1,
+          "_error": "java.net.UnknownHostException: Unable to resolve host \"telemetry.example.com\""
+        },
+        "cache": {},
+        "timings": {
+          "blocked": -1,
+          "dns": -1,
+          "connect": -1,
+          "ssl": -1,
+          "send": 0,
+          "wait": 8,
+          "receive": 0
+        },
+        "_resourceType": "fetch",
+        "_lustro": {
+          "id": "tx_d03a9b44",
+          "isMocked": false,
+          "categories": [],
+          "requestBodyTruncated": false,
+          "responseBodyTruncated": false,
+          "responseComplete": true,
+          "error": "java.net.UnknownHostException: Unable to resolve host \"telemetry.example.com\""
+        }
+      }
+    ]
+  }
+}

@@ -28,6 +28,8 @@
 
     var allTransactions = [];
     var selectedTxId = null;
+    var selectMode = false;
+    var selectedIds = {};         // transaction id -> true; only ids the filters show
     var lastCursor = null;        // opaque cursor token; omitted on the first poll
     var searchText = '';
     var searchTimer = null;
@@ -125,6 +127,29 @@
             showCopyPopup(ev);
         }).catch(function() {
             window.debugToast('Failed to copy', 'error');
+        });
+    }
+
+    // Copies text that is still being fetched. Safari allows a copy only in the
+    // click itself, so the clipboard item is made there and the text follows.
+    function copyNetworkTextLater(textPromise, ev) {
+        var write = null;
+        try {
+            if (window.isSecureContext && navigator.clipboard && navigator.clipboard.write && typeof ClipboardItem === 'function') {
+                write = navigator.clipboard.write([new ClipboardItem({
+                    'text/plain': textPromise.then(function(text) { return new Blob([text], { type: 'text/plain' }); }),
+                })]);
+            }
+        } catch(e) {
+            write = null;
+        }
+        var copied = write
+            ? write.catch(function() { return textPromise.then(window.debugWriteToClipboard); })
+            : textPromise.then(window.debugWriteToClipboard);
+        copied.then(function() {
+            showCopyPopup(ev);
+        }).catch(function(e) {
+            debugToast('Failed to copy' + (e && e.message ? ': ' + e.message : ''), 'error');
         });
     }
 
@@ -340,6 +365,12 @@
         var tbody = document.getElementById('tx-list');
         var countEl = document.getElementById('tx-count');
         if (!tbody) return;
+        // The selection follows the filters: what they hide is no longer selected,
+        // so an export has exactly the selected rows on screen.
+        var kept = {};
+        filtered.forEach(function(tx) { if (selectedIds[tx.id]) kept[tx.id] = true; });
+        selectedIds = kept;
+        updateSelectionControls(filtered);
         var visible = filtered.slice(0, displayLimit);
         var label = filtered.length + (filtered.length !== allTransactions.length
             ? '/' + allTransactions.length : '') + ' requests';
@@ -358,7 +389,13 @@
             var sel = tx.id === selectedTxId ? ' dc-row--selected' : '';
             var mockedBadge = tx.isMocked ? ' <span class="dc-badge" style="--c: var(--ai)">Mocked</span>' : '';
             var streamingBadge = streaming ? ' <span class="dc-badge">Streaming</span>' : '';
+            var check = selectMode
+                ? '<td class="dc-cell net-cell-select" data-action="toggleTxSelection" data-tx-id="' + debugEscapeHtml(tx.id) + '">'
+                    + '<input type="checkbox" class="net-check" aria-label="Select ' + debugEscapeHtml((tx.method || '') + ' ' + pathOnly) + '"'
+                    + (selectedIds[tx.id] ? ' checked' : '') + '></td>'
+                : '';
             return '<tr class="dc-row' + sel + '" data-action="selectTransaction" data-tx-id="' + debugEscapeHtml(tx.id) + '">'
+                + check
                 + '<td class="dc-cell net-cell-method ' + methodClass(tx) + '">' + debugEscapeHtml(tx.method || '') + '</td>'
                 + '<td class="dc-cell net-cell-url" title="' + debugEscapeHtml(pathOnly) + '">' + debugEscapeHtml(shortUrl) + '</td>'
                 + '<td class="dc-cell net-cell-status ' + sc + '">' + statusText + mockedBadge + streamingBadge + '</td>'
@@ -392,6 +429,143 @@
 
     function resetDisplayLimit() {
         displayLimit = DISPLAY_LIMIT_INITIAL;
+    }
+
+    function updateSelectionControls(filtered) {
+        var count = Object.keys(selectedIds).length;
+        var countEl = document.getElementById('select-count');
+        if (countEl) countEl.textContent = count + ' of ' + filtered.length + ' selected';
+        ['copy-selection-md-btn', 'export-har-btn'].forEach(function(id) {
+            var btn = document.getElementById(id);
+            if (btn) btn.disabled = count === 0;
+        });
+        var all = document.getElementById('select-all');
+        if (all) {
+            all.checked = count > 0 && count === filtered.length;
+            all.indeterminate = count > 0 && count < filtered.length;
+        }
+    }
+
+    window.toggleSelectMode = function() {
+        selectMode = !selectMode;
+        selectedIds = {};
+        var btn = document.getElementById('select-btn');
+        if (btn) btn.classList.toggle('dc-btn--active', selectMode);
+        var bar = document.getElementById('select-bar');
+        if (bar) bar.hidden = !selectMode;
+        var col = document.getElementById('select-col');
+        if (col) col.style.display = selectMode ? '' : 'none';
+        renderList();
+    };
+
+    window.toggleTxSelection = function(id) {
+        if (selectedIds[id]) delete selectedIds[id];
+        else selectedIds[id] = true;
+        renderList();
+    };
+
+    // Every row the filters show, past the ones rendered so far too; or none
+    // when every one is selected already.
+    window.toggleSelectAll = function() {
+        var filtered = filterTransactions();
+        var all = filtered.length > 0 && filtered.every(function(tx) { return selectedIds[tx.id]; });
+        selectedIds = {};
+        if (!all) filtered.forEach(function(tx) { selectedIds[tx.id] = true; });
+        renderList();
+    };
+
+    // An export reads oldest first. The list is newest first by when each capture
+    // was stored, which is not always when its request started, so sort by that.
+    function selectedOldestFirst() {
+        return filterTransactions().filter(function(tx) { return selectedIds[tx.id]; }).reverse()
+            .sort(function(a, b) { return (a.startedAt || 0) - (b.startedAt || 0); });
+    }
+
+    // A request line and its headers must stay under 8 KB, and an id is 36 characters.
+    var EXPORT_BATCH = 50;
+
+    window.exportSelectionHar = function() {
+        var ids = selectedOldestFirst().map(function(tx) { return tx.id; });
+        if (!ids.length) return;
+        var batches = [];
+        for (var i = 0; i < ids.length; i += EXPORT_BATCH) batches.push(ids.slice(i, i + EXPORT_BATCH));
+        var parts = [];
+        var chain = Promise.resolve();
+        batches.forEach(function(batch) {
+            chain = chain.then(function() {
+                var query = 'format=har&ids=' + batch.map(encodeURIComponent).join(',');
+                return debugFetch(netUrl('transactions/_/export?' + query))
+                    .then(function(r) { return r.json(); })
+                    .then(function(part) { parts.push(part); });
+            });
+        });
+        chain.then(function() {
+            var har = window.netMergeHar(parts);
+            saveText(JSON.stringify(har, null, 2) + '\n', 'lustro-' + fileTimestamp(new Date()) + '.har', 'application/json');
+            var exported = har.log.entries.length;
+            var gone = ids.length - exported;
+            debugToast('Exported ' + exported + ' request' + (exported === 1 ? '' : 's')
+                + (gone > 0 ? '; ' + gone + ' no longer captured' : ''), gone > 0 ? 'warning' : 'success');
+        }).catch(function(e) {
+            debugToast('Failed to export: ' + e.message, 'error');
+        });
+    };
+
+    // The export batches as one HAR document, oldest first. Each batch is in order
+    // already, and the times are ISO 8601 in UTC, so they sort as text; the sort
+    // is stable, so a tie keeps the order the batches had.
+    window.netMergeHar = function(parts) {
+        var har = parts[0] || { log: { version: '1.2', creator: { name: 'Lustro', version: '' }, entries: [] } };
+        for (var i = 1; i < parts.length; i++) har.log.entries = har.log.entries.concat(parts[i].log.entries);
+        har.log.entries.sort(function(a, b) {
+            return a.startedDateTime < b.startedDateTime ? -1 : (a.startedDateTime > b.startedDateTime ? 1 : 0);
+        });
+        return har;
+    };
+
+    function saveText(text, name, type) {
+        var url = URL.createObjectURL(new Blob([text], { type: type }));
+        var link = document.createElement('a');
+        link.href = url;
+        link.download = name;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        // Some browsers start the download only after the click returns.
+        setTimeout(function() { URL.revokeObjectURL(url); }, 10000);
+    }
+
+    function fileTimestamp(date) {
+        var pad = function(n) { return (n < 10 ? '0' : '') + n; };
+        return date.getFullYear() + pad(date.getMonth() + 1) + pad(date.getDate())
+            + '-' + pad(date.getHours()) + pad(date.getMinutes()) + pad(date.getSeconds());
+    }
+
+    window.copySelectionMarkdown = function(ev) {
+        var txs = selectedOldestFirst();
+        if (!txs.length) return;
+        copyNetworkTextLater(fetchDetails(txs).then(function(details) {
+            if (!details.length) throw new Error('the requests are no longer captured');
+            return window.netTransactionsMarkdown(details);
+        }), ev);
+    };
+
+    // The details of txs, in their order, four requests at a time. One the app no
+    // longer has is left out.
+    function fetchDetails(txs) {
+        var details = [];
+        var next = 0;
+        function worker() {
+            if (next >= txs.length) return Promise.resolve();
+            var index = next++;
+            return debugFetch(netUrl('transactions/' + encodeURIComponent(txs[index].id)))
+                .then(function(r) { return r.json(); })
+                .then(function(tx) { details[index] = tx; }, function(e) { if (!e || e.status !== 404) throw e; })
+                .then(worker);
+        }
+        var workers = [];
+        for (var i = 0; i < Math.min(4, txs.length); i++) workers.push(worker());
+        return Promise.all(workers).then(function() { return details.filter(Boolean); });
     }
 
     function methodClass(tx) {
@@ -527,10 +701,7 @@
         });
         if (!previous || previous.id !== tx.id) hexDumps = {};
         currentDetailTx = tx;
-        var copyAllEl = document.getElementById('copy-all-btn');
-        if (copyAllEl) copyAllEl.style.display = '';
-        var copyCurlEl = document.getElementById('copy-curl-btn');
-        if (copyCurlEl) copyCurlEl.style.display = '';
+        showDetailActions(true);
         copyStore = {};
         copyIdSeq = 0;
         var el = document.getElementById('detail-content');
@@ -932,6 +1103,115 @@
         copyNetworkText(buildCurlCommand(currentDetailTx), ev);
     };
 
+    window.copyMarkdown = function(ev) {
+        if (!currentDetailTx) return;
+        copyNetworkText(window.netTransactionsMarkdown([currentDetailTx]), ev);
+    };
+
+    function showDetailActions(show) {
+        ['copy-curl-btn', 'copy-md-btn', 'copy-all-btn'].forEach(function(id) {
+            var btn = document.getElementById(id);
+            if (btn) btn.style.display = show ? '' : 'none';
+        });
+    }
+
+    // Transaction details as one Markdown document, oldest first as given: for
+    // each, the method and URL as a heading, then the headers in http blocks and
+    // the bodies in blocks tagged with a language for their content type. A
+    // body the capture cut short says so.
+    window.netTransactionsMarkdown = function(txs) {
+        return txs.map(transactionMarkdown).join('\n\n---\n\n') + '\n';
+    };
+
+    function transactionMarkdown(tx) {
+        var out = ['## ' + markdownCode((tx.method || '') + ' ' + (tx.url || ''))];
+        var meta = [];
+        var status = tx.error ? 'Failed' : (tx.statusCode != null ? String(tx.statusCode) : 'Pending');
+        if (isStreaming(tx)) status += ', streaming';
+        meta.push('**' + status + '**');
+        if (tx.durationMs != null) meta.push(tx.durationMs + ' ms');
+        if (tx.startedAt != null) meta.push(new Date(tx.startedAt).toISOString());
+        else if (tx.timestamp) meta.push(tx.timestamp);
+        if (tx.protocol) meta.push(markdownCode(tx.protocol));
+        if (tx.isMocked) meta.push('mocked by Lustro');
+        (tx.categories || []).forEach(function(c) { meta.push(markdownCode(c)); });
+        out.push(meta.join(' · '));
+        if (tx.error) out.push('**Error:** ' + markdownCode(tx.error));
+        ['request', 'response'].forEach(function(dir) {
+            var label = dir === 'request' ? 'Request' : 'Response';
+            var headers = tx[dir + 'Headers'] || {};
+            var names = Object.keys(headers);
+            if (names.length) {
+                out.push('### ' + label + ' headers');
+                out.push(markdownFence(names.map(function(k) { return k + ': ' + headers[k]; }).join('\n'), 'http'));
+            }
+            var body = markdownBody(tx, dir);
+            if (body) out.push('### ' + label + ' body', body);
+        });
+        return out.join('\n\n');
+    }
+
+    function markdownBody(tx, dir) {
+        var text = tx[dir + 'Body'];
+        var contentType = tx[dir + 'ContentType'];
+        if (tx[dir + 'BodyBinary']) {
+            var size = formatBytes(tx[dir + 'BodyBytes']);
+            return '_' + (mediaEssence(contentType) || 'Binary') + ' body' + (size ? ', ' + size : '')
+                + ': kept as bytes, so it is not included.'
+                + (tx[dir + 'BodyTruncated'] ? ' Lustro kept only its first part.' : '') + '_';
+        }
+        if (text == null) {
+            var coding = undecodedCoding(tx[dir + 'Headers']);
+            return coding ? '_Not captured: Lustro does not decode the ' + coding + ' encoding._' : '';
+        }
+        if (text === '') return '';
+        var kind = debugBodyKind(contentType, text, false);
+        var shown = text;
+        if (kind === 'json') {
+            // Indents without changing a value; a body cut short stays as it is.
+            var pieces = debugScanJsonSource(text, 2);
+            if (pieces) shown = pieces.map(function(piece) { return piece.text; }).join('');
+        }
+        var block = markdownFence(shown, markdownLanguage(kind, contentType));
+        return tx[dir + 'BodyTruncated']
+            ? '_Truncated: Lustro kept only the first part of this body._\n\n' + block
+            : block;
+    }
+
+    // No prototype: the media type comes from the captured headers.
+    var MARKDOWN_LANGUAGES = Object.assign(Object.create(null), {
+        'text/css': 'css', 'text/csv': 'csv', 'text/markdown': 'markdown',
+        'application/javascript': 'javascript', 'text/javascript': 'javascript',
+        'application/graphql': 'graphql', 'application/yaml': 'yaml', 'application/x-yaml': 'yaml', 'text/yaml': 'yaml',
+    });
+    function markdownLanguage(kind, contentType) {
+        if (kind === 'json' || kind === 'xml' || kind === 'html') return kind;
+        return MARKDOWN_LANGUAGES[mediaEssence(contentType)] || 'text';
+    }
+
+    // A fenced code block. The fence is longer than any run of backticks in the
+    // text, so nothing in it can close the block.
+    function markdownFence(text, language) {
+        var ticks = backticks(Math.max(3, longestBacktickRun(text) + 1));
+        return ticks + language + '\n' + text + (/\n$/.test(text) ? '' : '\n') + ticks;
+    }
+
+    // An inline code span on one line, delimited as the fence is.
+    function markdownCode(text) {
+        text = String(text).replace(/[\r\n]+/g, ' ');
+        var ticks = backticks(longestBacktickRun(text) + 1);
+        var pad = /^`|`$/.test(text) || /^ .* $/.test(text) ? ' ' : '';
+        return ticks + pad + text + pad + ticks;
+    }
+
+    function longestBacktickRun(text) {
+        return (String(text).match(/`+/g) || []).reduce(function(longest, run) { return Math.max(longest, run.length); }, 0);
+    }
+
+    function backticks(n) {
+        return new Array(n + 1).join('`');
+    }
+
     window.switchRightTab = function(tab) {
         document.getElementById('detail-content').classList.toggle('active', tab === 'detail');
         document.getElementById('rules-content').classList.toggle('active', tab === 'rules');
@@ -939,11 +1219,7 @@
         document.getElementById('tab-btn-detail').classList.toggle('dc-tab--active', tab === 'detail');
         document.getElementById('tab-btn-rules').classList.toggle('dc-tab--active', tab === 'rules');
         document.getElementById('tab-btn-send').classList.toggle('dc-tab--active', tab === 'send');
-        var detailHasTx = !!currentDetailTx;
-        var copyAll = document.getElementById('copy-all-btn');
-        var copyCurl = document.getElementById('copy-curl-btn');
-        if (copyAll) copyAll.style.display = (tab === 'detail' && detailHasTx) ? '' : 'none';
-        if (copyCurl) copyCurl.style.display = (tab === 'detail' && detailHasTx) ? '' : 'none';
+        showDetailActions(tab === 'detail' && !!currentDetailTx);
         if (tab === 'rules') loadRules();
         if (tab === 'send') ensureSendForm();
     };
@@ -1537,10 +1813,7 @@
                 var dc = document.getElementById('detail-content');
                 if (dc) dc.innerHTML =
                     '<div class="net-empty-state"><div class="net-empty-icon">🔍</div><p>Select a request to inspect</p></div>';
-                var copyAll = document.getElementById('copy-all-btn');
-                var copyCurl = document.getElementById('copy-curl-btn');
-                if (copyAll) copyAll.style.display = 'none';
-                if (copyCurl) copyCurl.style.display = 'none';
+                showDetailActions(false);
             }
             return;
         }
@@ -1587,6 +1860,12 @@
         showCaptureFilter: function() { window.showCaptureFilter(); },
         closeCaptureFilter: function() { window.closeCaptureFilter(); },
         copyCurl: function(el, ev) { window.copyCurl(ev); },
+        copyMarkdown: function(el, ev) { window.copyMarkdown(ev); },
+        toggleSelectMode: function() { window.toggleSelectMode(); },
+        toggleTxSelection: function(el) { window.toggleTxSelection(el.dataset.txId); },
+        toggleSelectAll: function() { window.toggleSelectAll(); },
+        copySelectionMarkdown: function(el, ev) { window.copySelectionMarkdown(ev); },
+        exportSelectionHar: function() { window.exportSelectionHar(); },
         copyAllDetail: function(el, ev) { window.copyAllDetail(ev); },
     };
 

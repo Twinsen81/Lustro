@@ -38,10 +38,11 @@ lustro open --print-only          # forward the port; exits 1 when adb forward f
 lustro net list                   # the newest 50 transactions, newest first
 lustro net get <id> --no-body     # one transaction, without its bodies
 lustro net wait --url /v1/orders -- adb shell input tap 540 1200
+lustro net export --har out.har   # every transaction as a HAR file
 ```
 
 Each row of `net list` starts with a short transaction id: the first 8 characters of the id, or more
-when two listed ids start with the same 8. `net get` and `net body` take the short id, the full id,
+when two listed ids start with the same 8. `net get`, `net body`, and `net export --ids` take the short id, the full id,
 or any start of an id that only one transaction has. When more than one id starts with it, they
 print the matches and exit 2; when no id does, they exit 1. JSON output has the full id, which the
 wire routes in the curl examples need. The filters `--url`, `--method`, `--status` (a code such as
@@ -179,6 +180,7 @@ below summarizes it. All routes are token-authenticated and use the shared error
 | Poll transactions | `GET transactions?cursor=&search=` | Cursor envelope. First poll (no/invalid cursor) → `reset` with the full list; cursor unchanged → `unchanged` (items omitted); after a change → `delta`. `search` filters case-insensitively over URL, method, and bodies. Carries a top-level `state` `{ paused, overwriteMode, throttleDelayMs, captureFilter }`. |
 | Transaction detail | `GET transactions/{id}` | Full object (headers + bodies, with truncation flags). Enveloped `404` if missing. |
 | Transaction body | `GET transactions/{id}/body/{request\|response}` | One body as it is stored: the bytes of an image, or the redacted text as UTF-8. Not JSON. Enveloped `404` when no body was kept. See below. |
+| Export as HAR | `GET transactions/_/export?format=har&ids=` | A HAR 1.2 document of the transactions in `ids` (comma-separated), or of every one. See below. |
 | Clear | `POST clear` | Clears the captured list and starts the capture filter's counts again; mock rules and settings are preserved. |
 | List rules | `GET rules` | `{ items: [MockRule...] }`. |
 | Add / upsert rule | `POST rules` | Body `MockRuleInput` (`urlPattern` required). Supplying a stable `id` makes the write **idempotent** (upsert by id); omitting it generates one. Returns `{ status: "ok", id }`. |
@@ -241,6 +243,18 @@ when the request or response had no body, or when capture kept none: a one-shot 
 body, or a binary type other than an image. The redactor never sees an image, so treat it as
 unredacted. `lustro net body <id> [request|response] -o FILE` wraps the route. These fields and
 the route are part of protocol 1.2.
+
+**Export as HAR.** `GET transactions/_/export?format=har&ids=<id>,<id>` returns the transactions as a
+HAR 1.2 document, oldest first, which browser devtools, proxies, and HAR viewers import. It is
+built from the store, so it has the same redacted values as the detail. Without `ids` it has every
+transaction; an id the app no longer has is left out. Each entry's `_lustro` has the transaction
+`id`, `isMocked`, `categories`, `requestBodyTruncated`, `responseBodyTruncated`,
+`responseComplete`, and `error`. The capture has no phase timings, so each entry spends its whole
+`durationMs` in `timings.wait`, and `_resourceType` (`fetch`, or `image` for an image) tells
+Chrome DevTools how to file it. A body kept as bytes is base64: `content.encoding` says so for a
+response, and `postData._encoding` for a request. The request line and its headers must stay
+under 8 KB, so send many ids in batches; `lustro net export --har FILE [--ids ID ...]` does that,
+and `--har -` writes the document to stdout. This route is part of protocol 1.2.
 
 **Compressed bodies.** A body sent or received with `Content-Encoding: gzip`, `x-gzip`, or
 `deflate` is stored inflated: `requestBody` and `responseBody` hold the text, and

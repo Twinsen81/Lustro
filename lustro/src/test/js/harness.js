@@ -77,4 +77,14 @@ function loadSharedJs() {
     return sandbox;
 }
 
-module.exports = { loadSharedJs };
+// shared.js, then the Network tab's network.js in the same context. The tab
+// registers its DOM setup with lustroOnContentReady, which never fires here, so
+// only its top-level functions run.
+function loadNetworkJs() {
+    const sandbox = loadSharedJs();
+    const source = fs.readFileSync(path.join(ASSET_DIR, 'network.js'), 'utf8');
+    vm.runInContext(source, sandbox, { filename: 'network.js' });
+    return sandbox;
+}
+
+module.exports = { loadSharedJs, loadNetworkJs };

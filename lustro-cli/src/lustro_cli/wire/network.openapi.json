@@ -73,6 +73,25 @@
         }
       }
     },
+    "/api/v1/network/transactions/_/export": {
+      "get": {
+        "operationId": "exportTransactions",
+        "summary": "Captured transactions as a HAR 1.2 document.",
+        "description": "Returns the transactions that ids names, or every one when ids is left out, as a HAR 1.2 document that browser devtools and HTTP tools import, oldest first. It is built from the store, so headers, the URL, and text bodies are redacted as in the detail. An id the store no longer has is left out, and an ids parameter that names none returns no entries. Each entry spends its whole durationMs in timings.wait, with send and receive at 0 and the other phases at -1. A body kept as bytes goes out in base64: content.encoding is base64 for a response, and postData._encoding for a request, which HAR gives no encoding field. _lustro on each entry carries the transaction id and what HAR has no field for: isMocked, categories, the truncation flags, responseComplete, and error. A request still in flight has status 0 and time 0. The request line and headers must stay under 8 KB, so a client that exports many ids sends them in batches.",
+        "parameters": [
+          { "name": "format", "in": "query", "required": false, "schema": { "type": "string", "enum": ["har"], "default": "har" }, "description": "The export format. 400 for any other." },
+          { "name": "ids", "in": "query", "required": false, "schema": { "type": "string" }, "description": "Transaction ids separated by commas; the parameter can also repeat. Left out, the export has every transaction." }
+        ],
+        "responses": {
+          "200": { "description": "A HAR document.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HarDocument" } } } },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "413": { "$ref": "#/components/responses/Error" },
+          "503": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
     "/api/v1/network/clear": {
       "post": {
         "operationId": "clearTransactions",
@@ -280,6 +299,117 @@
           "responseBodyTruncated": { "type": "boolean" },
           "responseBodyBinary": { "type": "boolean", "description": "Detail only. true when the response body was kept as bytes, as it arrived, because the Redactor can't read it: an image. responseBody is then null; fetch the bytes from GET transactions/{id}/body/response." }
         }
+      },
+      "HarDocument": {
+        "type": "object",
+        "description": "A HAR 1.2 document. Only the parts the export writes are described; the HAR 1.2 specification describes the rest.",
+        "required": ["log"],
+        "properties": {
+          "log": {
+            "type": "object",
+            "required": ["version", "creator", "entries"],
+            "properties": {
+              "version": { "const": "1.2" },
+              "creator": {
+                "type": "object",
+                "required": ["name", "version"],
+                "properties": { "name": { "const": "Lustro" }, "version": { "type": "string", "description": "The library version." } }
+              },
+              "entries": { "type": "array", "items": { "$ref": "#/components/schemas/HarEntry" }, "description": "Oldest first." }
+            }
+          }
+        }
+      },
+      "HarEntry": {
+        "type": "object",
+        "required": ["startedDateTime", "time", "request", "response", "cache", "timings", "_resourceType", "_lustro"],
+        "properties": {
+          "startedDateTime": { "type": "string", "description": "startedAt in ISO 8601, in UTC with milliseconds, e.g. 2026-09-28T14:22:09.003Z." },
+          "time": { "type": "integer", "minimum": 0, "description": "durationMs; 0 while the request is in flight." },
+          "request": {
+            "type": "object",
+            "required": ["method", "url", "httpVersion", "cookies", "headers", "queryString", "headersSize", "bodySize"],
+            "properties": {
+              "method": { "type": "string" },
+              "url": { "type": "string", "description": "Redacted at capture time." },
+              "httpVersion": { "type": "string", "description": "protocol, e.g. h2; empty when it is null." },
+              "cookies": { "type": "array", "maxItems": 0, "description": "Always empty; the Cookie header is in headers." },
+              "headers": { "type": "array", "items": { "$ref": "#/components/schemas/HarNameValue" } },
+              "queryString": { "type": "array", "items": { "$ref": "#/components/schemas/HarNameValue" }, "description": "The URL's query parameters, decoded." },
+              "postData": {
+                "type": "object",
+                "description": "Present when the request body was kept, as text or as bytes.",
+                "required": ["mimeType", "text"],
+                "properties": {
+                  "mimeType": { "type": "string", "description": "requestContentType; empty when it is null." },
+                  "text": { "type": "string", "description": "The redacted text, or the bytes in base64 when _encoding is base64." },
+                  "_encoding": { "const": "base64", "description": "Present when the body was kept as bytes." }
+                }
+              },
+              "headersSize": { "const": -1 },
+              "bodySize": { "type": "integer", "description": "requestBodyBytes; -1 when it is null." }
+            }
+          },
+          "response": {
+            "type": "object",
+            "required": ["status", "statusText", "httpVersion", "cookies", "headers", "content", "redirectURL", "headersSize", "bodySize"],
+            "properties": {
+              "status": { "type": "integer", "description": "statusCode; 0 before a response and for a failed request." },
+              "statusText": { "const": "", "description": "The capture keeps no reason phrase." },
+              "httpVersion": { "type": "string" },
+              "cookies": { "type": "array", "maxItems": 0, "description": "Always empty; the Set-Cookie header is in headers." },
+              "headers": { "type": "array", "items": { "$ref": "#/components/schemas/HarNameValue" } },
+              "content": {
+                "type": "object",
+                "required": ["size", "mimeType"],
+                "properties": {
+                  "size": { "type": "integer", "minimum": 0, "description": "The larger of responseBodyBytes and the size of the body kept, which is more for a body kept inflated." },
+                  "mimeType": { "type": "string", "description": "responseContentType, or x-unknown when it is null." },
+                  "text": { "type": "string", "description": "The redacted text, or the bytes in base64 when encoding is base64. Absent when no body was kept." },
+                  "encoding": { "const": "base64" }
+                }
+              },
+              "redirectURL": { "type": "string", "description": "The Location header, or empty." },
+              "headersSize": { "const": -1 },
+              "bodySize": { "type": "integer", "description": "responseBodyBytes; -1 when it is null." },
+              "_error": { "type": "string", "description": "error, for a failed request, where Chrome's own export puts it." }
+            }
+          },
+          "cache": { "type": "object", "maxProperties": 0 },
+          "_resourceType": { "type": "string", "enum": ["fetch", "image"], "description": "How Chrome DevTools files the request on import: image for an image/* response, else fetch." },
+          "timings": {
+            "type": "object",
+            "required": ["send", "wait", "receive"],
+            "properties": {
+              "blocked": { "const": -1 },
+              "dns": { "const": -1 },
+              "connect": { "const": -1 },
+              "ssl": { "const": -1 },
+              "send": { "const": 0 },
+              "wait": { "type": "integer", "minimum": 0, "description": "durationMs; 0 while the request is in flight." },
+              "receive": { "const": 0 }
+            }
+          },
+          "_lustro": {
+            "type": "object",
+            "description": "What HAR has no field for. HAR reserves names that start with an underscore for a tool's own fields.",
+            "required": ["id", "isMocked", "categories", "requestBodyTruncated", "responseBodyTruncated", "responseComplete", "error"],
+            "properties": {
+              "id": { "type": "string", "description": "The transaction id." },
+              "isMocked": { "type": "boolean" },
+              "categories": { "type": "array", "items": { "type": "string" } },
+              "requestBodyTruncated": { "type": "boolean", "description": "true when postData has only the first part of the body." },
+              "responseBodyTruncated": { "type": "boolean", "description": "true when content has only the first part of the body." },
+              "responseComplete": { "type": "boolean", "description": "false while the request is in flight, including a streaming response." },
+              "error": { "type": ["string", "null"] }
+            }
+          }
+        }
+      },
+      "HarNameValue": {
+        "type": "object",
+        "required": ["name", "value"],
+        "properties": { "name": { "type": "string" }, "value": { "type": "string" } }
       },
       "MockRule": {
         "type": "object",

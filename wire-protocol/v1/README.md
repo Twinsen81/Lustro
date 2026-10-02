@@ -56,7 +56,10 @@ gets a `reset`.
   `GET network/transactions/{id}/body/{request|response}` returns a body as it
   is stored. The poll `state` gains `captureFilter`: `null` when the app set no
   capture filter, or its `description` and how many requests it `skipped` and
-  `failed` on, counted since the list was last cleared.
+  `failed` on, counted since the list was last cleared. The new route
+  `GET network/transactions/_/export?format=har&ids=...` returns the
+  transactions as a HAR 1.2 document, every one when `ids` is left out, with
+  the transaction id and the fields HAR has no place for in `_lustro`.
 
 ## Status
 

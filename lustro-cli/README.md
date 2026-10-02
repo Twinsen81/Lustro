@@ -65,6 +65,7 @@ discovery), `--json` (JSON output). They go before or after the command:
 | `lustro net wait [-- COMMAND]` | cursor loop; runs `COMMAND`, prints the first matching request that finishes, and exits |
 | `lustro net get <id>` | `GET network/transactions/<id>`, with each body cut at 2 KB |
 | `lustro net body <id> [request\|response] [-o FILE]` | `GET network/transactions/<id>/body/<direction>`: saves a body as it is stored, the response by default; stdout without `-o` |
+| `lustro net export --har FILE [--ids ID ...]` | `GET network/transactions/_/export`: saves the transactions, or only those in `--ids`, as a HAR file; stdout for `--har -` |
 | `lustro net clear` | `POST network/clear` |
 | `lustro net pause` | `POST network/pause` |
 | `lustro net overwrite` | `POST network/overwrite-mode` |
@@ -111,8 +112,8 @@ The output is small by default, because an agent reads all of it.
   `ERR` for a failed request), the duration, and the URL. The short id is the
   first 8 characters of the id, or more characters when two listed ids start
   with the same 8. JSON output has the full id.
-- **Ids.** `net get` and `net body` take a full id, or the start of one, such as
-  the short id of a row. They find the id that starts with it in the transaction
+- **Ids.** `net get`, `net body`, and `net export --ids` take a full id, or the
+  start of one, such as the short id of a row. They find the id that starts with it in the transaction
   list, which is one more request. When more than one id starts with it, they
   print the matches and exit 2. When no id starts with it, they exit 1. The wire
   routes take only the full id.

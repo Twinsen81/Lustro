@@ -181,6 +181,31 @@
 .net-filter-pill.method-patch  { --c: var(--method-patch); }
 .net-filter-pill.method-other  { --c: var(--method-head); }
 
+/* ── Select mode: a checkbox column and a bar with what to do with the rows ── */
+.net-select-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 22px;
+    border-bottom: 1px solid var(--border-soft);
+}
+.net-select-bar[hidden] { display: none; }
+.net-select-count {
+    margin-right: auto;
+    color: var(--accent-2);
+    font-size: 12px;
+}
+/* The whole cell toggles the row, so the target is wider than the box. */
+.net-select-col, .net-cell-select { width: 36px; padding-right: 0; text-align: center; cursor: pointer; }
+.net-check {
+    width: 14px;
+    height: 14px;
+    margin: 0;
+    vertical-align: middle;
+    accent-color: var(--accent);
+    cursor: pointer;
+}
+
 /* ── Traffic grid ── */
 #tx-list tr { cursor: pointer; }
 .net-cell-method { font-weight: 600; }
