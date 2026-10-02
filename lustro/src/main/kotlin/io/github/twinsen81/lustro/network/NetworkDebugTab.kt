@@ -8,6 +8,8 @@ import io.github.twinsen81.lustro.ExperimentalPlatformCapture
 import io.github.twinsen81.lustro.Headers
 import io.github.twinsen81.lustro.MediaType
 import io.github.twinsen81.lustro.escapeForJson
+import io.github.twinsen81.lustro.internal.Versions
+import io.github.twinsen81.lustro.internal.network.HarExport
 import io.github.twinsen81.lustro.internal.network.HttpUrlConnectionCapture
 import io.github.twinsen81.lustro.internal.network.LustroNetworkInterceptor
 import io.github.twinsen81.lustro.internal.network.MockRuleCodec
@@ -134,7 +136,8 @@ public class NetworkDebugTab private constructor(
                     <h3 class="dc-mono-label">Network Traffic</h3>
                     <span id="tx-count" class="net-tx-count">0 requests</span>
                     <button class="dc-btn dc-btn--icon net-filter-flag" id="capture-filter-btn" data-action="showCaptureFilter" hidden aria-label="Requests skipped by the app filters">⚠</button>
-                    <button class="dc-btn" id="pause-btn" data-action="togglePause" style="margin-left:auto" title="Pause traffic capture. The interceptor still runs but new requests are not recorded into the list. Click again to resume.">⏸ Pause</button>
+                    <button class="dc-btn" id="select-btn" data-action="toggleSelectMode" style="margin-left:auto" title="Select requests to export as a HAR file or copy as Markdown. A filter change keeps only the selected requests it still shows.">Select</button>
+                    <button class="dc-btn" id="pause-btn" data-action="togglePause" title="Pause traffic capture. The interceptor still runs but new requests are not recorded into the list. Click again to resume.">⏸ Pause</button>
                     <button class="dc-btn" id="overwrite-btn" data-action="toggleOverwriteMode" title="Overwrite mode: when a new request arrives, any earlier completed transaction with the same method + URL path is removed from the list. In-flight requests are never evicted.">Overwrite: off</button>
                     <select class="dc-btn" id="throttle-select" name="throttleDelayMs" aria-label="Global throttle" data-action="setThrottle" title="Global throttle: sleep this long before every request (mocked or real). Useful for testing loading spinners and timeout handling.">
                         <option value="0">No throttle</option>
@@ -151,10 +154,16 @@ public class NetworkDebugTab private constructor(
                 <div class="net-category-bar" id="category-filters"></div>
                 <div class="net-filter-bar" id="status-filters"></div>
                 <div class="net-filter-bar" id="method-filters"></div>
+                <div class="net-select-bar" id="select-bar" hidden>
+                    <span id="select-count" class="net-select-count">0 selected</span>
+                    <button class="dc-btn dc-btn--sm" id="copy-selection-md-btn" data-action="copySelectionMarkdown" disabled title="Copy the selected requests and their responses as one Markdown document, for a bug report, a pull request, or a chat.">Copy Markdown</button>
+                    <button class="dc-btn dc-btn--sm dc-btn--primary" id="export-har-btn" data-action="exportSelectionHar" disabled title="Save the selected requests as a HAR file, which browser devtools and HTTP tools import. Headers and bodies are redacted, as shown here.">Export HAR</button>
+                </div>
                 <div style="flex:1;overflow-y:auto">
                     <table class="dc-table">
                         <thead class="dc-thead">
                             <tr>
+                                <th class="dc-th net-select-col" id="select-col" style="display:none" data-action="toggleSelectAll" title="Select every request the filters show, or none."><input type="checkbox" id="select-all" class="net-check" aria-label="Select every request the filters show"></th>
                                 <th class="dc-th" style="width:74px">Method</th>
                                 <th class="dc-th">URL</th>
                                 <th class="dc-th" style="width:60px">Status</th>
@@ -174,6 +183,7 @@ public class NetworkDebugTab private constructor(
                     <button class="dc-tab" id="tab-btn-send" data-action="switchRightTab" data-tab="send" title="Dispatch an arbitrary request through the app's OkHttpClient. The result appears in the traffic list only when that client carries the Lustro interceptor. Self-requests to the debug server are rejected.">Send Request</button>
                     <div class="net-tab-actions">
                         <button class="dc-btn dc-btn--sm" id="copy-curl-btn" data-action="copyCurl" style="display:none" title="Copy a cURL command that reproduces the selected request (paste into a terminal to re-run).">cURL</button>
+                        <button class="dc-btn dc-btn--sm" id="copy-md-btn" data-action="copyMarkdown" style="display:none" title="Copy the request and response as Markdown, for a bug report, a pull request, or a chat. Headers and bodies go in code blocks.">Markdown</button>
                         <button class="dc-btn dc-btn--sm" id="copy-all-btn" data-action="copyAllDetail" style="display:none" title="Copy the full request and response (status, headers, bodies) as plain text for sharing or pasting into a bug report.">Copy</button>
                     </div>
                 </div>
@@ -224,6 +234,7 @@ public class NetworkDebugTab private constructor(
         val body = request.bodyAsString()
         return when {
             path == "transactions" && method == "GET" -> handleTransactions(request)
+            path == "transactions/_/export" && method == "GET" -> handleExport(request)
             path.startsWith("transactions/") && method == "GET" ->
                 handleTransactionPath(path.removePrefix("transactions/").split('/'))
             path == "clear" && method == "POST" -> handleClear()
@@ -327,6 +338,25 @@ public class NetworkDebugTab private constructor(
                 Headers.of("Content-Disposition" to "attachment", "Content-Security-Policy" to ATTACHMENT_CSP)
             }
         return DebugResponse.bytes(body, contentType, headers = headers)
+    }
+
+    /**
+     * The transactions named by `ids`, or every one when it is left out, as a HAR
+     * document, oldest first. An id the store no longer has is left out, so a
+     * selection taken just before an eviction still exports what remains.
+     */
+    private fun handleExport(request: DebugRequest): DebugResponse {
+        val format = request.queryParam("format") ?: EXPORT_FORMAT_HAR
+        if (!format.equals(EXPORT_FORMAT_HAR, ignoreCase = true)) {
+            return DebugResponse.error("Unknown export format '$format'; the only one is har", field = "format")
+        }
+        // Repeated ids parameters and comma-separated lists both work. An ids
+        // parameter that names none is an empty selection, not every transaction.
+        val ids = request.queryParams["ids"]?.flatMap { it.split(',') }?.map { it.trim() }?.filter { it.isNotEmpty() }
+        val transactions =
+            if (ids == null) store.getTransactions() else ids.distinct().mapNotNull { store.getTransaction(it) }
+        val oldestFirst = transactions.sortedWith(compareBy({ it.startedAt }, { it.startOrder }))
+        return DebugResponse.ok(HarExport.write(oldestFirst, Versions.LIBRARY_VERSION))
     }
 
     // The filter's counts restart with the list, so they describe the requests
@@ -712,6 +742,8 @@ public class NetworkDebugTab private constructor(
         }
 
         private const val SEND_CANCEL_GRACE_MS = 1_000L
+
+        private const val EXPORT_FORMAT_HAR = "har"
 
         // Types the console shows in an <img>. Browsers render them without script.
         private val INLINE_BODY_TYPES = setOf("image/png", "image/jpeg", "image/gif", "image/webp")

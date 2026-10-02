@@ -197,6 +197,28 @@ see [DECISIONS.md](DECISIONS.md).
   `docs/STYLEGUIDE.md`. The JavaScript tests cover the escaping of each viewer.
   The sample has a request for each viewer, a PNG and a BMP that it sends as
   request bodies, and a request that sends a 250 KB JSON body.
+- **Export captured traffic as HAR and Markdown.** A transaction left Lustro
+  only as JSON from the API, as a cURL command, or as plain text, one at a
+  time. `GET network/transactions/_/export?format=har&ids=...` returns the
+  transactions as a HAR 1.2 document, oldest first, and every transaction when
+  `ids` is left out (wire protocol 1.2). It is built from the store, so it has
+  the redacted values. Each entry spends its `durationMs` in `timings.wait`,
+  `_resourceType` lets Chrome DevTools list it under Fetch/XHR or Img, a body
+  kept as bytes is base64, and `_lustro` carries the transaction id,
+  `isMocked`, `categories`, the truncation flags, `responseComplete`, and
+  `error`. `lustro net export --har FILE [--ids ID ...]` saves it, and sends
+  many ids in batches, because a request line must stay under 8 KB. In the
+  Network tab, **Select** adds a checkbox to each row, a checkbox in the header
+  that selects every row the filters show, and a bar with the count, **Export
+  HAR**, which saves a file, and **Copy Markdown**. A filter change keeps only
+  the selected rows it still shows. The detail's new **Markdown** button copies
+  one transaction: the method and URL as a heading, the headers in `http`
+  blocks, and each body in a block tagged with a language for its content type,
+  JSON indented without changing a value. Both formats mark a body that the
+  capture cut short. The OpenAPI document describes the route and the HAR
+  shape, the golden fixture `export-har.json` shows it, a unit test checks that
+  the export writes exactly that fixture, and the CLI end-to-end run exports
+  the sample's mocked request.
 
 ### Fixed
 

@@ -129,6 +129,19 @@ def check_transaction(text: str, rules: List[dict]) -> None:
     expect(tx["responseBody"] == rule["responseBody"], "body {!r}, the rule sets {!r}".format(tx["responseBody"], rule["responseBody"]))
 
 
+def check_har(text: str, rules: List[dict]) -> None:
+    """``net export --har`` writes a HAR document; the request the first rule served is in it."""
+    har = json.loads(text)
+    component("HarDocument").validate(har)
+    rule = rules[0]
+    entries = [entry for entry in har["log"]["entries"] if rule["urlPattern"] in entry["request"]["url"]]
+    expect(bool(entries), "no entry matches {}".format(rule["urlPattern"]))
+    for entry in entries:
+        expect(entry["_lustro"]["isMocked"] is True, "the rule did not serve {}".format(entry["_lustro"]["id"]))
+        expect(entry["response"]["status"] == rule["statusCode"], "status {}".format(entry["response"]["status"]))
+        expect(entry["response"]["content"].get("text") == rule["responseBody"], "body {!r}".format(entry["response"]["content"].get("text")))
+
+
 CHECKS: Dict[str, Callable[[str, List[dict]], None]] = {
     "open": check_open,
     "meta": check_meta,
@@ -139,6 +152,7 @@ CHECKS: Dict[str, Callable[[str, List[dict]], None]] = {
     "state": check_state,
     "find": find,
     "transaction": check_transaction,
+    "har": check_har,
 }
 
 

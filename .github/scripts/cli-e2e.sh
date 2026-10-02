@@ -153,4 +153,16 @@ esac
 lustro_to net-get-short.json --json net get "$short"
 check transaction "$RULES" < "$OUT/net-get-short.json"
 
+# net export takes the short id too, and writes the same entry that a full export has.
+step "lustro net export --har: the mocked request, then every transaction"
+lustro net export --har "$OUT/export-one.har" --ids "$short"
+check har "$RULES" < "$OUT/export-one.har"
+entries="$("$OUT/venv/bin/python" -c 'import json,sys; print(len(json.load(sys.stdin)["log"]["entries"]))' < "$OUT/export-one.har")"
+if [ "$entries" != "1" ]; then
+  echo "error: --ids $short exported $entries entries" >&2
+  exit 1
+fi
+lustro net export --har "$OUT/export-all.har"
+check har "$RULES" < "$OUT/export-all.har"
+
 step "The CLI end to end passed"

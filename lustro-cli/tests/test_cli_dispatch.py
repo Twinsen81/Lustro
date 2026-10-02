@@ -319,6 +319,7 @@ def test_all_openapi_paths_are_covered():
         "/api/v1/network/transactions",
         "/api/v1/network/transactions/{id}",
         "/api/v1/network/transactions/{id}/body/{direction}",
+        "/api/v1/network/transactions/_/export",
         "/api/v1/network/clear",
         "/api/v1/network/rules",
         "/api/v1/network/rules/_/sync",

@@ -28,6 +28,7 @@ GOLDEN_OPENAPI_COMPONENTS = {
     "send-result.json": None,  # validated against the inline sendRequest 200 schema
     "rules-list.json": None,  # validated against the inline listMockRules 200 schema
     "error-envelope.json": "ErrorEnvelope",
+    "export-har.json": "HarDocument",
 }
 
 

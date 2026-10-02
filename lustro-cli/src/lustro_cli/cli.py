@@ -37,6 +37,7 @@ from .discovery import (
 
 NETWORK = "/api/v1/network"
 TRANSACTIONS = NETWORK + "/transactions"
+EXPORT = TRANSACTIONS + "/_/export"
 
 # The flags that every command takes, before or after its name, and their values
 # when they are not given. See _global_options for why main() sets these.
@@ -55,6 +56,9 @@ SHORT_ID_LENGTH = 8
 # How many of the matches an ambiguous id prints.
 AMBIGUOUS_ROWS = 10
 ID_HELP = "a transaction id, or its start, such as the short id of a row"
+# How many ids one export request names. The server takes a request line and
+# headers of up to 8 KB, and a full id is 36 characters.
+EXPORT_BATCH = 50
 
 # The Lustro runtime makes each transaction id with UUID.randomUUID(). An id of
 # this shape goes to the server as it is, without the list request that a
@@ -233,11 +237,27 @@ def _resolve_id(client: LustroClient, given: str) -> str:
     """The full id of the transaction that ``given`` names: the id itself, or
     the start of only one id, such as the short id of a row. A start costs one
     list request, because the wire routes take only a full id."""
-    if _FULL_ID.fullmatch(given):
-        return given
     if not given:
         raise UsageError("expected a transaction id, or the start of one")
-    items = _list_items(client.get(TRANSACTIONS))
+    return _resolve_ids(client, [given])[0]
+
+
+def _resolve_ids(client: LustroClient, given: List[str]) -> List[str]:
+    """The full id of each transaction in ``given``, as _resolve_id finds it.
+    One list request covers every start."""
+    items: Optional[List[dict]] = None
+    resolved = []
+    for start in given:
+        if _FULL_ID.fullmatch(start):
+            resolved.append(start)
+            continue
+        if items is None:
+            items = _list_items(client.get(TRANSACTIONS))
+        resolved.append(_match_id(items, start))
+    return resolved
+
+
+def _match_id(items: List[dict], given: str) -> str:
     matches = [tx for tx in items if isinstance(tx.get("id"), str) and tx["id"].startswith(given)]
     # An id of another shape can also be the start of a longer one.
     if any(tx["id"] == given for tx in matches):
@@ -272,6 +292,13 @@ def _status_range(value: str) -> Tuple[int, int]:
     if re.fullmatch(r"[1-5][0-9][0-9]", text):
         return int(text), int(text)
     raise argparse.ArgumentTypeError("expected a status code such as 404, or a class such as 4xx")
+
+
+def _id_list(value: str) -> List[str]:
+    ids = [part.strip() for part in value.split(",") if part.strip()]
+    if not ids:
+        raise argparse.ArgumentTypeError("expected transaction ids, or their starts, separated by commas")
+    return ids
 
 
 def _field_names(value: str) -> List[str]:
@@ -727,6 +754,71 @@ def cmd_net_body(args: argparse.Namespace) -> int:
     return 0
 
 
+def _export_entries(har: Any) -> List[Any]:
+    entries = har.get("log", {}).get("entries") if isinstance(har, dict) else None
+    if not isinstance(entries, list):
+        raise LustroError("invalid_response", "the export is not a HAR document: it has no log.entries")
+    return entries
+
+
+def _export_har(client: LustroClient, ids: Optional[List[str]]) -> Any:
+    """The HAR document of the transactions that ``ids`` names, or of every one.
+    Many ids go in batches, and the entries of each batch join the first one's."""
+    if ids is None:
+        har = client.get(EXPORT, params={"format": "har"})
+        _export_entries(har)
+        return har
+    har = None
+    for start in range(0, len(ids), EXPORT_BATCH):
+        batch = client.get(EXPORT, params={"format": "har", "ids": ",".join(ids[start : start + EXPORT_BATCH])})
+        entries = _export_entries(batch)
+        if har is None:
+            har = batch
+        else:
+            _export_entries(har).extend(entries)
+    # Each batch is oldest first, and the times are ISO 8601 in UTC, so they sort as text.
+    _export_entries(har).sort(key=lambda entry: str(entry.get("startedDateTime", "")))
+    return har
+
+
+def cmd_net_export(args: argparse.Namespace) -> int:
+    """Save captured transactions as a HAR file, or write it to stdout."""
+    client = _build_client(args)
+    ids = None
+    if args.ids is not None:
+        # In the order given, each id once.
+        ids = list(dict.fromkeys(_resolve_ids(client, [given for group in args.ids for given in group])))
+    har = _export_har(client, ids)
+    entries = _export_entries(har)
+    # Indented, as browser devtools write a HAR file, and as the console saves one.
+    data = (json.dumps(har, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
+    if args.har == "-":
+        sys.stdout.buffer.write(data)
+        sys.stdout.flush()
+    else:
+        try:
+            with open(args.har, "wb") as fh:
+                fh.write(data)
+        except OSError as exc:
+            print("could not write HAR file {}: {}".format(args.har, exc), file=sys.stderr)
+            return 2
+    exported = {entry.get("_lustro", {}).get("id") for entry in entries if isinstance(entry, dict)}
+    missing = [tx_id for tx_id in ids or [] if tx_id not in exported]
+    if missing:
+        print(
+            "warning: the app no longer has {} of the transactions, so the file leaves them out: {}".format(
+                len(missing), ", ".join(missing)
+            ),
+            file=sys.stderr,
+        )
+    if args.har != "-":
+        if args.json:
+            _emit({"path": args.har, "entries": len(entries), "bytes": len(data), "missing": missing}, raw_json=True)
+        else:
+            print("saved {} transactions ({} bytes) to {}".format(len(entries), len(data), args.har))
+    return 0
+
+
 def cmd_net_clear(args: argparse.Namespace) -> int:
     client = _build_client(args)
     _emit(client.post(NETWORK + "/clear"), raw_json=args.json)
@@ -1015,6 +1107,27 @@ def build_parser() -> argparse.ArgumentParser:
     )
     n_body.add_argument("-o", "--output", default=None, metavar="FILE", help="write the body to FILE (default: stdout)")
     n_body.set_defaults(func=cmd_net_body)
+
+    n_export = net_sub.add_parser(
+        "export",
+        parents=[common],
+        help="GET transactions/_/export: save transactions as a HAR file",
+        description="Save the captured transactions as a HAR 1.2 file, which browser devtools and HTTP tools "
+        "import. Headers and bodies are redacted as in the app. Each entry has the transaction id, and what HAR "
+        "has no field for, in _lustro.",
+    )
+    n_export.add_argument(
+        "--har", required=True, metavar="FILE", help="write the HAR document to FILE, or to stdout for -"
+    )
+    n_export.add_argument(
+        "--ids",
+        nargs="+",
+        type=_id_list,
+        default=None,
+        metavar="ID",
+        help="only these transactions, separated by spaces or commas; each is {} (default: every one)".format(ID_HELP),
+    )
+    n_export.set_defaults(func=cmd_net_export)
 
     n_clear = net_sub.add_parser("clear", parents=[common], help="POST clear")
     n_clear.set_defaults(func=cmd_net_clear)

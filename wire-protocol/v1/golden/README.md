@@ -22,6 +22,7 @@ with no source checkout required.
 | `transaction-image.json` | `GET network/transactions/{id}` detail of an image response | OpenAPI `Transaction` |
 | `rules-list.json` | `GET network/rules` | OpenAPI `listMockRules` 200 (`items: [MockRule]`) |
 | `send-result.json` | `POST network/send` synchronous result | OpenAPI `sendRequest` 200 |
+| `export-har.json` | `GET network/transactions/_/export` HAR document | OpenAPI `HarDocument` |
 
 ## Notes on the shapes
 
@@ -45,6 +46,14 @@ with no source checkout required.
   `null`. The bytes themselves come from
   `GET network/transactions/{id}/body/response`, which is not JSON and so has
   no fixture.
+
+- **HAR export.** `export-har.json` is the export of five transactions: a POST
+  with a JSON body, the mocked `tx_77e2c014`, a GIF kept as bytes (base64 with
+  `encoding`), a response cut at the capture cap
+  (`_lustro.responseBodyTruncated`), and a failed request (status `0`, with
+  the error in `response._error` and `_lustro.error`). A unit test in
+  `:lustro` checks that the export writes exactly this document for those
+  transactions.
 
 When the server's emitted shapes change, update these fixtures in the same
 change that bumps the protocol version, and keep the schema validation green.

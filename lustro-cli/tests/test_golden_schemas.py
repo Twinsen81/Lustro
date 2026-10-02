@@ -57,6 +57,7 @@ OPENAPI_COMPONENT_CASES = [
     ("transaction.json", "Transaction"),
     ("transaction-image.json", "Transaction"),
     ("error-envelope.json", "ErrorEnvelope"),
+    ("export-har.json", "HarDocument"),
 ]
 
 
@@ -169,3 +170,29 @@ def test_the_body_route_is_declared_with_both_directions():
     direction = next(p for p in op["parameters"] if p["name"] == "direction")
     assert direction["schema"]["enum"] == ["request", "response"]
     assert "404" in op["responses"]
+
+
+def test_the_export_route_is_declared_with_its_format_and_ids():
+    op = wire.load_openapi()["paths"]["/api/v1/network/transactions/_/export"]["get"]
+    params = {p["name"]: p for p in op["parameters"]}
+    assert params["format"]["schema"]["enum"] == ["har"]
+    assert params["ids"]["required"] is False
+    assert "400" in op["responses"]
+
+
+def test_the_golden_har_marks_what_har_has_no_field_for():
+    entries = wire.load_golden("export-har.json")["log"]["entries"]
+    by_id = {entry["_lustro"]["id"]: entry for entry in entries}
+    # Oldest first, as HAR readers prefer.
+    started = [entry["startedDateTime"] for entry in entries]
+    assert started == sorted(started)
+    assert by_id["tx_77e2c014"]["_lustro"]["isMocked"] is True
+    assert by_id["tx_5e8a2f61"]["_lustro"]["responseBodyTruncated"] is True
+    assert by_id["tx_d03a9b44"]["_lustro"]["error"] == by_id["tx_d03a9b44"]["response"]["_error"]
+    # A body kept as bytes is base64.
+    assert by_id["tx_e6b0d413"]["response"]["content"]["encoding"] == "base64"
+    # Each entry spends its duration waiting, so time adds up as HAR requires.
+    for entry in entries:
+        timings = entry["timings"]
+        assert entry["time"] == sum(value for value in timings.values() if value != -1)
+
