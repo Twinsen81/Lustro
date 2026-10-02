@@ -129,6 +129,12 @@ test('a body kept as bytes is named, not included', () => {
     assert.ok(out.includes('### Response body\n\n_image/png body, 5.1 KB: kept as bytes, so it is not included._'), out);
 });
 
+test('a body kept as bytes and cut at the capture cap says both', () => {
+    const out = markdown(detail({ responseBody: null, responseBodyBinary: true, responseBodyTruncated: true,
+        responseContentType: 'image/jpeg', responseBodyBytes: 300000 }));
+    assert.ok(out.includes('_image/jpeg body, 293.0 KB: kept as bytes, so it is not included. Lustro kept only its first part._'), out);
+});
+
 test('a body in an encoding Lustro does not decode says so', () => {
     const out = markdown(detail({ responseHeaders: { 'Content-Encoding': 'br' }, responseBody: null }));
     assert.ok(out.includes('### Response body\n\n_Not captured: Lustro does not decode the br encoding._'), out);

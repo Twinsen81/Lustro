@@ -474,9 +474,11 @@
         renderList();
     };
 
-    // The list is newest first; an export reads oldest first.
+    // An export reads oldest first. The list is newest first by when each capture
+    // was stored, which is not always when its request started, so sort by that.
     function selectedOldestFirst() {
-        return filterTransactions().filter(function(tx) { return selectedIds[tx.id]; }).reverse();
+        return filterTransactions().filter(function(tx) { return selectedIds[tx.id]; }).reverse()
+            .sort(function(a, b) { return (a.startedAt || 0) - (b.startedAt || 0); });
     }
 
     // A request line and its headers must stay under 8 KB, and an id is 36 characters.
@@ -1155,7 +1157,8 @@
         if (tx[dir + 'BodyBinary']) {
             var size = formatBytes(tx[dir + 'BodyBytes']);
             return '_' + (mediaEssence(contentType) || 'Binary') + ' body' + (size ? ', ' + size : '')
-                + ': kept as bytes, so it is not included._';
+                + ': kept as bytes, so it is not included.'
+                + (tx[dir + 'BodyTruncated'] ? ' Lustro kept only its first part.' : '') + '_';
         }
         if (text == null) {
             var coding = undecodedCoding(tx[dir + 'Headers']);
