@@ -157,6 +157,10 @@ internal class WebSocketTrafficStore(
     private var retainedBytes = 0L
     private val sequence = AtomicLong()
 
+    // Counts the changes to which connections the store has. A transaction's
+    // webSocketId comes from that set, so the transactions cursor moves with it.
+    private val membership = AtomicLong()
+
     private class Entry(val source: WebSocketSource) {
         val epoch = Random.nextLong()
         val events = ArrayDeque<WebSocketEvent>()
@@ -183,6 +187,7 @@ internal class WebSocketTrafficStore(
                 if (!creates) return
                 entry = Entry(source)
                 connections[source.id] = entry
+                membership.incrementAndGet()
                 trimConnections(keep = entry)
             }
             if (event != null) append(entry, event)
@@ -243,6 +248,7 @@ internal class WebSocketTrafficStore(
                     ?: return
             connections.remove(victim.source.id)
             retainedBytes -= victim.bytes
+            membership.incrementAndGet()
         }
     }
 
@@ -252,10 +258,13 @@ internal class WebSocketTrafficStore(
             connections.clear()
             retainedBytes = 0L
         }
+        membership.incrementAndGet()
         sequence.incrementAndGet()
     }
 
     fun getSequence(): Long = sequence.get()
+
+    fun getMembershipSequence(): Long = membership.get()
 
     /** Newest first. */
     fun getConnections(): List<WebSocketConnection> =

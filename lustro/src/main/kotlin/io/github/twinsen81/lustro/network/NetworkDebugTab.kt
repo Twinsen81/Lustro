@@ -309,7 +309,9 @@ public class NetworkDebugTab private constructor(
     private fun handleTransactions(request: DebugRequest): DebugResponse {
         val search = request.queryParam("search")?.takeIf { it.isNotBlank() }
         return DebugResponse.cursorEnvelope(
-            currentSequence = store.getSequence(),
+            // A handshake's webSocketId depends on which connections are listed, so
+            // a change to that set is a change to this list. Both counts only grow.
+            currentSequence = store.getSequence() + webSocketStore.getMembershipSequence(),
             clientCursor = request.queryParam("cursor"),
             state = stateJson(),
             epoch = store.epoch,

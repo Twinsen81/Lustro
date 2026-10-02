@@ -170,6 +170,13 @@
     var COPY_ICON = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">'
         + '<rect x="5" y="5" width="9" height="9" rx="1.5"/><path d="M11 5V3.5A1.5 1.5 0 009.5 2h-6A1.5 1.5 0 002 3.5v6A1.5 1.5 0 003.5 11H5"/></svg>';
 
+    // Puts new content in a part of the detail pane, and forgets the text that
+    // the copy buttons of the old content held.
+    function replacePart(el, html) {
+        el.querySelectorAll('[data-copy-id]').forEach(function(b) { delete copyStore[b.dataset.copyId]; });
+        el.innerHTML = html;
+    }
+
     function copyBtn(text, cls) {
         var id = '_cp' + (copyIdSeq++);
         copyStore[id] = text;
@@ -343,7 +350,7 @@
             searchGen++;
             resetDisplayLimit();
             fetchTransactions();
-            if (currentDetailTx) renderDetail(currentDetailTx);
+            if (currentDetailTx && trafficView === 'http') renderDetail(currentDetailTx);
         }, 300);
     };
 
@@ -633,7 +640,9 @@
     }
 
     function scheduleSelectedDetailRefresh() {
-        if (!selectedTxId) return;
+        // The WebSockets view has the detail pane; the request's detail is
+        // loaded again when the HTTP view comes back.
+        if (!selectedTxId || trafficView !== 'http') return;
         var now = Date.now();
         var waitMs = DETAIL_REFRESH_MIN_INTERVAL_MS - (now - lastDetailRefreshAt);
         if (waitMs <= 0) {
@@ -1828,6 +1837,7 @@
     var wsJsonView = 'tree';
     var wsEventsTimer = null;
     var wsEventsRequest = 0;
+    var wsHeadShown = null;       // the connection the summary shows, as JSON
     var WS_EVENTS_POLL_MS = 1000;
     // The page keeps this many events of a log; the app's own limit is 1000 by default.
     var WS_MAX_ROWS = 5000;
@@ -1853,6 +1863,10 @@
 
     window.switchTrafficView = function(view) {
         trafficView = view === 'ws' ? 'ws' : 'http';
+        // A request's detail that is still on its way must not land in the pane of the other view.
+        detailRequestSeq++;
+        clearTimeout(detailRefreshTimer);
+        detailRefreshTimer = null;
         var root = document.getElementById('net-root');
         if (root) root.dataset.view = trafficView;
         document.querySelectorAll('.net-view-seg .dc-seg__item').forEach(function(b) {
@@ -1866,7 +1880,9 @@
         } else {
             clearTimeout(wsEventsTimer);
             renderList();
-            if (selectedTxId && currentDetailTx) renderDetail(currentDetailTx); else showEmptyDetail();
+            if (selectedTxId && currentDetailTx && currentDetailTx.id === selectedTxId) renderDetail(currentDetailTx); else showEmptyDetail();
+            // The request may have changed while the other view was shown.
+            if (selectedTxId && findTransactionById(allTransactions, selectedTxId)) loadTransactionDetail(selectedTxId);
         }
     };
 
@@ -1985,6 +2001,9 @@
         var el = document.getElementById('detail-content');
         if (!el) return;
         showDetailActions(false);
+        // The whole pane is new, so nothing that was copied or dumped for the old one is needed.
+        copyStore = {};
+        hexDumps = {};
         var dirs = [['', 'All'], ['sent', 'Sent'], ['received', 'Received']];
         el.innerHTML = '<div class="net-ws-detail">'
             + '<div class="net-detail-header" id="ws-head"></div>'
@@ -1997,33 +2016,42 @@
             + '</div>'
             + '<label class="dc-field net-ws-search" for="ws-search"><span class="dc-field__prefix" aria-hidden="true">&gt;</span>'
             + '<input type="text" id="ws-search" name="wsSearch" aria-label="Search the messages" class="dc-input" placeholder="filter messages…" data-action="onWsSearchInput"'
+            + ' value="' + debugEscapeHtml(wsSearch) + '"'
             + ' title="Show only the text messages that contain this text (server-side, 300ms debounce)."></label>'
             + '<button class="dc-btn dc-btn--sm" data-action="copyWsMarkdown" title="Copy the connection and its last ' + WS_MARKDOWN_EVENTS
             + ' events as Markdown, for a bug report, a pull request, or a chat.">Markdown</button>'
             + '<button class="dc-btn dc-btn--sm" id="ws-har-btn" data-action="exportWsHar" title="Save the handshake request and the messages as a HAR file, which Chrome DevTools imports with the messages.">Export HAR</button>'
             + '</div>'
             + '<div id="ws-log-note" class="dc-comment net-ws-log-note"></div>'
+            + '<div id="ws-gone-note" class="dc-comment net-ws-log-note" hidden>// The app no longer has this connection: it was cleared, or it passed the connection limit. These are the events this page got.</div>'
             + '<div class="net-ws-log" id="ws-log"><table class="dc-table"><tbody id="ws-events"></tbody></table></div>'
             + '<div class="net-ws-payload" id="ws-payload"><div class="net-empty-body">Select a message to see its payload</div></div>'
             + '</div>';
+        wsHeadShown = null;
         var c = findWebSocket(wsSelectedId);
         if (c) renderWsHead(c);
         renderWsHeaders();
-        renderWsEvents(null);
+        renderWsEvents();
+        // The view comes back with the message that was selected in it.
+        if (wsSelectedSeq != null) window.selectWsEvent(wsSelectedSeq);
     }
 
     function renderWsHead(c) {
         var el = document.getElementById('ws-head');
         if (!el) return;
+        // Every poll with a new message comes here. Only a change is rendered, so
+        // a text selection in the summary stays, and no copy button is made again.
+        var shown = JSON.stringify(c);
+        if (shown === wsHeadShown) return;
+        wsHeadShown = shown;
         var html = '<div class="net-detail-method-url"><span class="net-detail-method net-m-ws">WS</span> '
             + debugEscapeHtml(c.url || '') + ' ' + copyBtn(c.url || '') + '</div>';
         html += '<div class="net-detail-meta">';
         html += '<span class="' + wsStateClass(c) + '">' + debugEscapeHtml(wsStateLabel(c)) + '</span>';
         if (c.statusCode != null) html += '<span title="The status of the handshake response">HTTP ' + c.statusCode + '</span>';
         html += '<span title="When the app created the socket">' + debugEscapeHtml(c.timestamp || '') + '</span>';
-        if (c.openedAt != null) {
-            var end = c.closedAt != null ? c.closedAt : Date.now();
-            html += '<span title="How long the socket ' + (c.closedAt != null ? 'was' : 'has been') + ' open">' + formatDuration(end - c.openedAt) + '</span>';
+        if (c.openedAt != null && c.closedAt != null) {
+            html += '<span title="How long the socket was open">' + formatDuration(c.closedAt - c.openedAt) + '</span>';
         }
         html += '<span title="Messages the app sent, and their size. OkHttp queued them, which does not show that the server received them.">↑ ' + c.sentCount + ' · ' + formatBytes(c.sentBytes) + '</span>';
         html += '<span title="Messages the app received, and their size">↓ ' + c.receivedCount + ' · ' + formatBytes(c.receivedBytes) + '</span>';
@@ -2035,16 +2063,18 @@
         var close = wsCloseLine(c);
         if (close) html += '<div class="net-ws-close">' + debugEscapeHtml(close) + '</div>';
         if (c.error) html += '<div class="net-error-line">' + debugEscapeHtml(c.error) + '</div>';
-        el.innerHTML = html;
         var har = document.getElementById('ws-har-btn');
         if (har) har.disabled = !c.transactionId;
         var note = document.getElementById('ws-log-note');
-        if (note) {
-            var parts = [];
-            if (c.evictedEvents) parts.push(c.evictedEvents + ' older events are past the log limit');
-            if (c.droppedEvents) parts.push(c.droppedEvents + ' messages were not captured, because capture was behind');
-            note.textContent = parts.length ? '// ' + parts.join('; ') : '';
-        }
+        keepWsLogEnd(function() {
+            replacePart(el, html);
+            if (note) {
+                var parts = [];
+                if (c.evictedEvents) parts.push(c.evictedEvents + ' older events are past the log limit');
+                if (c.droppedEvents) parts.push(c.droppedEvents + ' messages were not captured, because capture was behind');
+                note.textContent = parts.length ? '// ' + parts.join('; ') : '';
+            }
+        });
     }
 
     function wsCloseLine(c) {
@@ -2089,7 +2119,7 @@
                         + '</td><td class="net-header-value">' + debugEscapeHtml(headers[k]) + '</td></tr>';
                 }).join('') + '</table></details>';
         });
-        el.innerHTML = html;
+        keepWsLogEnd(function() { el.innerHTML = html; });
     }
 
     function pollWsEvents() {
@@ -2100,34 +2130,46 @@
         var url = netUrl('websockets/' + encodeURIComponent(id) + '/events?limit=' + WS_MAX_ROWS)
             + (wsEventsCursor != null ? '&cursor=' + encodeURIComponent(wsEventsCursor) : '')
             + (wsSearch ? '&search=' + encodeURIComponent(wsSearch) : '');
-        debugFetch(url)
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                if (request === wsEventsRequest && id === wsSelectedId) applyWsEvents(data);
+        // Not debugFetch: a 404 here means that the app cleared or evicted the
+        // connection, which must not show the console as disconnected. The poll
+        // goes on, because a socket that is still open is listed again with its
+        // next message.
+        fetch(url)
+            .then(function(r) {
+                if (request !== wsEventsRequest || id !== wsSelectedId) return null;
+                setWsGone(r.status === 404);
+                return r.ok ? r.json() : null;
             })
-            .catch(function() { /* the connection was cleared or evicted, or the app is in the background */ })
+            .then(function(data) {
+                if (data && request === wsEventsRequest && id === wsSelectedId) applyWsEvents(data);
+            })
+            .catch(function() { /* the app is in the background; the transactions poll shows that */ })
             .then(function() {
                 if (request === wsEventsRequest) wsEventsTimer = setTimeout(pollWsEvents, WS_EVENTS_POLL_MS);
             });
     }
 
+    function setWsGone(gone) {
+        var note = document.getElementById('ws-gone-note');
+        if (note && note.hidden === gone) keepWsLogEnd(function() { note.hidden = !gone; });
+    }
+
     function applyWsEvents(data) {
         if (!data || data.status === 'unchanged') return;
-        var added = null;
-        if (data.status === 'delta') {
-            var items = data.items || [];
-            wsEvents = wsEvents.concat(items);
-            if (data.dropped) wsMissed += data.dropped;
-            // Only the new rows go in, unless a row above them has to change too.
-            if (!data.dropped && wsEvents.length <= WS_MAX_ROWS) added = items;
-        } else {
-            // 'reset' or any unknown status: this is the log now.
-            wsEvents = data.items || [];
-            wsMissed = 0;
-        }
-        if (wsEvents.length > WS_MAX_ROWS) wsEvents = wsEvents.slice(-WS_MAX_ROWS);
         if (data.cursor !== undefined && data.cursor !== null) wsEventsCursor = data.cursor;
-        renderWsEvents(added);
+        if (data.status !== 'delta') {
+            // 'reset' or any unknown status: this is the log now.
+            wsEvents = (data.items || []).slice(-WS_MAX_ROWS);
+            wsMissed = 0;
+            renderWsEvents();
+            return;
+        }
+        var added = data.items || [];
+        if (data.dropped) wsMissed += data.dropped;
+        wsEvents = wsEvents.concat(added);
+        // The page keeps the end of a long log.
+        var removed = wsEvents.splice(0, Math.max(0, wsEvents.length - WS_MAX_ROWS));
+        appendWsEvents(added, removed);
     }
 
     function oneLine(text) {
@@ -2183,30 +2225,67 @@
         return !wsDirection || e.direction === wsDirection;
     }
 
-    // `added` holds the events of a delta, and only their rows go in, at the
-    // end; null renders every row again. The newest row stays in view while the
-    // reader is at the end of the log, and the scroll position is left alone
-    // once they scroll up to read.
-    function renderWsEvents(added) {
+    // A row of the log that is not an event. A delta takes these out and puts
+    // them back, so the other rows are the events the page keeps, in order.
+    function wsMissedRow() {
+        return '<tr class="dc-row net-ws-note-row net-ws-info-row"><td class="dc-cell" colspan="4">' + wsMissed
+            + ' events were evicted before this page got them</td></tr>';
+    }
+
+    function wsEmptyRow() {
+        return '<tr class="net-ws-info-row"><td class="dc-cell net-ws-empty" colspan="4">'
+            + (wsSearch ? 'No text message contains this text' : 'No events yet') + '</td></tr>';
+    }
+
+    function wsEventRows(events) {
+        return events.filter(wsShown).map(function(e) { return wsEventRow(e, wsSelectedSeq); }).join('');
+    }
+
+    // Renders a log that is new to the reader, after a reset or a change of
+    // the direction filter, and shows its end.
+    function renderWsEvents() {
         var tbody = document.getElementById('ws-events');
         var log = document.getElementById('ws-log');
         if (!tbody || !log) return;
-        var atEnd = !added || log.scrollHeight - log.scrollTop - log.clientHeight < 40;
-        if (added) {
-            var rows = added.filter(wsShown).map(function(e) { return wsEventRow(e, wsSelectedSeq); }).join('');
-            if (!rows) return;
-            if (tbody.querySelector('.net-ws-empty')) tbody.innerHTML = '';
-            tbody.insertAdjacentHTML('beforeend', rows);
-        } else {
-            var all = wsEvents.filter(wsShown).map(function(e) { return wsEventRow(e, wsSelectedSeq); }).join('');
-            if (wsMissed > 0) {
-                all = '<tr class="dc-row net-ws-note-row"><td class="dc-cell" colspan="4">' + wsMissed
-                    + ' events were evicted before this page got them</td></tr>' + all;
-            }
-            tbody.innerHTML = all || '<tr><td class="dc-cell net-ws-empty" colspan="4">'
-                + (wsSearch ? 'No text message contains this text' : 'No events yet') + '</td></tr>';
-        }
+        var rows = wsEventRows(wsEvents);
+        tbody.innerHTML = (wsMissed > 0 ? wsMissedRow() : '') + rows || wsEmptyRow();
+        log.scrollTop = log.scrollHeight;
+    }
+
+    function wsLogAtEnd(log) {
+        return log.scrollHeight - log.scrollTop - log.clientHeight < 40;
+    }
+
+    // Makes a change to the parts above the log, which can take height from
+    // the log. The end of the log stays in view if it was in view.
+    function keepWsLogEnd(change) {
+        var log = document.getElementById('ws-log');
+        var atEnd = log && wsLogAtEnd(log);
+        change();
         if (atEnd) log.scrollTop = log.scrollHeight;
+    }
+
+    // Applies a delta: the rows of `added` go in at the end, and the rows of
+    // `removed`, the oldest events, which the page no longer keeps, go out at
+    // the start. The newest row stays in view while the reader is at the end
+    // of the log. Once they scroll up to read, the rows on screen stay where
+    // they are.
+    function appendWsEvents(added, removed) {
+        var tbody = document.getElementById('ws-events');
+        var log = document.getElementById('ws-log');
+        if (!tbody || !log) return;
+        var atEnd = wsLogAtEnd(log);
+        // A row that stays shows how far the changes above it move the rows.
+        var anchor = atEnd ? null : tbody.lastElementChild;
+        var anchorTop = anchor ? anchor.getBoundingClientRect().top : 0;
+        tbody.querySelectorAll('.net-ws-info-row').forEach(function(row) { row.remove(); });
+        var rows = wsEventRows(added);
+        if (rows) tbody.insertAdjacentHTML('beforeend', rows);
+        for (var gone = removed.filter(wsShown).length; gone > 0 && tbody.firstElementChild; gone--) tbody.firstElementChild.remove();
+        if (wsMissed > 0) tbody.insertAdjacentHTML('afterbegin', wsMissedRow());
+        else if (!tbody.firstElementChild) tbody.innerHTML = wsEmptyRow();
+        if (atEnd) log.scrollTop = log.scrollHeight;
+        else if (anchor && anchor.isConnected) log.scrollTop += anchor.getBoundingClientRect().top - anchorTop;
     }
 
     window.setWsDirection = function(dir) {
@@ -2214,7 +2293,7 @@
         document.querySelectorAll('.net-ws-bar .dc-seg__item').forEach(function(b) {
             b.classList.toggle('dc-seg__item--active', (b.dataset.dir || '') === wsDirection);
         });
-        renderWsEvents(null);
+        renderWsEvents();
     };
 
     window.onWsSearchInput = function(val) {
@@ -2225,6 +2304,10 @@
             wsEvents = [];
             wsEventsCursor = null;
             wsMissed = 0;
+            // The payload on screen marks the matches of the search before this one.
+            wsSelectedSeq = null;
+            var payload = document.getElementById('ws-payload');
+            if (payload) replacePart(payload, '<div class="net-empty-body">Select a message to see its payload</div>');
             pollWsEvents();
         }, 300);
     };
@@ -2252,7 +2335,7 @@
         var el = document.getElementById('ws-payload');
         if (!el) return;
         if (!e.stored) {
-            el.innerHTML = '<div class="net-empty-body">The payload was not stored: the app\'s redactor left it out, or failed on it</div>';
+            replacePart(el, '<div class="net-empty-body">The payload was not stored: the app\'s redactor left it out, or failed on it</div>');
             return;
         }
         if (e.type === 'binary') {
@@ -2263,7 +2346,7 @@
             showWsPayload(e, e.preview);
             return;
         }
-        el.innerHTML = '<div class="net-empty-body">Loading the payload…</div>';
+        replacePart(el, '<div class="net-empty-body">Loading the payload…</div>');
         var id = wsSelectedId;
         debugFetch(wsPayloadUrl(e))
             .then(function(r) { return r.text(); })
@@ -2271,7 +2354,7 @@
                 if (id === wsSelectedId && wsSelectedSeq === e.seq) showWsPayload(e, text);
             })
             .catch(function() {
-                if (id === wsSelectedId && wsSelectedSeq === e.seq) el.innerHTML = '<div class="net-empty-body">The message is no longer in the log</div>';
+                if (id === wsSelectedId && wsSelectedSeq === e.seq) replacePart(el, '<div class="net-empty-body">The message is no longer in the log</div>');
             });
     }
 
@@ -2300,7 +2383,11 @@
         var content = binary
             ? '<pre class="dc-code net-hexdump" data-hex-src="' + debugEscapeHtml(url) + '">Loading the bytes…</pre>'
             : (tree || debugLineNumbered(text, options));
-        el.innerHTML = bar + '<div class="net-body-wrap">' + copyBtn(binary ? null : text) + content + '</div>';
+        // Only the dump of the payload on screen is kept.
+        var dump = hexDumps[url];
+        hexDumps = {};
+        if (dump != null) hexDumps[url] = dump;
+        replacePart(el, bar + '<div class="net-body-wrap">' + copyBtn(binary ? null : text) + content + '</div>');
         loadHexDumps();
     }
 

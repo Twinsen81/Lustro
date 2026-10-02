@@ -337,6 +337,51 @@ class NetworkWebSocketCaptureTest {
         assertTrue(connection.getString("error").contains("Expected HTTP 101 response but was '403"))
         val items = tab.events(connection.getString("id")).getJSONArray("items").objects()
         assertEquals(listOf("failure"), items.map { it.summary() })
+        // The headers of the response that refused it say why, such as WWW-Authenticate.
+        val detail = tab.handle(get("websockets/${connection.getString("id")}")).json()
+        assertEquals("2", detail.getJSONObject("responseHeaders").getString("Content-Length"))
+        assertEquals("http/1.1", detail.getString("protocol"))
+    }
+
+    @Test(timeout = 20_000)
+    fun `the transactions cursor moves when a connection is evicted or listed again`() {
+        echoServer()
+        echoServer()
+        val tab = NetworkDebugTab.create()
+        tab.applyConfig(
+            maxCaptureTransactions = 1000,
+            maxBodyCaptureBytes = 256L * 1024,
+            appServerBaseUrl = null,
+            captureBudgetBytes = 50L * 1024 * 1024,
+            requestTimeoutMs = 30_000,
+            maxCaptureWebSockets = 1,
+            maxWebSocketEvents = 1000,
+            webSocketCaptureBudgetBytes = 16L * 1024 * 1024,
+        )
+        val sockets = tab.wrapWebSocketFactory(client.newBuilder().addInterceptor(tab.createInterceptor { true }).build())
+        val firstListener = RecordingListener()
+        val first = sockets.newWebSocket(request("/first"), firstListener)
+        assertEquals("open 101", firstListener.next())
+        val secondListener = RecordingListener()
+        val second = sockets.newWebSocket(request("/second"), secondListener)
+        assertEquals("open 101", secondListener.next())
+        tab.await()
+
+        fun links(poll: JSONObject) =
+            poll.getJSONArray("items").objects().associate { it.getString("url").substringAfterLast('/') to !it.isNull("webSocketId") }
+        // The second socket took the only place, so the first one's handshake has no connection.
+        val before = tab.handle(get("transactions")).json()
+        assertEquals(mapOf("first" to false, "second" to true), links(before))
+
+        // A message lists the first socket again, in the place of the second. No request changed.
+        first.send("hello")
+        assertEquals("text hello", firstListener.next())
+        tab.await()
+        val after = tab.handle(get("transactions", "cursor" to before.getString("cursor"))).json()
+        assertEquals("delta", after.getString("status"))
+        assertEquals(mapOf("first" to true, "second" to false), links(after))
+        first.cancel()
+        second.cancel()
     }
 
     @Test(timeout = 20_000)

@@ -642,12 +642,14 @@
 .net-ws-close { margin-top: 8px; color: var(--t2); font-size: 12px; }
 .net-ws-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 8px 0; font-size: 11.5px; }
 .net-ws-search { flex: 1; min-width: 140px; padding: 5px 10px; }
-.net-ws-log-note:empty { display: none; }
+.net-ws-log-note:empty, .net-ws-log-note[hidden] { display: none; }
 .net-ws-log-note { margin-bottom: 6px; font-size: 11.5px; }
 .net-ws-log {
     flex: 1 1 0;
     min-height: 140px;
     overflow-y: auto;
+    /* The page keeps the reader's place itself when rows leave the start of the log. */
+    overflow-anchor: none;
     border: 1px solid var(--border-soft);
     border-radius: var(--radius);
 }

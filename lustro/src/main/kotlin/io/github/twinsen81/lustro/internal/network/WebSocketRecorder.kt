@@ -218,8 +218,17 @@ internal class WebSocketRecorder(
             lifecycleEvent { pending ->
                 val error = t.toString().take(MAX_ERROR_CHARS)
                 val status = response?.code
+                // A response here is the one that refused the upgrade, and its headers say why.
+                val headers = response?.let { capture.redactHeaders(it.headers) }
                 update {
-                    it.copy(state = WebSocketState.FAILED, closedAt = pending.at, error = error, statusCode = status ?: it.statusCode)
+                    it.copy(
+                        state = WebSocketState.FAILED,
+                        closedAt = pending.at,
+                        error = error,
+                        statusCode = status ?: it.statusCode,
+                        protocol = response?.protocol?.toString() ?: it.protocol,
+                        responseHeaders = headers ?: it.responseHeaders,
+                    )
                 }
                 WebSocketEvent(pending.seq, pending.at, WebSocketEventKind.FAILURE, statusCode = status, error = error)
             }
