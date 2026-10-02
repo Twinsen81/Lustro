@@ -15,6 +15,7 @@
   "requestBodyBytes": 0,
   "responseBodyBytes": 17,
   "responseComplete": true,
+  "webSocketId": null,
   "error": null,
   "requestHeaders": {
     "Accept": "application/json",

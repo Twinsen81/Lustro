@@ -19,13 +19,16 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.RejectedExecutionException
 import okhttp3.Interceptor
+import okhttp3.WebSocket
 
 /**
  * The Lustro debug runtime facade.
  *
  * Build one with [builder], register [DebugTab]s, and [start] it to ARM the
  * loopback debug server. Obtain an OkHttp interceptor with [networkInterceptor]
- * to feed captured traffic into the registered [NetworkDebugTab] (if any).
+ * to feed captured traffic into the registered [NetworkDebugTab] (if any), and
+ * a [WebSocket.Factory] with [webSocketFactory] to record the messages of the
+ * app's WebSockets there.
  *
  * Debug-only: [start] refuses to arm when the host app is not marked debuggable,
  * unless [DebugConfig.allowNonDebuggableBuilds] opts in. This is a runtime
@@ -119,6 +122,28 @@ public class Lustro internal constructor(
         val provider = networkProvider ?: return Interceptor { it.proceed(it.request()) }
         return provider.createInterceptor { captureEnabled }
     }
+
+    /**
+     * Returns a [WebSocket.Factory] that creates its sockets with [delegate],
+     * usually your `OkHttpClient`, and records their messages and lifecycle
+     * events in the registered [NetworkDebugTab]. Create the sockets you want to
+     * inspect with it, or give it to a library that takes a [WebSocket.Factory]:
+     *
+     * ```
+     * val sockets = lustro.webSocketFactory(okHttpClient)
+     * val socket = sockets.newWebSocket(request, listener)
+     * ```
+     *
+     * [networkInterceptor] shows only a socket's handshake, because OkHttp sends
+     * nothing else through interceptors. A socket from this factory behaves as
+     * one from [delegate]: your listener gets the same calls, and `send`,
+     * `close`, and `queueSize` return what [delegate]'s socket returns. Capture
+     * adds a constant cost to each message on the calling thread.
+     *
+     * When no network tab is registered, returns [delegate].
+     */
+    public fun webSocketFactory(delegate: WebSocket.Factory): WebSocket.Factory =
+        networkProvider?.wrapWebSocketFactory(delegate) ?: delegate
 
     /**
      * ARMS the debug server: freezes the tab registry and registers the
@@ -452,6 +477,9 @@ public class Lustro internal constructor(
                     appServerBaseUrl = config.appServerBaseUrl,
                     captureBudgetBytes = config.captureBudgetBytes,
                     requestTimeoutMs = config.requestTimeoutMs,
+                    maxCaptureWebSockets = config.maxCaptureWebSockets,
+                    maxWebSocketEvents = config.maxWebSocketEvents,
+                    webSocketCaptureBudgetBytes = config.webSocketCaptureBudgetBytes,
                 )
             }
             return Lustro(application, config, registry)

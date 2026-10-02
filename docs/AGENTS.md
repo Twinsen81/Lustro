@@ -21,7 +21,8 @@ This document is about using a running Lustro. To add Lustro to an app, follow t
   `GET /api/v1/_schema` for the shared envelope schemas. Drive operations from those, not from
   hard-coded paths.
 - **Built-in tab.** v1 ships exactly one built-in tab: `network` (capture, inspect, mock,
-  throttle, replay). Its contract is `lustro/src/main/assets/lustro/network.openapi.json`.
+  throttle, replay, and the messages of WebSocket connections). Its contract is
+  `lustro/src/main/assets/lustro/network.openapi.json`.
 
 ## Use the `lustro` CLI
 
@@ -39,6 +40,8 @@ lustro net list                   # the newest 50 transactions, newest first
 lustro net get <id> --no-body     # one transaction, without its bodies
 lustro net wait --url /v1/orders -- adb shell input tap 540 1200
 lustro net export --har out.har   # every transaction as a HAR file
+lustro net ws list                # the WebSocket connections, newest first
+lustro net ws events <id> --last 20   # the last 20 messages and lifecycle events of one
 ```
 
 Each row of `net list` starts with a short transaction id: the first 8 characters of the id, or more
@@ -84,6 +87,37 @@ milliseconds. So give the command that makes the app send the request after `--`
 `lustro net poll` prints transactions as they arrive. When a request that was in flight finishes
 or fails, it prints its row again, marked `[update]`; with `--json`, the later line for an id
 replaces the earlier one.
+
+### WebSocket messages
+
+`lustro net ws list` prints one row for each connection: a short id, the start time, the state
+(`open`, `closed 1000`, `failed 403`, `canceled`), the counts of sent and received messages, and
+the URL. `lustro net ws get <id>` prints one connection with the headers of its handshake.
+
+`lustro net ws events <id>` prints the connection's log, oldest first, the last 50 events by
+default:
+
+```
+    1  14:22:17.243  --  open 101
+    2  14:22:17.250  ->  text         36B  {"type":"auth","token":"[REDACTED]"}
+    3  14:22:17.391  <-  text         16B  {"type":"ready"}
+    4  14:22:18.004  ->  binary        4B  deadbeef
+```
+
+`->` is a message the app sent, and `<-` one it received. `--` is a lifecycle event: `open`,
+`close sent` (the app called `close()`), `close received` (the server's close frame), `closed`,
+`cancel`, and `failure`. A sent message means that OkHttp queued it; it does not show that the
+server received it. `[not sent]` marks a message that `send()` refused. A long text ends with a
+marker that names the command for the rest, such as
+`[... 299961 more bytes: lustro net ws payload 3d2a7f10 5]`, and `lustro net ws payload <id> <seq>
+[-o FILE]` prints or saves a payload as it is stored. `--sent`, `--received`, and `--search TEXT`
+select events on the server, `--last N` or `--all` sets how many, and `--follow` then prints each
+new event as it comes. `--json` prints JSON Lines, and `--fields seq,kind,preview` keeps only those
+keys.
+
+A connection is listed only when the app creates its socket with the factory from
+`Lustro.webSocketFactory`. For any other socket, `lustro net list` shows the handshake, as a
+request with the status `101`.
 
 ## Auth and token discovery
 
@@ -169,6 +203,10 @@ reported as `_meta.protocolVersion`.
   `unchanged`, or `reset`. Echo `cursor` back on the next poll; **treat any unknown `status` as
   `reset`** and re-sync the full list. The cursor advances when the route's list changes, and a
   cursor from before an app restart gets a `reset`.
+- **Stream** (routes whose list only grows at its end): `{ cursor, status, items?, dropped? }`,
+  with the same statuses. Here a `delta` carries only the entries after the cursor, oldest first:
+  append them. A `reset` carries the last entries of the list: replace what you have. `dropped`
+  counts the entries the list evicted before you got them. Treat any unknown `status` as `reset`.
 
 ## Network tab operations
 
@@ -181,13 +219,17 @@ below summarizes it. All routes are token-authenticated and use the shared error
 | Transaction detail | `GET transactions/{id}` | Full object (headers + bodies, with truncation flags). Enveloped `404` if missing. |
 | Transaction body | `GET transactions/{id}/body/{request\|response}` | One body as it is stored: the bytes of an image, or the redacted text as UTF-8. Not JSON. Enveloped `404` when no body was kept. See below. |
 | Export as HAR | `GET transactions/_/export?format=har&ids=` | A HAR 1.2 document of the transactions in `ids` (comma-separated), or of every one. See below. |
-| Clear | `POST clear` | Clears the captured list and starts the capture filter's counts again; mock rules and settings are preserved. |
+| Poll WebSocket connections | `GET websockets?cursor=` | Cursor envelope, newest first, with the same `state` as the transactions poll. See below. |
+| WebSocket connection detail | `GET websockets/{id}` | One connection with `requestHeaders`, `responseHeaders`, and `protocol`. Enveloped `404` if missing. |
+| Poll a connection's events | `GET websockets/{id}/events?cursor=&limit=&direction=&search=` | Stream envelope: the messages and lifecycle events, in order. See below. |
+| Message payload | `GET websockets/{id}/events/{seq}/payload` | One message's payload as it is stored: bytes, or the redacted text as UTF-8. Not JSON. |
+| Clear | `POST clear` | Clears the captured list and the WebSocket connections, and starts the capture filter's counts again; mock rules and settings are preserved. |
 | List rules | `GET rules` | `{ items: [MockRule...] }`. |
 | Add / upsert rule | `POST rules` | Body `MockRuleInput` (`urlPattern` required). Supplying a stable `id` makes the write **idempotent** (upsert by id); omitting it generates one. Returns `{ status: "ok", id }`. |
 | Sync rules | `POST rules/_/sync` | **Atomic** full replacement: posts an array; the resulting set exactly equals it, with no empty window observed by the interceptor. Returns `{ status: "ok", count }`. |
 | Delete rule | `POST rules/delete` | Body `{ id }`. |
 | Toggle rule | `POST rules/toggle` | Body `{ id }`; flips `enabled`. |
-| Pause capture | `POST pause` | Toggles capture-only pause. While paused, mocks and throttle **still apply**; only recording into the list stops. Returns `{ status: "ok", paused }`. |
+| Pause capture | `POST pause` | Toggles capture-only pause. While paused, mocks and throttle **still apply**; only recording into the list stops, for requests and for WebSocket messages. Returns `{ status: "ok", paused }`. |
 | Overwrite mode | `POST overwrite-mode` | Toggles overwrite mode (a new request evicts earlier **completed** transactions with the same method + URL path; in-flight ones are never evicted). Returns `{ status: "ok", overwriteMode }`. |
 | Throttle | `POST throttle` | Body `{ delayMs }` (≥ 0); a global pre-request sleep applied to mocked and real requests alike. Returns `{ status: "ok", delayMs }`. |
 | Send request | `POST send` | **Synchronous** dispatch through the configured `NetworkSender`. See below. |
@@ -254,7 +296,47 @@ transaction; an id the app no longer has is left out. Each entry's `_lustro` has
 Chrome DevTools how to file it. A body kept as bytes is base64: `content.encoding` says so for a
 response, and `postData._encoding` for a request. The request line and its headers must stay
 under 8 KB, so send many ids in batches; `lustro net export --har FILE [--ids ID ...]` does that,
-and `--har -` writes the document to stdout. This route is part of protocol 1.2.
+and `--har -` writes the document to stdout. This route is part of protocol 1.2. From protocol 1.3,
+the entry of a WebSocket's handshake has `_resourceType: "websocket"`, the socket's messages in
+`_webSocketMessages` (`type` `send` or `receive`, `time` in seconds, `opcode` 1 for text and 2 for
+base64 bytes, `data`), which Chrome DevTools reads, and the connection in `_lustro.webSocket`.
+
+**WebSocket connections.** `GET websockets` lists the sockets that the app creates with the
+factory from `Lustro.webSocketFactory`, in a cursor envelope; the cursor advances when a connection
+is listed, changes state, or gets an event. A connection has `url` (with the `ws` or `wss` scheme,
+redacted), `state` (`connecting`, `open`, `closing`, `closed`, `failed`), `startedAt`, `openedAt`,
+and `closedAt` in epoch milliseconds, `statusCode` of the handshake response, `closeCode`,
+`closeReason`, and `closedBy` (`app` or `server`: whose close frame came first), `canceled`,
+`error` (the exception of a failed socket), and the counts `sentCount`, `sentBytes`,
+`receivedCount`, and `receivedBytes`. `transactionId` is the handshake's transaction, when the
+interceptor on the same client captured it, and that transaction has `webSocketId`: the
+transactions list shows the same handshake with an `https` URL, as OkHttp holds it. A socket
+created in another way has no connection, only the handshake transaction, with `webSocketId: null`.
+
+**WebSocket events.** `GET websockets/{id}/events` is the connection's log in a stream envelope.
+Poll it first without a cursor: `reset` has the last `limit` events (100 by default). Then echo
+the cursor: `delta` has only the events after it, oldest first, and `unchanged` has none. Each event
+has `seq`, `at` (epoch milliseconds), `timestamp`, and `kind`, and only the other keys of its kind:
+
+- `message`: `direction` (`sent` or `received`), `type` (`text` or `binary`), `payloadBytes` (the
+  whole payload), `truncated` (the capture cap cut it), `stored`, and `preview` with
+  `previewComplete` for text (the first 512 characters, redacted) or `hexPreview` for binary (the
+  first 32 bytes). A sent message has `enqueued`, the return value of `send()`: `true` means that
+  OkHttp queued it, which does not show that the server received it, and `false` means that it was
+  not sent.
+- `open`: `statusCode`. `close`: `direction`, `code`, `reason`, and `enqueued` for the app's own
+  `close()`. `closed`: `code`, `reason`. `cancel`: nothing more. `failure`: `error`, `statusCode`.
+
+`seq` orders the events and names one in the payload route; a number can be missing. `direction`
+and `search` (over the stored text, case-insensitive) leave events out of `items`. When
+`previewComplete` is `false`, `GET websockets/{id}/events/{seq}/payload` returns the stored text;
+for a binary message it returns the bytes. A connection keeps its last 1000 events by default:
+`evictedEvents` on the connection counts the ones it no longer has, `dropped` in a `delta` counts
+the ones evicted before you got them, and `droppedEvents` counts messages that were never stored
+because capture was behind. While capture is paused, no message is recorded and no new socket is
+listed. `POST clear` removes the connections; a socket that is still open is listed again with its
+next message, with a new log, so a cursor from before the clear gets a `reset`. These routes and
+`webSocketId` are part of protocol 1.3.
 
 **Compressed bodies.** A body sent or received with `Content-Encoding: gzip`, `x-gzip`, or
 `deflate` is stored inflated: `requestBody` and `responseBody` hold the text, and
@@ -298,6 +380,16 @@ whether the app set one: `null` when it didn't, or `{ description, skipped, fail
 Both count since the list was last cleared. So when a request never shows up while capture isn't
 paused, check `skipped` and read `description`.
 
+**Watch a WebSocket**
+
+1. `lustro net ws list` (or `GET websockets`) and take the id of the connection.
+2. `lustro net ws events <id> --follow`, or poll `GET websockets/<id>/events` with the cursor,
+   and append each `delta`.
+3. For a message whose preview is cut, `lustro net ws payload <id> <seq>`.
+
+To test how the app handles a refused connection, add a mock rule for the handshake: its URL has
+`https` for `wss`, and any status but `101` makes OkHttp fail the socket.
+
 **Replay a request**
 
 ```bash
@@ -338,7 +430,8 @@ Errors use the shared envelope; key statuses:
 - **`503 unavailable`** — the server is at its concurrency + queue limit; back off and retry.
 - **`504 timeout`** — a handler (e.g. a slow `send`) exceeded the per-request timeout.
 - **`404 not_found`** — unknown route, missing transaction, a body that wasn't kept, or `send` with
-  no sender configured.
+  no sender configured. Also a WebSocket connection that the app cleared or evicted, and a message
+  with no stored payload.
 - **Connection refused / no response** — the app is backgrounded (the server only listens while
   foregrounded) or `adb forward` isn't set up. Re-check the `LustroToken` log line for the live
   endpoint. A connection closed without a response can also mean the server is at its

@@ -4,6 +4,7 @@
 | --- | --- | --- |
 | `error-envelope.schema.json` | `{ error, message, code, field?, hint? }` | present |
 | `cursor-envelope.schema.json` | `{ cursor, status, items? }` | present |
+| `stream-envelope.schema.json` | `{ cursor, status, items?, dropped? }` | present |
 | `pagination.schema.json` | `{ items, nextCursor }` | present |
 | `meta.schema.json` | `GET /api/v1/_meta` response | present |
 | `network.openapi.json` (in AAR assets) | Network tab routes | present |

@@ -1,0 +1,66 @@
+{
+  "cursor": "c:5",
+  "status": "reset",
+  "items": [
+    {
+      "seq": 1,
+      "at": 1790605337243,
+      "timestamp": "14:22:17.243",
+      "kind": "open",
+      "statusCode": 101
+    },
+    {
+      "seq": 2,
+      "at": 1790605337250,
+      "timestamp": "14:22:17.250",
+      "kind": "message",
+      "direction": "sent",
+      "type": "text",
+      "payloadBytes": 36,
+      "stored": true,
+      "truncated": false,
+      "preview": "{\"type\":\"auth\",\"token\":\"[REDACTED]\"}",
+      "previewComplete": true,
+      "enqueued": true
+    },
+    {
+      "seq": 3,
+      "at": 1790605337391,
+      "timestamp": "14:22:17.391",
+      "kind": "message",
+      "direction": "received",
+      "type": "text",
+      "payloadBytes": 16,
+      "stored": true,
+      "truncated": false,
+      "preview": "{\"type\":\"ready\"}",
+      "previewComplete": true
+    },
+    {
+      "seq": 4,
+      "at": 1790605338004,
+      "timestamp": "14:22:18.004",
+      "kind": "message",
+      "direction": "sent",
+      "type": "binary",
+      "payloadBytes": 4,
+      "stored": true,
+      "truncated": false,
+      "hexPreview": "deadbeef",
+      "enqueued": true
+    },
+    {
+      "seq": 5,
+      "at": 1790605339112,
+      "timestamp": "14:22:19.112",
+      "kind": "message",
+      "direction": "received",
+      "type": "text",
+      "payloadBytes": 300000,
+      "stored": true,
+      "truncated": true,
+      "preview": "{\"type\":\"snapshot\",\"items\":[{\"id\":1,\"na",
+      "previewComplete": false
+    }
+  ]
+}

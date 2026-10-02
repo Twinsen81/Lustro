@@ -95,7 +95,7 @@ def server():
 def test_meta(server):
     client = LustroClient(server, TOKEN)
     meta = client.get("/api/v1/_meta")
-    assert meta["protocolVersion"] == "1.2"
+    assert meta["protocolVersion"] == "1.3"
     assert meta["tabs"][0]["id"] == "network"
 
 

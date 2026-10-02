@@ -1,0 +1,88 @@
+{
+  "cursor": "c:17",
+  "status": "reset",
+  "state": {
+    "paused": false,
+    "overwriteMode": false,
+    "throttleDelayMs": 0,
+    "captureFilter": null
+  },
+  "items": [
+    {
+      "id": "ws_3d2a7f10",
+      "url": "wss://chat.example.com/socket?token=%5BREDACTED%5D",
+      "state": "open",
+      "timestamp": "14:22:17.098",
+      "startedAt": 1790605337098,
+      "openedAt": 1790605337243,
+      "closedAt": null,
+      "statusCode": 101,
+      "closeCode": null,
+      "closeReason": null,
+      "closedBy": null,
+      "canceled": false,
+      "error": null,
+      "transactionId": "tx_a81c3f09",
+      "categories": [
+        "chat"
+      ],
+      "sentCount": 2,
+      "sentBytes": 40,
+      "receivedCount": 2,
+      "receivedBytes": 300016,
+      "storedEvents": 5,
+      "evictedEvents": 0,
+      "droppedEvents": 0
+    },
+    {
+      "id": "ws_91b04c2e",
+      "url": "wss://chat.example.com/socket?token=%5BREDACTED%5D",
+      "state": "closed",
+      "timestamp": "14:21:40.310",
+      "startedAt": 1790605300310,
+      "openedAt": 1790605300452,
+      "closedAt": 1790605312907,
+      "statusCode": 101,
+      "closeCode": 1000,
+      "closeReason": "bye",
+      "closedBy": "app",
+      "canceled": false,
+      "error": null,
+      "transactionId": "tx_0c7e52d9",
+      "categories": [
+        "chat"
+      ],
+      "sentCount": 14,
+      "sentBytes": 1830,
+      "receivedCount": 2210,
+      "receivedBytes": 884120,
+      "storedEvents": 1000,
+      "evictedEvents": 1228,
+      "droppedEvents": 0
+    },
+    {
+      "id": "ws_6a5f0e83",
+      "url": "wss://feed.example.com/v2/stream",
+      "state": "failed",
+      "timestamp": "14:21:02.004",
+      "startedAt": 1790605262004,
+      "openedAt": null,
+      "closedAt": 1790605262188,
+      "statusCode": 403,
+      "closeCode": null,
+      "closeReason": null,
+      "closedBy": null,
+      "canceled": false,
+      "error": "java.net.ProtocolException: Expected HTTP 101 response but was '403 Forbidden'",
+      "transactionId": null,
+      "categories": [],
+      "sentCount": 0,
+      "sentBytes": 0,
+      "receivedCount": 0,
+      "receivedBytes": 0,
+      "storedEvents": 1,
+      "evictedEvents": 0,
+      "droppedEvents": 0
+    }
+  ]
+}

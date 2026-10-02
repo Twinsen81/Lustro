@@ -1,0 +1,48 @@
+{
+  "cursor": "c:1004",
+  "status": "delta",
+  "dropped": 3,
+  "items": [
+    {
+      "seq": 1009,
+      "at": 1790605340010,
+      "timestamp": "14:22:20.010",
+      "kind": "close",
+      "direction": "sent",
+      "code": 1000,
+      "reason": "bye",
+      "enqueued": true
+    },
+    {
+      "seq": 1010,
+      "at": 1790605340019,
+      "timestamp": "14:22:20.019",
+      "kind": "message",
+      "direction": "sent",
+      "type": "text",
+      "payloadBytes": 8,
+      "stored": true,
+      "truncated": false,
+      "preview": "too late",
+      "previewComplete": true,
+      "enqueued": false
+    },
+    {
+      "seq": 1011,
+      "at": 1790605341018,
+      "timestamp": "14:22:21.018",
+      "kind": "close",
+      "direction": "received",
+      "code": 1000,
+      "reason": "bye"
+    },
+    {
+      "seq": 1012,
+      "at": 1790605341020,
+      "timestamp": "14:22:21.020",
+      "kind": "closed",
+      "code": 1000,
+      "reason": "bye"
+    }
+  ]
+}

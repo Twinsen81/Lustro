@@ -106,6 +106,109 @@ class HarExportGoldenTest {
             ),
         )
 
+    // A socket's handshake, as the interceptor captures it, and the socket's log.
+    private val handshake =
+        NetworkTransaction(
+            id = "tx_a81c3f09",
+            startedAt = 1790605337100,
+            completedAt = 1790605337242,
+            durationMs = 142,
+            categories = listOf("chat"),
+            method = "GET",
+            url = "https://chat.example.com/socket?token=%5BREDACTED%5D",
+            requestHeaders =
+                mapOf(
+                    "Upgrade" to "websocket",
+                    "Connection" to "Upgrade",
+                    "Sec-WebSocket-Key" to "[REDACTED]",
+                    "Sec-WebSocket-Version" to "13",
+                    "Sec-WebSocket-Extensions" to "permessage-deflate",
+                ),
+            protocol = "http/1.1",
+            statusCode = 101,
+            responseHeaders =
+                mapOf("Upgrade" to "websocket", "Connection" to "Upgrade", "Sec-WebSocket-Accept" to "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="),
+            responseBodyBytes = 0,
+            responseComplete = true,
+        )
+
+    private val webSocket =
+        HarWebSocket(
+            connection =
+                WebSocketConnection(
+                    id = "ws_3d2a7f10",
+                    url = "wss://chat.example.com/socket?token=%5BREDACTED%5D",
+                    categories = listOf("chat"),
+                    startedAt = 1790605337098,
+                    lifecycle =
+                        WebSocketLifecycle(
+                            state = WebSocketState.CLOSED,
+                            openedAt = 1790605337243,
+                            closedAt = 1790605341020,
+                            statusCode = 101,
+                            protocol = "http/1.1",
+                            closeCode = 1000,
+                            closeReason = "bye",
+                            closedBy = "app",
+                        ),
+                    transactionId = "tx_a81c3f09",
+                    requestHeaders = emptyMap(),
+                    sentCount = 2,
+                    sentBytes = 40,
+                    receivedCount = 2,
+                    receivedBytes = 300016,
+                    storedEvents = 9,
+                    evictedEvents = 0,
+                    droppedEvents = 0,
+                ),
+            events =
+                listOf(
+                    WebSocketEvent(1, 1790605337243, WebSocketEventKind.OPEN, statusCode = 101),
+                    message(2, 1790605337250, outgoing = true, enqueued = true, text = """{"type":"auth","token":"[REDACTED]"}"""),
+                    message(3, 1790605337391, outgoing = false, text = """{"type":"ready"}"""),
+                    message(4, 1790605338004, outgoing = true, enqueued = true, bytes = byteArrayOf(-34, -83, -66, -17)),
+                    // Cut at the capture cap: the size is the message's, and the data is its first part.
+                    message(5, 1790605339112, outgoing = false, text = """{"type":"snapshot","items":[{"id":1,"na""", payloadBytes = 300000),
+                    // send() refused this one after close(), so it is not in the export.
+                    message(7, 1790605340019, outgoing = true, enqueued = false, text = "too late"),
+                    WebSocketEvent(6, 1790605340010, WebSocketEventKind.CLOSE, outgoing = true, enqueued = true, code = 1000, reason = "bye"),
+                    WebSocketEvent(8, 1790605341018, WebSocketEventKind.CLOSE, outgoing = false, code = 1000, reason = "bye"),
+                    WebSocketEvent(9, 1790605341020, WebSocketEventKind.CLOSED, code = 1000, reason = "bye"),
+                ),
+        )
+
+    private fun message(
+        seq: Long,
+        at: Long,
+        outgoing: Boolean,
+        enqueued: Boolean? = null,
+        text: String? = null,
+        bytes: ByteArray? = null,
+        payloadBytes: Long? = null,
+    ): WebSocketEvent =
+        WebSocketEvent(
+            seq = seq,
+            at = at,
+            kind = WebSocketEventKind.MESSAGE,
+            outgoing = outgoing,
+            binary = bytes != null,
+            payloadBytes = payloadBytes ?: (text?.length ?: bytes!!.size).toLong(),
+            truncated = payloadBytes != null,
+            text = text,
+            bytes = bytes,
+            enqueued = enqueued,
+        )
+
+    @Test
+    fun `the golden HAR fixture of a WebSocket is what the export writes`() {
+        val written = HarExport.write(listOf(handshake), creatorVersion = "0.1.0") { webSocket }
+        assertEquals(
+            "$GOLDEN_WEBSOCKET differs from:\n$written\n",
+            canonical(JSONObject(File(GOLDEN_WEBSOCKET).readText())),
+            canonical(JSONObject(written)),
+        )
+    }
+
     @Test
     fun `the golden HAR fixture is what the export writes`() {
         val written = HarExport.write(transactions, creatorVersion = "0.1.0")
@@ -127,5 +230,6 @@ class HarExportGoldenTest {
     private companion object {
         // Unit tests run in the module directory.
         const val GOLDEN = "../wire-protocol/v1/golden/export-har.json"
+        const val GOLDEN_WEBSOCKET = "../wire-protocol/v1/golden/export-har-websocket.json"
     }
 }

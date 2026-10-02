@@ -83,10 +83,9 @@ public interface DebugResponse {
          * be recreated within a process should pick its own when it's created,
          * for example with `Random.nextLong()`.
          *
-         * This factory implements snapshot-list semantics only. Routes with
-         * append-stream semantics (e.g. a log tail, where a poll returns only
-         * the entries after the cursor) need their own envelope; build it with
-         * [CursorCodec] and [json].
+         * This factory implements snapshot-list semantics only. For a route
+         * with append-stream semantics (e.g. a log tail, where a poll returns
+         * only the entries after the cursor), use [streamEnvelope].
          */
         @JvmStatic
         @JvmOverloads
@@ -119,6 +118,75 @@ public interface DebugResponse {
                     append(",\"state\":").append(state)
                 }
                 append("}")
+            }
+
+        /**
+         * A stream-envelope response for a route whose list only grows at its
+         * end, such as a log:
+         * `{"cursor":..,"status":..,("items":[..],)?("dropped":n,)?("state":..)?}`.
+         *
+         * A poll gets only the entries after its cursor, so a long list isn't
+         * sent again each time it grows. The cursor counts entries: [total] is
+         * how many the list ever had, and [retained] how many of those, the
+         * newest, it still holds. From [clientCursor], the cursor the client
+         * echoed back, the `status` is:
+         * - `reset` for an absent, undecodable, or foreign cursor, and for one
+         *   past the end. [appendItems] gets `from = 0` and `reset = true`, and
+         *   writes what a new client starts with, usually the last entries.
+         * - `unchanged` when the client has every entry. Items are omitted.
+         * - `delta` otherwise. [appendItems] gets, as `from`, the index among
+         *   the retained entries of the first one the client doesn't have, and
+         *   `dropped` says how many entries the list evicted before the client
+         *   got them.
+         *
+         * [appendItems] writes the comma-separated JSON array elements (this
+         * factory emits the enclosing `"items":[...]`) and returns the index
+         * just past the last retained entry it dealt with: [retained] when it
+         * reached the end, or less when it stopped at a page limit, and then
+         * the next poll goes on from there. An entry that a filter left out
+         * counts as dealt with.
+         *
+         * A non-null [state] must be a valid JSON value and is appended
+         * verbatim as the envelope's `state` member, with every status.
+         *
+         * [epoch] identifies the list, as in [cursorEnvelope]: a cursor issued
+         * under another epoch is foreign. A list that can be emptied and filled
+         * again should take a new epoch when that happens, so a client with a
+         * cursor from before gets a `reset` and replaces what it has.
+         */
+        @JvmStatic
+        @JvmOverloads
+        public fun streamEnvelope(
+            total: Long,
+            retained: Int,
+            clientCursor: String?,
+            state: String? = null,
+            epoch: Long = CursorCodec.processEpoch,
+            appendItems: StringBuilder.(from: Int, reset: Boolean) -> Int,
+        ): DebugResponse =
+            json {
+                val held = retained.toLong().coerceIn(0L, total.coerceAtLeast(0L)).toInt()
+                val evicted = total.coerceAtLeast(0L) - held
+                val seen = CursorCodec.decode(clientCursor, epoch)?.takeIf { it in 0..evicted + held }
+                val items = StringBuilder()
+                var status = "unchanged"
+                var next = evicted + held
+                var dropped = 0L
+                if (seen == null) {
+                    status = "reset"
+                    next = evicted + items.appendItems(0, true).coerceIn(0, held)
+                } else if (seen != next) {
+                    status = "delta"
+                    dropped = (evicted - seen).coerceAtLeast(0L)
+                    val from = (seen - evicted).coerceAtLeast(0L).toInt()
+                    next = evicted + items.appendItems(from, false).coerceIn(from, held)
+                }
+                append("{\"cursor\":\"").append(CursorCodec.encode(next, epoch).escapeForJson()).append("\",")
+                append("\"status\":\"").append(status).append('"')
+                if (status != "unchanged") append(",\"items\":[").append(items).append(']')
+                if (status == "delta") append(",\"dropped\":").append(dropped)
+                if (state != null) append(",\"state\":").append(state)
+                append('}')
             }
 
         /**

@@ -137,9 +137,15 @@ internal class LustroNetworkInterceptor(
     }
 
     // Null when the filter skips the request: none of it is read for capture or reported.
+    @Suppress("RestrictedApi") // id.value is @RestrictTo(LIBRARY_GROUP); same-group call.
     private fun beginCapture(request: okhttp3.Request, url: String): TransactionId? {
         val headers = request.headers.toApiHeaders()
-        if (!captureFilter.shouldCapture(url, request.method, headers)) return null
+        // The handshake of a socket from the capturing factory. The factory asked
+        // the filter when the app created the socket, so it isn't asked again.
+        val webSocket = request.tag(WebSocketCaptureTag::class.java)
+        val capture =
+            if (webSocket != null) webSocket.recorder != null else captureFilter.shouldCapture(url, request.method, headers)
+        if (!capture) return null
         val contentType = requestContentType(request)
         return sink.beginRequest(
             url = url,
@@ -147,7 +153,7 @@ internal class LustroNetworkInterceptor(
             headers = headers,
             requestBody = captureRequestBody(request, contentType),
             contentType = contentType.toApiMediaType(),
-        )
+        ).also { id -> webSocket?.recorder?.linkTransaction(id.value) }
     }
 
     private fun buildMockResponse(request: okhttp3.Request, rule: MockRule): Response {

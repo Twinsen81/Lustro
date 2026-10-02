@@ -219,6 +219,48 @@ see [DECISIONS.md](DECISIONS.md).
   shape, the golden fixture `export-har.json` shows it, a unit test checks that
   the export writes exactly that fixture, and the CLI end-to-end run exports
   the sample's mocked request.
+- **WebSocket messages.** Lustro showed a WebSocket only as its handshake, a
+  request with the status `101`, because OkHttp sends nothing else through
+  interceptors. `Lustro.webSocketFactory(okHttpClient)` now returns a
+  `WebSocket.Factory` that creates its sockets with the client and records
+  them: each message, text or binary, sent or received, and the open, the close
+  frames, `cancel()`, and the failure, in one ordered log for each connection.
+  The app's listener gets the same calls with the socket that `newWebSocket`
+  returned, the return values of `send`, `close`, and `queueSize` are OkHttp's,
+  and what the listener throws reaches OkHttp. A call on the socket only puts a
+  task in a queue: a thread of its own cuts the payload at
+  `maxBodyCaptureBytes`, redacts it, and stores it, and while that thread is
+  behind, messages are dropped and counted. `lustro-noop` returns the client
+  itself. The capture filter is asked once for each socket and also decides for
+  its handshake, the classifier labels the connection, pause stops the
+  recording of messages, and clear removes the connections; a socket that is
+  still open is listed again with its next message. The text of a message goes
+  through `Redactor.redactBody`, and then through the new
+  `Redactor.redactWebSocketText`, which can return `null` to store only the
+  size; `Redactor.redactWebSocketBinary` does the same for a binary message,
+  which is stored as it arrived by default. Both have defaults, so a `Redactor`
+  written before them still compiles. `DebugConfig` gains
+  `maxCaptureWebSockets` (100), `maxWebSocketEvents` (1000 for each
+  connection), and `webSocketCaptureBudgetBytes` (16 MB for all payloads).
+  Wire protocol 1.3 adds `GET network/websockets` (cursor envelope),
+  `GET network/websockets/{id}`, `GET network/websockets/{id}/events`, and
+  `GET network/websockets/{id}/events/{seq}/payload`, and `webSocketId` on the
+  transaction of a handshake. The events route uses the new **stream
+  envelope**, `{ cursor, status, items?, dropped? }`, for a list that only
+  grows at its end: a poll gets only the entries after its cursor.
+  `stream-envelope.schema.json` describes it, and
+  `DebugResponse.streamEnvelope(...)` builds it for any tab. In the Network
+  tab, a switch in the list toolbar opens the **WebSockets** view: the
+  connections, and for one of them its summary, the handshake headers, the log
+  with a direction filter and a search, and the payload of a message in the
+  JSON tree, as text, or as a hex dump. A `WS` badge on the handshake's row
+  opens its connection. **Markdown** copies a connection with its last events.
+  The HAR export puts a socket's messages in `_webSocketMessages` on the entry
+  of its handshake, where Chrome DevTools reads them. The CLI gains
+  `lustro net ws list`, `net ws get`, `net ws events` (with `--follow`), and
+  `net ws payload`. The sample has a WebSocket section against an echo server,
+  and the CLI end-to-end run checks a socket whose handshake a mock rule
+  refuses.
 
 ### Fixed
 

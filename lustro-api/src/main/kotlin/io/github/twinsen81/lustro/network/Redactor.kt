@@ -11,7 +11,8 @@ import io.github.twinsen81.lustro.MediaType
  *
  * Lustro calls it on a background capture thread, so the app's HTTP calls
  * don't wait for it. When capture falls behind, the threads making those calls
- * run it instead, so an implementation must be thread-safe.
+ * run it instead, so an implementation must be thread-safe. WebSocket messages
+ * are redacted on a second capture thread, and never on a socket's own threads.
  */
 public interface Redactor {
     /** Returns [url] with sensitive query parameters redacted. */
@@ -32,4 +33,29 @@ public interface Redactor {
      * it arrives. A sensitive value needs masking even when its end is missing.
      */
     public fun redactBody(body: String, contentType: MediaType?): String
+
+    /**
+     * Returns the text to store for a WebSocket text message, or `null` to
+     * store only its size.
+     *
+     * Lustro redacts every text message with [redactBody] first, as a body with
+     * no content type, and [text] is the result. So [redactBody] covers
+     * WebSocket messages too, and the default here returns [text] as it is.
+     * Override this to mask more in the messages of one socket or one
+     * direction, or to keep a payload out of the store.
+     *
+     * Like a body, a message can end partway through a value: one larger than
+     * the capture cap is cut off there before it is redacted.
+     */
+    public fun redactWebSocketText(text: String, message: WebSocketMessageInfo): String? = text
+
+    /**
+     * Returns the bytes of a binary WebSocket message to store, or `null` to
+     * store only its size.
+     *
+     * The default returns [bytes], so a binary message is stored as it arrived,
+     * up to the capture cap. Lustro doesn't use [bytes] after this call, so an
+     * implementation can change the array and return it.
+     */
+    public fun redactWebSocketBinary(bytes: ByteArray, message: WebSocketMessageInfo): ByteArray? = bytes
 }

@@ -9,7 +9,9 @@ import io.github.twinsen81.lustro.Headers
 import io.github.twinsen81.lustro.MediaType
 import io.github.twinsen81.lustro.escapeForJson
 import io.github.twinsen81.lustro.internal.Versions
+import io.github.twinsen81.lustro.internal.network.CapturingWebSocketFactory
 import io.github.twinsen81.lustro.internal.network.HarExport
+import io.github.twinsen81.lustro.internal.network.HarWebSocket
 import io.github.twinsen81.lustro.internal.network.HttpUrlConnectionCapture
 import io.github.twinsen81.lustro.internal.network.LustroNetworkInterceptor
 import io.github.twinsen81.lustro.internal.network.MockRuleCodec
@@ -20,18 +22,24 @@ import io.github.twinsen81.lustro.internal.network.NetworkSendRequestImpl
 import io.github.twinsen81.lustro.internal.network.NetworkTrafficStore
 import io.github.twinsen81.lustro.internal.network.NetworkTransaction
 import io.github.twinsen81.lustro.internal.network.SafeCaptureFilter
+import io.github.twinsen81.lustro.internal.network.WebSocketCapture
+import io.github.twinsen81.lustro.internal.network.WebSocketRoutes
+import io.github.twinsen81.lustro.internal.network.WebSocketTrafficStore
 import io.github.twinsen81.lustro.internal.toDebugTimestamp
 import io.github.twinsen81.lustro.DebugTab
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
+import okhttp3.WebSocket
 import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Debug console tab for inspecting captured HTTP traffic and managing mock rules.
+ * Debug console tab for inspecting captured HTTP traffic and WebSocket messages,
+ * and managing mock rules.
  *
- * Two-panel layout: transaction list on the left, detail/mock rules/send on the
- * right. Created through the [companion factory][Companion.create]; the
+ * Two-panel layout: the list of transactions or of WebSocket connections on the
+ * left, detail/mock rules/send on the right. Created through the
+ * [companion factory][Companion.create]; the
  * sink/interceptor wiring is internal. Adapted to the `/api/v1/network` wire
  * contract (cursor envelope, synchronous send) and the SPI
  * [NetworkCaptureFilter]/[NetworkClassifier]/[Redactor]/[MockRuleStorage] seams.
@@ -42,6 +50,8 @@ public class NetworkDebugTab private constructor(
     private val senderClient: OkHttpClient?,
     private val capturePlatformHttp: Boolean,
     maxBodyCaptureBytes: Long,
+    redactor: Redactor,
+    classifier: NetworkClassifier,
 ) : DebugTab(), NetworkCaptureProvider {
     override val id: String = "network"
     override val title: String = "Network"
@@ -77,6 +87,27 @@ public class NetworkDebugTab private constructor(
     override val captureSink: io.github.twinsen81.lustro.network.NetworkCaptureSink
         get() = store
 
+    private val webSocketStore = WebSocketTrafficStore()
+
+    // Shares the pause toggle, the capture filter, the redactor, and the payload
+    // cap with HTTP capture, so one setting covers both kinds of traffic.
+    internal val webSocketCapture: WebSocketCapture =
+        WebSocketCapture(
+            store = webSocketStore,
+            redactor = redactor,
+            classifier = classifier,
+            captureFilter = captureFilter,
+            isPaused = { store.isPaused() },
+            maxPayloadBytes = { this.maxBodyCaptureBytes },
+        )
+
+    private val webSocketRoutes = WebSocketRoutes(webSocketStore) { stateJson() }
+
+    // A factory that is already capturing is returned as it is, so wrapping
+    // twice doesn't record every message twice.
+    override fun wrapWebSocketFactory(delegate: WebSocket.Factory): WebSocket.Factory =
+        delegate as? CapturingWebSocketFactory ?: CapturingWebSocketFactory(delegate, webSocketCapture)
+
     override fun createInterceptor(captureEnabled: () -> Boolean): Interceptor =
         LustroNetworkInterceptor(
             sink = store,
@@ -106,9 +137,15 @@ public class NetworkDebugTab private constructor(
         appServerBaseUrl: String?,
         captureBudgetBytes: Long,
         requestTimeoutMs: Long,
+        maxCaptureWebSockets: Int,
+        maxWebSocketEvents: Int,
+        webSocketCaptureBudgetBytes: Long,
     ) {
         store.maxTransactions = maxCaptureTransactions
         store.captureBudgetBytes = captureBudgetBytes
+        webSocketStore.maxConnections = maxCaptureWebSockets
+        webSocketStore.maxEventsPerConnection = maxWebSocketEvents
+        webSocketStore.budgetBytes = webSocketCaptureBudgetBytes
         this.maxBodyCaptureBytes = maxBodyCaptureBytes
         this.appServerBaseUrl = appServerBaseUrl
         this.requestTimeoutMs = requestTimeoutMs
@@ -130,37 +167,54 @@ public class NetworkDebugTab private constructor(
 
     override fun renderContent(): String =
         """
-        <div class="dc-split">
+        <div class="dc-split" id="net-root" data-view="http">
             <div class="dc-pane net-list-pane">
                 <div class="dc-toolbar net-list-head">
-                    <h3 class="dc-mono-label">Network Traffic</h3>
+                    <h3 class="dc-mono-label net-list-title">Network Traffic</h3>
+                    <div class="dc-seg dc-seg--sm net-view-seg" role="group" aria-label="Kind of traffic">
+                        <button class="dc-seg__item dc-seg__item--active" data-action="switchTrafficView" data-view="http" title="HTTP requests and responses.">HTTP</button>
+                        <button class="dc-seg__item" data-action="switchTrafficView" data-view="ws" title="WebSocket connections and the messages of each one. A socket is listed when the app creates it with the factory from Lustro.webSocketFactory.">WebSockets<span id="ws-count" class="net-ws-count"></span></button>
+                    </div>
                     <span id="tx-count" class="net-tx-count">0 requests</span>
                     <button class="dc-btn dc-btn--icon net-filter-flag" id="capture-filter-btn" data-action="showCaptureFilter" hidden aria-label="Requests skipped by the app filters">⚠</button>
-                    <button class="dc-btn" id="select-btn" data-action="toggleSelectMode" style="margin-left:auto" title="Select requests to export as a HAR file or copy as Markdown. A filter change keeps only the selected requests it still shows.">Select</button>
-                    <button class="dc-btn" id="pause-btn" data-action="togglePause" title="Pause traffic capture. The interceptor still runs but new requests are not recorded into the list. Click again to resume.">⏸ Pause</button>
-                    <button class="dc-btn" id="overwrite-btn" data-action="toggleOverwriteMode" title="Overwrite mode: when a new request arrives, any earlier completed transaction with the same method + URL path is removed from the list. In-flight requests are never evicted.">Overwrite: off</button>
-                    <select class="dc-btn" id="throttle-select" name="throttleDelayMs" aria-label="Global throttle" data-action="setThrottle" title="Global throttle: sleep this long before every request (mocked or real). Useful for testing loading spinners and timeout handling.">
+                    <div class="net-list-actions">
+                    <button class="dc-btn net-http-only" id="select-btn" data-action="toggleSelectMode" title="Select requests to export as a HAR file or copy as Markdown. A filter change keeps only the selected requests it still shows.">Select</button>
+                    <button class="dc-btn" id="pause-btn" data-action="togglePause" title="Pause traffic capture. The interceptor still runs but new requests and WebSocket messages are not recorded. Click again to resume.">⏸ Pause</button>
+                    <button class="dc-btn net-http-only" id="overwrite-btn" data-action="toggleOverwriteMode" title="Overwrite mode: when a new request arrives, any earlier completed transaction with the same method + URL path is removed from the list. In-flight requests are never evicted.">Overwrite: off</button>
+                    <select class="dc-btn net-http-only" id="throttle-select" name="throttleDelayMs" aria-label="Global throttle" data-action="setThrottle" title="Global throttle: sleep this long before every request (mocked or real). Useful for testing loading spinners and timeout handling.">
                         <option value="0">No throttle</option>
                         <option value="500">500ms</option>
                         <option value="1000">1s</option>
                         <option value="3000">3s</option>
                         <option value="5000">5s</option>
                     </select>
-                    <button class="dc-btn dc-btn--ghost-danger" data-action="clearTraffic" title="Clear the captured transaction list. Mock rules and settings are preserved. Keyboard shortcut: C (when not typing in an input).">Clear</button>
+                    <button class="dc-btn dc-btn--ghost-danger" data-action="clearTraffic" title="Clear the captured requests and WebSocket connections. Mock rules and settings are preserved. Keyboard shortcut: C (when not typing in an input).">Clear</button>
+                    </div>
                 </div>
-                <div class="net-search">
+                <div class="net-search net-http-only">
                     <label class="dc-field" for="search-input"><span class="dc-field__prefix" aria-hidden="true">&gt;</span><input type="text" id="search-input" name="search" aria-label="Search network traffic" class="dc-input" placeholder="filter url, method, body…" data-action="onSearchInput" title="Search across URL, method, request body, and response body (server-side, 300ms debounce). Matches are highlighted in body views. Shortcut: Ctrl/Cmd+K to focus." /></label>
                 </div>
-                <div class="net-category-bar" id="category-filters"></div>
-                <div class="net-filter-bar" id="status-filters"></div>
-                <div class="net-filter-bar" id="method-filters"></div>
-                <div class="net-select-bar" id="select-bar" hidden>
+                <div class="net-category-bar net-http-only" id="category-filters"></div>
+                <div class="net-filter-bar net-http-only" id="status-filters"></div>
+                <div class="net-filter-bar net-http-only" id="method-filters"></div>
+                <div class="net-select-bar net-http-only" id="select-bar" hidden>
                     <span id="select-count" class="net-select-count">0 selected</span>
                     <button class="dc-btn dc-btn--sm" id="copy-selection-md-btn" data-action="copySelectionMarkdown" disabled title="Copy the selected requests and their responses as one Markdown document, for a bug report, a pull request, or a chat.">Copy Markdown</button>
                     <button class="dc-btn dc-btn--sm dc-btn--primary" id="export-har-btn" data-action="exportSelectionHar" disabled title="Save the selected requests as a HAR file, which browser devtools and HTTP tools import. Headers and bodies are redacted, as shown here.">Export HAR</button>
                 </div>
                 <div style="flex:1;overflow-y:auto">
-                    <table class="dc-table">
+                    <table class="dc-table net-ws-only" id="ws-table">
+                        <thead class="dc-thead">
+                            <tr>
+                                <th class="dc-th" style="width:104px">State</th>
+                                <th class="dc-th">URL</th>
+                                <th class="dc-th" style="width:132px" title="Messages the app sent, and messages it received.">Messages</th>
+                                <th class="dc-th" style="width:104px">Started</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ws-list"></tbody>
+                    </table>
+                    <table class="dc-table net-http-only">
                         <thead class="dc-thead">
                             <tr>
                                 <th class="dc-th net-select-col" id="select-col" style="display:none" data-action="toggleSelectAll" title="Select every request the filters show, or none."><input type="checkbox" id="select-all" class="net-check" aria-label="Select every request the filters show"></th>
@@ -237,6 +291,7 @@ public class NetworkDebugTab private constructor(
             path == "transactions/_/export" && method == "GET" -> handleExport(request)
             path.startsWith("transactions/") && method == "GET" ->
                 handleTransactionPath(path.removePrefix("transactions/").split('/'))
+            path == "websockets" || path.startsWith("websockets/") -> webSocketRoutes.handle(request)
             path == "clear" && method == "POST" -> handleClear()
             path == "rules" && method == "GET" -> handleGetRules()
             path == "rules" && method == "POST" -> handleAddRule(body)
@@ -260,9 +315,10 @@ public class NetworkDebugTab private constructor(
             epoch = store.epoch,
         ) {
             val transactions = store.getTransactions(search = search)
+            val webSockets = webSocketStore.transactionLinks()
             transactions.forEachIndexed { index, tx ->
                 if (index > 0) append(",")
-                appendTransaction(tx, brief = true)
+                appendTransaction(tx, brief = true, webSocketId = webSockets[tx.id])
             }
         }
     }
@@ -297,7 +353,7 @@ public class NetworkDebugTab private constructor(
 
     private fun handleTransactionDetail(txId: String): DebugResponse {
         val tx = store.getTransaction(txId) ?: return DebugResponse.notFound("Transaction not found")
-        return DebugResponse.json { appendTransaction(tx, brief = false) }
+        return DebugResponse.json { appendTransaction(tx, brief = false, webSocketId = webSocketStore.transactionLinks()[tx.id]) }
     }
 
     /**
@@ -356,13 +412,24 @@ public class NetworkDebugTab private constructor(
         val transactions =
             if (ids == null) store.getTransactions() else ids.distinct().mapNotNull { store.getTransaction(it) }
         val oldestFirst = transactions.sortedWith(compareBy({ it.startedAt }, { it.startOrder }))
-        return DebugResponse.ok(HarExport.write(oldestFirst, Versions.LIBRARY_VERSION))
+        // A socket's messages go out with its handshake.
+        val webSockets = webSocketStore.transactionLinks()
+        val har =
+            HarExport.write(oldestFirst, Versions.LIBRARY_VERSION) { tx ->
+                webSockets[tx.id]?.let { id ->
+                    val connection = webSocketStore.getConnection(id)
+                    val log = webSocketStore.getEvents(id)
+                    if (connection != null && log != null) HarWebSocket(connection, log.events) else null
+                }
+            }
+        return DebugResponse.ok(har)
     }
 
     // The filter's counts restart with the list, so they describe the requests
     // missing from what is on screen.
     private fun handleClear(): DebugResponse {
         store.clear()
+        webSocketStore.clear()
         captureFilter.resetCounts()
         return ok()
     }
@@ -575,7 +642,7 @@ public class NetworkDebugTab private constructor(
         }
     }
 
-    private fun StringBuilder.appendTransaction(tx: NetworkTransaction, brief: Boolean) {
+    private fun StringBuilder.appendTransaction(tx: NetworkTransaction, brief: Boolean, webSocketId: String?) {
         append("{")
         append("\"id\":\"${tx.id.escapeForJson()}\",")
         append("\"timestamp\":\"${tx.startedAt.toDebugTimestamp()}\",")
@@ -598,6 +665,8 @@ public class NetworkDebugTab private constructor(
         append("\"requestBodyBytes\":${tx.requestBodyBytes ?: "null"},")
         append("\"responseBodyBytes\":${tx.responseBodyBytes ?: "null"},")
         append("\"responseComplete\":${tx.responseComplete},")
+        // Set on the handshake of a socket from Lustro.webSocketFactory: its messages are under websockets/{id}.
+        append("\"webSocketId\":${webSocketId.toJsonString()},")
         append("\"error\":${tx.error.toJsonString()}")
         if (!brief) {
             append(",")
@@ -637,7 +706,10 @@ public class NetworkDebugTab private constructor(
     public companion object {
         /**
          * Creates a [NetworkDebugTab] that captures only OkHttp traffic (via the
-         * interceptor from [Lustro.networkInterceptor]).
+         * interceptor from [Lustro.networkInterceptor]), and the messages of the
+         * WebSockets that the app creates with the factory from
+         * [Lustro.webSocketFactory]. The [redactor], the [classifier], and the
+         * [captureFilter] apply to those sockets too.
          *
          * This is the safe, default factory: it does not touch the platform
          * `HttpURLConnection` machinery, so it needs no opt-in. To additionally
@@ -738,6 +810,8 @@ public class NetworkDebugTab private constructor(
                 senderClient = senderClient,
                 capturePlatformHttp = capturePlatformHttp,
                 maxBodyCaptureBytes = DEFAULT_MAX_BODY_CAPTURE_BYTES,
+                redactor = redactor,
+                classifier = classifier,
             )
         }
 

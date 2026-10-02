@@ -16,6 +16,10 @@ SHARED_SCHEMA_CASES = [
     ("cursor-reset.json", "cursor-envelope.schema.json"),
     ("cursor-delta.json", "cursor-envelope.schema.json"),
     ("cursor-unchanged.json", "cursor-envelope.schema.json"),
+    ("websockets-reset.json", "cursor-envelope.schema.json"),
+    ("stream-reset.json", "stream-envelope.schema.json"),
+    ("stream-delta.json", "stream-envelope.schema.json"),
+    ("stream-unchanged.json", "stream-envelope.schema.json"),
 ]
 
 
@@ -32,6 +36,7 @@ def test_all_shared_schemas_are_valid_draft202012():
     for name in (
         "error-envelope.schema.json",
         "cursor-envelope.schema.json",
+        "stream-envelope.schema.json",
         "pagination.schema.json",
         "meta.schema.json",
     ):
@@ -58,6 +63,12 @@ OPENAPI_COMPONENT_CASES = [
     ("transaction-image.json", "Transaction"),
     ("error-envelope.json", "ErrorEnvelope"),
     ("export-har.json", "HarDocument"),
+    ("export-har-websocket.json", "HarDocument"),
+    ("websockets-reset.json", "WebSocketCursorEnvelope"),
+    ("websocket.json", "WebSocketConnection"),
+    ("stream-reset.json", "WebSocketEventStreamEnvelope"),
+    ("stream-delta.json", "WebSocketEventStreamEnvelope"),
+    ("stream-unchanged.json", "WebSocketEventStreamEnvelope"),
 ]
 
 
@@ -125,6 +136,9 @@ TRANSACTION_FIELDS_SINCE_1_2 = (
 # Also added in 1.2, and sent on the detail only.
 DETAIL_FIELDS_SINCE_1_2 = ("requestBodyBinary", "responseBodyBinary")
 
+# Added in 1.3, on every transaction: null unless it is a WebSocket's handshake.
+TRANSACTION_FIELDS_SINCE_1_3 = ("webSocketId",)
+
 DETAIL_FIXTURES = ("transaction.json", "transaction-image.json")
 
 
@@ -142,15 +156,15 @@ def test_the_network_schema_version_matches_meta():
     assert wire.load_openapi()["info"]["version"] == meta["protocolVersion"] == network["version"]
 
 
-def test_the_transaction_schema_declares_the_1_2_fields():
+def test_the_transaction_schema_declares_the_1_2_and_1_3_fields():
     properties = wire.load_openapi()["components"]["schemas"]["Transaction"]["properties"]
-    for field in TRANSACTION_FIELDS_SINCE_1_2 + DETAIL_FIELDS_SINCE_1_2:
+    for field in TRANSACTION_FIELDS_SINCE_1_2 + DETAIL_FIELDS_SINCE_1_2 + TRANSACTION_FIELDS_SINCE_1_3:
         assert field in properties, field
 
 
-def test_every_golden_transaction_carries_the_1_2_fields():
+def test_every_golden_transaction_carries_the_1_2_and_1_3_fields():
     for fixture, tx in _golden_transactions():
-        for field in TRANSACTION_FIELDS_SINCE_1_2:
+        for field in TRANSACTION_FIELDS_SINCE_1_2 + TRANSACTION_FIELDS_SINCE_1_3:
             assert field in tx, "{}: {} has no {}".format(fixture, tx["id"], field)
 
 
@@ -195,4 +209,63 @@ def test_the_golden_har_marks_what_har_has_no_field_for():
     for entry in entries:
         timings = entry["timings"]
         assert entry["time"] == sum(value for value in timings.values() if value != -1)
+
+
+# ── WebSockets (1.3) ──────────────────────────────────────────────────────────
+
+
+def test_every_golden_connection_and_event_matches_its_component():
+    openapi = wire.load_openapi()
+    connection = _component_validator(openapi, "WebSocketConnection")
+    for item in wire.load_golden("websockets-reset.json")["items"]:
+        connection.validate(item)
+    event = _component_validator(openapi, "WebSocketEvent")
+    for fixture in ("stream-reset.json", "stream-delta.json"):
+        for item in wire.load_golden(fixture)["items"]:
+            event.validate(item)
+
+
+def test_a_golden_event_has_only_the_keys_of_its_kind():
+    events = wire.load_golden("stream-reset.json")["items"] + wire.load_golden("stream-delta.json")["items"]
+    kinds = {event["kind"] for event in events}
+    assert {"open", "message", "close", "closed"} <= kinds
+    for event in events:
+        if event["kind"] != "message":
+            assert "payloadBytes" not in event and "preview" not in event, event
+        elif event["type"] == "binary":
+            assert "preview" not in event, event
+        # Only what the app sent has a return value to report.
+        assert ("enqueued" in event) == (event.get("direction") == "sent"), event
+
+
+def test_the_golden_delta_reports_what_the_client_missed():
+    delta = wire.load_golden("stream-delta.json")
+    assert delta["dropped"] > 0
+    seqs = [event["seq"] for event in delta["items"]]
+    assert seqs == sorted(seqs)
+    assert "items" not in wire.load_golden("stream-unchanged.json")
+
+
+def test_the_websocket_routes_are_declared():
+    paths = wire.load_openapi()["paths"]
+    events = paths["/api/v1/network/websockets/{id}/events"]["get"]
+    params = {p["name"]: p for p in events["parameters"]}
+    assert params["direction"]["schema"]["enum"] == ["sent", "received"]
+    assert params["limit"]["schema"]["minimum"] == 1
+    assert "400" in events["responses"] and "404" in events["responses"]
+    assert "404" in paths["/api/v1/network/websockets/{id}"]["get"]["responses"]
+    assert "404" in paths["/api/v1/network/websockets/{id}/events/{seq}/payload"]["get"]["responses"]
+    assert "/api/v1/network/websockets" in paths
+
+
+def test_the_golden_websocket_har_carries_the_messages_chrome_reads():
+    entry = wire.load_golden("export-har-websocket.json")["log"]["entries"][0]
+    assert entry["_resourceType"] == "websocket"
+    messages = entry["_webSocketMessages"]
+    assert [m["type"] for m in messages] == ["send", "receive", "send", "receive"]
+    assert [m["opcode"] for m in messages] == [1, 1, 2, 1]
+    # The connection sent a message after close() that send() refused: it is not in the export.
+    assert all(m["data"] != "too late" for m in messages)
+    assert messages[3]["_truncated"] is True and messages[3]["_payloadBytes"] > len(messages[3]["data"])
+    assert entry["_lustro"]["webSocket"]["state"] == "closed"
 

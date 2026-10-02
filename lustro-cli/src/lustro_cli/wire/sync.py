@@ -24,6 +24,7 @@ _REPO_ROOT = _HERE.parents[4]
 _SCHEMAS = [
     "error-envelope.schema.json",
     "cursor-envelope.schema.json",
+    "stream-envelope.schema.json",
     "pagination.schema.json",
     "meta.schema.json",
 ]

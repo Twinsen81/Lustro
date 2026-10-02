@@ -2,6 +2,7 @@ package io.github.twinsen81.lustro.internal.network
 
 import java.util.concurrent.atomic.AtomicReference
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -99,6 +100,31 @@ class CaptureWorkerTest {
         assertEquals(listOf("other"), ran)
         executor.runAll()
         assertEquals(listOf("other", "begin", "complete"), ran)
+    }
+
+    @Test
+    fun `an offered task waits for the worker, and is refused once the backlog is full`() {
+        val worker = CaptureWorker(executor, maxBacklogChars = 10_000)
+
+        assertTrue(worker.offer("a", 8_000) { ran += "a" })
+        assertFalse(worker.offer("b", 4_000) { ran += "b" })
+
+        // Unlike submit, nothing ran on the caller: the refused task is not run at all.
+        assertEquals(emptyList<String>(), ran)
+        executor.runAll()
+        assertEquals(listOf("a"), ran)
+        assertTrue(worker.offer("b", 4_000) { ran += "b" })
+    }
+
+    @Test
+    fun `an offered task that must not be lost is queued whatever is waiting`() {
+        val worker = CaptureWorker(executor, maxBacklogChars = 10_000)
+
+        worker.offer("a", 20_000) { ran += "a" }
+        assertTrue(worker.offer("a", 0, always = true) { ran += "end" })
+
+        executor.runAll()
+        assertEquals(listOf("a", "end"), ran)
     }
 
     @Test

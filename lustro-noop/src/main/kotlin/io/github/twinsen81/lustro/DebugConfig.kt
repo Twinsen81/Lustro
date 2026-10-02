@@ -31,6 +31,12 @@ public class DebugConfig private constructor(
     public val maxCaptureTransactions: Int,
     /** Maximum bytes captured per request/response body. Default 256 KB. */
     public val maxBodyCaptureBytes: Long,
+    /** Maximum number of retained WebSocket connections (enforced by the :lustro runtime). Default `100`. */
+    public val maxCaptureWebSockets: Int,
+    /** Maximum number of messages and lifecycle events retained per WebSocket connection (enforced by the :lustro runtime). Default `1000`. */
+    public val maxWebSocketEvents: Int,
+    /** Total in-memory budget for WebSocket message payloads, in bytes (enforced by the :lustro runtime). Default 16 MB. */
+    public val webSocketCaptureBudgetBytes: Long,
     /** Maximum accepted request body size (enforced by the :lustro runtime). Default 1 MB. */
     public val maxRequestBodyBytes: Long,
     /** Maximum concurrent in-flight requests (enforced by the :lustro runtime). Default `16`. */
@@ -67,6 +73,9 @@ public class DebugConfig private constructor(
         private var captureBudgetBytes: Long = 50L * 1024 * 1024
         private var maxCaptureTransactions: Int = 1000
         private var maxBodyCaptureBytes: Long = 256L * 1024
+        private var maxCaptureWebSockets: Int = 100
+        private var maxWebSocketEvents: Int = 1000
+        private var webSocketCaptureBudgetBytes: Long = 16L * 1024 * 1024
         private var maxRequestBodyBytes: Long = 1L * 1024 * 1024
         private var maxConcurrentRequests: Int = 16
         private var requestQueueCapacity: Int = 64
@@ -97,6 +106,15 @@ public class DebugConfig private constructor(
         /** Sets [DebugConfig.maxBodyCaptureBytes]. */
         public fun maxBodyCaptureBytes(value: Long): Builder = apply { maxBodyCaptureBytes = value }
 
+        /** Sets [DebugConfig.maxCaptureWebSockets]. */
+        public fun maxCaptureWebSockets(value: Int): Builder = apply { maxCaptureWebSockets = value }
+
+        /** Sets [DebugConfig.maxWebSocketEvents]. */
+        public fun maxWebSocketEvents(value: Int): Builder = apply { maxWebSocketEvents = value }
+
+        /** Sets [DebugConfig.webSocketCaptureBudgetBytes]. */
+        public fun webSocketCaptureBudgetBytes(value: Long): Builder = apply { webSocketCaptureBudgetBytes = value }
+
         /** Sets [DebugConfig.maxRequestBodyBytes]. */
         public fun maxRequestBodyBytes(value: Long): Builder = apply { maxRequestBodyBytes = value }
 
@@ -123,6 +141,9 @@ public class DebugConfig private constructor(
                 captureBudgetBytes = captureBudgetBytes,
                 maxCaptureTransactions = maxCaptureTransactions,
                 maxBodyCaptureBytes = maxBodyCaptureBytes,
+                maxCaptureWebSockets = maxCaptureWebSockets,
+                maxWebSocketEvents = maxWebSocketEvents,
+                webSocketCaptureBudgetBytes = webSocketCaptureBudgetBytes,
                 maxRequestBodyBytes = maxRequestBodyBytes,
                 maxConcurrentRequests = maxConcurrentRequests,
                 requestQueueCapacity = requestQueueCapacity,

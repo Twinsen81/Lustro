@@ -3,10 +3,12 @@ package io.github.twinsen81.lustro.sample;
 import io.github.twinsen81.lustro.DebugConfig;
 import io.github.twinsen81.lustro.DebugResponse;
 import io.github.twinsen81.lustro.Headers;
+import io.github.twinsen81.lustro.MediaType;
 import io.github.twinsen81.lustro.network.DefaultRedactor;
 import io.github.twinsen81.lustro.network.NetworkCaptureFilter;
 import io.github.twinsen81.lustro.network.NetworkClassifierKt;
 import io.github.twinsen81.lustro.network.NetworkDebugTab;
+import io.github.twinsen81.lustro.network.Redactor;
 import okhttp3.OkHttpClient;
 
 /**
@@ -21,11 +23,35 @@ public final class JavaUsage {
     private JavaUsage() {
     }
 
+    /**
+     * A Redactor in Java implements only the three members that have no default.
+     * The WebSocket message hooks are optional: this compiles without them.
+     */
+    private static final class JavaRedactor implements Redactor {
+        @Override
+        public String redactUrl(String url) {
+            return url;
+        }
+
+        @Override
+        public String redactHeaderValue(String name, String value) {
+            return value;
+        }
+
+        @Override
+        public String redactBody(String body, MediaType contentType) {
+            return body;
+        }
+    }
+
     /** Touches the public API surface from Java. */
     public static void exercise() {
-        // @JvmStatic builder + value object.
+        // @JvmStatic builder + value object, with the WebSocket capture limits.
         DebugConfig config = DebugConfig.builder()
                 .serverPort(8080)
+                .maxCaptureWebSockets(50)
+                .maxWebSocketEvents(500)
+                .webSocketCaptureBudgetBytes(8L * 1024 * 1024)
                 .build();
 
         // @JvmStatic @JvmOverloads SAFE factory (no capturePlatformHttp, no
@@ -48,13 +74,15 @@ public final class JavaUsage {
                 null,
                 NetworkCaptureFilter.of("Analytics calls", request -> !request.getUrl().contains("/analytics/")));
 
+        NetworkDebugTab redacted = NetworkDebugTab.create(null, NetworkClassifierKt.getNoOpNetworkClassifier(), new JavaRedactor());
+
         // @JvmStatic / @JvmField factories on the api facades.
         Headers headers = Headers.of();
         DebugResponse response = DebugResponse.ok("{}");
 
         // Keep the locals "used" so this compiles cleanly under -Werror-style lint.
         if (config == null || tab == null || tabWithSender == null
-                || tabWithFlag == null || filtered == null || headers == null || response == null) {
+                || tabWithFlag == null || filtered == null || redacted == null || headers == null || response == null) {
             throw new IllegalStateException("unreachable");
         }
     }

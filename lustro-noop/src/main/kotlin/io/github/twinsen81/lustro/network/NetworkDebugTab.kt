@@ -35,7 +35,10 @@ public class NetworkDebugTab private constructor() : DebugTab() {
     public companion object {
         /**
          * Creates a [NetworkDebugTab] that captures only OkHttp traffic (via the
-         * interceptor from [Lustro.networkInterceptor]).
+         * interceptor from [Lustro.networkInterceptor]), and the messages of the
+         * WebSockets that the app creates with the factory from
+         * [Lustro.webSocketFactory]. The [redactor], the [classifier], and the
+         * [captureFilter] apply to those sockets too.
          *
          * This is the safe, default factory: it does not touch the platform
          * `HttpURLConnection` machinery, so it needs no opt-in. To additionally

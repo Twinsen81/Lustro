@@ -602,3 +602,61 @@
     0%, 70% { opacity: 1; }
     100% { opacity: 0; }
 }
+
+/* ── WebSockets view ──
+   The left pane holds two lists; data-view on the root says which one shows. */
+[data-view="http"] .net-ws-only,
+[data-view="ws"] .net-http-only { display: none !important; }
+[data-view="ws"] .net-list-head { padding-bottom: 14px; border-bottom: 1px solid var(--border-soft); }
+/* The view switch names the list, so the title is for assistive technology only:
+   the buttons need its place to stay on one row. */
+.net-list-title {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+/* The buttons move to a second row together, never one alone. */
+.net-list-actions { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+.net-ws-count { color: var(--accent-2); }
+.dc-seg__item--active .net-ws-count { color: inherit; }
+.net-ws-link { cursor: pointer; }
+#ws-list tr, #ws-events tr[data-action] { cursor: pointer; }
+.net-m-ws { color: var(--accent-2); }
+.net-ws-empty { white-space: normal; color: var(--t4); padding: 18px 14px; line-height: 1.5; }
+
+/* Connection state: live = open, warning = closing, danger = failed. */
+.net-ws-state { font-weight: 600; }
+.net-ws-state--connecting, .net-ws-state--closed { color: var(--t3); }
+.net-ws-state--open { color: var(--live); }
+.net-ws-state--closing { color: var(--lvl-w); }
+.net-ws-state--failed { color: var(--danger); }
+.net-ws-counts { color: var(--t2); font-size: 11.5px; white-space: pre; }
+
+/* The detail is a column: summary, headers, the log (which scrolls), and the
+   payload of the selected message under it. */
+.net-ws-detail { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.net-ws-detail .net-detail-header { margin-bottom: 10px; }
+.net-ws-close { margin-top: 8px; color: var(--t2); font-size: 12px; }
+.net-ws-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 8px 0; font-size: 11.5px; }
+.net-ws-search { flex: 1; min-width: 140px; padding: 5px 10px; }
+.net-ws-log-note:empty { display: none; }
+.net-ws-log-note { margin-bottom: 6px; font-size: 11.5px; }
+.net-ws-log {
+    flex: 1 1 0;
+    min-height: 140px;
+    overflow-y: auto;
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius);
+}
+.net-ws-time { width: 104px; }
+.net-ws-dir { width: 34px; font-weight: 700; text-align: center; }
+.net-ws-dir--sent { color: var(--method-post); }
+.net-ws-dir--received { color: var(--method-get); }
+.net-ws-size { width: 84px; color: var(--t3); font-size: 11.5px; text-align: right; }
+.net-ws-preview { max-width: 0; }
+.net-ws-note-row .dc-cell { color: var(--t3); font-style: italic; white-space: normal; }
+.net-ws-note-row--failure .dc-cell { color: var(--danger); }
+.net-ws-payload { flex: 0 1 auto; max-height: 46%; overflow: auto; margin-top: 12px; }

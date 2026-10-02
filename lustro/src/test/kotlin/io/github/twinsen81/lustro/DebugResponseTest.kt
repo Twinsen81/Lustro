@@ -226,6 +226,83 @@ class DebugResponseTest {
         }
     }
 
+    // A stream of [total] entries that still holds the newest [retained], as items {"n":<number>}.
+    private fun stream(total: Long, retained: Int, cursor: String?, limit: Int = Int.MAX_VALUE, state: String? = null): JSONObject =
+        JSONObject(
+            DebugResponse.streamEnvelope(total, retained, cursor, state, EPOCH) { from, reset ->
+                val first = if (reset) (retained - limit).coerceAtLeast(0) else from
+                val end = if (reset) retained else minOf(retained.toLong(), from.toLong() + limit).toInt()
+                for (index in first until end) {
+                    if (index > first) append(',')
+                    append("{\"n\":").append(total - retained + index + 1).append('}')
+                }
+                end
+            }.bodyString(),
+        )
+
+    private fun JSONObject.numbers(): List<Int> = getJSONArray("items").let { items -> (0 until items.length()).map { items.getJSONObject(it).getInt("n") } }
+
+    @Test
+    fun `streamEnvelope returns reset with the entries a new client starts with`() {
+        val json = stream(total = 5, retained = 5, cursor = null, limit = 2)
+        assertEquals("reset", json.getString("status"))
+        assertEquals(listOf(4, 5), json.numbers())
+        assertEquals(5L, CursorCodec.decode(json.getString("cursor"), EPOCH))
+        assertFalse(json.has("dropped"))
+    }
+
+    @Test
+    fun `streamEnvelope returns unchanged without items when the client has every entry`() {
+        val json = stream(total = 5, retained = 3, cursor = CursorCodec.encode(5, EPOCH))
+        assertEquals("unchanged", json.getString("status"))
+        assertFalse(json.has("items"))
+        assertEquals(5L, CursorCodec.decode(json.getString("cursor"), EPOCH))
+    }
+
+    @Test
+    fun `streamEnvelope returns only the entries after the cursor`() {
+        val json = stream(total = 5, retained = 5, cursor = CursorCodec.encode(3, EPOCH))
+        assertEquals("delta", json.getString("status"))
+        assertEquals(listOf(4, 5), json.numbers())
+        assertEquals(0, json.getInt("dropped"))
+        assertEquals(5L, CursorCodec.decode(json.getString("cursor"), EPOCH))
+    }
+
+    @Test
+    fun `streamEnvelope counts the entries evicted before the client got them`() {
+        // Entries 1 to 6 are gone; the client has 1 to 2, so it never got 3 to 6.
+        val json = stream(total = 10, retained = 4, cursor = CursorCodec.encode(2, EPOCH))
+        assertEquals("delta", json.getString("status"))
+        assertEquals(4, json.getInt("dropped"))
+        assertEquals(listOf(7, 8, 9, 10), json.numbers())
+    }
+
+    @Test
+    fun `streamEnvelope goes on from where a page ended`() {
+        val first = stream(total = 5, retained = 5, cursor = CursorCodec.encode(0, EPOCH), limit = 2)
+        assertEquals(listOf(1, 2), first.numbers())
+        val second = stream(total = 5, retained = 5, cursor = first.getString("cursor"), limit = 2)
+        assertEquals(listOf(3, 4), second.numbers())
+        val third = stream(total = 5, retained = 5, cursor = second.getString("cursor"), limit = 2)
+        assertEquals(listOf(5), third.numbers())
+        assertEquals("unchanged", stream(total = 5, retained = 5, cursor = third.getString("cursor")).getString("status"))
+    }
+
+    @Test
+    fun `streamEnvelope resets a cursor that is foreign or past the end`() {
+        for (cursor in listOf("garbage", CursorCodec.encode(3), CursorCodec.encode(3, EPOCH + 1), CursorCodec.encode(6, EPOCH))) {
+            assertEquals("reset", stream(total = 5, retained = 5, cursor = cursor).getString("status"))
+        }
+    }
+
+    @Test
+    fun `streamEnvelope appends state verbatim for all statuses`() {
+        val state = """{"paused":true}"""
+        for (cursor in listOf(null, CursorCodec.encode(5, EPOCH), CursorCodec.encode(3, EPOCH))) {
+            assertTrue(stream(total = 5, retained = 5, cursor = cursor, state = state).getJSONObject("state").getBoolean("paused"))
+        }
+    }
+
     @Test
     fun `status to error type mapping`() {
         val cases =

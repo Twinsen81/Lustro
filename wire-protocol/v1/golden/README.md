@@ -23,6 +23,12 @@ with no source checkout required.
 | `rules-list.json` | `GET network/rules` | OpenAPI `listMockRules` 200 (`items: [MockRule]`) |
 | `send-result.json` | `POST network/send` synchronous result | OpenAPI `sendRequest` 200 |
 | `export-har.json` | `GET network/transactions/_/export` HAR document | OpenAPI `HarDocument` |
+| `export-har-websocket.json` | `GET network/transactions/_/export` of a WebSocket's handshake | OpenAPI `HarDocument` |
+| `websockets-reset.json` | `GET network/websockets` first poll (`status: reset`) | `cursor-envelope.schema.json` + OpenAPI `WebSocketCursorEnvelope` |
+| `websocket.json` | `GET network/websockets/{id}` detail | OpenAPI `WebSocketConnection` |
+| `stream-reset.json` | `GET network/websockets/{id}/events` first poll (`status: reset`) | `stream-envelope.schema.json` + OpenAPI `WebSocketEventStreamEnvelope` |
+| `stream-delta.json` | `GET network/websockets/{id}/events` after new events (`status: delta`) | `stream-envelope.schema.json` + OpenAPI `WebSocketEventStreamEnvelope` |
+| `stream-unchanged.json` | `GET network/websockets/{id}/events` no new event (`status: unchanged`, items omitted) | `stream-envelope.schema.json` + OpenAPI `WebSocketEventStreamEnvelope` |
 
 ## Notes on the shapes
 
@@ -54,6 +60,23 @@ with no source checkout required.
   the error in `response._error` and `_lustro.error`). A unit test in
   `:lustro` checks that the export writes exactly this document for those
   transactions.
+
+- **WebSockets.** `websockets-reset.json` lists three connections, newest
+  first: one that is open, with its handshake captured as `tx_a81c3f09`; one
+  that the app closed, whose log passed its limit (`evictedEvents`); and one
+  whose upgrade the server refused, on a client without the interceptor, so it
+  has no `transactionId`. `websocket.json` is the detail of the first.
+  `stream-reset.json` is the log of the first: an `open`, then messages in both
+  directions, one of them binary and one cut at the capture cap.
+  `stream-delta.json` is a later poll of a longer log: `dropped` says that the
+  log evicted three events before this client got them, and the items are a
+  close the app started, a message `send()` refused after it (`enqueued: false`),
+  the server's close frame, and the end. An event has only the keys of its
+  kind. A message's payload comes from
+  `GET network/websockets/{id}/events/{seq}/payload`, which is not JSON and so
+  has no fixture. `export-har-websocket.json` is the HAR export of the same
+  socket's handshake, with its messages in `_webSocketMessages`; a unit test in
+  `:lustro` checks that the export writes exactly this document.
 
 When the server's emitted shapes change, update these fixtures in the same
 change that bumps the protocol version, and keep the schema validation green.

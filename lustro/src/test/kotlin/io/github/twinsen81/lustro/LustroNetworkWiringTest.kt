@@ -5,12 +5,18 @@ import androidx.test.core.app.ApplicationProvider
 import io.github.twinsen81.lustro.internal.network.NetworkTrafficStore
 import io.github.twinsen81.lustro.network.NetworkCaptureFilter
 import io.github.twinsen81.lustro.network.NetworkDebugTab
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
+import okhttp3.WebSocket
+import okhttp3.WebSocketListener
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -100,6 +106,63 @@ class LustroNetworkWiringTest {
     }
 
     private fun DebugResponse?.json(): JSONObject = JSONObject(this!!.body.toString(Charsets.UTF_8))
+
+    @Test
+    fun `webSocketFactory records a socket's messages into the registered network tab`() {
+        val mockServer = MockWebServer()
+        val opened = CountDownLatch(1)
+        val echoed = CountDownLatch(1)
+        mockServer.enqueue(
+            MockResponse().withWebSocketUpgrade(
+                object : WebSocketListener() {
+                    override fun onMessage(webSocket: WebSocket, text: String) {
+                        webSocket.send(text)
+                    }
+                },
+            ),
+        )
+        mockServer.start()
+        try {
+            val tab = NetworkDebugTab.create()
+            val lustro = Lustro.builder(app).addTab(tab).build()
+            val client = OkHttpClient.Builder().addInterceptor(lustro.networkInterceptor()).build()
+
+            val socket =
+                lustro.webSocketFactory(client).newWebSocket(
+                    Request.Builder().url(mockServer.url("/socket")).build(),
+                    object : WebSocketListener() {
+                        override fun onOpen(webSocket: WebSocket, response: Response) = opened.countDown()
+
+                        override fun onMessage(webSocket: WebSocket, text: String) = echoed.countDown()
+                    },
+                )
+            assertTrue(opened.await(5, TimeUnit.SECONDS))
+            socket.send("hello")
+            assertTrue(echoed.await(5, TimeUnit.SECONDS))
+            socket.cancel()
+            assertTrue((tab.captureSink as NetworkTrafficStore).awaitCaptures())
+            assertTrue(tab.webSocketCapture.awaitCaptures())
+
+            val connection = tab.handle(DebugRequest(path = "websockets", method = "GET")).json().getJSONArray("items").getJSONObject(0)
+            assertEquals(1, connection.getInt("sentCount"))
+            assertEquals(1, connection.getInt("receivedCount"))
+            // The interceptor on the same client captured the handshake, and the two link.
+            val handshake = tab.handle(DebugRequest(path = "transactions", method = "GET")).json().getJSONArray("items").getJSONObject(0)
+            assertEquals(connection.getString("id"), handshake.getString("webSocketId"))
+            // A second wrap of the same factory adds nothing.
+            val sockets = lustro.webSocketFactory(client)
+            assertSame(sockets, lustro.webSocketFactory(sockets))
+        } finally {
+            mockServer.shutdown()
+        }
+    }
+
+    @Test
+    fun `webSocketFactory returns the delegate when no network tab is registered`() {
+        val lustro = Lustro.builder(app).build()
+        val client = OkHttpClient()
+        assertSame(client, lustro.webSocketFactory(client))
+    }
 
     @Test
     fun `networkInterceptor is a pass-through when no network tab is registered`() {

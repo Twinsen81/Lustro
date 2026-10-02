@@ -1,6 +1,6 @@
 # Lustro
 
-> A browser-based, agent-friendly debugging library for Android. Lustro embeds a small web server in an app's debug builds and serves its tools as tabs that a desktop browser opens over adb. The built-in Network tab captures OkHttp traffic, and can mock responses, throttle connections, and replay requests. Every tab is also a JSON API under `/api/v1/`, so agents and scripts can use it directly.
+> A browser-based, agent-friendly debugging library for Android. Lustro embeds a small web server in an app's debug builds and serves its tools as tabs that a desktop browser opens over adb. The built-in Network tab captures OkHttp traffic, shows the messages of OkHttp WebSockets, and can mock responses, throttle connections, and replay requests. Every tab is also a JSON API under `/api/v1/`, so agents and scripts can use it directly.
 
 Facts to get right when you add Lustro to an app:
 
@@ -9,6 +9,7 @@ Facts to get right when you add Lustro to an app:
 - Lustro needs `minSdk` 26.
 - Build Lustro once, in `Application.onCreate()`, and call `start()` there, on the main thread. Add every tab with the builder, before `build()`: after `start()`, `addTab()` throws.
 - Add `lustro.networkInterceptor()` with `addInterceptor`, not `addNetworkInterceptor`, after the app's own interceptors that change the URL, the headers, or the body.
+- The interceptor shows only the handshake of a WebSocket. To capture the messages, create the sockets with `lustro.webSocketFactory(okHttpClient).newWebSocket(request, listener)`, or pass that `WebSocket.Factory` to the library that creates them. `lustro-noop` returns the client itself.
 - Custom tabs are `DebugTab` subclasses, and they must be in `src/debug`. The published lint check `LustroDebugUsageInRelease` reports them in other source sets.
 - The server binds `127.0.0.1:8080` on the device, and listens only while the app is in the foreground. Reach it with `adb forward tcp:8080 tcp:8080`.
 - Every API request needs the token from the `LustroToken` logcat line (`Lustro ready endpoint=http://127.0.0.1:8080 token=<token>`), sent as `Authorization: Bearer <token>`. `GET /api/v1/_meta` lists the tabs, and `GET /api/v1/<id>/_schema` returns a tab's OpenAPI document.
@@ -27,7 +28,7 @@ Facts to get right when you add Lustro to an app:
 ## Tools
 
 - [lustro CLI](https://raw.githubusercontent.com/Twinsen81/Lustro/main/lustro-cli/README.md): a Python command-line client for the HTTP API. `lustro open` forwards the port and opens the console with the token
-- Agents: use the `lustro` CLI rather than curl, and keep its output small with `lustro net list --errors --last 20`, `lustro net get <id> --no-body`, and `lustro net body <id> | head -c 4000`. `lustro net wait --url <text> -- <command>` runs the command and waits for the request it causes, and `lustro net export --har out.har [--ids <id> ...]` saves transactions as a HAR file
+- Agents: use the `lustro` CLI rather than curl, and keep its output small with `lustro net list --errors --last 20`, `lustro net get <id> --no-body`, and `lustro net body <id> | head -c 4000`. `lustro net wait --url <text> -- <command>` runs the command and waits for the request it causes, and `lustro net export --har out.har [--ids <id> ...]` saves transactions as a HAR file. For WebSockets, `lustro net ws list` prints the connections, `lustro net ws events <id> --last 20` the last events of one, and `lustro net ws payload <id> <seq>` one message's payload
 
 ## Optional
 

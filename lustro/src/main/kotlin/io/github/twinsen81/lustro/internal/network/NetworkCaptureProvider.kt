@@ -2,6 +2,7 @@ package io.github.twinsen81.lustro.internal.network
 
 import io.github.twinsen81.lustro.network.NetworkCaptureSink
 import okhttp3.Interceptor
+import okhttp3.WebSocket
 
 /**
  * Internal bridge implemented by the network tab so `Lustro.networkInterceptor()`
@@ -17,4 +18,10 @@ internal interface NetworkCaptureProvider {
      * gates capture (mock + throttle still run when capture is off).
      */
     fun createInterceptor(captureEnabled: () -> Boolean): Interceptor
+
+    /**
+     * Returns a factory that creates its sockets with [delegate] and records
+     * their messages into this provider's tab.
+     */
+    fun wrapWebSocketFactory(delegate: WebSocket.Factory): WebSocket.Factory
 }
