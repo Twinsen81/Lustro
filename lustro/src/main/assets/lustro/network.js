@@ -518,10 +518,13 @@
     };
 
     function renderDetail(tx) {
-        // A search or a refresh renders the same bodies again; keep what was folded.
+        // A search or a refresh renders the bodies again; keep what was folded in
+        // each one that is the same, such as a request's while its response streams.
         var previous = currentDetailTx;
-        var folded = previous && previous.id === tx.id && previous.requestBody === tx.requestBody
-            && previous.responseBody === tx.responseBody ? foldedNodes() : null;
+        var folded = previous && previous.id === tx.id ? foldedNodes() : {};
+        ['request', 'response'].forEach(function(dir) {
+            if (previous && previous[dir + 'Body'] !== tx[dir + 'Body']) delete folded[dir];
+        });
         if (!previous || previous.id !== tx.id) hexDumps = {};
         currentDetailTx = tx;
         var copyAllEl = document.getElementById('copy-all-btn');
@@ -580,7 +583,7 @@
         html += '</div>';
 
         el.innerHTML = html;
-        if (folded) refold(folded);
+        refold(folded);
         loadHexDumps();
     }
 
