@@ -150,6 +150,13 @@ adb port forwarding:
    # Lustro ready endpoint=http://127.0.0.1:8080 token=<token>
    ```
 
+   Some devices drop Info logs: with `adb shell getprop log.tag` set to `E`, the line never
+   reaches logcat. `adb shell setprop log.tag.LustroToken I` lets it through until the device
+   restarts, and the line comes again when the app returns to the foreground. The token, and the
+   host and port of the last bind, are also in the app's prefs, which a debuggable app lets you
+   read: `adb shell run-as <package> cat shared_prefs/lustro_debug.xml`. The `lustro` CLI reads
+   them on its own when the log has no line.
+
 4. Authenticate the browser with that token, either by:
    - using the `lustro` CLI (`lustro open`, see [docs/AGENTS.md](docs/AGENTS.md)); or
    - appending `#lustro_token=<token>` to the URL **once**

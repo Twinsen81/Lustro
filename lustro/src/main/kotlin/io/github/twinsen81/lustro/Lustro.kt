@@ -312,7 +312,8 @@ public class Lustro internal constructor(
     /**
      * Emits the single machine-parseable endpoint-discovery line. Tag `LustroToken`,
      * level INFO. The CLI/agent parses host, port, and
-     * token from this line — it is the single source of truth for discovery.
+     * token from this line. A device can drop Info logs, so the endpoint also
+     * goes into the token's prefs file, where the CLI reads it through `run-as`.
      *
      * Logged from [workExecutor]: binds usually run on the main thread, and the
      * first token read opens the prefs file.
@@ -323,6 +324,7 @@ public class Lustro internal constructor(
         val logLine =
             Runnable {
                 try {
+                    tokenStore.recordEndpoint(config.bindAddress, port)
                     Log.i(
                         ENDPOINT_LOG_TAG,
                         "Lustro ready endpoint=http://${config.bindAddress}:$port token=${tokenStore.token()}",

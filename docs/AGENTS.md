@@ -137,16 +137,32 @@ machine-parseable line at logcat tag `LustroToken`, level INFO:
 Lustro ready endpoint=http://<host>:<port> token=<token>
 ```
 
-This is the single source of truth for host, port, and token. Lustro logs it again after each
-bind, so the last line is the current one. `-d` prints the log and exits instead of waiting for
+It is the first place to look for host, port, and token. Lustro logs it again after each
+bind, so the last line is the current one, unless the device dropped the newer lines (see below). `-d` prints the log and exits instead of waiting for
 new lines:
 
 ```bash
 adb logcat -d -s LustroToken | tail -1 | sed -n 's/.*endpoint=\([^ ]*\) token=\([^ ]*\).*/\1 \2/p'
 ```
 
+**When the log has no ready line.** A device can drop Info logs: with `adb shell getprop log.tag`
+set to `E`, the line never reaches logcat (`adb shell setprop log.tag.LustroToken I` lets it
+through until the device restarts). The token, and the host and port of the app's last bind, are
+also in the app's prefs file, which a debuggable app lets you read:
+
+```bash
+adb shell run-as <package> cat shared_prefs/lustro_debug.xml
+# <string name="lustro_token">…</string> <string name="lustro_host">127.0.0.1</string> <int name="lustro_port" value="8080" />
+```
+
+Lustro listens only while its app is in the foreground, so the package is that of the resumed
+activity (`adb shell "dumpsys activity activities | grep ResumedActivity"`). The last line in the
+log can also be stale, from an earlier install of the app, when the device dropped the newer one:
+a `401` to a token from the log means read the prefs.
+
 Conventions a client should follow:
-- Honor a `LUSTRO_TOKEN` environment variable when present, falling back to the parsed log line.
+- Honor a `LUSTRO_TOKEN` environment variable when present, falling back to the parsed log line,
+  then to the app's prefs.
 - The port can differ from the configured one: if `bindFallback` is enabled and the configured
   port was taken, the server binds an OS-assigned port — the `endpoint=` field reports the actual
   one, so always trust the log line over assumptions.

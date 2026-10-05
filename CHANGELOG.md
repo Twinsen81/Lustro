@@ -264,6 +264,17 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Fixed
 
+- **The CLI found no token on a device that drops Info logs.** A device with
+  `log.tag` set to `E` drops the `LustroToken` ready line, which was the only
+  source of the endpoint, and an old line left in the log from an earlier
+  install then gave a token the server refused. The app now also stores the
+  host and port of each bind next to the token in its prefs. When the log
+  has no ready line, the CLI reads them through `run-as`, from `--package`
+  or the app in the foreground, which it no longer needs to be told. When the
+  server refuses a token from the log, the CLI reads the prefs and tries once
+  more, and `lustro open` checks the token before it prints the URL. The
+  error when no token is found, the README, and `docs/AGENTS.md` explain
+  `log.tag` and the `setprop` that lets the line through.
 - **Mock This Request made a rule that also answered other endpoints.** It
   filled in the request's path as a substring pattern, so a rule for
   `/statuses/1` also answered `/statuses/1/context`, and the app failed to

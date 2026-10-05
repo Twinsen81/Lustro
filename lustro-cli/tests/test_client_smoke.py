@@ -155,6 +155,27 @@ def test_unauthorized_raises_401(server):
     assert excinfo.value.error == "unauthorized"
 
 
+def test_a_401_retries_once_with_a_fresh_token(server):
+    asked = []
+
+    def refresh():
+        asked.append(True)
+        return TOKEN
+
+    client = LustroClient(server, "stale-token", refresh_token=refresh)
+    assert client.get("/api/v1/_meta")["protocolVersion"] == "1.4"
+    assert client.token == TOKEN
+    # The client asks once: a later 401 is an error.
+    assert asked == [True]
+
+
+def test_a_401_is_an_error_when_the_fresh_token_is_the_same(server):
+    client = LustroClient(server, "stale-token", refresh_token=lambda: "stale-token")
+    with pytest.raises(LustroError) as excinfo:
+        client.get("/api/v1/_meta")
+    assert excinfo.value.status == 401
+
+
 def test_send_post(server):
     client = LustroClient(server, TOKEN)
     result = client.post(

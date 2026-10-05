@@ -7,12 +7,18 @@ Resolution order (first that yields a value wins, per field):
 3. The ``LustroToken`` logcat ready-line: ``adb [-s <serial>] logcat -d -s
    LustroToken`` parsed for the most recent
    ``Lustro ready endpoint=http://<host>:<port> token=<token>`` (this is the
-   single source of truth for host/port/token, including a fallback port).
+   first source for host/port/token, including a fallback port).
 4. (best effort) ``adb [-s <serial>] shell run-as <pkg> cat`` of the app's
-   private ``lustro_debug`` prefs.
+   private ``lustro_debug`` prefs, which hold the token and, from the app's
+   last bind, its host and port. ``<pkg>`` is ``--package``, or else the app in
+   the foreground, because Lustro listens only while its app is in the
+   foreground. This is what finds the app on a device that drops Info logs
+   (``log.tag`` set to ``E``, for example), which drops the ready line.
 
 If none of these determine the endpoint/token, a clear, actionable error is
-raised.
+raised. A token from the ready line can be stale, when the app was installed
+again and the device dropped the new line; :func:`token_from_prefs` reads the
+current one, for a client to retry with after a 401.
 
 The port that these give is the app's port. On a device, the CLI reaches it
 through an ``adb forward``, whose local port can differ: :func:`forwarded_ports`
@@ -117,10 +123,11 @@ def discover_from_logcat(device: Optional[str] = None) -> Optional[Endpoint]:
 def discover_from_run_as(
     package: str, device: Optional[str] = None
 ) -> Optional[Endpoint]:
-    """Best-effort token read from the app's private ``lustro_debug`` prefs.
+    """Best-effort read of the app's private ``lustro_debug`` prefs.
 
-    Only the token can be recovered here (host/port still come from flags/logcat);
-    works only on debuggable builds where ``run-as <pkg>`` is permitted.
+    Returns the token, with the host and port the app stored at its last bind,
+    or the defaults for an app that stored none. Works only on debuggable builds
+    where ``run-as <pkg>`` is permitted.
     """
     if not package:
         return None
@@ -136,7 +143,34 @@ def discover_from_run_as(
     )
     if not match:
         return None
-    return Endpoint(host=DEFAULT_HOST, port=DEFAULT_PORT, token=match.group(1))
+    host = re.search(r'<string\s+name="lustro_host">\s*([^<\s]+)\s*</string>', out)
+    port = re.search(r'<int\s+name="lustro_port"\s+value="(\d+)"', out)
+    return Endpoint(
+        host=host.group(1) if host else DEFAULT_HOST,
+        port=int(port.group(1)) if port else DEFAULT_PORT,
+        token=match.group(1),
+    )
+
+
+# The resumed activity in ``dumpsys activity activities``, which releases name
+# ``topResumedActivity=``, ``mResumedActivity:``, or ``ResumedActivity:``, then
+# ``ActivityRecord{<hash> u0 <package>/<activity> ...}``.
+_RESUMED_ACTIVITY = re.compile(
+    r"(?:top|m)?ResumedActivity[=:]\s*ActivityRecord\{[^}]*?\s(?P<package>[A-Za-z0-9_.]+)/"
+)
+
+
+def foreground_package(device: Optional[str] = None) -> Optional[str]:
+    """The package of the app in the foreground, or ``None`` when adb can't tell."""
+    out = _run(_adb_base(device) + ["shell", "dumpsys activity activities | grep ResumedActivity"])
+    match = _RESUMED_ACTIVITY.search(out or "")
+    return match.group("package") if match else None
+
+
+def token_from_prefs(device: Optional[str] = None, package: Optional[str] = None) -> Optional[str]:
+    """The token in the prefs of ``package``, or of the app in the foreground."""
+    ra = discover_from_run_as(package or foreground_package(device) or "", device)
+    return ra.token if ra is not None else None
 
 
 def parse_forwards(text: str, device_port: int) -> List[Tuple[str, int]]:
@@ -207,11 +241,17 @@ def resolve(
             if r_token is None:
                 r_token = discovered.token
 
-    # run-as prefs (token only) as a final fallback.
-    if r_token is None and package:
-        ra = discover_from_run_as(package, device)
+    # The app's prefs, through run-as, when the log has no ready line: a device
+    # that drops Info logs drops it. They have the host and port of the last
+    # bind too, unless the app predates storing them.
+    if r_token is None:
+        ra = discover_from_run_as(package or foreground_package(device) or "", device)
         if ra is not None and ra.token:
             r_token = ra.token
+            if r_host is None:
+                r_host = ra.host
+            if r_port is None:
+                r_port = ra.port
 
     # Fill host/port defaults last.
     if r_host is None:
@@ -222,8 +262,11 @@ def resolve(
     if not r_token:
         raise DiscoveryError(
             "no token: set --token or LUSTRO_TOKEN, or ensure the app is "
-            "running and `adb logcat -s LustroToken` shows the ready line "
+            "running in the foreground and `adb logcat -s LustroToken` shows the ready line "
             "(`Lustro ready endpoint=http://<host>:<port> token=<token>`). "
+            "A device with `adb shell getprop log.tag` set to E drops that line: "
+            "`adb shell setprop log.tag.LustroToken I` lets it through until the device "
+            "restarts. For a debuggable app, `--package <id>` reads the token through run-as. "
             "For a device, also try `--device <serial>` and "
             "`adb forward tcp:<port> tcp:<port>`."
         )

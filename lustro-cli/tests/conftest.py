@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from lustro_cli import wire
+from lustro_cli import discovery, wire
 
 # Map each golden fixture to the JSON Schema / OpenAPI component it must satisfy.
 # (component name resolves against network.openapi.json #/components/schemas/...)
@@ -53,3 +53,10 @@ def golden():
         return wire.load_golden(name)
 
     return _load
+
+
+@pytest.fixture(autouse=True)
+def _no_adb(monkeypatch):
+    """Discovery runs adb, which a test must not reach: a test that needs its
+    output patches ``discovery._run`` itself."""
+    monkeypatch.setattr(discovery, "_run", lambda cmd, timeout=10.0: None)

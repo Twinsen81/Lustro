@@ -29,11 +29,20 @@ The CLI resolves the endpoint+token in this order (first hit wins, per field):
 3. The `LustroToken` logcat ready line — `adb [-s <serial>] logcat -d -s
    LustroToken` is parsed for the most recent
    `Lustro ready endpoint=http://<host>:<port> token=<token>`. This is the
-   single source of truth for host/port/token, **including a fallback port**.
+   first source for host/port/token, **including a fallback port**.
 4. (best effort) `adb [-s <serial>] shell run-as <pkg> cat shared_prefs/lustro_debug.xml`
-   to recover the token on debuggable builds (`--package <id>`).
+   on debuggable builds: the token, and the host and port of the app's last bind. `<pkg>` is
+   `--package <id>`, or else the app in the foreground, because Lustro listens only while its
+   app is in the foreground. This finds the app on a device that drops Info logs, such as one
+   with `adb shell getprop log.tag` set to `E`, where the ready line never reaches logcat.
 
 If none of these determine the token, the CLI prints a clear, actionable error.
+
+A token from the ready line can be stale: when the app was installed again and the device
+dropped the new line, the last line in the log is from the earlier install. When the server
+answers `401` to a token that discovery found, the CLI reads the app's prefs and sends the
+request once more with the token there. `lustro open` compares the two before it prints the
+URL, because the browser gets no second try.
 
 The port that discovery finds is the app's port on the device. The CLI reaches
 it through an `adb forward`, and the local port of the forward can be a
