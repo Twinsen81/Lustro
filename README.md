@@ -197,6 +197,15 @@ To see Brotli bodies from OkHttp, add OkHttp's `BrotliInterceptor` (from `okhttp
 Lustro's interceptor: it then decodes the body before Lustro captures it, as OkHttp does with its own
 gzip. Event streams are captured as they arrive, without decoding.
 
+**Multipart uploads are captured part by part.** For an OkHttp `MultipartBody`, such as the body of
+a Retrofit `@Multipart` call, Lustro stores the body as multipart text: each part's headers, the
+value of each text part, and, for a file or any other part that is not text, one line with its type
+and size in place of its bytes. The default redactor masks a part whose field name is sensitive.
+The Network tab shows the parts as a table, and **Copy as cURL** builds a `-F` option for each part,
+naming the file to send for a part whose bytes Lustro did not keep. When Lustro keeps no body at
+all, as for an octet stream, the Network tab shows its size and type and says that it was not
+stored.
+
 **Leave traffic out with a capture filter.** Pass a `NetworkCaptureFilter` as `captureFilter`,
 and Lustro asks it about each request before it captures anything. A request it returns `false`
 for is never stored, so it costs no redaction and no part of the capture budget. Use it for

@@ -283,6 +283,14 @@ comes at least `throttledMs` plus `durationMs` after `startedAt`. `throttledMs` 
 request that wasn't throttled. In the HAR export, the wait is the entry's `timings.blocked`, and
 `time` is the sum. This field arrived in protocol 1.4.
 
+**Multipart request bodies.** An OkHttp `MultipartBody` is captured as text: the parts in order,
+each with its headers (`Content-Disposition`, and `Content-Type` and `Content-Length` when known),
+then the value of a text part. A part that is not text, such as a file, is not read: its content is
+one line, `[Lustro did not store this part: <type>, <n> bytes]`, or `size unknown`. The
+`requestContentType` carries the boundary. `requestBodyBytes` is the size of the whole body on the
+wire, and the stored text is cut at the capture cap like any other body. The default redactor masks
+a part whose field name is sensitive, and redacts any other part as a body of its own type.
+
 **Image bodies and the body route.** A body is captured as text, or, for an image, as bytes; SVG
 is text. The detail's `requestBodyBinary` and `responseBodyBinary` are `true` when that body was
 kept as bytes, and its `requestBody` or `responseBody` is then `null`.

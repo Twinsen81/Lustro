@@ -151,6 +151,36 @@ class DefaultRedactorTest {
     }
 
     @Test
+    fun `a multipart body is redacted part by part`() {
+        val type = MediaType.parse("multipart/form-data; boundary=xyz")
+        val body =
+            "--xyz\r\nContent-Disposition: form-data; name=\"username\"\r\n\r\nalice\r\n" +
+                "--xyz\r\nContent-Disposition: form-data; name=\"password\"\r\n\r\nhunter2\r\n" +
+                "--xyz\r\nContent-Disposition: form-data; name=meta\r\nContent-Type: application/json\r\n\r\n" +
+                "{\"token\":\"t\",\"title\":\"x\"}\r\n" +
+                "--xyz\r\nContent-Disposition: form-data; name=\"file\"; filename=\"secret.png\"\r\n\r\n" +
+                "[Lustro did not store this part: image/png, 300 bytes]\r\n" +
+                "--xyz--\r\n"
+        val out = redactor.redactBody(body, type)
+        assertTrue(out, out.contains("name=\"username\"\r\n\r\nalice\r\n"))
+        assertTrue(out, out.contains("name=\"password\"\r\n\r\n[REDACTED]\r\n"))
+        assertTrue(out, out.contains("\"token\":\"[REDACTED]\"") && out.contains("\"title\":\"x\""))
+        assertTrue(out, out.contains("[Lustro did not store this part: image/png, 300 bytes]"))
+        assertTrue(out, out.endsWith("--xyz--\r\n"))
+        assertTrue(!out.contains("hunter2") && !out.contains("\"t\""))
+    }
+
+    @Test
+    fun `a multipart body cut inside a sensitive part is masked to its end`() {
+        val type = MediaType.parse("multipart/form-data; boundary=xyz")
+        val body = "--xyz\r\nContent-Disposition: form-data; name=\"api_key\"\r\n\r\nsk-live-123"
+        assertEquals(
+            "--xyz\r\nContent-Disposition: form-data; name=\"api_key\"\r\n\r\n[REDACTED]",
+            redactor.redactBody(body, type),
+        )
+    }
+
+    @Test
     fun `redacts json when content type is null but body looks like json`() {
         val out = JSONObject(redactor.redactBody("""{"token":"abc","keep":"me"}""", null))
         assertEquals("[REDACTED]", out.getString("token"))

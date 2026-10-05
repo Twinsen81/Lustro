@@ -17,6 +17,7 @@ const shared = loadSharedJs();
 const {
     debugBodyKind, debugJsonTree, debugHighlightMarkup, debugScanMarkup,
     debugLineNumbered, debugFormTable, debugHexDump, debugFormatJson,
+    debugMultipartParts, debugMultipartTable,
 } = shared;
 
 // Every tag the viewers emit. Anything else in the output came from the body or
@@ -31,6 +32,7 @@ const VIEWER_TAGS = [
     /^<span class="dc-fold__body">$/,
     /^<span class="dc-lines__line">$/,
     /^<span class="dc-kv__raw" title="Not valid percent-encoding, shown as sent">$/,
+    /^<span class="dc-kv__note">$/,
     /^<pre class="dc-code dc-json dc-tree">$/,
     /^<pre class="dc-code dc-markup">$/,
     /^<pre class="dc-code dc-lines" style="--dc-lines-digits: \d+">$/,
@@ -526,6 +528,63 @@ test('the form table', async (t) => {
         }
         for (const query of MARKUP_QUERIES) {
             assertSafe(debugFormTable('span=class&title=dc-kv', { searchText: query }), `query ${query}`);
+        }
+    });
+});
+
+test('the multipart table', async (t) => {
+    const TYPE = 'multipart/form-data; boundary=b0undary';
+    const BODY = '--b0undary\r\nContent-Disposition: form-data; name="description"\r\nContent-Length: 5\r\n\r\nA cat\r\n'
+        + '--b0undary\r\nContent-Disposition: form-data; name="password"\r\n\r\n[REDACTED]\r\n'
+        + '--b0undary\r\nContent-Disposition: form-data; name="file"; filename="cat.png"\r\nContent-Type: image/png\r\n'
+        + 'Content-Length: 300\r\n\r\n[Lustro did not store this part: image/png, 300 bytes]\r\n'
+        + '--b0undary--\r\n';
+    const rows = (html) => (html.match(/<tr>[\s\S]*?<\/tr>/g) || []).map((row) => {
+        const cells = row.match(/<t[hd][^>]*>[\s\S]*?<\/t[hd]>/g);
+        return cells.map((cell) => textOf(cell));
+    });
+
+    // The parts come from shared.js's own realm, so compare them as plain data.
+    const plain = (value) => JSON.parse(JSON.stringify(value));
+
+    await t.test('a multipart type gets it', () => {
+        assert.strictEqual(debugBodyKind(TYPE, BODY, false), 'multipart');
+        assert.strictEqual(debugBodyKind('multipart/mixed; boundary=x', '', false), 'multipart');
+    });
+
+    await t.test('reads each part, and the type and size of one Lustro did not store', () => {
+        assert.deepStrictEqual(plain(debugMultipartParts(BODY, TYPE)), [
+            { name: 'description', filename: null, contentType: null, size: 5, value: 'A cat' },
+            { name: 'password', filename: null, contentType: null, size: null, value: '[REDACTED]' },
+            { name: 'file', filename: 'cat.png', contentType: 'image/png', size: 300, value: null },
+        ]);
+        assert.deepStrictEqual(rows(debugMultipartTable(BODY, TYPE)), [
+            ['description', 'A cat'],
+            ['password', '[REDACTED]'],
+            ['file (cat.png)', 'Not stored: image/png, 300 bytes'],
+        ]);
+    });
+
+    await t.test('reads a quoted boundary, a body cut inside a part, and lines that end in \\n only', () => {
+        const cut = '--x y\nContent-Disposition: form-data; name=note\n\nhalf of i';
+        assert.deepStrictEqual(plain(debugMultipartParts(cut, 'multipart/form-data; boundary="x y"')), [
+            { name: 'note', filename: null, contentType: null, size: null, value: 'half of i' },
+        ]);
+    });
+
+    await t.test('returns null when the type names no boundary', () => {
+        assert.strictEqual(debugMultipartParts(BODY, 'multipart/form-data'), null);
+        assert.strictEqual(debugMultipartTable(BODY, null), null);
+    });
+
+    await t.test('escapes payloads', () => {
+        for (const payload of PAYLOADS) {
+            const body = `--b\r\nContent-Disposition: form-data; name="${payload}"; filename="${payload}"\r\n\r\n${payload}\r\n--b--`;
+            assertSafe(debugMultipartTable(body, 'multipart/form-data; boundary=b'), body);
+            assertSafe(debugMultipartTable(body, 'multipart/form-data; boundary=b', { searchText: payload }), `query ${payload}`);
+        }
+        for (const query of MARKUP_QUERIES) {
+            assertSafe(debugMultipartTable(BODY, TYPE, { searchText: query }), `query ${query}`);
         }
     });
 });

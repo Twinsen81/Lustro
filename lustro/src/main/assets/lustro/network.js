@@ -821,16 +821,18 @@
     var BODY_VIEWS = {
         json: ['tree', 'raw'],
         form: ['table', 'raw'],
+        multipart: ['parts', 'raw'],
         xml: ['pretty', 'raw'],
         html: ['pretty', 'raw'],
         image: ['preview', 'raw'],
         binary: ['raw'],
         text: ['raw'],
     };
-    var BODY_VIEW_LABELS = { tree: 'Tree', table: 'Table', pretty: 'Pretty', preview: 'Preview', raw: 'Raw' };
+    var BODY_VIEW_LABELS = { tree: 'Tree', table: 'Table', parts: 'Parts', pretty: 'Pretty', preview: 'Preview', raw: 'Raw' };
     var BODY_VIEW_HELP = {
         tree: 'Show the JSON as a tree. Click a key or bracket to fold it, and Alt-click to fold or unfold everything inside it.',
         table: 'Show the form fields as a table, with names and values decoded.',
+        parts: 'Show the parts as a table: each field and its value. Lustro keeps text parts, and only the type and size of a file.',
         pretty: 'Show the markup indented. Only whitespace is added.',
         preview: 'Show the image.',
         raw: 'Show the body as captured, with line numbers.',
@@ -863,7 +865,8 @@
         var binary = !!tx[dir + 'BodyBinary'];
         var open = '<div class="net-body" data-dir="' + dir + '">';
         if (!binary && !text) {
-            return open + missingBody(tx[dir + 'Headers'], text, dir === 'response' ? 'No response body' : 'No request body') + '</div>';
+            return open + missingBody(tx[dir + 'Headers'], text, dir === 'response' ? 'No response body' : 'No request body',
+                tx[dir + 'BodyBytes'], tx[dir + 'ContentType']) + '</div>';
         }
         var contentType = tx[dir + 'ContentType'];
         var truncated = !!tx[dir + 'BodyTruncated'];
@@ -894,6 +897,8 @@
                     + debugEscapeHtml(bodyUrl(tx, dir)) + '" alt="' + dir + ' body"></div>';
             } else if (view === 'table') {
                 content = debugFormTable(text, options);
+            } else if (view === 'parts') {
+                content = debugMultipartTable(text, contentType, options) || debugLineNumbered(text, options);
             } else if (view === 'pretty') {
                 content = debugHighlightMarkup(text, { searchText: searchText, html: kind === 'html' });
             } else {
@@ -1037,9 +1042,17 @@
 
     // Capture inflates a gzip or deflate body and keeps no body in another
     // content coding, such as br. An empty body is "", so null is one not kept.
-    function missingBody(headers, body, label) {
+    // Why a body has nothing to show. A body with a size was sent or received,
+    // and Lustro did not keep it, which is not the same as an empty one.
+    function missingBody(headers, body, label, bytes, contentType) {
         var coding = body == null ? undecodedCoding(headers) : null;
-        var text = coding ? 'Body not captured: Lustro does not decode the ' + coding + ' encoding' : label;
+        var text = label;
+        if (coding) {
+            text = 'Body not captured: Lustro does not decode the ' + coding + ' encoding';
+        } else if (body == null && bytes > 0) {
+            text = 'Body not stored: ' + formatBytes(bytes) + (contentType ? ' of ' + mediaEssence(contentType) : '')
+                + '. Lustro keeps text and image bodies, and not a body the app can send only once.';
+        }
         return '<div class="net-empty-body">' + debugEscapeHtml(text) + '</div>';
     }
 
@@ -1111,15 +1124,31 @@
         var parts = ['curl', '-X', tx.method || 'GET'];
         var headers = tx.requestHeaders || {};
         var hasBody = tx.requestBody && tx.method !== 'GET' && tx.method !== 'HEAD';
+        // curl builds a multipart body from its parts, with a boundary of its own.
+        var formParts = hasBody ? debugMultipartParts(tx.requestBody, tx.requestContentType) : null;
         Object.keys(headers).forEach(function(k) {
             // The captured body is stored inflated and redacted, so it goes out
             // without its coding, and curl works out its length.
             var name = k.toLowerCase();
             if (hasBody && (name === 'content-encoding' || name === 'content-length')) return;
+            if (formParts && name === 'content-type') return;
             parts.push('-H');
             parts.push(shellQuote(k + ': ' + headers[k]));
         });
-        if (hasBody) {
+        if (formParts) {
+            formParts.forEach(function(part) {
+                var name = part.name == null ? '' : part.name;
+                if (part.value != null && part.filename == null) {
+                    // --form-string, because -F reads a value that starts with @ or < as a file.
+                    parts.push('--form-string');
+                    parts.push(shellQuote(name + '=' + part.value));
+                } else {
+                    // Lustro did not keep a file's bytes: the command names the file to send.
+                    parts.push('-F');
+                    parts.push(shellQuote(name + '=@' + (part.filename || 'FILE') + (part.contentType ? ';type=' + part.contentType : '')));
+                }
+            });
+        } else if (hasBody) {
             parts.push('--data-raw');
             parts.push(shellQuote(tx.requestBody));
         }

@@ -376,7 +376,7 @@
           "webSocketId": { "type": ["string", "null"], "description": "Set on the handshake of a WebSocket that is listed under websockets: the id of that connection. null for every other transaction, and once the connection is cleared or evicted." },
           "error": { "type": ["string", "null"] },
           "requestHeaders": { "type": "object", "additionalProperties": { "type": "string" } },
-          "requestBody": { "type": ["string", "null"], "description": "The body as redacted text. A gzip or deflate body is stored inflated; one in another Content-Encoding, such as br, is null." },
+          "requestBody": { "type": ["string", "null"], "description": "The body as redacted text. A gzip or deflate body is stored inflated; one in another Content-Encoding, such as br, is null. A multipart body is stored as multipart text: each part's headers and the value of a text part, and for any other part, such as a file, the line [Lustro did not store this part: <type>, <n> bytes] in place of its content." },
           "requestBodyTruncated": { "type": "boolean" },
           "requestBodyBinary": { "type": "boolean", "description": "Detail only. true when the request body was kept as bytes, as it arrived, because the Redactor can't read it: an image. requestBody is then null; fetch the bytes from GET transactions/{id}/body/request." },
           "responseHeaders": { "type": ["object", "null"], "additionalProperties": { "type": "string" } },

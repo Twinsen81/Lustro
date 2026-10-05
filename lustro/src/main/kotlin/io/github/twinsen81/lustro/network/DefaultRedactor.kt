@@ -29,6 +29,9 @@ import org.json.JSONTokener
  *   `accessToken`, and `presigned_url` are masked. A few names that hold no
  *   secret although they have a sensitive word are kept too: `Idempotency-Key`,
  *   `public_key`, and `vapid_key`, in any spelling.
+ * - The parts of a `multipart/form-data` body: a part whose field name is
+ *   sensitive is masked whole, and any other part is redacted as a body of its
+ *   own type, so a JSON part is redacted as JSON.
  * - Sensitive values in any other captured text body — SSE, XML, plain text, and
  *   JSON that does not parse as a single object/array (NDJSON / concatenated
  *   frames) — via a framing-agnostic, key-name-based fallback. As on the
@@ -57,6 +60,10 @@ public object DefaultRedactor : Redactor {
     private val JSON_LITERALS = listOf("true", "false", "null")
 
     private val textualRedactor = TextualRedactor(isSensitiveKey = ::isSensitiveKey, placeholder = PLACEHOLDER)
+
+    // The field name in a part's Content-Disposition, quoted or not. The `;`
+    // before it keeps `filename=` from matching.
+    private val MULTIPART_NAME = Regex(""";\s*name=(?:"([^"]*)"|([^;\s]*))""", RegexOption.IGNORE_CASE)
 
     private val SENSITIVE_HEADERS =
         setOf("authorization", "proxy-authorization", "cookie", "set-cookie")
@@ -170,10 +177,56 @@ public object DefaultRedactor : Redactor {
             subtype == "json" || subtype.endsWith("+json") || looksLikeJson(body) ->
                 redactJson(body) ?: redactTextually(body)
             subtype == "x-www-form-urlencoded" -> redactForm(body)
+            contentType?.type == "multipart" -> redactMultipart(body, contentType.parameter("boundary")) ?: redactTextually(body)
             // event-stream / xml / text/* / unknown framing.
             else -> redactTextually(body)
         }
     }
+
+    /**
+     * A multipart body, part by part: a part whose name is sensitive is masked
+     * whole, and any other part is redacted as a body of its own type. Returns
+     * `null` when there is no boundary to split on.
+     */
+    private fun redactMultipart(body: String, boundary: String?): String? {
+        if (boundary.isNullOrEmpty()) return null
+        val delimiter = "--$boundary"
+        val pieces = body.split(delimiter)
+        val out = StringBuilder(body.length).append(pieces[0])
+        for (piece in pieces.drop(1)) {
+            out.append(delimiter)
+            // The closing delimiter, and whatever follows it.
+            if (piece.startsWith("--")) out.append(piece) else out.append(redactPart(piece))
+        }
+        return out.toString()
+    }
+
+    private fun redactPart(piece: String): String {
+        val blankLine = piece.indexOf("\r\n\r\n").takeIf { it >= 0 }?.let { it + 4 }
+            ?: piece.indexOf("\n\n").takeIf { it >= 0 }?.let { it + 2 }
+            // Cut off inside the part's headers.
+            ?: return redactTextually(piece)
+        val head = piece.substring(0, blankLine)
+        val lineBreak = if (piece.endsWith("\r\n")) "\r\n" else if (piece.endsWith("\n")) "\n" else ""
+        val content = piece.substring(blankLine, piece.length - lineBreak.length)
+        val name =
+            MULTIPART_NAME.find(partHeader(head, "content-disposition").orEmpty())
+                ?.groupValues?.let { it[1].ifEmpty { it[2] } }
+        val redacted =
+            if (name != null && isSensitiveKey(name)) {
+                PLACEHOLDER
+            } else {
+                redactBody(content, partHeader(head, "content-type")?.let { MediaType.parse(it) })
+            }
+        return head + redacted + lineBreak
+    }
+
+    private fun partHeader(head: String, name: String): String? =
+        head.lineSequence()
+            .map { it.trimEnd('\r') }
+            .firstOrNull { it.length > name.length && it[name.length] == ':' && it.startsWith(name, ignoreCase = true) }
+            ?.substring(name.length + 1)
+            ?.trim()
 
     private fun looksLikeJson(body: String): Boolean {
         val trimmed = body.trimStart()

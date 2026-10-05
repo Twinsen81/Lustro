@@ -87,7 +87,10 @@ client got them.
   throttle held the request before it was sent, or `null` when it wasn't
   throttled. A throttled request is listed from when the app made the call,
   so `startedAt` is the call time, and `durationMs` leaves the wait out. In
-  the HAR export, the wait is `timings.blocked`, and `time` is the sum.
+  the HAR export, the wait is `timings.blocked`, and `time` is the sum. A
+  multipart request body, which was `null`, is stored as multipart text: each
+  part's headers and the value of a text part, and a line with the type and
+  size of any other part.
 
 ## Status
 

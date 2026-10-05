@@ -549,6 +549,7 @@ select.dc-btn {
 .dc-kv__key { width: 30%; color: var(--accent-2); font-weight: 400; }
 .dc-kv__value { color: var(--t2); }
 .dc-kv__raw { color: var(--status-3xx); } /* not valid percent-encoding: shown as sent */
+.dc-kv__note { color: var(--t4); font-style: italic; } /* a multipart part that was not stored */
 
 /* ---------- Helpers ---------- */
 .dc-comment { color: var(--t4); }                 /* // inline comments */

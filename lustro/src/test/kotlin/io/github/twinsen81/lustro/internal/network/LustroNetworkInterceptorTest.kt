@@ -19,6 +19,7 @@ import okhttp3.Call
 import okhttp3.Connection
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
 import okhttp3.Request
@@ -676,6 +677,83 @@ class LustroNetworkInterceptorTest {
         assertNull(tx.requestBody)
         assertTrue(tx.requestBodyTruncated)
         assertEquals(32L, tx.requestBodyBytes)
+    }
+
+    @Test
+    fun `a multipart body keeps its text parts and a line for each file`() {
+        val store = store()
+        val png = ByteArray(300) { it.toByte() }
+        val multipart =
+            MultipartBody.Builder("b0undary")
+                .setType(MultipartBody.FORM)
+                .addFormDataPart("description", "A cat")
+                .addFormDataPart("file", "cat.png", png.toRequestBody("image/png".toMediaType()))
+                .build()
+        val request = Request.Builder().url("https://example.com/api/v2/media").post(multipart).build()
+        val response = responseFor(request, TrackingResponseBody("application/json".toMediaType(), "{}", 2))
+
+        interceptor(store).intercept(FakeChain(request, response))
+
+        val tx = store.getTransactions().single()
+        val body = tx.requestBody!!
+        assertEquals(
+            "--b0undary\r\n" +
+                "Content-Disposition: form-data; name=\"description\"\r\n" +
+                "Content-Length: 5\r\n\r\n" +
+                "A cat\r\n" +
+                "--b0undary\r\n" +
+                "Content-Disposition: form-data; name=\"file\"; filename=\"cat.png\"\r\n" +
+                "Content-Type: image/png\r\n" +
+                "Content-Length: 300\r\n\r\n" +
+                "[Lustro did not store this part: image/png, 300 bytes]\r\n" +
+                "--b0undary--\r\n",
+            body,
+        )
+        assertFalse(tx.requestBodyTruncated)
+        assertNull(tx.requestBinaryBody)
+        assertEquals(multipart.contentLength(), tx.requestBodyBytes)
+        assertEquals("multipart/form-data; boundary=b0undary", tx.requestContentType)
+    }
+
+    @Test
+    fun `a multipart body is cut at the cap like any other`() {
+        val store = store()
+        val multipart =
+            MultipartBody.Builder("b").setType(MultipartBody.FORM).addFormDataPart("note", "z".repeat(500)).build()
+        val request = Request.Builder().url("https://example.com/notes").post(multipart).build()
+        val response = responseFor(request, TrackingResponseBody("text/plain".toMediaType(), "ok", 2))
+
+        interceptor(store, maxBodySize = 100).intercept(FakeChain(request, response))
+
+        val tx = store.getTransactions().single()
+        assertTrue(tx.requestBodyTruncated)
+        assertEquals(100, tx.requestBody!!.length)
+        assertTrue(tx.requestBody!!.endsWith("zzz"))
+    }
+
+    @Test
+    fun `a one-shot multipart part is not read`() {
+        val store = store()
+        var reads = 0
+        val oneShot =
+            object : RequestBody() {
+                override fun contentType(): okhttp3.MediaType = "text/plain".toMediaType()
+
+                override fun isOneShot(): Boolean = true
+
+                override fun writeTo(sink: BufferedSink) {
+                    reads++
+                    sink.writeUtf8("streamed")
+                }
+            }
+        val multipart = MultipartBody.Builder("b").setType(MultipartBody.FORM).addFormDataPart("log", "log.txt", oneShot).build()
+        val request = Request.Builder().url("https://example.com/logs").post(multipart).build()
+        val response = responseFor(request, TrackingResponseBody("text/plain".toMediaType(), "ok", 2))
+
+        interceptor(store).intercept(FakeChain(request, response))
+
+        assertEquals(0, reads)
+        assertTrue(store.getTransactions().single().requestBody!!.contains("[Lustro did not store this part: text/plain, size unknown]"))
     }
 
     @Test
