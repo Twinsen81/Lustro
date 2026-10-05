@@ -1120,6 +1120,7 @@
             + arrow + ' ' + debugEscapeHtml(shown.join(' ')) + '</span>';
     }
 
+    window.netCurlCommand = buildCurlCommand;
     function buildCurlCommand(tx) {
         var parts = ['curl', '-X', tx.method || 'GET'];
         var headers = tx.requestHeaders || {};
@@ -1353,11 +1354,24 @@
         if (formEl && !formEl.innerHTML) renderRuleForm();
     }
 
+    // Response headers a new rule gets from the form without showing a field
+    // for them: the Content-Type of the response Mock This Request copies.
+    var pendingRuleHeaders = null;
+
     function renderRuleForm(prefill) {
         prefill = prefill || {};
         var formEl = document.getElementById('rule-form-container');
         if (!formEl) return;
         var isEdit = !!prefill.id;
+        pendingRuleHeaders = isEdit ? null : (prefill.responseHeaders || null);
+        var headerNames = pendingRuleHeaders ? Object.keys(pendingRuleHeaders) : [];
+        var headersRow = headerNames.length
+            ? '<div class="net-form-row"><span class="dc-label" title="Headers of the mocked response, copied from the captured one.">Headers</span>'
+                + '<span class="net-form-fixed">' + debugEscapeHtml(headerNames.map(function(h) { return h + ': ' + pendingRuleHeaders[h]; }).join('\n')) + '</span></div>'
+            : '';
+        var redactedNote = !isEdit && String(prefill.responseBody || '').indexOf('[REDACTED]') >= 0
+            ? '<div class="net-form-warning">The captured body has values that Lustro redacted. Replace each [REDACTED] before you save, or the app gets that text in their place.</div>'
+            : '';
         var heading = isEdit ? 'Edit Mock Rule' : 'Add Mock Rule';
         var submitText = isEdit ? 'Update Rule' : 'Add Rule';
         var submitTooltip = isEdit
@@ -1377,7 +1391,9 @@
             }).join('')
             + '</select></div>'
             + '<div class="net-form-row"><label class="dc-label" for="rf-status" title="HTTP status code returned to the app.">Status</label><input class="dc-input--block" id="rf-status" name="statusCode" type="number" value="' + (prefill.statusCode || 200) + '" style="width:80px;flex:none" title="Status code returned to the app (e.g. 200, 404, 503)."></div>'
+            + headersRow
             + '<div class="net-form-row"><label class="dc-label" for="rf-body" title="Body returned to the app when this rule matches.">Body <button type="button" class="net-format-btn" data-action="formatRuleBody" title="Pretty-print the body as JSON (no-op if not valid JSON).">Format</button></label><textarea class="dc-textarea" id="rf-body" name="responseBody" placeholder="Response body (JSON, text, etc.)" title="Response body returned to the app. Can be any string; JSON is auto-formatted in the rule preview.">' + debugEscapeHtml(prefill.responseBody || '') + '</textarea></div>'
+            + redactedNote
             + '<div class="net-form-actions">'
             + '<button class="dc-btn dc-btn--primary" data-action="submitRule" title="' + submitTooltip + '">' + submitText + '</button>'
             + (isEdit ? '<button class="dc-btn" data-action="cancelEditRule" title="Discard changes and return to the empty Add form.">Cancel</button>' : '')
@@ -1582,6 +1598,8 @@
         if (edited) {
             rule.enabled = edited.enabled !== false;
             rule.responseHeaders = edited.responseHeaders || {};
+        } else if (pendingRuleHeaders) {
+            rule.responseHeaders = pendingRuleHeaders;
         }
         debugFetch(netUrl('rules'), {
             method: 'POST',
@@ -1638,15 +1656,47 @@
                 detail = detail || {};
                 switchRightTab('rules');
                 var url = tx.url || '';
+                var contentType = headerValue(detail.responseHeaders, 'content-type');
                 renderRuleForm({
                     name: (tx.method || '') + ' ' + (url.length > 60 ? url.substring(0, 60) + '…' : url),
-                    urlPattern: extractPath(url),
+                    urlPattern: exactUrlPattern(url),
                     method: tx.method,
                     statusCode: detail.statusCode || 200,
+                    responseHeaders: contentType ? { 'Content-Type': contentType } : null,
                     responseBody: detail.responseBody || '',
                 });
             });
     };
+
+    // A pattern for this URL and no other: a sub-resource such as /items/1/comments
+    // contains /items/1 and would match a substring. A redacted query value
+    // matches any value, because the app sends the real one.
+    window.netExactUrlPattern = exactUrlPattern;
+    function exactUrlPattern(url) {
+        var queryStart = url.indexOf('?');
+        if (queryStart < 0) return 'regex:^' + escapeRegex(url) + '$';
+        var pairs = url.slice(queryStart + 1).split('&').map(function(pair) {
+            var eq = pair.indexOf('=');
+            return eq >= 0 && isRedactedValue(pair.slice(eq + 1))
+                ? escapeRegex(pair.slice(0, eq + 1)) + '[^&#]*'
+                : escapeRegex(pair);
+        });
+        return 'regex:^' + escapeRegex(url.slice(0, queryStart)) + '\\?' + pairs.join('&') + '$';
+    }
+    function isRedactedValue(value) {
+        try {
+            return decodeURIComponent(value.replace(/\+/g, ' ')) === '[REDACTED]';
+        } catch(e) {
+            return false;
+        }
+    }
+    function escapeRegex(s) {
+        return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+    function headerValue(headers, name) {
+        var key = Object.keys(headers || {}).find(function(k) { return k.toLowerCase() === name; });
+        return key ? headers[key] : null;
+    }
 
     function extractPath(url) {
         try {

@@ -264,6 +264,13 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Fixed
 
+- **Mock This Request made a rule that also answered other endpoints.** It
+  filled in the request's path as a substring pattern, so a rule for
+  `/statuses/1` also answered `/statuses/1/context`, and the app failed to
+  read a status as a thread. It now fills in a `regex:` pattern anchored to
+  the whole URL, with a redacted query value matching any value. The rule
+  also keeps the response's `Content-Type`, which it dropped, and the form
+  says when the copied body has `[REDACTED]` values to replace.
 - **A multipart upload showed "No request body".** Lustro kept no multipart
   body, so the Network tab said `// No request body` under a header that
   showed a 278.5 KB `multipart/form-data` upload. An OkHttp `MultipartBody` is

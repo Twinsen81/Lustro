@@ -359,6 +359,13 @@ when prefixed with `regex:`. So `regex:/api/v1/statuses$` matches
 when it must match from the start of the URL. A `regex:` pattern that does not compile is rejected
 when you save the rule, because a rule that never matches lets the real request through.
 
+**Mock This Request**, in a transaction's detail, fills in a rule for that request: a `regex:`
+pattern that matches its URL and no other, so a rule for `/items/1` doesn't also answer
+`/items/1/comments`, its method, its status, its `Content-Type`, and its body. A query value that
+Lustro redacted matches any value, because the app sends the real one. The body is the stored one,
+so a redacted value in it is `[REDACTED]`: the form says when that is so, and you replace those
+values before you save.
+
 **Rules live in the app, not in the browser.** They are kept in memory unless you pass a
 `MockRuleStorage` to `NetworkDebugTab.create(...)`, so without one they are gone when the process
 dies:
