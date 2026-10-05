@@ -93,7 +93,9 @@ build, and that even in debug builds it stays bound to the local device.
   The default implementation matches on *names*: sensitive request/response
   headers, and URL query parameters, JSON object fields, and form fields whose
   name contains a fragment such as `token`, `key`, `secret`, `password`, `auth`,
-  or `signature`. A name-based rule cannot see a secret that is not keyed by a
+  or `signature`. A fragment that only sits inside an ordinary word, such as
+  `auth` in `author_name` or `key` in `keywords`, doesn't count, and neither
+  do `Idempotency-Key`, `public_key`, and `vapid_key`, which hold no secret. A name-based rule cannot see a secret that is not keyed by a
   name it recognizes, so the default redactor reduces exposure rather than
   guaranteeing there is none. Known gaps, where the value is stored as it
   arrived:

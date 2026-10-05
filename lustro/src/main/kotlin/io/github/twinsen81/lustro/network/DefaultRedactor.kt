@@ -23,6 +23,12 @@ import org.json.JSONTokener
  *   contains a sensitive token (`token`, `key`, `secret`, `password`, `passwd`,
  *   `pwd`, `auth`, `access_token`, `refresh_token`, `api_key`, `apikey`,
  *   `client_secret`, `session`, `credential`, `bearer`, `signature`, `sig`).
+ *   A name is split into words, at separators and camelCase humps, and the
+ *   token must be in a word that isn't an ordinary one that happens to contain
+ *   it: `author_name`, `design`, and `keywords` are kept, while `authorization`,
+ *   `accessToken`, and `presigned_url` are masked. A few names that hold no
+ *   secret although they have a sensitive word are kept too: `Idempotency-Key`,
+ *   `public_key`, and `vapid_key`, in any spelling.
  * - Sensitive values in any other captured text body — SSE, XML, plain text, and
  *   JSON that does not parse as a single object/array (NDJSON / concatenated
  *   frames) — via a framing-agnostic, key-name-based fallback. As on the
@@ -62,6 +68,23 @@ public object DefaultRedactor : Redactor {
     // before the fragment heuristic.
     private val NON_SENSITIVE_HEADERS =
         setOf("access-control-allow-credentials", "www-authenticate", "proxy-authenticate")
+
+    // Names that have a sensitive word but hold no secret: an idempotency key
+    // names a request, and a VAPID or other public key is published. Compared
+    // with the name's words joined, so `Idempotency-Key`, `idempotency_key`, and
+    // `idempotencyKey` all match.
+    private val PUBLIC_NAMES = setOf("idempotencykey", "publickey", "vapidkey")
+
+    // Ordinary words that contain a sensitive fragment. A word that only has a
+    // fragment as part of one of these doesn't make its name sensitive.
+    private val NON_SENSITIVE_WORDS =
+        setOf(
+            "author", "authors", "authored", "authorship",
+            "design", "designs", "designed", "designer",
+            "signup", "signal", "signals",
+            "assign", "assigned", "assignee", "assignment",
+            "keyboard", "keyword", "keywords",
+        )
 
     private val SENSITIVE_KEY_FRAGMENTS =
         listOf(
@@ -157,15 +180,61 @@ public object DefaultRedactor : Redactor {
         return trimmed.startsWith("{") || trimmed.startsWith("[")
     }
 
-    // Runs for every key and element name in a captured body, so an ASCII name is
-    // matched without allocating a lowercase copy. Other names still go through
-    // lowercase(), which can turn one char into several.
+    // Runs for every key and element name in a captured body. Most names have no
+    // sensitive fragment at all, so that is checked first, without allocating.
+    // Only a name that has one is looked at word by word, and a part of it stays
+    // sensitive unless the ordinary words in it were what held the fragment.
     private fun isSensitiveKey(name: String): Boolean {
+        if (!hasSensitiveFragment(name)) return false
+        val parts = nameParts(name)
+        if (parts.joinToString("").lowercase() in PUBLIC_NAMES) return false
+        return parts.any { part ->
+            val rest = camelCaseWords(part).filterNot { it in NON_SENSITIVE_WORDS }.joinToString("")
+            SENSITIVE_KEY_FRAGMENTS.any { rest.contains(it) }
+        }
+    }
+
+    // An ASCII name is matched without allocating a lowercase copy. Other names
+    // still go through lowercase(), which can turn one char into several.
+    private fun hasSensitiveFragment(name: String): Boolean {
         if (name.any { it >= '\u0080' }) {
             val lower = name.lowercase()
             return SENSITIVE_KEY_FRAGMENTS.any { lower.contains(it) }
         }
         return SENSITIVE_KEY_FRAGMENTS.any { name.containsIgnoringAsciiCase(it) }
+    }
+
+    /** The runs of letters and digits in [name], split at every other char. */
+    private fun nameParts(name: String): List<String> {
+        val parts = ArrayList<String>()
+        var start = -1
+        for (i in name.indices) {
+            if (name[i].isLetterOrDigit()) {
+                if (start < 0) start = i
+            } else if (start >= 0) {
+                parts += name.substring(start, i)
+                start = -1
+            }
+        }
+        if (start >= 0) parts += name.substring(start)
+        return parts
+    }
+
+    /** The lowercase camelCase words of [part]: `authorName` and `APIKey` have two each. */
+    private fun camelCaseWords(part: String): List<String> {
+        val words = ArrayList<String>()
+        var start = 0
+        for (i in 1 until part.length) {
+            val c = part[i]
+            val prev = part[i - 1]
+            val hump = c.isUpperCase() && (!prev.isUpperCase() || part.getOrNull(i + 1)?.isLowerCase() == true)
+            if (hump) {
+                words += part.substring(start, i).lowercase()
+                start = i
+            }
+        }
+        words += part.substring(start).lowercase()
+        return words
     }
 
     /** Whether this ASCII text contains the lowercase [fragment], in any case. */

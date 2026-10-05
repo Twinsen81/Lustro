@@ -123,6 +123,34 @@ class DefaultRedactorTest {
     }
 
     @Test
+    fun `a fragment inside an ordinary word does not mask the value`() {
+        val body =
+            """{"card":{"author_name":"Ana","author_url":"https://a.test","authors":[{"name":"Ana"}]},""" +
+                """"design":"flat","keywords":["a"],"signup_url":"https://a.test/join","assignee":"bo"}"""
+        assertEquals(body, redactor.redactBody(body, MediaType.JSON))
+        assertEquals("https://a.test/?keyword=cat", redactor.redactUrl("https://a.test/?keyword=cat"))
+    }
+
+    @Test
+    fun `public names that have a sensitive word keep their value`() {
+        assertEquals("4f1c", redactor.redactHeaderValue("Idempotency-Key", "4f1c"))
+        val body = """{"vapid_key":"BCk-QqERU0q","publicKey":"MFkw","idempotency_key":"4f1c"}"""
+        assertEquals(body, redactor.redactBody(body, MediaType.JSON))
+    }
+
+    @Test
+    fun `a sensitive word is masked wherever it sits in the name`() {
+        val body =
+            """{"authorization":"a","accessToken":"b","accesstoken":"c","APIKey":"d",""" +
+                """"co_author_token":"e","presigned_url":"f","x-auth-token":"g","private_key":"h"}"""
+        val out = JSONObject(redactor.redactBody(body, MediaType.JSON))
+        for (key in out.keys()) {
+            assertEquals(key, "[REDACTED]", out.getString(key))
+        }
+        assertEquals("[REDACTED]", redactor.redactHeaderValue("X-Author-Token", "t"))
+    }
+
+    @Test
     fun `redacts json when content type is null but body looks like json`() {
         val out = JSONObject(redactor.redactBody("""{"token":"abc","keep":"me"}""", null))
         assertEquals("[REDACTED]", out.getString("token"))

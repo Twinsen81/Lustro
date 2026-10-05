@@ -264,6 +264,15 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Fixed
 
+- **The default redactor masked values that are not secret.** It looked for
+  a sensitive fragment anywhere in a name, so it masked `author_name`,
+  `author_url`, and `authors` in every link preview (they contain `auth`),
+  the `Idempotency-Key` header, and public keys such as `vapid_key`. A
+  fragment inside an ordinary word (`author`, `design`, `signup`, `assignee`,
+  `keyword`, and a few more) no longer makes a name sensitive, and
+  `Idempotency-Key`, `public_key`, and `vapid_key` are kept in any spelling.
+  Everything else is masked as before: `authorization`, `accessToken`, and
+  `presigned_url` still are.
 - **Docs described behaviour the code doesn't have.** SECURITY.md said the auth
   token "rotates on explicit reset" (there is no rotation API: the token is
   generated once and lives until the app's data is cleared) and that redacted
