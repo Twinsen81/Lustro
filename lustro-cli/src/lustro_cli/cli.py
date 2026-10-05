@@ -138,6 +138,8 @@ def _format_row(tx: dict, id_length: Optional[int] = None, *, update: bool = Fal
     flags = ""
     if tx.get("isMocked"):
         flags += " [mock]"
+    if tx.get("throttledMs"):
+        flags += " [throttled {}ms]".format(tx["throttledMs"])
     if status is not None and not _is_complete(tx):
         flags += " [streaming]"
     if update:

@@ -48,14 +48,16 @@ internal object HarExport {
     private fun StringBuilder.appendEntry(tx: NetworkTransaction, webSocket: HarWebSocket?) {
         // An in-flight request has no duration yet, and HAR has no null for one.
         val durationMs = (tx.durationMs ?: 0L).coerceAtLeast(0L)
+        // The throttle's wait is HAR's blocked time: the request waited before it was sent.
+        val throttledMs = tx.throttledMs?.coerceAtLeast(0L)
         append('{')
         append("\"startedDateTime\":\"").append(STARTED_DATE_TIME.format(Instant.ofEpochMilli(tx.startedAt))).append("\",")
-        append("\"time\":").append(durationMs).append(',')
+        append("\"time\":").append(durationMs + (throttledMs ?: 0L)).append(',')
         appendRequest(tx)
         append(',')
         appendResponse(tx)
         append(",\"cache\":{},")
-        append("\"timings\":{\"blocked\":-1,\"dns\":-1,\"connect\":-1,\"ssl\":-1,")
+        append("\"timings\":{\"blocked\":").append(throttledMs ?: -1L).append(",\"dns\":-1,\"connect\":-1,\"ssl\":-1,")
         append("\"send\":0,\"wait\":").append(durationMs).append(",\"receive\":0},")
         // Chrome's import files a request by this, and by the media type without
         // it, which would list a JSON response as a script.

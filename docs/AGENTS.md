@@ -231,7 +231,7 @@ below summarizes it. All routes are token-authenticated and use the shared error
 | Toggle rule | `POST rules/toggle` | Body `{ id }`; flips `enabled`. |
 | Pause capture | `POST pause` | Toggles capture-only pause. While paused, mocks and throttle **still apply**; only recording into the list stops, for requests and for WebSocket messages. Returns `{ status: "ok", paused }`. |
 | Overwrite mode | `POST overwrite-mode` | Toggles overwrite mode (a new request evicts earlier **completed** transactions with the same method + URL path; in-flight ones are never evicted). Returns `{ status: "ok", overwriteMode }`. |
-| Throttle | `POST throttle` | Body `{ delayMs }` (≥ 0); a global pre-request sleep applied to mocked and real requests alike. Returns `{ status: "ok", delayMs }`. |
+| Throttle | `POST throttle` | Body `{ delayMs }` (≥ 0); a global pre-request sleep applied to mocked and real requests alike. A throttled transaction is listed while it waits and records the wait in `throttledMs`. Returns `{ status: "ok", delayMs }`. |
 | Send request | `POST send` | **Synchronous** dispatch through the configured `NetworkSender`. See below. |
 
 **Mock rule semantics.** `urlPattern` is looked for anywhere in the URL: a substring, or a regular
@@ -276,6 +276,13 @@ plus `durationMs`; take a request's duration from `durationMs`. `protocol` (`htt
 tell JSON from an image without reading the headers. These fields arrived in protocol 1.2; a 1.1
 server leaves them out.
 
+**Throttled requests.** When the global throttle holds a request, the transaction is listed from
+the moment the app made the call, so `startedAt` is the call time, and `throttledMs` says how long
+the throttle held it before it was sent. `durationMs` leaves that wait out, and `completedAt`
+comes at least `throttledMs` plus `durationMs` after `startedAt`. `throttledMs` is `null` for a
+request that wasn't throttled. In the HAR export, the wait is the entry's `timings.blocked`, and
+`time` is the sum. This field arrived in protocol 1.4.
+
 **Image bodies and the body route.** A body is captured as text, or, for an image, as bytes; SVG
 is text. The detail's `requestBodyBinary` and `responseBodyBinary` are `true` when that body was
 kept as bytes, and its `requestBody` or `responseBody` is then `null`.
@@ -294,8 +301,8 @@ built from the store, so it has the same redacted values as the detail. Without 
 transaction; an id the app no longer has is left out. Each entry's `_lustro` has the transaction
 `id`, `isMocked`, `categories`, `requestBodyTruncated`, `responseBodyTruncated`,
 `responseComplete`, and `error`. The capture has no phase timings, so each entry spends its whole
-`durationMs` in `timings.wait`, and `_resourceType` (`fetch`, or `image` for an image) tells
-Chrome DevTools how to file it. A body kept as bytes is base64: `content.encoding` says so for a
+`durationMs` in `timings.wait` and the throttle's wait in `timings.blocked`, and `_resourceType`
+(`fetch`, or `image` for an image) tells Chrome DevTools how to file it. A body kept as bytes is base64: `content.encoding` says so for a
 response, and `postData._encoding` for a request. The request line and its headers must stay
 under 8 KB, so send many ids in batches; `lustro net export --har FILE [--ids ID ...]` does that,
 and `--har -` writes the document to stdout. This route is part of protocol 1.2. From protocol 1.3,

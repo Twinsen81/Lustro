@@ -93,6 +93,7 @@ class LustroNetworkInterceptorTest {
             throttleDelayMs = { throttleDelayMs },
             incrementMockHit = onMockHit,
             maxBodySize = maxBodySize,
+            recordThrottle = { id, delayMs -> (sink as? NetworkTrafficStore)?.recordThrottle(id, delayMs) },
         )
 
     @Test
@@ -378,6 +379,34 @@ class LustroNetworkInterceptorTest {
     }
 
     @Test
+    fun `a throttled request is listed from the call, with the wait kept apart from its duration`() {
+        val store = store()
+        val interceptor = interceptor(store, throttleDelayMs = 150)
+        val request = Request.Builder().url("https://example.com/status").build()
+        val response = responseFor(request, TrackingResponseBody("text/plain".toMediaType(), "ok", 2))
+
+        val called = System.currentTimeMillis()
+        interceptor.intercept(FakeChain(request, response))
+
+        val tx = store.getTransactions().single()
+        assertEquals(150L, tx.throttledMs)
+        assertTrue("startedAt should be when the app made the call", tx.startedAt - called < 100)
+        assertTrue("durationMs should leave the throttle out, was ${tx.durationMs}", tx.durationMs!! < 150)
+        assertTrue("completedAt should come after the throttle", tx.completedAt!! - tx.startedAt >= 150)
+    }
+
+    @Test
+    fun `a request that isn't throttled has no throttledMs`() {
+        val store = store()
+        val request = Request.Builder().url("https://example.com/status").build()
+        val response = responseFor(request, TrackingResponseBody("text/plain".toMediaType(), "ok", 2))
+
+        interceptor(store).intercept(FakeChain(request, response))
+
+        assertNull(store.getTransactions().single().throttledMs)
+    }
+
+    @Test
     fun `throttle is interruptible and surfaces an IOException`() {
         val sink = RecordingSink()
         val interceptor = interceptor(sink, throttleDelayMs = 60_000)
@@ -401,6 +430,8 @@ class LustroNetworkInterceptorTest {
 
         assertTrue("expected IOException, got ${thrown[0]}", thrown[0] is IOException)
         assertEquals("Throttle interrupted", thrown[0]?.message)
+        // Capture began before the wait, so the request is recorded as failed, not left in flight.
+        assertEquals(1, sink.failures.size)
     }
 
     @Test

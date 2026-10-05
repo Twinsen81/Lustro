@@ -549,6 +549,16 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Changed
 
+- **Wire protocol 1.4: a throttled request shows how long the throttle held
+  it.** The global throttle waited before the capture began, so a request
+  held for 3 s was listed only after the wait, as a 390 ms request, with
+  nothing to say it had waited. Capture now begins before the wait: the
+  request is listed while it waits, `startedAt` is when the app made the
+  call, and the new `throttledMs` on every transaction says how long the
+  throttle held it (`null` when it didn't). `durationMs` still leaves the
+  wait out. The Network tab shows it after the duration, as `+3s`, the CLI
+  marks the row `[throttled 3000ms]`, and the HAR export puts it in
+  `timings.blocked`.
 - **A `regex:` mock pattern is found anywhere in the URL, like a substring
   one.** It had to match the whole URL, which the docs didn't say, so a
   pattern such as `regex:/api/v1/statuses$` never matched and the real

@@ -49,7 +49,7 @@ test('a transaction renders as a heading, its meta, and fenced headers and bodie
     assert.strictEqual(markdown(golden('transaction.json')), [
         '## `GET https://api.example.com/v1/orders/77e2`',
         '',
-        '**500** · 41 ms · 2026-09-28T14:22:11.781Z · mocked by Lustro · `api`',
+        '**500** · 41 ms · held 1000 ms by the throttle · 2026-09-28T14:22:11.781Z · mocked by Lustro · `api`',
         '',
         '### Request headers',
         '',

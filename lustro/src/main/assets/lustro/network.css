@@ -212,6 +212,8 @@
 .net-cell-url { max-width: 0; } /* let the table's 1fr column own the width */
 .net-cell-status { font-weight: 600; }
 .net-cell-time { color: var(--t3); font-size: 11.5px; }
+/* The time the global throttle held a request, after its duration. */
+.net-throttle { color: var(--lvl-w); }
 .net-cell-cat { white-space: normal; } /* several categories wrap onto more lines */
 .net-cell-cat .dc-tag { margin-right: 3px; }
 

@@ -390,7 +390,7 @@
             var sc = statusClass(tx);
             var streaming = isStreaming(tx);
             var statusText = tx.error ? 'ERR' : (tx.statusCode ? tx.statusCode + (streaming ? '…' : '') : '…');
-            var dur = tx.durationMs != null ? tx.durationMs + 'ms' + (streaming ? '…' : '') : '…';
+            var dur = (tx.durationMs != null ? tx.durationMs + 'ms' + (streaming ? '…' : '') : '…') + throttleBadge(tx);
             var pathOnly = extractPath(tx.url).split('?')[0];
             var shortUrl = pathOnly.length > 100 ? pathOnly.substring(0, 100) + '…' : pathOnly;
             var sel = tx.id === selectedTxId ? ' dc-row--selected' : '';
@@ -610,6 +610,7 @@
         if (!previous) return true;
         return previous.statusCode !== next.statusCode
             || previous.durationMs !== next.durationMs
+            || previous.throttledMs !== next.throttledMs
             || previous.responseBodyBytes !== next.responseBodyBytes
             || previous.responseComplete !== next.responseComplete
             || previous.error !== next.error
@@ -667,6 +668,7 @@
         lines.push('Status: ' + (tx.error ? 'Error' : (tx.statusCode || 'Pending'))
             + (streaming ? ' (streaming)' : '')
             + (tx.durationMs != null ? '  |  ' + tx.durationMs + 'ms' + (streaming ? ' streaming' : '') : '')
+            + (tx.throttledMs ? '  |  held ' + tx.throttledMs + 'ms by the throttle' : '')
             + '  |  ' + (tx.timestamp || ''));
         if (tx.categories && tx.categories.length) lines.push('Categories: ' + tx.categories.join(', '));
 
@@ -728,6 +730,7 @@
         html += '<div class="net-detail-meta">';
         html += '<span class="' + sc + '">' + statusLabel + '</span>';
         html += '<span>' + (tx.durationMs != null ? tx.durationMs + 'ms' + (streaming ? ' streaming' : '') : '—') + '</span>';
+        if (tx.throttledMs) html += '<span title="' + THROTTLE_TITLE + '">+' + formatThrottle(tx.throttledMs) + ' throttle</span>';
         html += '<span>' + debugEscapeHtml(tx.timestamp || '') + '</span>';
         if (tx.protocol) html += '<span title="Protocol the response came over">' + debugEscapeHtml(tx.protocol) + '</span>';
         html += bodyMeta('↑', 'Request', tx.requestBodyBytes, tx.requestContentType);
@@ -1067,6 +1070,17 @@
             + '</details>';
     }
 
+    var THROTTLE_TITLE = 'The global throttle held the request this long before it was sent. The duration leaves it out.';
+
+    function formatThrottle(ms) {
+        return ms >= 1000 && ms % 1000 === 0 ? (ms / 1000) + 's' : ms + 'ms';
+    }
+
+    function throttleBadge(tx) {
+        if (!tx.throttledMs) return '';
+        return ' <span class="net-throttle" title="' + THROTTLE_TITLE + '">+' + formatThrottle(tx.throttledMs) + '</span>';
+    }
+
     function formatBytes(n) {
         if (n == null) return '';
         if (n < 1024) return n + ' B';
@@ -1147,6 +1161,7 @@
         if (isStreaming(tx)) status += ', streaming';
         meta.push('**' + status + '**');
         if (tx.durationMs != null) meta.push(tx.durationMs + ' ms');
+        if (tx.throttledMs) meta.push('held ' + tx.throttledMs + ' ms by the throttle');
         if (tx.startedAt != null) meta.push(new Date(tx.startedAt).toISOString());
         else if (tx.timestamp) meta.push(tx.timestamp);
         if (tx.protocol) meta.push(markdownCode(tx.protocol));

@@ -19,6 +19,9 @@ internal data class NetworkTransaction(
     // Set once the response is complete or the request failed.
     val completedAt: Long? = null,
     val durationMs: Long? = null,
+    // How long the global throttle held the request before it was sent, or null
+    // when it wasn't throttled. Not part of durationMs.
+    val throttledMs: Long? = null,
     val categories: List<String> = emptyList(),
     val method: String,
     val url: String,

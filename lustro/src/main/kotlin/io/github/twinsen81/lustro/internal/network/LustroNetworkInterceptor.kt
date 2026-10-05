@@ -51,28 +51,34 @@ internal class LustroNetworkInterceptor(
     private val throttleDelayMs: () -> Int,
     private val incrementMockHit: (String) -> Unit,
     private val maxBodySize: Long,
+    private val recordThrottle: (TransactionId, Long) -> Unit = { _, _ -> },
 ) : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
+        val url = request.url.toString()
+
+        // Capture starts before the throttle: the request is listed while it
+        // waits, and its start time is when the app made the call.
+        val id = if (captureEnabled()) beginCapture(request, url) else null
 
         // Throttle applies regardless of capture/pause (mocks + throttle still run).
         val throttleMs = throttleDelayMs()
         if (throttleMs > 0) {
+            if (id != null) recordThrottle(id, throttleMs.toLong())
             try {
                 Thread.sleep(throttleMs.toLong())
             } catch (e: InterruptedException) {
                 Thread.currentThread().interrupt()
+                if (id != null) sink.failRequest(id, 0L, "Throttle interrupted")
                 throw IOException("Throttle interrupted", e)
             }
         }
 
-        val url = request.url.toString()
-
         // Mock short-circuit — independent of capture being enabled.
         val mockRule = sink.findMockRule(url, request.method)
 
+        // durationMs leaves the throttle out; the transaction's throttledMs has it.
         val startTime = System.currentTimeMillis()
-        val id = if (captureEnabled()) beginCapture(request, url) else null
 
         if (mockRule != null) {
             // Build the response before recording anything: rules are validated

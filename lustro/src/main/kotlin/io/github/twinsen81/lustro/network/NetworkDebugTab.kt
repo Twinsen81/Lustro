@@ -116,6 +116,7 @@ public class NetworkDebugTab private constructor(
             throttleDelayMs = { store.getThrottleDelayMs() },
             incrementMockHit = { store.incrementHitCount(it) },
             maxBodySize = maxBodyCaptureBytes,
+            recordThrottle = { id, delayMs -> store.recordThrottle(id, delayMs) },
         )
 
     /** Records the live bind address so the Send panel can detect self-requests. */
@@ -655,6 +656,7 @@ public class NetworkDebugTab private constructor(
         append("\"protocol\":${tx.protocol.toJsonString()},")
         append("\"statusCode\":${tx.statusCode ?: "null"},")
         append("\"durationMs\":${tx.durationMs ?: "null"},")
+        append("\"throttledMs\":${tx.throttledMs ?: "null"},")
         append("\"categories\":[")
         tx.categories.forEachIndexed { i, cat ->
             if (i > 0) append(",")

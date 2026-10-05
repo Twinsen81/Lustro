@@ -43,8 +43,9 @@ class HarExportGoldenTest {
             NetworkTransaction(
                 id = "tx_77e2c014",
                 startedAt = 1790605331781,
-                completedAt = 1790605331822,
+                completedAt = 1790605332822,
                 durationMs = 41,
+                throttledMs = 1000,
                 categories = listOf("api"),
                 method = "GET",
                 url = "https://api.example.com/v1/orders/77e2",

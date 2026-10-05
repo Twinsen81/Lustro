@@ -8,6 +8,7 @@
   "protocol": "h2",
   "statusCode": 200,
   "durationMs": 96,
+  "throttledMs": null,
   "categories": ["media"],
   "isMocked": false,
   "requestContentType": null,
