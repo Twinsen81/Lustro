@@ -38,6 +38,19 @@ test('Mock This Request fills in a pattern for that URL and no other', async (t)
     });
 });
 
+test('Copy as cURL keeps the type of a typed text part', () => {
+    const command = network.netCurlCommand({
+        method: 'POST',
+        url: 'https://a.test/upload',
+        requestContentType: 'multipart/form-data; boundary=b0',
+        requestHeaders: {},
+        requestBody: '--b0\r\nContent-Disposition: form-data; name="meta"\r\nContent-Type: application/json\r\n\r\n'
+            + '{"a":"x;y","b":"back\\\\slash"}\r\n--b0--\r\n',
+    });
+    assert.strictEqual(command,
+        "curl -X POST -F 'meta=\"{\\\"a\\\":\\\"x;y\\\",\\\"b\\\":\\\"back\\\\\\\\slash\\\"}\";type=application/json' 'https://a.test/upload'");
+});
+
 test('Copy as cURL builds a multipart body from its parts', () => {
     const command = network.netCurlCommand({
         method: 'POST',

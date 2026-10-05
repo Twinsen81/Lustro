@@ -171,6 +171,17 @@ class DefaultRedactorTest {
     }
 
     @Test
+    fun `a multipart part's own headers are masked like a request's`() {
+        val type = MediaType.parse("multipart/form-data; boundary=xyz")
+        val body =
+            "--xyz\r\nContent-Disposition: form-data; name=\"doc\"\r\nX-Api-Key: sk-live-9\r\n\r\nhello\r\n--xyz--\r\n"
+        assertEquals(
+            "--xyz\r\nContent-Disposition: form-data; name=\"doc\"\r\nX-Api-Key: [REDACTED]\r\n\r\nhello\r\n--xyz--\r\n",
+            redactor.redactBody(body, type),
+        )
+    }
+
+    @Test
     fun `a multipart body cut inside a sensitive part is masked to its end`() {
         val type = MediaType.parse("multipart/form-data; boundary=xyz")
         val body = "--xyz\r\nContent-Disposition: form-data; name=\"api_key\"\r\n\r\nsk-live-123"

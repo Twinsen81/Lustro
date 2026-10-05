@@ -305,7 +305,8 @@ then the value of a text part. A part that is not text, such as a file, is not r
 one line, `[Lustro did not store this part: <type>, <n> bytes]`, or `size unknown`. The
 `requestContentType` carries the boundary. `requestBodyBytes` is the size of the whole body on the
 wire, and the stored text is cut at the capture cap like any other body. The default redactor masks
-a part whose field name is sensitive, and redacts any other part as a body of its own type.
+a part whose field name is sensitive, redacts any other part as a body of its own type, and masks a
+part's own headers as it masks a request's. A file part with no type is not read either.
 
 **Image bodies and the body route.** A body is captured as text, or, for an image, as bytes; SVG
 is text. The detail's `requestBodyBinary` and `responseBodyBinary` are `true` when that body was

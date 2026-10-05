@@ -31,7 +31,8 @@ import org.json.JSONTokener
  *   `public_key`, and `vapid_key`, in any spelling.
  * - The parts of a `multipart/form-data` body: a part whose field name is
  *   sensitive is masked whole, and any other part is redacted as a body of its
- *   own type, so a JSON part is redacted as JSON.
+ *   own type, so a JSON part is redacted as JSON. A part's own headers are
+ *   masked like a request's.
  * - Sensitive values in any other captured text body — SSE, XML, plain text, and
  *   JSON that does not parse as a single object/array (NDJSON / concatenated
  *   frames) — via a framing-agnostic, key-name-based fallback. As on the
@@ -218,8 +219,21 @@ public object DefaultRedactor : Redactor {
             } else {
                 redactBody(content, partHeader(head, "content-type")?.let { MediaType.parse(it) })
             }
-        return head + redacted + lineBreak
+        return redactPartHeaders(head) + redacted + lineBreak
     }
+
+    // A part's own headers are masked like a request's: a part can carry an
+    // Authorization or an API key header of its own.
+    private fun redactPartHeaders(head: String): String =
+        head.split('\n').joinToString("\n") { line ->
+            val colon = line.indexOf(':')
+            if (colon <= 0) return@joinToString line
+            val name = line.substring(0, colon).trim()
+            val cr = if (line.endsWith('\r')) "\r" else ""
+            val value = line.substring(colon + 1, line.length - cr.length).trim()
+            val masked = redactHeaderValue(name, value)
+            if (masked == value) line else "${line.substring(0, colon)}: $masked$cr"
+        }
 
     private fun partHeader(head: String, name: String): String? =
         head.lineSequence()

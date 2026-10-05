@@ -732,6 +732,37 @@ class LustroNetworkInterceptorTest {
     }
 
     @Test
+    fun `a multipart file with no type is not read`() {
+        val store = store()
+        var reads = 0
+        val file =
+            object : RequestBody() {
+                override fun contentType(): okhttp3.MediaType? = null
+
+                override fun contentLength(): Long = 4
+
+                override fun writeTo(sink: BufferedSink) {
+                    reads++
+                    sink.write(byteArrayOf(0x50, 0x4b, 3, 4))
+                }
+            }
+        val multipart =
+            MultipartBody.Builder("b").setType(MultipartBody.FORM)
+                .addFormDataPart("title", "notes")
+                .addFormDataPart("archive", "notes.zip", file)
+                .build()
+        val request = Request.Builder().url("https://example.com/upload").post(multipart).build()
+        val response = responseFor(request, TrackingResponseBody("text/plain".toMediaType(), "ok", 2))
+
+        interceptor(store).intercept(FakeChain(request, response))
+
+        assertEquals(0, reads)
+        val body = store.getTransactions().single().requestBody!!
+        assertTrue(body, body.contains("\r\n\r\nnotes\r\n"))
+        assertTrue(body, body.contains("[Lustro did not store this part: content, 4 bytes]"))
+    }
+
+    @Test
     fun `a one-shot multipart part is not read`() {
         val store = store()
         var reads = 0

@@ -36,7 +36,7 @@ internal object MultipartCapture {
             if (partSize != null) out.append("Content-Length: ").append(partSize).append(CRLF)
             out.append(CRLF)
             val text =
-                if (isText(contentType) && !partBody.isOneShot() && !partBody.isDuplex()) {
+                if (isText(contentType, part.headers) && !partBody.isOneShot() && !partBody.isDuplex()) {
                     readText(partBody, contentType, maxBodySize - out.length)
                 } else {
                     null
@@ -56,8 +56,15 @@ internal object MultipartCapture {
         return CapturedBody(text = stored, truncated = truncated, byteSize = declaredSize)
     }
 
-    // A part with no type is a plain form field, which is text.
-    private fun isText(contentType: okhttp3.MediaType?): Boolean = contentType == null || contentType.isTextLike()
+    // A part with no type is text when it is a plain form field. A file with no
+    // type, as from File.asRequestBody(), is not read: it can be large, and its
+    // bytes are not text.
+    private fun isText(contentType: okhttp3.MediaType?, headers: okhttp3.Headers?): Boolean =
+        if (contentType == null) {
+            headers?.get("Content-Disposition")?.contains("filename", ignoreCase = true) != true
+        } else {
+            contentType.isTextLike()
+        }
 
     private class PartText(val content: String, val cut: Boolean)
 

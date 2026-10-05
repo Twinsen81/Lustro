@@ -288,8 +288,8 @@ see [DECISIONS.md](DECISIONS.md).
   now stored as multipart text: each part's headers, the value of each text
   part, and one line with the type and size of a file or any other part that
   is not text, whose bytes are not read. The default redactor masks a part
-  whose field name is sensitive and redacts any other part as a body of its
-  own type. The Network tab shows the parts as a table, **Copy as cURL**
+  whose field name is sensitive, redacts any other part as a body of its own
+  type, and masks a part's own sensitive headers. The Network tab shows the parts as a table, **Copy as cURL**
   builds a `-F` option for each part, and a body that Lustro did not keep at
   all now shows its size and type and says that it was not stored.
 - **The default redactor masked values that are not secret.** It looked for

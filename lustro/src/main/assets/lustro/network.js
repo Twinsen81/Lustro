@@ -1139,7 +1139,12 @@
         if (formParts) {
             formParts.forEach(function(part) {
                 var name = part.name == null ? '' : part.name;
-                if (part.value != null && part.filename == null) {
+                if (part.value != null && part.filename == null && part.contentType) {
+                    // A typed text part, such as JSON next to a file. curl takes a value in
+                    // double quotes as it is, and the type after it.
+                    parts.push('-F');
+                    parts.push(shellQuote(name + '="' + part.value.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '";type=' + part.contentType));
+                } else if (part.value != null && part.filename == null) {
                     // --form-string, because -F reads a value that starts with @ or < as a file.
                     parts.push('--form-string');
                     parts.push(shellQuote(name + '=' + part.value));
