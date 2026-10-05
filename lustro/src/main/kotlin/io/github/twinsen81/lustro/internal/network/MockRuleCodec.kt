@@ -58,6 +58,7 @@ internal object MockRuleCodec {
         if (rule.urlPattern.isBlank()) {
             return MockRuleParseResult.Invalid("urlPattern is required", "urlPattern")
         }
+        regexRejection(rule.urlPattern)?.let { return it }
         if (rule.statusCode !in MIN_STATUS..MAX_STATUS) {
             return MockRuleParseResult.Invalid(
                 "statusCode must be between $MIN_STATUS and $MAX_STATUS, was ${rule.statusCode}",
@@ -111,6 +112,25 @@ internal object MockRuleCodec {
             }
             append("]")
         }
+
+    // A regex that doesn't compile would never match, so the rule would let every
+    // request through to the server. An empty one would match every request.
+    private fun regexRejection(urlPattern: String): MockRuleParseResult.Invalid? {
+        if (!urlPattern.startsWith(MockRuleImpl.REGEX_PREFIX)) return null
+        val regex = urlPattern.removePrefix(MockRuleImpl.REGEX_PREFIX)
+        if (regex.isEmpty()) {
+            return MockRuleParseResult.Invalid("urlPattern has no regular expression after regex:", "urlPattern")
+        }
+        return try {
+            Regex(regex)
+            null
+        } catch (e: IllegalArgumentException) {
+            MockRuleParseResult.Invalid(
+                "urlPattern is not a valid regular expression: ${e.message?.lineSequence()?.first() ?: regex}",
+                "urlPattern",
+            )
+        }
+    }
 
     /**
      * Asks OkHttp itself whether it would take this header, so the answer can't

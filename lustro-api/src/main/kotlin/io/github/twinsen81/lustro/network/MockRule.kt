@@ -19,8 +19,10 @@ public interface MockRule {
     public val name: String
 
     /**
-     * The URL match pattern. Matched as a substring, or as a regular expression
-     * when prefixed with `regex:`.
+     * The URL match pattern, looked for anywhere in the request URL: as a
+     * substring, or as a regular expression when prefixed with `regex:`. A
+     * regular expression that must match the whole URL anchors itself with `^`
+     * and `$`.
      */
     public val urlPattern: String
 

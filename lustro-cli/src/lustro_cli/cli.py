@@ -1437,7 +1437,7 @@ def build_parser() -> argparse.ArgumentParser:
     m_list.set_defaults(func=cmd_mock_list)
 
     m_add = mock_sub.add_parser("add", parents=[common], help="POST rules (add/upsert)")
-    m_add.add_argument("--url-pattern", required=True, dest="url_pattern", help="substring, or regex: prefix")
+    m_add.add_argument("--url-pattern", required=True, dest="url_pattern", help="looked for anywhere in the URL: a substring, or a regex with the regex: prefix")
     m_add.add_argument("--id", default=None, help="stable id (makes the write idempotent/upsert)")
     m_add.add_argument("--name", default=None)
     m_add.add_argument("--method", default=None, help="HTTP method to match (omit = any)")

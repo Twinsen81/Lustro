@@ -234,11 +234,13 @@ below summarizes it. All routes are token-authenticated and use the shared error
 | Throttle | `POST throttle` | Body `{ delayMs }` (≥ 0); a global pre-request sleep applied to mocked and real requests alike. Returns `{ status: "ok", delayMs }`. |
 | Send request | `POST send` | **Synchronous** dispatch through the configured `NetworkSender`. See below. |
 
-**Mock rule semantics.** `urlPattern` is a substring match, or a regular expression when prefixed
-with `regex:`. `method` is `null` to match any method. `hitCount` is a runtime-only counter (not
+**Mock rule semantics.** `urlPattern` is looked for anywhere in the URL: a substring, or a regular
+expression when prefixed with `regex:` (found, not matched against the whole URL, so anchor it with
+`^` and `$` when it must match all of it). `method` is `null` to match any method. `hitCount` is a runtime-only counter (not
 persisted).
 
-**Rules are validated on the way in.** `statusCode` must be within 100–599, `responseHeaders` must
+**Rules are validated on the way in.** A `regex:` pattern must compile and must not be empty,
+`statusCode` must be within 100–599, `responseHeaders` must
 be header names and values OkHttp accepts, and a `Content-Type` among them must parse as a media
 type — the interceptor builds a real response from the rule inside the app's own call. A rule that
 fails any of these gets an enveloped `400` whose `field` names what to fix (`urlPattern`, `id`,

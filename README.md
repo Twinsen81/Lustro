@@ -344,7 +344,11 @@ HAR from `GET /api/v1/network/transactions/_/export` or `lustro net export --har
 
 The Network tab's **Mock Rules** panel short-circuits matching requests with a synthetic
 response: the interceptor answers from the rule and the request never leaves the device.
-`urlPattern` is a substring match, or a regular expression when prefixed with `regex:`.
+`urlPattern` is looked for anywhere in the request URL: as a substring, or as a regular expression
+when prefixed with `regex:`. So `regex:/api/v1/statuses$` matches
+`https://example.com/api/v1/statuses` and not `.../statuses/1/favourite`; anchor a pattern with `^`
+when it must match from the start of the URL. A `regex:` pattern that does not compile is rejected
+when you save the rule, because a rule that never matches lets the real request through.
 
 **Rules live in the app, not in the browser.** They are kept in memory unless you pass a
 `MockRuleStorage` to `NetworkDebugTab.create(...)`, so without one they are gone when the process

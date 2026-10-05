@@ -540,6 +540,13 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Changed
 
+- **A `regex:` mock pattern is found anywhere in the URL, like a substring
+  one.** It had to match the whole URL, which the docs didn't say, so a
+  pattern such as `regex:/api/v1/statuses$` never matched and the real
+  request went to the server. Anchor a pattern with `^` to match from the
+  start of the URL. A `regex:` pattern that is empty or does not compile is
+  now rejected with an enveloped `400` (`field: urlPattern`) instead of being
+  saved as a rule that never matches.
 - **Wire protocol 1.1: the transactions cursor advances only when the list
   changes.** It used to advance on every server-side mutation, so pausing,
   changing overwrite mode or the throttle, editing mock rules, and every

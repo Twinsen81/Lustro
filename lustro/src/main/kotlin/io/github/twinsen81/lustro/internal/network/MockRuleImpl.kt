@@ -5,8 +5,9 @@ import io.github.twinsen81.lustro.network.MockRule
 
 /**
  * Internal implementation of the read-only [MockRule] api interface. [matches]
- * does a substring match by default, or a regex when the pattern is prefixed with
- * `regex:`.
+ * looks for the pattern anywhere in the URL: as a substring by default, or as a
+ * regex when the pattern is prefixed with `regex:`. A regex that must match the
+ * whole URL anchors itself with `^` and `$`.
  */
 internal data class MockRuleImpl(
     override val id: String,
@@ -19,15 +20,16 @@ internal data class MockRuleImpl(
     override val responseBody: String = "",
     override val hitCount: Int = 0,
 ) : MockRule {
-    // Compile the regex once per rule rather than on every request. An invalid
-    // pattern caches a null so [matches] treats it as a no-match without retrying
-    // the failed compile. Only materialised for regex: patterns.
+    // Compile the regex once per rule rather than on every request. MockRuleCodec
+    // rejects a pattern that doesn't compile, but a rule built in code skips it, so
+    // an invalid pattern caches a null and [matches] treats it as a no-match
+    // without retrying the failed compile. Only materialised for regex: patterns.
     private val compiledRegex: Regex? by lazy(LazyThreadSafetyMode.PUBLICATION) {
-        if (!urlPattern.startsWith("regex:")) {
+        if (!urlPattern.startsWith(REGEX_PREFIX)) {
             null
         } else {
             try {
-                Regex(urlPattern.removePrefix("regex:"))
+                Regex(urlPattern.removePrefix(REGEX_PREFIX))
             } catch (_: Exception) {
                 null
             }
@@ -37,10 +39,14 @@ internal data class MockRuleImpl(
     fun matches(url: String, requestMethod: String): Boolean {
         if (!enabled) return false
         if (method != null && !method.equals(requestMethod, ignoreCase = true)) return false
-        return if (urlPattern.startsWith("regex:")) {
-            compiledRegex?.let { url.matches(it) } ?: false
+        return if (urlPattern.startsWith(REGEX_PREFIX)) {
+            compiledRegex?.containsMatchIn(url) ?: false
         } else {
             url.contains(urlPattern)
         }
+    }
+
+    companion object {
+        const val REGEX_PREFIX: String = "regex:"
     }
 }

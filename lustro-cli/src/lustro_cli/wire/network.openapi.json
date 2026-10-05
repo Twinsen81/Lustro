@@ -612,7 +612,7 @@
         "properties": {
           "id": { "type": "string" },
           "name": { "type": "string" },
-          "urlPattern": { "type": "string", "description": "Substring match, or a regular expression when prefixed with regex:." },
+          "urlPattern": { "type": "string", "description": "Looked for anywhere in the URL: a substring, or a regular expression when prefixed with regex: (anchor it with ^ and $ to match the whole URL)." },
           "method": { "type": ["string", "null"], "description": "null matches any method." },
           "statusCode": { "type": "integer" },
           "responseHeaders": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Headers applied to the mocked response (e.g. Content-Type)." },
@@ -627,7 +627,7 @@
         "properties": {
           "id": { "type": "string", "description": "Optional; generated when omitted. Supplying a stable id makes the write idempotent." },
           "name": { "type": "string" },
-          "urlPattern": { "type": "string" },
+          "urlPattern": { "type": "string", "description": "Looked for anywhere in the URL: a substring, or a regular expression when prefixed with regex: (anchor it with ^ and $ to match the whole URL). Rejected with 400 when blank, or when a regex: pattern is empty or does not compile." },
           "method": { "type": ["string", "null"] },
           "statusCode": { "type": "integer", "default": 200, "minimum": 100, "maximum": 599, "description": "Rejected with 400 outside 100-599." },
           "responseHeaders": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Headers applied to the mocked response (e.g. Content-Type). Names and values must be ones OkHttp accepts and a Content-Type must parse as a media type; otherwise 400. Replaced wholesale, so send them again when editing a rule by id." },

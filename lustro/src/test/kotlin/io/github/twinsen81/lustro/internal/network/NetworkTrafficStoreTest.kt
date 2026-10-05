@@ -574,6 +574,21 @@ class NetworkTrafficStoreTest {
     }
 
     @Test
+    fun `a regex pattern matches anywhere in the URL, like a substring one`() {
+        val store = store()
+        store.replaceMockRules(
+            listOf(MockRuleImpl(id = "post", name = "p", urlPattern = "regex:/api/v1/statuses$", method = "POST")),
+        )
+        assertEquals("post", store.findMockRule("https://mastodon.social/api/v1/statuses", "POST")?.id)
+        assertNull(store.findMockRule("https://mastodon.social/api/v1/statuses/1/favourite", "POST"))
+
+        store.replaceMockRules(listOf(MockRuleImpl(id = "anchored", name = "a", urlPattern = "regex:^https://a\\.test/x$")))
+        assertEquals("anchored", store.findMockRule("https://a.test/x", "GET")?.id)
+        assertNull(store.findMockRule("https://a.test/x/y", "GET"))
+        assertNull(store.findMockRule("https://b.test/?next=https://a.test/x", "GET"))
+    }
+
+    @Test
     fun `an invalid regex pattern is a stable no-match`() {
         // The pattern is compiled once and the failure cached; matching must never
         // throw and must consistently miss across repeated lookups.
