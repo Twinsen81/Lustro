@@ -60,8 +60,26 @@ class PlatformCapturedBodyTest {
     }
 
     @Test
-    fun `other bodies are decoded as text, typed or not`() {
-        for (type in listOf("application/json", "image/svg+xml", "application/octet-stream", null)) {
+    fun `a body whose type is not text is not kept, only its size`() {
+        for (type in listOf("audio/mpeg", "video/mp4", "application/octet-stream")) {
+            val body =
+                platformCapturedBody(
+                    "ID3".toByteArray(),
+                    maxBodySize = 64,
+                    contentType = MediaType.parse(type),
+                    contentEncoding = emptyList(),
+                    declaredSize = 30_000_000,
+                )
+
+            assertNull(type, body.text)
+            assertNull(type, body.bytes)
+            assertEquals(type, 30_000_000L, body.byteSize)
+        }
+    }
+
+    @Test
+    fun `text bodies and bodies with no type are decoded as text`() {
+        for (type in listOf("application/json", "image/svg+xml", "text/plain", null)) {
             val body =
                 platformCapturedBody(
                     "{}".toByteArray(),

@@ -260,10 +260,12 @@ internal class HttpUrlConnectionCapture(
             if (filterAnswer == false) return real
             recordResponseHeaders(statusCode, headers)
             reportBodyInFlight(statusCode, headers)
+            val unkept = flatten(headers).get("Content-Type")?.let { MediaType.parse(it) }.isUnkeptType()
             return BoundedTeeInputStream(
                 real,
                 responseBodyBuffer,
-                maxBodySize,
+                // A body that won't be kept isn't copied either, only counted.
+                if (unkept) 0 else maxBodySize,
                 onEnd = { bytesRead, reachedEnd -> finalizeBody(statusCode, headers, bytesRead, reachedEnd) },
                 onFailure = { bytesRead, error -> failBody(bytesRead, error) },
             )
@@ -292,15 +294,14 @@ internal class HttpUrlConnectionCapture(
             try {
                 val flat = flatten(headers)
                 val contentType = flat.get("Content-Type")?.let { MediaType.parse(it) }
+                // Read to the end, the count is the size even without a Content-Length.
+                val size = flat.declaredLength() ?: bytesRead.takeIf { reachedEnd }
                 val body =
-                    platformCapturedBody(
-                        responseBodyBuffer.toByteArray(),
-                        maxBodySize,
-                        contentType,
-                        flat.getAll(CONTENT_ENCODING),
-                        // Read to the end, the count is the size even without a Content-Length.
-                        flat.declaredLength() ?: bytesRead.takeIf { reachedEnd },
-                    )
+                    if (contentType.isUnkeptType()) {
+                        CapturedBody(text = null, truncated = false, byteSize = size)
+                    } else {
+                        platformCapturedBody(responseBodyBuffer.toByteArray(), maxBodySize, contentType, flat.getAll(CONTENT_ENCODING), size)
+                    }
                 sink.completeRequest(id, capturedResponse(statusCode, flat, body))
             } catch (t: Throwable) {
                 Log.w(TAG, "finalizeBody failed: ${t.javaClass.simpleName}")
@@ -784,7 +785,9 @@ internal class HttpUrlConnectionCapture(
 
 /**
  * Builds a [CapturedBody] from tee-captured [bytes] of a body of [contentType]:
- * an image body as bytes, anything else decoded as UTF-8 text. The tee caps
+ * an image body as bytes, a body of another type that isn't text, such as audio,
+ * not at all but for its size, as the OkHttp adapter does, and a text body or
+ * one with no type decoded as UTF-8 text. The tee caps
  * writes at [maxBodySize], so a buffer at the cap signals truncation (a buffer
  * length equal to the cap indicates the full body was not captured). `byteSize`
  * is the [declaredSize] when the body has one, else the captured size, or null
@@ -803,6 +806,7 @@ internal fun platformCapturedBody(
 ): CapturedBody {
     val filled = bytes.size >= maxBodySize
     val byteSize = declaredSize ?: bytes.size.toLong().takeUnless { filled }
+    if (contentType.isUnkeptType()) return CapturedBody(text = null, truncated = false, byteSize = byteSize)
     val decoded =
         decodeBody(bytes, rawTruncated = filled, contentEncoding, maxBodySize.toLong())
             ?: return CapturedBody(text = null, truncated = false, byteSize = byteSize)

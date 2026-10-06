@@ -19,3 +19,8 @@ internal fun isRetainedBinary(type: String, subtype: String): Boolean =
     type == "image" && !isTextLike(type, subtype)
 
 internal fun MediaType?.isRetainedBinary(): Boolean = this != null && isRetainedBinary(type, subtype)
+
+// A body whose declared type is neither text nor kept as bytes, such as audio or
+// video, isn't captured. A body with no type is, as text: platform HttpURLConnection
+// callers often send JSON without a Content-Type.
+internal fun MediaType?.isUnkeptType(): Boolean = this != null && !isTextLike(type, subtype) && !isRetainedBinary(type, subtype)

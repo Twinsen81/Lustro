@@ -264,6 +264,13 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Fixed
 
+- **Platform capture stored audio as text.** Platform `HttpURLConnection`
+  capture decoded every body it didn't keep as an image as UTF-8 text, so
+  each request of a media player kept up to 256 KB of an MP3 as garbled text.
+  A body whose declared type is neither text nor an image, such as audio,
+  video, or `application/octet-stream`, is now neither copied nor kept, as
+  OkHttp capture already did, and only its size is reported. A body with no
+  `Content-Type` is still decoded as text.
 - **A download looked finished when its headers arrived.** The OkHttp
   interceptor reported a response complete as soon as the capture had read
   what it keeps of the body, so a 65 MB episode download showed as a

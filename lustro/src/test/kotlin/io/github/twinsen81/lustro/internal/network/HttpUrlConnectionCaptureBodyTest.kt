@@ -75,6 +75,19 @@ class HttpUrlConnectionCaptureBodyTest {
         assertNull(sink.failures.firstOrNull())
     }
 
+    @Test
+    fun `an audio body is counted as the app reads it, but not copied or kept`() {
+        val sink = RecordingSink()
+        val connection = open(sink, FakeConnection.Spec(ByteArray(5_000) { 'x'.code.toByte() }, "audio/mpeg"))
+
+        connection.inputStream.readBytes()
+
+        val body = sink.completions.last().body!!
+        assertNull(body.text)
+        assertNull(body.bytes)
+        assertEquals(5_000L, body.byteSize)
+    }
+
     private fun open(sink: NetworkCaptureSink, spec: FakeConnection.Spec): HttpURLConnection {
         val platform =
             object : URLStreamHandler() {
