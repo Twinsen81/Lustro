@@ -12,6 +12,7 @@ import io.github.twinsen81.lustro.network.TransactionId
 import java.io.ByteArrayOutputStream
 import java.io.FilterInputStream
 import java.io.FilterOutputStream
+import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.net.HttpURLConnection
@@ -247,8 +248,8 @@ internal class HttpUrlConnectionCapture(
             try {
                 // Complete as soon as we have status + headers: some callers (e.g. on a 202)
                 // check the response code but never read the body stream, so finalizeBody
-                // would never fire and the transaction would be stuck "in flight". If a body
-                // is read, finalizeBody enriches this (still complete).
+                // would never fire and the transaction would be stuck "in flight". If the app
+                // opens the body, it is in flight again until finalizeBody or failBody.
                 sink.completeRequest(id, capturedResponse(statusCode, flatten(headers), body = null))
             } catch (t: Throwable) {
                 Log.w(TAG, "recordResponseHeaders failed: ${t.javaClass.simpleName}")
@@ -258,40 +259,79 @@ internal class HttpUrlConnectionCapture(
         fun wrapInput(real: InputStream, statusCode: Int, headers: Map<String, List<String>>): InputStream {
             if (filterAnswer == false) return real
             recordResponseHeaders(statusCode, headers)
-            return BoundedTeeInputStream(real, responseBodyBuffer, maxBodySize) {
-                finalizeBody(statusCode, headers)
+            reportBodyInFlight(statusCode, headers)
+            val unkept = flatten(headers).get("Content-Type")?.let { MediaType.parse(it) }.isUnkeptType()
+            return BoundedTeeInputStream(
+                real,
+                responseBodyBuffer,
+                // A body that won't be kept isn't copied either, only counted.
+                if (unkept) 0 else maxBodySize,
+                onEnd = { bytesRead, reachedEnd -> finalizeBody(statusCode, headers, bytesRead, reachedEnd) },
+                onFailure = { bytesRead, error -> failBody(bytesRead, error) },
+            )
+        }
+
+        // The app opened the body, which can take far longer to arrive than the
+        // headers did, so the response is in flight until the body ends.
+        private fun reportBodyInFlight(statusCode: Int, headers: Map<String, List<String>>) {
+            if (bodyFinalized.get()) return
+            val id = transactionId ?: return
+            try {
+                sink.completeRequest(id, capturedResponse(statusCode, flatten(headers), body = null, complete = false))
+            } catch (t: Throwable) {
+                Log.w(TAG, "reportBodyInFlight failed: ${t.javaClass.simpleName}")
             }
         }
 
-        private fun finalizeBody(statusCode: Int, headers: Map<String, List<String>>) {
+        private fun finalizeBody(
+            statusCode: Int,
+            headers: Map<String, List<String>>,
+            bytesRead: Long,
+            reachedEnd: Boolean,
+        ) {
             if (!bodyFinalized.compareAndSet(false, true)) return
             val id = transactionId ?: return
             try {
                 val flat = flatten(headers)
                 val contentType = flat.get("Content-Type")?.let { MediaType.parse(it) }
+                // Read to the end, the count is the size even without a Content-Length.
+                val size = flat.declaredLength() ?: bytesRead.takeIf { reachedEnd }
                 val body =
-                    platformCapturedBody(
-                        responseBodyBuffer.toByteArray(),
-                        maxBodySize,
-                        contentType,
-                        flat.getAll(CONTENT_ENCODING),
-                        flat.declaredLength(),
-                    )
+                    if (contentType.isUnkeptType()) {
+                        CapturedBody(text = null, truncated = false, byteSize = size)
+                    } else {
+                        platformCapturedBody(responseBodyBuffer.toByteArray(), maxBodySize, contentType, flat.getAll(CONTENT_ENCODING), size)
+                    }
                 sink.completeRequest(id, capturedResponse(statusCode, flat, body))
             } catch (t: Throwable) {
                 Log.w(TAG, "finalizeBody failed: ${t.javaClass.simpleName}")
             }
         }
 
-        // No protocol: HttpURLConnection has no public API that reports it.
+        private fun failBody(bytesRead: Long, error: IOException) {
+            if (!bodyFinalized.compareAndSet(false, true)) return
+            val id = transactionId ?: return
+            try {
+                val reason = error.message ?: error.javaClass.simpleName
+                sink.failRequest(id, System.currentTimeMillis() - startTime, "Body failed after $bytesRead bytes: $reason")
+            } catch (t: Throwable) {
+                Log.w(TAG, "failBody failed: ${t.javaClass.simpleName}")
+            }
+        }
+
+        // No protocol: HttpURLConnection has no public API that reports it. Nor the
+        // redirects it followed, but its URL is where they ended.
         private fun capturedResponse(
             statusCode: Int,
             headers: Headers,
             body: CapturedBody?,
+            complete: Boolean = true,
         ): CapturedResponse =
             CapturedResponse.Builder(statusCode, System.currentTimeMillis() - startTime)
                 .headers(headers)
                 .body(body)
+                .complete(complete)
+                .finalUrl(redirectedUrl(connection, url)?.toExternalForm())
                 .build()
 
         fun recordError(message: String?) {
@@ -361,6 +401,9 @@ internal class HttpUrlConnectionCapture(
         override fun disconnect() = real.disconnect()
 
         override fun usingProxy(): Boolean = real.usingProxy()
+
+        // Where the platform followed redirects to, as without capture.
+        override fun getURL(): URL = redirectedUrl(real, url) ?: url
 
         override fun getOutputStream(): OutputStream = capture.wrapOutput(real.outputStream)
 
@@ -511,6 +554,9 @@ internal class HttpUrlConnectionCapture(
         override fun disconnect() = real.disconnect()
 
         override fun usingProxy(): Boolean = real.usingProxy()
+
+        // Where the platform followed redirects to, as without capture.
+        override fun getURL(): URL = redirectedUrl(real, url) ?: url
 
         override fun getOutputStream(): OutputStream = capture.wrapOutput(real.outputStream)
 
@@ -683,29 +729,37 @@ internal class HttpUrlConnectionCapture(
         }
     }
 
+    // Copies up to max bytes of what the app reads into sink, and counts all of it.
+    // Reports once: onEnd at EOF or close, or onFailure when a read throws.
     private class BoundedTeeInputStream(
         delegate: InputStream,
         private val sink: ByteArrayOutputStream,
         private val max: Int,
-        private val onComplete: () -> Unit,
+        private val onEnd: (bytesRead: Long, reachedEnd: Boolean) -> Unit,
+        private val onFailure: (bytesRead: Long, error: IOException) -> Unit,
     ) : FilterInputStream(delegate) {
         private val done = AtomicBoolean(false)
 
+        @Volatile
+        private var bytesRead = 0L
+
         override fun read(): Int {
-            val b = super.read()
+            val b = tracked { super.read() }
             if (b == -1) {
-                complete()
-            } else if (sink.size() < max) {
-                sink.write(b)
+                end(reachedEnd = true)
+            } else {
+                bytesRead++
+                if (sink.size() < max) sink.write(b)
             }
             return b
         }
 
         override fun read(b: ByteArray, off: Int, len: Int): Int {
-            val n = super.read(b, off, len)
+            val n = tracked { super.read(b, off, len) }
             if (n == -1) {
-                complete()
+                end(reachedEnd = true)
             } else {
+                bytesRead += n
                 val remaining = max - sink.size()
                 if (remaining > 0) sink.write(b, off, minOf(n, remaining))
             }
@@ -713,16 +767,28 @@ internal class HttpUrlConnectionCapture(
         }
 
         override fun close() {
-            complete()
+            end(reachedEnd = false)
             super.close()
         }
 
-        private fun complete() {
-            if (done.compareAndSet(false, true)) onComplete()
+        private inline fun tracked(read: () -> Int): Int =
+            try {
+                read()
+            } catch (e: IOException) {
+                if (done.compareAndSet(false, true)) onFailure(bytesRead, e)
+                throw e
+            }
+
+        private fun end(reachedEnd: Boolean) {
+            if (done.compareAndSet(false, true)) onEnd(bytesRead, reachedEnd)
         }
     }
 
     private companion object {
+        // The URL the real connection ended up at, or null while it is still requested.
+        fun redirectedUrl(real: HttpURLConnection, requested: URL): URL? =
+            real.url?.takeIf { it.toExternalForm() != requested.toExternalForm() }
+
         private const val TAG = "LustroHttpUrlCapture"
         private const val HTTPS_PORT = 443
         private const val HTTP_PORT = 80
@@ -731,7 +797,9 @@ internal class HttpUrlConnectionCapture(
 
 /**
  * Builds a [CapturedBody] from tee-captured [bytes] of a body of [contentType]:
- * an image body as bytes, anything else decoded as UTF-8 text. The tee caps
+ * an image body as bytes, a body of another type that isn't text, such as audio,
+ * not at all but for its size, as the OkHttp adapter does, and a text body or
+ * one with no type decoded as UTF-8 text. The tee caps
  * writes at [maxBodySize], so a buffer at the cap signals truncation (a buffer
  * length equal to the cap indicates the full body was not captured). `byteSize`
  * is the [declaredSize] when the body has one, else the captured size, or null
@@ -750,6 +818,7 @@ internal fun platformCapturedBody(
 ): CapturedBody {
     val filled = bytes.size >= maxBodySize
     val byteSize = declaredSize ?: bytes.size.toLong().takeUnless { filled }
+    if (contentType.isUnkeptType()) return CapturedBody(text = null, truncated = false, byteSize = byteSize)
     val decoded =
         decodeBody(bytes, rawTruncated = filled, contentEncoding, maxBodySize.toLong())
             ?: return CapturedBody(text = null, truncated = false, byteSize = byteSize)

@@ -93,6 +93,8 @@ class HarExportGoldenTest {
                 responseContentType = "application/json; charset=utf-8",
                 responseBodyBytes = 524288,
                 responseComplete = true,
+                finalUrl = "https://eu.api.example.com/v1/catalog?page=2&tag=new%20in",
+                priorResponses = listOf(PriorResponse("https://api.example.com/v1/catalog?page=2&tag=new%20in", 302)),
             ),
             NetworkTransaction(
                 id = "tx_d03a9b44",

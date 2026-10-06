@@ -14,6 +14,22 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Added
 
+- **Redirects in the Network tab (wire protocol 1.5).** OkHttp follows a
+  redirect inside the call, so the interceptor listed a redirected request by
+  the URL the app asked for alone: a feed fetched over `http://` and moved
+  to `https://` showed the `http://` URL with protocol `h2` and no sign of the
+  `301`, and a podcast episode's four tracking hops showed as the first one.
+  Every transaction now carries `finalUrl`, the URL the response came from
+  when it isn't `url`, and the detail carries `priorResponses`, each redirect
+  and authentication challenge that OkHttp answered with another request,
+  with its URL and status. Both are redacted like `url`, and search finds a
+  transaction by its `finalUrl`. `CapturedResponse` has the matching
+  `finalUrl` and `priorResponses`, set through its builder, for a custom
+  adapter. Platform `HttpURLConnection` capture reports `finalUrl`, since the
+  platform doesn't show the hops. The Network tab marks a redirected row and
+  shows the hops under the URL, the CLI row ends with `[-> <finalUrl>]`, the
+  copy and Markdown views list the hops, and the HAR export puts both in
+  `_lustro`.
 - **Debug console JavaScript tests**: a dependency-free suite run by Node's own
   test runner (`node --test lustro/src/test/js/*.test.js`) with its own CI job,
   kept out of Gradle `check` so building the library still needs no Node. It
@@ -264,6 +280,39 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Fixed
 
+- **Platform capture hid a redirect from the app.** The connection that
+  platform `HttpURLConnection` capture hands the app returned the URL the app
+  requested from `getURL()`, even after the platform followed a redirect, so
+  an app that reads the URL to learn where a request ended up got the wrong
+  one. It now returns the platform's own URL, as without Lustro.
+- **Platform capture stored audio as text.** Platform `HttpURLConnection`
+  capture decoded every body it didn't keep as an image as UTF-8 text, so
+  each request of a media player kept up to 256 KB of an MP3 as garbled text.
+  A body whose declared type is neither text nor an image, such as audio,
+  video, or `application/octet-stream`, is now neither copied nor kept, as
+  OkHttp capture already did, and only its size is reported. A body with no
+  `Content-Type` is still decoded as text.
+- **A download looked finished when its headers arrived.** The OkHttp
+  interceptor reported a response complete as soon as the capture had read
+  what it keeps of the body, so a 65 MB episode download showed as a
+  `200` in `153ms` while the app read its body for seconds more, and a
+  download that failed or was cancelled halfway still looked successful. A
+  body that capture doesn't read whole (a download, a body past the cap, a
+  type that isn't kept) now reaches the app through a wrapper that changes
+  nothing it reads. The response is in flight until the app reads to the end
+  or closes the body, `durationMs` then covers the whole body, and
+  `responseBodyBytes` is counted when there is no `Content-Length`. A read that
+  throws sets `error` and keeps the status. Platform `HttpURLConnection`
+  capture does the same once the app opens the body: a caller that only reads
+  the status still sees the response complete.
+- **One media download emptied the Network tab.** The capture budget counted
+  each body by the larger of its size on the wire and what Lustro keeps, so an
+  audio or video response that Lustro keeps none of counted its whole
+  `Content-Length`. A single 65 MB episode download went over the 50 MB
+  budget and evicted every other transaction, and the next request evicted the
+  download. The budget bounds memory, so a body now counts only what is kept
+  of it: a truncated body its kept prefix, and a body that isn't kept nothing.
+  `responseBodyBytes` still reports the full size.
 - **The CLI found no token on a device that drops Info logs.** A device with
   `log.tag` set to `E` drops the `LustroToken` ready line, which was the only
   source of the endpoint, and an old line left in the log from an earlier

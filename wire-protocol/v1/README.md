@@ -11,7 +11,7 @@ the protocol a stable public contract independent of the library's Kotlin API.
   A future incompatible revision becomes `/api/v2/`, and the old major stays
   alive for at least one major release.
 - The **minor** protocol version is reported at runtime in
-  `GET /api/v1/_meta` as `_meta.protocolVersion` (currently `1.4`).
+  `GET /api/v1/_meta` as `_meta.protocolVersion` (currently `1.5`).
 
 ## Contents
 
@@ -91,6 +91,19 @@ client got them.
   multipart request body, which was `null`, is stored as multipart text: each
   part's headers and the value of a text part, and a line with the type and
   size of any other part.
+
+- **1.5** - Every transaction carries `finalUrl`: the URL the response came
+  from when it isn't `url`, as after a redirect the client followed, or
+  `null`. The detail carries `priorResponses`, the redirects and
+  authentication challenges OkHttp answered with another request before the
+  final response, oldest first, each with its `url` and `statusCode`.
+  Platform `HttpURLConnection` capture reports `finalUrl` and no prior
+  responses, which the platform doesn't show. The HAR export puts both in
+  `_lustro`. A response whose body the app reads after capture, such as a
+  download, is in flight (`responseComplete: false` with a `statusCode`)
+  until the app reads to the end of the body or closes it, and `durationMs`
+  then covers the whole body. A body that fails while the app reads it sets
+  `error` and keeps `statusCode`.
 
 ## Status
 

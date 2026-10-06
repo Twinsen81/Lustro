@@ -45,9 +45,25 @@ public class CapturedResponse private constructor(builder: Builder) {
     public val protocol: String? = builder.protocol
 
     /**
+     * The URL the response came from, when it isn't the URL the request was
+     * begun with: after the client followed a redirect, or after something
+     * that runs after the adapter rewrote the URL. `null` otherwise, and when
+     * the adapter can't tell.
+     */
+    public val finalUrl: String? = builder.finalUrl
+
+    /**
+     * The responses the client answered with another request before this one,
+     * oldest first: the redirects it followed and the authentication challenges
+     * it answered. Empty when there were none, or when the adapter can't see
+     * them, as platform `HttpURLConnection` capture can't.
+     */
+    public val priorResponses: List<CapturedPriorResponse> = builder.priorResponses
+
+    /**
      * Builds a [CapturedResponse] with [statusCode] and [durationMs]. Unless
-     * set, it has no headers, no body, and no protocol, and is complete and
-     * not mocked.
+     * set, it has no headers, no body, no protocol, no final URL, and no prior
+     * responses, and is complete and not mocked.
      */
     public class Builder(
         internal val statusCode: Int,
@@ -58,6 +74,8 @@ public class CapturedResponse private constructor(builder: Builder) {
         internal var isMocked: Boolean = false
         internal var isComplete: Boolean = true
         internal var protocol: String? = null
+        internal var finalUrl: String? = null
+        internal var priorResponses: List<CapturedPriorResponse> = emptyList()
 
         /** Sets [CapturedResponse.headers]. */
         public fun headers(value: Headers): Builder = apply { headers = value }
@@ -73,6 +91,12 @@ public class CapturedResponse private constructor(builder: Builder) {
 
         /** Sets [CapturedResponse.protocol]. */
         public fun protocol(value: String?): Builder = apply { protocol = value }
+
+        /** Sets [CapturedResponse.finalUrl]. */
+        public fun finalUrl(value: String?): Builder = apply { finalUrl = value }
+
+        /** Sets [CapturedResponse.priorResponses]. The list is copied. */
+        public fun priorResponses(value: List<CapturedPriorResponse>): Builder = apply { priorResponses = value.toList() }
 
         /** Returns a [CapturedResponse] with the values set so far. */
         public fun build(): CapturedResponse = CapturedResponse(this)

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Lustro Network debug tab",
-    "version": "1.4",
+    "version": "1.5",
     "description": "Capture, inspect, mock, throttle, and replay HTTP traffic, and inspect the messages of WebSocket connections. All routes are token-authenticated (Bearer header or HttpOnly cookie) and live under /api/v1/network. Errors use the shared error envelope."
   },
   "servers": [
@@ -359,12 +359,13 @@
           "id": { "type": "string" },
           "timestamp": { "type": "string", "description": "When the request started, as HH:mm:ss.SSS in the device's time zone. For display; sort and correlate by startedAt." },
           "startedAt": { "type": "integer", "description": "When the request started, in milliseconds since the Unix epoch." },
-          "completedAt": { "type": ["integer", "null"], "description": "When the capture recorded the response as complete, or the request as failed, in milliseconds since the Unix epoch; null while in flight, including a streaming response. It comes after the capture has read the response body, up to the capture cap, and platform HttpURLConnection capture moves it to the end of the body once the app reads it, so it can differ from startedAt plus durationMs." },
+          "completedAt": { "type": ["integer", "null"], "description": "When the capture recorded the response as complete, or the request as failed, in milliseconds since the Unix epoch; null while in flight. A response stays in flight while the app reads a body that capture did not read whole, such as a download, a body past the capture cap, or a stream, until the app reads to its end or closes it. It can differ from startedAt plus durationMs by the time the capture took to record it." },
           "method": { "type": "string" },
-          "url": { "type": "string", "description": "Redacted at capture time." },
+          "url": { "type": "string", "description": "The URL the app requested. Redacted at capture time." },
+          "finalUrl": { "type": ["string", "null"], "description": "The URL the response came from, when it isn't url: after the client followed a redirect, or after an OkHttp interceptor added after Lustro's rewrote the URL. null otherwise, and while in flight. Redacted at capture time. Since protocol 1.5." },
           "protocol": { "type": ["string", "null"], "description": "The protocol the response came over, as the HTTP client names it, e.g. http/1.1, h2, or h3. null when unknown: before a response, for a mocked response, and for platform HttpURLConnection capture." },
           "statusCode": { "type": ["integer", "null"] },
-          "durationMs": { "type": ["integer", "null"], "description": "How long the request took from when it was sent, without the time the global throttle held it before that (see throttledMs). null while in flight." },
+          "durationMs": { "type": ["integer", "null"], "description": "How long the request took from when it was sent, without the time the global throttle held it before that (see throttledMs). For a body the app reads after capture, such as a download, it runs until the app read to the end of the body or closed it, and while the body arrives it is the time to the headers. null before a response." },
           "throttledMs": { "type": ["integer", "null"], "description": "How long the global throttle held the request before it was sent, in milliseconds, or null when it wasn't throttled. The request is listed, with startedAt, from when the app made the call. Since protocol 1.4." },
           "categories": { "type": "array", "items": { "type": "string" }, "description": "Labels from the configured NetworkClassifier (may be empty)." },
           "isMocked": { "type": "boolean" },
@@ -372,7 +373,7 @@
           "responseContentType": { "type": ["string", "null"], "description": "The response's Content-Type as captured, e.g. application/json; charset=utf-8. null before a response, and when the header is missing or isn't a media type." },
           "requestBodyBytes": { "type": ["integer", "null"], "description": "Size of the request body on the wire, before a gzip or deflate Content-Encoding is inflated; null when not known." },
           "responseBodyBytes": { "type": ["integer", "null"], "description": "Size of the response body on the wire, before a gzip or deflate Content-Encoding is inflated; null when not known." },
-          "responseComplete": { "type": "boolean" },
+          "responseComplete": { "type": "boolean", "description": "false while the request is in flight, which includes a response whose body the app is still reading. A body that fails while the app reads it sets error and keeps statusCode." },
           "webSocketId": { "type": ["string", "null"], "description": "Set on the handshake of a WebSocket that is listed under websockets: the id of that connection. null for every other transaction, and once the connection is cleared or evicted." },
           "error": { "type": ["string", "null"] },
           "requestHeaders": { "type": "object", "additionalProperties": { "type": "string" } },
@@ -382,8 +383,18 @@
           "responseHeaders": { "type": ["object", "null"], "additionalProperties": { "type": "string" } },
           "responseBody": { "type": ["string", "null"], "description": "The body as redacted text. A gzip or deflate body is stored inflated; one in another Content-Encoding, such as br, is null." },
           "responseBodyTruncated": { "type": "boolean" },
-          "responseBodyBinary": { "type": "boolean", "description": "Detail only. true when the response body was kept as bytes, as it arrived, because the Redactor can't read it: an image. responseBody is then null; fetch the bytes from GET transactions/{id}/body/response." }
+          "responseBodyBinary": { "type": "boolean", "description": "Detail only. true when the response body was kept as bytes, as it arrived, because the Redactor can't read it: an image. responseBody is then null; fetch the bytes from GET transactions/{id}/body/response." },
+          "priorResponses": { "type": "array", "items": { "$ref": "#/components/schemas/PriorResponse" }, "description": "Detail only. The responses the client answered with another request before the final one, oldest first: the redirects OkHttp followed and the authentication challenges it answered. The first one's url is url, and the response came from finalUrl. Empty when there were none, and for platform HttpURLConnection capture, which reports only finalUrl. Since protocol 1.5." }
         }
+      },
+      "PriorResponse": {
+        "type": "object",
+        "required": ["url", "statusCode"],
+        "properties": {
+          "url": { "type": "string", "description": "The URL of the request this response answered. Redacted at capture time." },
+          "statusCode": { "type": "integer", "description": "Such as 301 for a redirect, or 401 for an authentication challenge." }
+        },
+        "additionalProperties": false
       },
       "WebSocketCursorEnvelope": {
         "type": "object",
@@ -570,7 +581,7 @@
           "_lustro": {
             "type": "object",
             "description": "What HAR has no field for. HAR reserves names that start with an underscore for a tool's own fields.",
-            "required": ["id", "isMocked", "categories", "requestBodyTruncated", "responseBodyTruncated", "responseComplete", "error"],
+            "required": ["id", "isMocked", "categories", "requestBodyTruncated", "responseBodyTruncated", "responseComplete", "finalUrl", "priorResponses", "error"],
             "properties": {
               "id": { "type": "string", "description": "The transaction id." },
               "isMocked": { "type": "boolean" },
@@ -578,6 +589,8 @@
               "requestBodyTruncated": { "type": "boolean", "description": "true when postData has only the first part of the body." },
               "responseBodyTruncated": { "type": "boolean", "description": "true when content has only the first part of the body." },
               "responseComplete": { "type": "boolean", "description": "false while the request is in flight, including a streaming response." },
+              "finalUrl": { "type": ["string", "null"], "description": "As the transaction's finalUrl. response.redirectURL is the Location of a redirect the entry itself is, and a redirect the client followed has no entry of its own. Since protocol 1.5." },
+              "priorResponses": { "type": "array", "items": { "$ref": "#/components/schemas/PriorResponse" }, "description": "As the transaction's priorResponses. Since protocol 1.5." },
               "error": { "type": ["string", "null"] },
               "webSocket": {
                 "type": "object",

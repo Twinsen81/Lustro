@@ -396,6 +396,9 @@
             var sel = tx.id === selectedTxId ? ' dc-row--selected' : '';
             var mockedBadge = tx.isMocked ? ' <span class="dc-badge" style="--c: var(--ai)">Mocked</span>' : '';
             var streamingBadge = streaming ? ' <span class="dc-badge">Streaming</span>' : '';
+            var redirectBadge = tx.finalUrl
+                ? ' <span class="dc-badge" title="' + debugEscapeHtml('The response came from ' + tx.finalUrl) + '">Redirected</span>'
+                : '';
             var socketBadge = tx.webSocketId
                 ? ' <span class="dc-badge net-ws-link" style="--c: var(--accent-2)" data-action="openWebSocket" data-ws-id="' + debugEscapeHtml(tx.webSocketId)
                     + '" title="The handshake of a WebSocket. Click to see its messages.">WS</span>'
@@ -409,7 +412,7 @@
                 + check
                 + '<td class="dc-cell net-cell-method ' + methodClass(tx) + '">' + debugEscapeHtml(tx.method || '') + '</td>'
                 + '<td class="dc-cell net-cell-url" title="' + debugEscapeHtml(pathOnly) + '">' + debugEscapeHtml(shortUrl) + '</td>'
-                + '<td class="dc-cell net-cell-status ' + sc + '">' + statusText + mockedBadge + streamingBadge + socketBadge + '</td>'
+                + '<td class="dc-cell net-cell-status ' + sc + '">' + statusText + mockedBadge + redirectBadge + streamingBadge + socketBadge + '</td>'
                 + '<td class="dc-cell net-cell-time">' + dur + '</td>'
                 + '<td class="dc-cell net-cell-cat">' + ((tx.categories || []).map(function(c) {
                     return '<span class="dc-tag" data-cat="' + debugEscapeHtml(c) + '">' + debugEscapeHtml(c) + '</span>';
@@ -671,6 +674,7 @@
             + (tx.throttledMs ? '  |  held ' + tx.throttledMs + 'ms by the throttle' : '')
             + '  |  ' + (tx.timestamp || ''));
         if (tx.categories && tx.categories.length) lines.push('Categories: ' + tx.categories.join(', '));
+        redirectSteps(tx).forEach(function(step) { lines.push(step.label + ' ' + step.url); });
 
         lines.push('');
         lines.push('══════════════════ REQUEST ══════════════════');
@@ -739,6 +743,7 @@
         if (tx.isMocked) html += '<span class="dc-badge" style="--c: var(--ai)">Mocked</span>';
         html += '</div>';
         if (tx.error) html += '<div class="net-error-line">' + debugEscapeHtml(tx.error) + '</div>';
+        html += redirectsHtml(tx);
         html += '</div>';
 
         html += '<div class="dc-seg net-dir-tabs">';
@@ -776,6 +781,32 @@
         el.innerHTML = html;
         refold(folded);
         loadHexDumps();
+    }
+
+    // The way from the requested URL to the one the response came from: each
+    // response the client answered with another request, then the final URL.
+    // Platform capture knows only the final URL.
+    function redirectSteps(tx) {
+        if (!tx.finalUrl && !(tx.priorResponses && tx.priorResponses.length)) return [];
+        var steps = (tx.priorResponses || []).map(function(prior) {
+            return { label: String(prior.statusCode), url: prior.url, statusCode: prior.statusCode };
+        });
+        if (!steps.length) steps.push({ label: 'from', url: tx.url });
+        steps.push({ label: '→', url: tx.finalUrl || tx.url, final: true });
+        return steps;
+    }
+
+    function redirectsHtml(tx) {
+        var steps = redirectSteps(tx);
+        if (!steps.length) return '';
+        var html = '<div class="net-redirects" title="Redirects and authentication challenges the client followed, oldest first, then where the response came from">';
+        steps.forEach(function(step) {
+            var cls = step.statusCode ? statusClass({ statusCode: step.statusCode, responseComplete: true }) : '';
+            html += '<div class="net-redirect-step"><span class="net-redirect-code ' + cls + '">' + debugEscapeHtml(step.label) + '</span>'
+                + '<span class="net-redirect-url">' + debugEscapeHtml(step.url || '') + '</span>'
+                + (step.final ? ' ' + copyBtn(step.url || '') : '') + '</div>';
+        });
+        return html + '</div>';
     }
 
     var activeDir = 'response';
@@ -1208,6 +1239,12 @@
         if (tx.isMocked) meta.push('mocked by Lustro');
         (tx.categories || []).forEach(function(c) { meta.push(markdownCode(c)); });
         out.push(meta.join(' · '));
+        var steps = redirectSteps(tx);
+        if (steps.length) {
+            out.push('**Redirects:**\n\n' + steps.map(function(step) {
+                return '- ' + (step.final ? 'Response from' : step.label) + ' ' + markdownCode(step.url || '');
+            }).join('\n'));
+        }
         if (tx.error) out.push('**Error:** ' + markdownCode(tx.error));
         ['request', 'response'].forEach(function(dir) {
             var label = dir === 'request' ? 'Request' : 'Response';

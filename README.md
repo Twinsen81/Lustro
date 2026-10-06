@@ -183,15 +183,18 @@ OkHttpClient.Builder()
 
 **Ordering matters.** Add Lustro's interceptor **after** any application interceptors that
 rewrite the URL, headers, or body, so capture, mock matching, classification, and throttling all
-see the final application-level request. (As an application interceptor it does not observe
-OkHttp's automatic retries or redirects the way a network interceptor would — that is the
-intended trade-off.)
+see the final application-level request. As an application interceptor it sees one call, not each
+request OkHttp sends for it: a redirect that OkHttp follows is one transaction, whose `url` is what
+your code requested. The Network tab shows where the response came from (`finalUrl`), and each
+redirect and authentication challenge on the way (`priorResponses`), with its status.
 
 **Capture doesn't hold up the call.** The interceptor copies what it captures and returns;
 redaction, classification, and storing run on a background thread, so a request shows up in the
 Network tab a moment after it completes. During a burst of large bodies, once about 4 MB of
 captured text is waiting, calls capture on their own thread until that one catches up, which
-keeps memory bounded.
+keeps memory bounded. A body that capture doesn't read whole, such as a download or a body past
+the cap, reaches your code as it would without Lustro, and the request shows as in flight until
+your code reads to its end or closes it, so its duration covers the whole body.
 
 **Compressed bodies are captured decoded.** OkHttp inflates a gzip response on its own only when
 it added `Accept-Encoding` itself. If your app sets that header, or compresses request bodies in an

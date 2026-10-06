@@ -177,11 +177,19 @@ public final class io/github/twinsen81/lustro/network/CapturedBody {
 	public final fun getTruncated ()Z
 }
 
+public final class io/github/twinsen81/lustro/network/CapturedPriorResponse {
+	public fun <init> (Ljava/lang/String;I)V
+	public final fun getStatusCode ()I
+	public final fun getUrl ()Ljava/lang/String;
+}
+
 public final class io/github/twinsen81/lustro/network/CapturedResponse {
 	public synthetic fun <init> (Lio/github/twinsen81/lustro/network/CapturedResponse$Builder;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun getBody ()Lio/github/twinsen81/lustro/network/CapturedBody;
 	public final fun getDurationMs ()J
+	public final fun getFinalUrl ()Ljava/lang/String;
 	public final fun getHeaders ()Lio/github/twinsen81/lustro/Headers;
+	public final fun getPriorResponses ()Ljava/util/List;
 	public final fun getProtocol ()Ljava/lang/String;
 	public final fun getStatusCode ()I
 	public final fun isComplete ()Z
@@ -193,8 +201,10 @@ public final class io/github/twinsen81/lustro/network/CapturedResponse$Builder {
 	public final fun body (Lio/github/twinsen81/lustro/network/CapturedBody;)Lio/github/twinsen81/lustro/network/CapturedResponse$Builder;
 	public final fun build ()Lio/github/twinsen81/lustro/network/CapturedResponse;
 	public final fun complete (Z)Lio/github/twinsen81/lustro/network/CapturedResponse$Builder;
+	public final fun finalUrl (Ljava/lang/String;)Lio/github/twinsen81/lustro/network/CapturedResponse$Builder;
 	public final fun headers (Lio/github/twinsen81/lustro/Headers;)Lio/github/twinsen81/lustro/network/CapturedResponse$Builder;
 	public final fun mocked (Z)Lio/github/twinsen81/lustro/network/CapturedResponse$Builder;
+	public final fun priorResponses (Ljava/util/List;)Lio/github/twinsen81/lustro/network/CapturedResponse$Builder;
 	public final fun protocol (Ljava/lang/String;)Lio/github/twinsen81/lustro/network/CapturedResponse$Builder;
 }
 

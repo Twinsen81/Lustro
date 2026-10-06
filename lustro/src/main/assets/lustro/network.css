@@ -270,6 +270,23 @@
     margin-top: 8px;
     font-size: 12px;
 }
+.net-redirects {
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--t2);
+}
+.net-redirect-step {
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+    word-break: break-all;
+    line-height: 1.5;
+}
+.net-redirect-code {
+    flex: none;
+    min-width: 36px;
+    font-weight: 600;
+}
 .net-rules-empty {
     color: var(--t4);
     font-size: 12px;

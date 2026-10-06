@@ -335,6 +335,38 @@ class NetworkTrafficStoreTest {
     }
 
     @Test
+    fun `a large body that is not kept costs nothing, so it does not evict the others`() {
+        val store = store()
+        val feeds =
+            (1..4).map { i ->
+                store.beginRequest("https://example.com/feed$i.xml", "GET", Headers.EMPTY, null, null).also {
+                    store.respond(it, 200, Headers.of("Content-Type" to "application/xml"), captured("<rss/>"), 5)
+                }
+            }
+        val download = store.beginRequest("https://example.com/episode.mp3", "GET", Headers.EMPTY, null, null)
+
+        // A 65 MB download, more than the 50 MB budget: its bytes are not kept.
+        store.respond(download, 200, Headers.of("Content-Type" to "audio/mpeg"), CapturedBody(text = null, byteSize = 65_000_000), 5)
+
+        assertEquals(5, store.getTransactions().size)
+        feeds.forEach { assertNotNull(store.getTransaction(it.value)) }
+        assertEquals(65_000_000L, store.getTransaction(download.value)?.responseBodyBytes)
+        assertEquals(4L * "<rss/>".length, store.capturedBytes())
+    }
+
+    @Test
+    fun `a truncated body costs its kept prefix, not its full size`() {
+        val store = store(captureBudgetBytes = 250)
+        repeat(3) { i ->
+            val id = store.beginRequest("https://example.com/$i", "GET", Headers.EMPTY, null, null)
+            // 100 bytes kept of a 10 MB body.
+            store.respond(id, 200, Headers.of("Content-Type" to "text/plain"), CapturedBody("t".repeat(100), true, 10_000_000), 5)
+        }
+        assertEquals(200L, store.capturedBytes())
+        assertEquals(listOf("https://example.com/2", "https://example.com/1"), store.getTransactions().map { it.url })
+    }
+
+    @Test
     fun `a body kept inflated counts what is kept, not its compressed size`() {
         val store = store(captureBudgetBytes = 250)
         repeat(3) { i ->

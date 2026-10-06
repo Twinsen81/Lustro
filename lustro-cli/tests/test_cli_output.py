@@ -206,6 +206,14 @@ def test_list_rows_say_how_long_the_throttle_held_a_request(client, capsys):
     ]
 
 
+def test_list_rows_say_where_a_redirected_response_came_from(client, capsys):
+    client.responses = [envelope([transaction(1, url="http://feeds.example.com/rss", finalUrl="https://feeds.example.com/rss")])]
+    cli.main(["net", "list"])
+    assert lines(capsys.readouterr().out) == [
+        "tx_1  14:22:01.000  GET     200   100ms  http://feeds.example.com/rss [-> https://feeds.example.com/rss]"
+    ]
+
+
 def test_list_prints_the_newest_50_and_says_how_many_it_left_out(client, capsys):
     client.responses = [envelope([transaction(n) for n in range(1000)])]
     assert cli.main(["net", "list"]) == 0
