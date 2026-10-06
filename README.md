@@ -150,6 +150,13 @@ adb port forwarding:
    # Lustro ready endpoint=http://127.0.0.1:8080 token=<token>
    ```
 
+   Some devices drop Info logs: with `adb shell getprop log.tag` set to `E`, the line never
+   reaches logcat. `adb shell setprop log.tag.LustroToken I` lets it through until the device
+   restarts, and the line comes again when the app returns to the foreground. The token, and the
+   host and port of the last bind, are also in the app's prefs, which a debuggable app lets you
+   read: `adb shell run-as <package> cat shared_prefs/lustro_debug.xml`. The `lustro` CLI reads
+   them on its own when the log has no line.
+
 4. Authenticate the browser with that token, either by:
    - using the `lustro` CLI (`lustro open`, see [docs/AGENTS.md](docs/AGENTS.md)); or
    - appending `#lustro_token=<token>` to the URL **once**
@@ -196,6 +203,15 @@ compressed size. Platform `HttpURLConnection` capture does the same. Lustro does
 To see Brotli bodies from OkHttp, add OkHttp's `BrotliInterceptor` (from `okhttp-brotli`) after
 Lustro's interceptor: it then decodes the body before Lustro captures it, as OkHttp does with its own
 gzip. Event streams are captured as they arrive, without decoding.
+
+**Multipart uploads are captured part by part.** For an OkHttp `MultipartBody`, such as the body of
+a Retrofit `@Multipart` call, Lustro stores the body as multipart text: each part's headers, the
+value of each text part, and, for a file or any other part that is not text, one line with its type
+and size in place of its bytes. The default redactor masks a part whose field name is sensitive.
+The Network tab shows the parts as a table, and **Copy as cURL** builds a `-F` option for each part,
+naming the file to send for a part whose bytes Lustro did not keep. When Lustro keeps no body at
+all, as for an octet stream, the Network tab shows its size and type and says that it was not
+stored.
 
 **Leave traffic out with a capture filter.** Pass a `NetworkCaptureFilter` as `captureFilter`,
 and Lustro asks it about each request before it captures anything. A request it returns `false`
@@ -344,7 +360,18 @@ HAR from `GET /api/v1/network/transactions/_/export` or `lustro net export --har
 
 The Network tab's **Mock Rules** panel short-circuits matching requests with a synthetic
 response: the interceptor answers from the rule and the request never leaves the device.
-`urlPattern` is a substring match, or a regular expression when prefixed with `regex:`.
+`urlPattern` is looked for anywhere in the request URL: as a substring, or as a regular expression
+when prefixed with `regex:`. So `regex:/api/v1/statuses$` matches
+`https://example.com/api/v1/statuses` and not `.../statuses/1/favourite`; anchor a pattern with `^`
+when it must match from the start of the URL. A `regex:` pattern that does not compile is rejected
+when you save the rule, because a rule that never matches lets the real request through.
+
+**Mock This Request**, in a transaction's detail, fills in a rule for that request: a `regex:`
+pattern that matches its URL and no other, so a rule for `/items/1` doesn't also answer
+`/items/1/comments`, its method, its status, its `Content-Type`, and its body. A query value that
+Lustro redacted matches any value, because the app sends the real one. The body is the stored one,
+so a redacted value in it is `[REDACTED]`: the form says when that is so, and you replace those
+values before you save.
 
 **Rules live in the app, not in the browser.** They are kept in memory unless you pass a
 `MockRuleStorage` to `NetworkDebugTab.create(...)`, so without one they are gone when the process

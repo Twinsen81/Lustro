@@ -198,6 +198,14 @@ def test_list_rows_mark_in_flight_failed_mocked_and_streaming_requests(client, c
     ]
 
 
+def test_list_rows_say_how_long_the_throttle_held_a_request(client, capsys):
+    client.responses = [envelope([transaction(1, durationMs=390, throttledMs=3000)])]
+    cli.main(["net", "list"])
+    assert lines(capsys.readouterr().out) == [
+        "tx_1  14:22:01.000  GET     200   390ms  https://api.example.com/v1/items/1 [throttled 3000ms]"
+    ]
+
+
 def test_list_prints_the_newest_50_and_says_how_many_it_left_out(client, capsys):
     client.responses = [envelope([transaction(n) for n in range(1000)])]
     assert cli.main(["net", "list"]) == 0

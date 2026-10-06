@@ -13,7 +13,7 @@ import json
 import urllib.error
 import urllib.parse
 import urllib.request
-from typing import Any, Dict, Mapping, NamedTuple, Optional, Tuple
+from typing import Any, Callable, Dict, Mapping, NamedTuple, Optional, Tuple
 
 # The shared error-envelope status -> machine "error" type map, mirrored from the
 # wire protocol (docs/AGENTS.md "Failure modes" / error-envelope.schema.json). Used as
@@ -100,12 +100,22 @@ class LustroClient:
     :param base_url: e.g. ``http://127.0.0.1:8080`` (no trailing ``/api/v1``).
     :param token: bearer token; sent as ``Authorization: Bearer <token>``.
     :param timeout: per-request socket timeout in seconds.
+    :param refresh_token: called once when the server answers 401; a token it
+        returns that differs from ``token`` replaces it, and the request is sent
+        again. For a token that discovery found, which can be stale.
     """
 
-    def __init__(self, base_url: str, token: Optional[str] = None, timeout: float = 30.0) -> None:
+    def __init__(
+        self,
+        base_url: str,
+        token: Optional[str] = None,
+        timeout: float = 30.0,
+        refresh_token: Optional[Callable[[], Optional[str]]] = None,
+    ) -> None:
         self.base_url = base_url.rstrip("/")
         self.token = token
         self.timeout = timeout
+        self._refresh_token = refresh_token
 
     # ── request plumbing ──────────────────────────────────────────────────────
 
@@ -159,16 +169,16 @@ class LustroClient:
         accept: str,
     ) -> Tuple[bytes, Optional[str]]:
         url = self._url(path, params)
-        headers = self._headers(accept)
         data: Optional[bytes] = None
         if json_body is not None:
             data = json.dumps(json_body).encode("utf-8")
-            headers["Content-Type"] = "application/json"
-
-        req = urllib.request.Request(url, data=data, headers=headers, method=method.upper())
         try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
-                return resp.read(), resp.headers.get("Content-Type")
+            try:
+                return self._open(url, data, method, accept)
+            except urllib.error.HTTPError as exc:
+                if exc.code != 401 or not self._take_fresh_token():
+                    raise
+                return self._open(url, data, method, accept)
         except urllib.error.HTTPError as exc:  # non-2xx
             raise _error_from_http(exc) from None
         except urllib.error.URLError as exc:
@@ -178,6 +188,23 @@ class LustroClient:
             # URLError. adb forward does that while nothing listens on the device
             # port, for example while the app is in the background.
             raise _connection_failed(url, exc) from None
+
+    def _open(self, url: str, data: Optional[bytes], method: str, accept: str) -> Tuple[bytes, Optional[str]]:
+        headers = self._headers(accept)
+        if data is not None:
+            headers["Content-Type"] = "application/json"
+        req = urllib.request.Request(url, data=data, headers=headers, method=method.upper())
+        with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+            return resp.read(), resp.headers.get("Content-Type")
+
+    def _take_fresh_token(self) -> bool:
+        """Asks ``refresh_token`` once for a token that differs from the one sent."""
+        refresh, self._refresh_token = self._refresh_token, None
+        fresh = refresh() if refresh is not None else None
+        if not fresh or fresh == self.token:
+            return False
+        self.token = fresh
+        return True
 
     # ── convenience verbs ─────────────────────────────────────────────────────
 

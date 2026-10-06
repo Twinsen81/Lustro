@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Lustro Network debug tab",
-    "version": "1.3",
+    "version": "1.4",
     "description": "Capture, inspect, mock, throttle, and replay HTTP traffic, and inspect the messages of WebSocket connections. All routes are token-authenticated (Bearer header or HttpOnly cookie) and live under /api/v1/network. Errors use the shared error envelope."
   },
   "servers": [
@@ -77,7 +77,7 @@
       "get": {
         "operationId": "exportTransactions",
         "summary": "Captured transactions as a HAR 1.2 document.",
-        "description": "Returns the transactions that ids names, or every one when ids is left out, as a HAR 1.2 document that browser devtools and HTTP tools import, oldest first. The entry of a WebSocket's handshake carries the socket's messages in _webSocketMessages, the field Chrome DevTools writes and reads, and its _resourceType is websocket. It is built from the store, so headers, the URL, and text bodies are redacted as in the detail. An id the store no longer has is left out, and an ids parameter that names none returns no entries. Each entry spends its whole durationMs in timings.wait, with send and receive at 0 and the other phases at -1. A body kept as bytes goes out in base64: content.encoding is base64 for a response, and postData._encoding for a request, which HAR gives no encoding field. _lustro on each entry carries the transaction id and what HAR has no field for: isMocked, categories, the truncation flags, responseComplete, and error. A request still in flight has status 0 and time 0. The request line and headers must stay under 8 KB, so a client that exports many ids sends them in batches.",
+        "description": "Returns the transactions that ids names, or every one when ids is left out, as a HAR 1.2 document that browser devtools and HTTP tools import, oldest first. The entry of a WebSocket's handshake carries the socket's messages in _webSocketMessages, the field Chrome DevTools writes and reads, and its _resourceType is websocket. It is built from the store, so headers, the URL, and text bodies are redacted as in the detail. An id the store no longer has is left out, and an ids parameter that names none returns no entries. Each entry spends its whole durationMs in timings.wait, and the time the global throttle held it in timings.blocked, with send and receive at 0 and the other phases at -1; time is their sum. A body kept as bytes goes out in base64: content.encoding is base64 for a response, and postData._encoding for a request, which HAR gives no encoding field. _lustro on each entry carries the transaction id and what HAR has no field for: isMocked, categories, the truncation flags, responseComplete, and error. A request still in flight has status 0 and time 0. The request line and headers must stay under 8 KB, so a client that exports many ids sends them in batches.",
         "parameters": [
           { "name": "format", "in": "query", "required": false, "schema": { "type": "string", "enum": ["har"], "default": "har" }, "description": "The export format. 400 for any other." },
           { "name": "ids", "in": "query", "required": false, "schema": { "type": "string" }, "description": "Transaction ids separated by commas; the parameter can also repeat. Left out, the export has every transaction." }
@@ -364,7 +364,8 @@
           "url": { "type": "string", "description": "Redacted at capture time." },
           "protocol": { "type": ["string", "null"], "description": "The protocol the response came over, as the HTTP client names it, e.g. http/1.1, h2, or h3. null when unknown: before a response, for a mocked response, and for platform HttpURLConnection capture." },
           "statusCode": { "type": ["integer", "null"] },
-          "durationMs": { "type": ["integer", "null"] },
+          "durationMs": { "type": ["integer", "null"], "description": "How long the request took from when it was sent, without the time the global throttle held it before that (see throttledMs). null while in flight." },
+          "throttledMs": { "type": ["integer", "null"], "description": "How long the global throttle held the request before it was sent, in milliseconds, or null when it wasn't throttled. The request is listed, with startedAt, from when the app made the call. Since protocol 1.4." },
           "categories": { "type": "array", "items": { "type": "string" }, "description": "Labels from the configured NetworkClassifier (may be empty)." },
           "isMocked": { "type": "boolean" },
           "requestContentType": { "type": ["string", "null"], "description": "The request's media type as captured, e.g. application/json; charset=utf-8. null when the request declares none." },
@@ -375,7 +376,7 @@
           "webSocketId": { "type": ["string", "null"], "description": "Set on the handshake of a WebSocket that is listed under websockets: the id of that connection. null for every other transaction, and once the connection is cleared or evicted." },
           "error": { "type": ["string", "null"] },
           "requestHeaders": { "type": "object", "additionalProperties": { "type": "string" } },
-          "requestBody": { "type": ["string", "null"], "description": "The body as redacted text. A gzip or deflate body is stored inflated; one in another Content-Encoding, such as br, is null." },
+          "requestBody": { "type": ["string", "null"], "description": "The body as redacted text. A gzip or deflate body is stored inflated; one in another Content-Encoding, such as br, is null. A multipart body is stored as multipart text: each part's headers and the value of a text part, and for any other part, such as a file, the line [Lustro did not store this part: <type>, <n> bytes] in place of its content." },
           "requestBodyTruncated": { "type": "boolean" },
           "requestBodyBinary": { "type": "boolean", "description": "Detail only. true when the request body was kept as bytes, as it arrived, because the Redactor can't read it: an image. requestBody is then null; fetch the bytes from GET transactions/{id}/body/request." },
           "responseHeaders": { "type": ["object", "null"], "additionalProperties": { "type": "string" } },
@@ -484,7 +485,7 @@
         "required": ["startedDateTime", "time", "request", "response", "cache", "timings", "_resourceType", "_lustro"],
         "properties": {
           "startedDateTime": { "type": "string", "description": "startedAt in ISO 8601, in UTC with milliseconds, e.g. 2026-09-28T14:22:09.003Z." },
-          "time": { "type": "integer", "minimum": 0, "description": "durationMs; 0 while the request is in flight." },
+          "time": { "type": "integer", "minimum": 0, "description": "durationMs plus throttledMs; 0 while the request is in flight, apart from a throttle it has already waited." },
           "request": {
             "type": "object",
             "required": ["method", "url", "httpVersion", "cookies", "headers", "queryString", "headersSize", "bodySize"],
@@ -557,7 +558,7 @@
             "type": "object",
             "required": ["send", "wait", "receive"],
             "properties": {
-              "blocked": { "const": -1 },
+              "blocked": { "type": "integer", "minimum": -1, "description": "throttledMs, or -1 when the request wasn't throttled." },
               "dns": { "const": -1 },
               "connect": { "const": -1 },
               "ssl": { "const": -1 },
@@ -612,7 +613,7 @@
         "properties": {
           "id": { "type": "string" },
           "name": { "type": "string" },
-          "urlPattern": { "type": "string", "description": "Substring match, or a regular expression when prefixed with regex:." },
+          "urlPattern": { "type": "string", "description": "Looked for anywhere in the URL: a substring, or a regular expression when prefixed with regex: (anchor it with ^ and $ to match the whole URL)." },
           "method": { "type": ["string", "null"], "description": "null matches any method." },
           "statusCode": { "type": "integer" },
           "responseHeaders": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Headers applied to the mocked response (e.g. Content-Type)." },
@@ -627,7 +628,7 @@
         "properties": {
           "id": { "type": "string", "description": "Optional; generated when omitted. Supplying a stable id makes the write idempotent." },
           "name": { "type": "string" },
-          "urlPattern": { "type": "string" },
+          "urlPattern": { "type": "string", "description": "Looked for anywhere in the URL: a substring, or a regular expression when prefixed with regex: (anchor it with ^ and $ to match the whole URL). Rejected with 400 when blank, or when a regex: pattern is empty or does not compile." },
           "method": { "type": ["string", "null"] },
           "statusCode": { "type": "integer", "default": 200, "minimum": 100, "maximum": 599, "description": "Rejected with 400 outside 100-599." },
           "responseHeaders": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Headers applied to the mocked response (e.g. Content-Type). Names and values must be ones OkHttp accepts and a Content-Type must parse as a media type; otherwise 400. Replaced wholesale, so send them again when editing a rule by id." },

@@ -11,6 +11,7 @@ import java.io.IOException
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
 import okhttp3.Protocol
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
@@ -32,7 +33,9 @@ import okio.buffer
  * can be captured without buffering upfront.
  *
  * Body capture: text-like request/response bodies are captured as text, and
- * image ones as bytes, up to [maxBodySize]; `truncated = fullSize > cap` and
+ * image ones as bytes, up to [maxBodySize]. A multipart request body is
+ * captured as text too, with its text parts and a line for each other part
+ * (see [MultipartCapture]); `truncated = fullSize > cap` and
  * `byteSize = declaredContentLength ?: fullSize`. Other binary bodies and
  * one-shot/duplex ones report `CapturedBody(text=null, truncated=false,
  * byteSize=declared)`.
@@ -51,28 +54,34 @@ internal class LustroNetworkInterceptor(
     private val throttleDelayMs: () -> Int,
     private val incrementMockHit: (String) -> Unit,
     private val maxBodySize: Long,
+    private val recordThrottle: (TransactionId, Long) -> Unit = { _, _ -> },
 ) : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
+        val url = request.url.toString()
+
+        // Capture starts before the throttle: the request is listed while it
+        // waits, and its start time is when the app made the call.
+        val id = if (captureEnabled()) beginCapture(request, url) else null
 
         // Throttle applies regardless of capture/pause (mocks + throttle still run).
         val throttleMs = throttleDelayMs()
         if (throttleMs > 0) {
+            if (id != null) recordThrottle(id, throttleMs.toLong())
             try {
                 Thread.sleep(throttleMs.toLong())
             } catch (e: InterruptedException) {
                 Thread.currentThread().interrupt()
+                if (id != null) sink.failRequest(id, 0L, "Throttle interrupted")
                 throw IOException("Throttle interrupted", e)
             }
         }
 
-        val url = request.url.toString()
-
         // Mock short-circuit — independent of capture being enabled.
         val mockRule = sink.findMockRule(url, request.method)
 
+        // durationMs leaves the throttle out; the transaction's throttledMs has it.
         val startTime = System.currentTimeMillis()
-        val id = if (captureEnabled()) beginCapture(request, url) else null
 
         if (mockRule != null) {
             // Build the response before recording anything: rules are validated
@@ -175,6 +184,13 @@ internal class LustroNetworkInterceptor(
 
     private fun captureRequestBody(request: okhttp3.Request, contentType: okhttp3.MediaType?): CapturedBody? {
         val body = request.body ?: return null
+        if (body is MultipartBody) {
+            return try {
+                MultipartCapture.capture(body, maxBodySize)
+            } catch (_: Exception) {
+                CapturedBody(text = null, truncated = false, byteSize = body.contentLength().takeIf { it >= 0 })
+            }
+        }
         val declaredSize = body.contentLength().takeIf { it >= 0 }
         if (body.isOneShot() || body.isDuplex()) {
             return CapturedBody(text = null, truncated = false, byteSize = declaredSize)

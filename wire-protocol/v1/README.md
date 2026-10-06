@@ -11,7 +11,7 @@ the protocol a stable public contract independent of the library's Kotlin API.
   A future incompatible revision becomes `/api/v2/`, and the old major stays
   alive for at least one major release.
 - The **minor** protocol version is reported at runtime in
-  `GET /api/v1/_meta` as `_meta.protocolVersion` (currently `1.3`).
+  `GET /api/v1/_meta` as `_meta.protocolVersion` (currently `1.4`).
 
 ## Contents
 
@@ -82,6 +82,15 @@ client got them.
   stops the capture of messages. In the HAR export, the entry of a handshake
   carries the socket's messages in `_webSocketMessages` and the connection in
   `_lustro.webSocket`, and its `_resourceType` is `websocket`.
+
+- **1.4** - Every transaction carries `throttledMs`: how long the global
+  throttle held the request before it was sent, or `null` when it wasn't
+  throttled. A throttled request is listed from when the app made the call,
+  so `startedAt` is the call time, and `durationMs` leaves the wait out. In
+  the HAR export, the wait is `timings.blocked`, and `time` is the sum. A
+  multipart request body, which was `null`, is stored as multipart text: each
+  part's headers and the value of a text part, and a line with the type and
+  size of any other part.
 
 ## Status
 

@@ -569,7 +569,7 @@ var DEBUG_PREVIEW_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/
 
 // Which viewer suits a body: 'image' for a previewable image kept as bytes,
 // 'binary' for any other body kept as bytes, then by the media type 'json',
-// 'form', 'html', 'xml', or 'text'. A JSON type wins even over text that is
+// 'form', 'multipart', 'html', 'xml', or 'text'. A JSON type wins even over text that is
 // not JSON, such as a body cut at the capture cap, and a caller shows that as
 // text. An object or array that is valid JSON is 'json' whatever the type
 // says, because servers send JSON as text/html, and apps send it as a form.
@@ -579,6 +579,7 @@ window.debugBodyKind = function(contentType, text, binary) {
     var subtype = essence.slice(essence.indexOf('/') + 1);
     if (subtype === 'json' || /\+json$/.test(subtype) || debugIsJsonContainer(text)) return 'json';
     if (essence === 'application/x-www-form-urlencoded') return 'form';
+    if (essence.indexOf('multipart/') === 0) return 'multipart';
     if (essence === 'text/html') return 'html';
     if (subtype === 'xml' || /\+xml$/.test(subtype)) return 'xml';
     return 'text';
@@ -1011,6 +1012,74 @@ window.debugFormTable = function(text, options) {
                 + debugHighlightPlain(part, searchText) + '</span>';
         }
     }
+};
+
+// The line Lustro writes in place of a multipart part it did not store, such as
+// a file, up to the type and size that follow it.
+var DEBUG_OMITTED_PART = '[Lustro did not store this part: ';
+
+// A multipart body as Lustro stores it: each part's headers, then its content,
+// or the line that stands in for a part it did not store. Returns the parts in
+// order, as { name, filename, contentType, size, value }, with value null for
+// a part that was not stored, or null when contentType names no boundary.
+window.debugMultipartParts = function(text, contentType) {
+    var boundary = debugHeaderParam(contentType, 'boundary');
+    if (!boundary) return null;
+    var pieces = String(text == null ? '' : text).split('--' + boundary);
+    var parts = [];
+    for (var i = 1; i < pieces.length; i++) {
+        // The closing delimiter.
+        if (pieces[i].indexOf('--') === 0) break;
+        var piece = pieces[i].replace(/^\r?\n/, '');
+        var blank = piece.search(/\r?\n\r?\n/);
+        var head = blank < 0 ? piece : piece.slice(0, blank);
+        var content = blank < 0 ? '' : piece.slice(blank).replace(/^\r?\n\r?\n/, '').replace(/\r?\n$/, '');
+        var headers = {};
+        head.split(/\r?\n/).forEach(function(line) {
+            var colon = line.indexOf(':');
+            if (colon > 0) headers[line.slice(0, colon).trim().toLowerCase()] = line.slice(colon + 1).trim();
+        });
+        var disposition = headers['content-disposition'];
+        var omitted = content.indexOf(DEBUG_OMITTED_PART) === 0 && content.indexOf('\n') < 0;
+        var size = Number(headers['content-length']);
+        parts.push({
+            name: debugHeaderParam(disposition, 'name'),
+            filename: debugHeaderParam(disposition, 'filename'),
+            contentType: headers['content-type'] || null,
+            size: headers['content-length'] != null && !isNaN(size) ? size : null,
+            value: omitted ? null : content,
+        });
+    }
+    return parts;
+};
+
+// A parameter of a header value such as a Content-Type or a
+// Content-Disposition, quoted or not, or null.
+function debugHeaderParam(value, name) {
+    var match = new RegExp(';\\s*' + name + '=(?:"([^"]*)"|([^;\\s]*))', 'i').exec(String(value == null ? '' : value));
+    return match ? (match[1] != null ? match[1] : match[2]) : null;
+}
+
+// A multipart body as a table of its parts, in the order they were sent: the
+// field name, and the value of a text part or what Lustro knows of a part it
+// did not store. Returns a <table class="dc-kv">, or null when contentType
+// names no boundary.
+window.debugMultipartTable = function(text, contentType, options) {
+    var searchText = (options && options.searchText) || '';
+    var parts = debugMultipartParts(text, contentType);
+    if (!parts) return null;
+    var rows = parts.map(function(part) {
+        var key = (part.name == null ? '' : part.name) + (part.filename != null ? ' (' + part.filename + ')' : '');
+        var value;
+        if (part.value == null) {
+            var known = [part.contentType, part.size != null ? part.size + ' bytes' : null].filter(Boolean).join(', ');
+            value = '<span class="dc-kv__note">' + debugHighlightPlain('Not stored' + (known ? ': ' + known : ''), searchText) + '</span>';
+        } else {
+            value = debugHighlightPlain(part.value, searchText);
+        }
+        return '<tr><th class="dc-kv__key">' + debugHighlightPlain(key, searchText) + '</th><td class="dc-kv__value">' + value + '</td></tr>';
+    });
+    return '<table class="dc-kv">' + rows.join('') + '</table>';
 };
 
 // Bytes as hexdump -C prints them: the offset, sixteen bytes in hex, and the

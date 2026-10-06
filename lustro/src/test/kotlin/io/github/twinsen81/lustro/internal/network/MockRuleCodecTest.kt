@@ -62,6 +62,23 @@ class MockRuleCodecTest {
     }
 
     @Test
+    fun `a regex that does not compile is rejected`() {
+        val rejection = invalid("""{"urlPattern":"regex:[unclosed"}""")
+        assertEquals("urlPattern", rejection.field)
+        assertTrue(rejection.message, rejection.message.startsWith("urlPattern is not a valid regular expression"))
+    }
+
+    @Test
+    fun `an empty regex is rejected`() {
+        assertEquals("urlPattern", invalid("""{"urlPattern":"regex:"}""").field)
+    }
+
+    @Test
+    fun `a regex that compiles is accepted`() {
+        assertEquals("regex:/api/v1/statuses$", valid("""{"urlPattern":"regex:/api/v1/statuses$"}""").urlPattern)
+    }
+
+    @Test
     fun `a status outside 100 to 599 is rejected`() {
         for (status in listOf(-1, 0, 99, 600, 1000)) {
             assertEquals("statusCode", invalid("""{"urlPattern":"/x","statusCode":$status}""").field)

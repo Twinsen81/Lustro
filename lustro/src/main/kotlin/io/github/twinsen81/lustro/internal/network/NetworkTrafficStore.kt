@@ -175,6 +175,18 @@ internal class NetworkTrafficStore(
         worker.submit(id.value, 0L) { updateWithError(id.value, durationMs, error, completedAt) }
     }
 
+    /**
+     * Records that the interceptor holds the request [id] for [delayMs] before
+     * sending it. Queued behind the request's own capture, so it finds it stored.
+     */
+    @Suppress("RestrictedApi") // id.value is @RestrictTo(LIBRARY_GROUP); same-group call (see beginRequest).
+    fun recordThrottle(id: TransactionId, delayMs: Long) {
+        worker.submit(id.value, 0L) {
+            val updated = transactionMap.computeIfPresent(id.value) { _, tx -> tx.copy(throttledMs = delayMs) }
+            if (updated != null) sequence.incrementAndGet()
+        }
+    }
+
     /** Waits up to [timeoutMs] until the captures reported so far are stored. For tests. */
     fun awaitCaptures(timeoutMs: Long = 5_000L): Boolean = worker.awaitIdle(timeoutMs)
 

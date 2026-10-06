@@ -137,16 +137,32 @@ machine-parseable line at logcat tag `LustroToken`, level INFO:
 Lustro ready endpoint=http://<host>:<port> token=<token>
 ```
 
-This is the single source of truth for host, port, and token. Lustro logs it again after each
-bind, so the last line is the current one. `-d` prints the log and exits instead of waiting for
+It is the first place to look for host, port, and token. Lustro logs it again after each
+bind, so the last line is the current one, unless the device dropped the newer lines (see below). `-d` prints the log and exits instead of waiting for
 new lines:
 
 ```bash
 adb logcat -d -s LustroToken | tail -1 | sed -n 's/.*endpoint=\([^ ]*\) token=\([^ ]*\).*/\1 \2/p'
 ```
 
+**When the log has no ready line.** A device can drop Info logs: with `adb shell getprop log.tag`
+set to `E`, the line never reaches logcat (`adb shell setprop log.tag.LustroToken I` lets it
+through until the device restarts). The token, and the host and port of the app's last bind, are
+also in the app's prefs file, which a debuggable app lets you read:
+
+```bash
+adb shell run-as <package> cat shared_prefs/lustro_debug.xml
+# <string name="lustro_token">…</string> <string name="lustro_host">127.0.0.1</string> <int name="lustro_port" value="8080" />
+```
+
+Lustro listens only while its app is in the foreground, so the package is that of the resumed
+activity (`adb shell "dumpsys activity activities | grep ResumedActivity"`). The last line in the
+log can also be stale, from an earlier install of the app, when the device dropped the newer one:
+a `401` to a token from the log means read the prefs.
+
 Conventions a client should follow:
-- Honor a `LUSTRO_TOKEN` environment variable when present, falling back to the parsed log line.
+- Honor a `LUSTRO_TOKEN` environment variable when present, falling back to the parsed log line,
+  then to the app's prefs.
 - The port can differ from the configured one: if `bindFallback` is enabled and the configured
   port was taken, the server binds an OS-assigned port — the `endpoint=` field reports the actual
   one, so always trust the log line over assumptions.
@@ -231,14 +247,16 @@ below summarizes it. All routes are token-authenticated and use the shared error
 | Toggle rule | `POST rules/toggle` | Body `{ id }`; flips `enabled`. |
 | Pause capture | `POST pause` | Toggles capture-only pause. While paused, mocks and throttle **still apply**; only recording into the list stops, for requests and for WebSocket messages. Returns `{ status: "ok", paused }`. |
 | Overwrite mode | `POST overwrite-mode` | Toggles overwrite mode (a new request evicts earlier **completed** transactions with the same method + URL path; in-flight ones are never evicted). Returns `{ status: "ok", overwriteMode }`. |
-| Throttle | `POST throttle` | Body `{ delayMs }` (≥ 0); a global pre-request sleep applied to mocked and real requests alike. Returns `{ status: "ok", delayMs }`. |
+| Throttle | `POST throttle` | Body `{ delayMs }` (≥ 0); a global pre-request sleep applied to mocked and real requests alike. A throttled transaction is listed while it waits and records the wait in `throttledMs`. Returns `{ status: "ok", delayMs }`. |
 | Send request | `POST send` | **Synchronous** dispatch through the configured `NetworkSender`. See below. |
 
-**Mock rule semantics.** `urlPattern` is a substring match, or a regular expression when prefixed
-with `regex:`. `method` is `null` to match any method. `hitCount` is a runtime-only counter (not
+**Mock rule semantics.** `urlPattern` is looked for anywhere in the URL: a substring, or a regular
+expression when prefixed with `regex:` (found, not matched against the whole URL, so anchor it with
+`^` and `$` when it must match all of it). `method` is `null` to match any method. `hitCount` is a runtime-only counter (not
 persisted).
 
-**Rules are validated on the way in.** `statusCode` must be within 100–599, `responseHeaders` must
+**Rules are validated on the way in.** A `regex:` pattern must compile and must not be empty,
+`statusCode` must be within 100–599, `responseHeaders` must
 be header names and values OkHttp accepts, and a `Content-Type` among them must parse as a media
 type — the interceptor builds a real response from the rule inside the app's own call. A rule that
 fails any of these gets an enveloped `400` whose `field` names what to fix (`urlPattern`, `id`,
@@ -274,6 +292,22 @@ plus `durationMs`; take a request's duration from `durationMs`. `protocol` (`htt
 tell JSON from an image without reading the headers. These fields arrived in protocol 1.2; a 1.1
 server leaves them out.
 
+**Throttled requests.** When the global throttle holds a request, the transaction is listed from
+the moment the app made the call, so `startedAt` is the call time, and `throttledMs` says how long
+the throttle held it before it was sent. `durationMs` leaves that wait out, and `completedAt`
+comes at least `throttledMs` plus `durationMs` after `startedAt`. `throttledMs` is `null` for a
+request that wasn't throttled. In the HAR export, the wait is the entry's `timings.blocked`, and
+`time` is the sum. This field arrived in protocol 1.4.
+
+**Multipart request bodies.** An OkHttp `MultipartBody` is captured as text: the parts in order,
+each with its headers (`Content-Disposition`, and `Content-Type` and `Content-Length` when known),
+then the value of a text part. A part that is not text, such as a file, is not read: its content is
+one line, `[Lustro did not store this part: <type>, <n> bytes]`, or `size unknown`. The
+`requestContentType` carries the boundary. `requestBodyBytes` is the size of the whole body on the
+wire, and the stored text is cut at the capture cap like any other body. The default redactor masks
+a part whose field name is sensitive, redacts any other part as a body of its own type, and masks a
+part's own headers as it masks a request's. A file part with no type is not read either.
+
 **Image bodies and the body route.** A body is captured as text, or, for an image, as bytes; SVG
 is text. The detail's `requestBodyBinary` and `responseBodyBinary` are `true` when that body was
 kept as bytes, and its `requestBody` or `responseBody` is then `null`.
@@ -292,8 +326,8 @@ built from the store, so it has the same redacted values as the detail. Without 
 transaction; an id the app no longer has is left out. Each entry's `_lustro` has the transaction
 `id`, `isMocked`, `categories`, `requestBodyTruncated`, `responseBodyTruncated`,
 `responseComplete`, and `error`. The capture has no phase timings, so each entry spends its whole
-`durationMs` in `timings.wait`, and `_resourceType` (`fetch`, or `image` for an image) tells
-Chrome DevTools how to file it. A body kept as bytes is base64: `content.encoding` says so for a
+`durationMs` in `timings.wait` and the throttle's wait in `timings.blocked`, and `_resourceType`
+(`fetch`, or `image` for an image) tells Chrome DevTools how to file it. A body kept as bytes is base64: `content.encoding` says so for a
 response, and `postData._encoding` for a request. The request line and its headers must stay
 under 8 KB, so send many ids in batches; `lustro net export --har FILE [--ids ID ...]` does that,
 and `--har -` writes the document to stdout. This route is part of protocol 1.2. From protocol 1.3,

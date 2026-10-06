@@ -33,6 +33,7 @@ from .discovery import (
     Endpoint,
     forwarded_ports,
     resolve,
+    token_from_prefs,
 )
 
 NETWORK = "/api/v1/network"
@@ -138,6 +139,8 @@ def _format_row(tx: dict, id_length: Optional[int] = None, *, update: bool = Fal
     flags = ""
     if tx.get("isMocked"):
         flags += " [mock]"
+    if tx.get("throttledMs"):
+        flags += " [throttled {}ms]".format(tx["throttledMs"])
     if status is not None and not _is_complete(tx):
         flags += " [streaming]"
     if update:
@@ -453,6 +456,21 @@ def _build_endpoint(args: argparse.Namespace) -> Endpoint:
     )
 
 
+def _token_was_discovered(args: argparse.Namespace) -> bool:
+    return args.token is None and not os.environ.get("LUSTRO_TOKEN")
+
+
+def _with_current_token(args: argparse.Namespace, endpoint: Endpoint) -> Endpoint:
+    """The endpoint with the app's current token, from its prefs, when that
+    differs from a discovered one. The ready line in the log is from an earlier
+    install when the device dropped the new one. The browser gets no second try,
+    so ``open`` checks before it prints the URL."""
+    if not _token_was_discovered(args):
+        return endpoint
+    current = token_from_prefs(args.device, getattr(args, "package", None))
+    return endpoint._replace(token=current) if current and current != endpoint.token else endpoint
+
+
 def _build_client(args: argparse.Namespace) -> LustroClient:
     endpoint = _build_endpoint(args)
     # The app's port is on the device. Without --port, connect through the adb
@@ -461,7 +479,11 @@ def _build_client(args: argparse.Namespace) -> LustroClient:
         local_ports = forwarded_ports(endpoint.port, args.device)
         if local_ports:
             endpoint = endpoint._replace(host=DEFAULT_HOST, port=local_ports[0])
-    return LustroClient(endpoint.base_url, endpoint.token)
+    # A token from the ready line is stale when the app was installed again and
+    # the device dropped the new line. On a 401, the client tries the app's prefs.
+    discovered = _token_was_discovered(args)
+    refresh = (lambda: token_from_prefs(args.device, getattr(args, "package", None))) if discovered else None
+    return LustroClient(endpoint.base_url, endpoint.token, refresh_token=refresh)
 
 
 # ── adb helpers ────────────────────────────────────────────────────────────────
@@ -545,7 +567,7 @@ def _forward_local_port(args: argparse.Namespace, device_port: int) -> Optional[
 
 def cmd_open(args: argparse.Namespace) -> int:
     """Discover token+endpoint, forward a local port to the app, print/open the browser URL."""
-    endpoint = _build_endpoint(args)
+    endpoint = _with_current_token(args, _build_endpoint(args))
     browser_host = endpoint.host
     port = endpoint.port
     # A LAN host reaches the device without a forward, so only a loopback URL needs one.
@@ -1437,7 +1459,7 @@ def build_parser() -> argparse.ArgumentParser:
     m_list.set_defaults(func=cmd_mock_list)
 
     m_add = mock_sub.add_parser("add", parents=[common], help="POST rules (add/upsert)")
-    m_add.add_argument("--url-pattern", required=True, dest="url_pattern", help="substring, or regex: prefix")
+    m_add.add_argument("--url-pattern", required=True, dest="url_pattern", help="looked for anywhere in the URL: a substring, or a regex with the regex: prefix")
     m_add.add_argument("--id", default=None, help="stable id (makes the write idempotent/upsert)")
     m_add.add_argument("--name", default=None)
     m_add.add_argument("--method", default=None, help="HTTP method to match (omit = any)")

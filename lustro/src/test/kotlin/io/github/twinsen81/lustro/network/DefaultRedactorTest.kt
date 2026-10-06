@@ -123,6 +123,83 @@ class DefaultRedactorTest {
     }
 
     @Test
+    fun `a fragment inside an ordinary word does not mask the value`() {
+        val body =
+            """{"card":{"author_name":"Ana","author_url":"https://a.test","authors":[{"name":"Ana"}]},""" +
+                """"design":"flat","keywords":["a"],"signup_url":"https://a.test/join","assignee":"bo"}"""
+        assertEquals(body, redactor.redactBody(body, MediaType.JSON))
+        assertEquals("https://a.test/?keyword=cat", redactor.redactUrl("https://a.test/?keyword=cat"))
+    }
+
+    @Test
+    fun `public names that have a sensitive word keep their value`() {
+        assertEquals("4f1c", redactor.redactHeaderValue("Idempotency-Key", "4f1c"))
+        val body = """{"vapid_key":"BCk-QqERU0q","publicKey":"MFkw","idempotency_key":"4f1c"}"""
+        assertEquals(body, redactor.redactBody(body, MediaType.JSON))
+    }
+
+    @Test
+    fun `a sensitive word is masked wherever it sits in the name`() {
+        val body =
+            """{"authorization":"a","accessToken":"b","accesstoken":"c","APIKey":"d",""" +
+                """"co_author_token":"e","presigned_url":"f","x-auth-token":"g","private_key":"h"}"""
+        val out = JSONObject(redactor.redactBody(body, MediaType.JSON))
+        for (key in out.keys()) {
+            assertEquals(key, "[REDACTED]", out.getString(key))
+        }
+        assertEquals("[REDACTED]", redactor.redactHeaderValue("X-Author-Token", "t"))
+    }
+
+    @Test
+    fun `a multipart body is redacted part by part`() {
+        val type = MediaType.parse("multipart/form-data; boundary=xyz")
+        val body =
+            "--xyz\r\nContent-Disposition: form-data; name=\"username\"\r\n\r\nalice\r\n" +
+                "--xyz\r\nContent-Disposition: form-data; name=\"password\"\r\n\r\nhunter2\r\n" +
+                "--xyz\r\nContent-Disposition: form-data; name=meta\r\nContent-Type: application/json\r\n\r\n" +
+                "{\"token\":\"t\",\"title\":\"x\"}\r\n" +
+                "--xyz\r\nContent-Disposition: form-data; name=\"file\"; filename=\"secret.png\"\r\n\r\n" +
+                "[Lustro did not store this part: image/png, 300 bytes]\r\n" +
+                "--xyz--\r\n"
+        val out = redactor.redactBody(body, type)
+        assertTrue(out, out.contains("name=\"username\"\r\n\r\nalice\r\n"))
+        assertTrue(out, out.contains("name=\"password\"\r\n\r\n[REDACTED]\r\n"))
+        assertTrue(out, out.contains("\"token\":\"[REDACTED]\"") && out.contains("\"title\":\"x\""))
+        assertTrue(out, out.contains("[Lustro did not store this part: image/png, 300 bytes]"))
+        assertTrue(out, out.endsWith("--xyz--\r\n"))
+        assertTrue(!out.contains("hunter2") && !out.contains("\"t\""))
+    }
+
+    @Test
+    fun `a multipart part's own headers are masked like a request's`() {
+        val type = MediaType.parse("multipart/form-data; boundary=xyz")
+        val body =
+            "--xyz\r\nContent-Disposition: form-data; name=\"doc\"\r\nX-Api-Key: sk-live-9\r\n\r\nhello\r\n--xyz--\r\n"
+        assertEquals(
+            "--xyz\r\nContent-Disposition: form-data; name=\"doc\"\r\nX-Api-Key: [REDACTED]\r\n\r\nhello\r\n--xyz--\r\n",
+            redactor.redactBody(body, type),
+        )
+    }
+
+    @Test
+    fun `a multipart body cut inside a part's headers still masks them`() {
+        val type = MediaType.parse("multipart/form-data; boundary=xyz")
+        val head = "--xyz\r\nContent-Disposition: form-data; name=\"doc\"\r\n"
+        assertEquals(head + "X-Api-Key: [REDACTED]", redactor.redactBody(head + "X-Api-Key: sk-live-9", type))
+        assertEquals(head + "X-Api-Key: [REDACTED]", redactor.redactBody(head + "X-Api-Key: sk-li", type))
+    }
+
+    @Test
+    fun `a multipart body cut inside a sensitive part is masked to its end`() {
+        val type = MediaType.parse("multipart/form-data; boundary=xyz")
+        val body = "--xyz\r\nContent-Disposition: form-data; name=\"api_key\"\r\n\r\nsk-live-123"
+        assertEquals(
+            "--xyz\r\nContent-Disposition: form-data; name=\"api_key\"\r\n\r\n[REDACTED]",
+            redactor.redactBody(body, type),
+        )
+    }
+
+    @Test
     fun `redacts json when content type is null but body looks like json`() {
         val out = JSONObject(redactor.redactBody("""{"token":"abc","keep":"me"}""", null))
         assertEquals("[REDACTED]", out.getString("token"))

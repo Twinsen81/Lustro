@@ -264,6 +264,43 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Fixed
 
+- **The CLI found no token on a device that drops Info logs.** A device with
+  `log.tag` set to `E` drops the `LustroToken` ready line, which was the only
+  source of the endpoint, and an old line left in the log from an earlier
+  install then gave a token the server refused. The app now also stores the
+  host and port of each bind next to the token in its prefs. When the log
+  has no ready line, the CLI reads them through `run-as`, from `--package`
+  or the app in the foreground, which it no longer needs to be told. When the
+  server refuses a token from the log, the CLI reads the prefs and tries once
+  more, and `lustro open` checks the token before it prints the URL. The
+  error when no token is found, the README, and `docs/AGENTS.md` explain
+  `log.tag` and the `setprop` that lets the line through.
+- **Mock This Request made a rule that also answered other endpoints.** It
+  filled in the request's path as a substring pattern, so a rule for
+  `/statuses/1` also answered `/statuses/1/context`, and the app failed to
+  read a status as a thread. It now fills in a `regex:` pattern anchored to
+  the whole URL, with a redacted query value matching any value. The rule
+  also keeps the response's `Content-Type`, which it dropped, and the form
+  says when the copied body has `[REDACTED]` values to replace.
+- **A multipart upload showed "No request body".** Lustro kept no multipart
+  body, so the Network tab said `// No request body` under a header that
+  showed a 278.5 KB `multipart/form-data` upload. An OkHttp `MultipartBody` is
+  now stored as multipart text: each part's headers, the value of each text
+  part, and one line with the type and size of a file or any other part that
+  is not text, whose bytes are not read. The default redactor masks a part
+  whose field name is sensitive, redacts any other part as a body of its own
+  type, and masks a part's own sensitive headers. The Network tab shows the parts as a table, **Copy as cURL**
+  builds a `-F` option for each part, and a body that Lustro did not keep at
+  all now shows its size and type and says that it was not stored.
+- **The default redactor masked values that are not secret.** It looked for
+  a sensitive fragment anywhere in a name, so it masked `author_name`,
+  `author_url`, and `authors` in every link preview (they contain `auth`),
+  the `Idempotency-Key` header, and public keys such as `vapid_key`. A
+  fragment inside an ordinary word (`author`, `design`, `signup`, `assignee`,
+  `keyword`, and a few more) no longer makes a name sensitive, and
+  `Idempotency-Key`, `public_key`, and `vapid_key` are kept in any spelling.
+  Everything else is masked as before: `authorization`, `accessToken`, and
+  `presigned_url` still are.
 - **Docs described behaviour the code doesn't have.** SECURITY.md said the auth
   token "rotates on explicit reset" (there is no rotation API: the token is
   generated once and lives until the app's data is cleared) and that redacted
@@ -540,6 +577,23 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Changed
 
+- **Wire protocol 1.4: a throttled request shows how long the throttle held
+  it.** The global throttle waited before the capture began, so a request
+  held for 3 s was listed only after the wait, as a 390 ms request, with
+  nothing to say it had waited. Capture now begins before the wait: the
+  request is listed while it waits, `startedAt` is when the app made the
+  call, and the new `throttledMs` on every transaction says how long the
+  throttle held it (`null` when it didn't). `durationMs` still leaves the
+  wait out. The Network tab shows it after the duration, as `+3s`, the CLI
+  marks the row `[throttled 3000ms]`, and the HAR export puts it in
+  `timings.blocked`.
+- **A `regex:` mock pattern is found anywhere in the URL, like a substring
+  one.** It had to match the whole URL, which the docs didn't say, so a
+  pattern such as `regex:/api/v1/statuses$` never matched and the real
+  request went to the server. Anchor a pattern with `^` to match from the
+  start of the URL. A `regex:` pattern that is empty or does not compile is
+  now rejected with an enveloped `400` (`field: urlPattern`) instead of being
+  saved as a rule that never matches.
 - **Wire protocol 1.1: the transactions cursor advances only when the list
   changes.** It used to advance on every server-side mutation, so pausing,
   changing overwrite mode or the throttle, editing mock rules, and every

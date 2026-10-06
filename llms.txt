@@ -12,7 +12,7 @@ Facts to get right when you add Lustro to an app:
 - The interceptor shows only the handshake of a WebSocket. To capture the messages, create the sockets with `lustro.webSocketFactory(okHttpClient).newWebSocket(request, listener)`, or pass that `WebSocket.Factory` to the library that creates them. `lustro-noop` returns the client itself.
 - Custom tabs are `DebugTab` subclasses, and they must be in `src/debug`. The published lint check `LustroDebugUsageInRelease` reports them in other source sets.
 - The server binds `127.0.0.1:8080` on the device, and listens only while the app is in the foreground. Reach it with `adb forward tcp:8080 tcp:8080`.
-- Every API request needs the token from the `LustroToken` logcat line (`Lustro ready endpoint=http://127.0.0.1:8080 token=<token>`), sent as `Authorization: Bearer <token>`. `GET /api/v1/_meta` lists the tabs, and `GET /api/v1/<id>/_schema` returns a tab's OpenAPI document.
+- Every API request needs the token from the `LustroToken` logcat line (`Lustro ready endpoint=http://127.0.0.1:8080 token=<token>`), sent as `Authorization: Bearer <token>`. A device that drops Info logs drops that line; a debuggable app also keeps the token, host, and port in `adb shell run-as <package> cat shared_prefs/lustro_debug.xml`. `GET /api/v1/_meta` lists the tabs, and `GET /api/v1/<id>/_schema` returns a tab's OpenAPI document.
 
 ## Docs
 

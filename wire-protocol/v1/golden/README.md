@@ -46,7 +46,9 @@ with no source checkout required.
 - **Times.** `startedAt` and `completedAt` are epoch milliseconds, and
   `timestamp` is `startedAt` as the device's local time; the fixtures model a
   device in UTC. The mocked `tx_77e2c014` has no `protocol`, because a mock
-  never reaches the network.
+  never reaches the network. It was also held 1,000 ms by the global throttle
+  (`throttledMs`), which `durationMs` leaves out, so `completedAt` comes 1,041 ms
+  after `startedAt`; in `export-har.json` that wait is `timings.blocked`.
 - **Binary bodies.** `transaction-image.json` models a PNG response, which the
   capture keeps as bytes: `responseBodyBinary` is `true` and `responseBody` is
   `null`. The bytes themselves come from

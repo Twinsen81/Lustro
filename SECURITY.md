@@ -93,7 +93,9 @@ build, and that even in debug builds it stays bound to the local device.
   The default implementation matches on *names*: sensitive request/response
   headers, and URL query parameters, JSON object fields, and form fields whose
   name contains a fragment such as `token`, `key`, `secret`, `password`, `auth`,
-  or `signature`. A name-based rule cannot see a secret that is not keyed by a
+  or `signature`. A fragment that only sits inside an ordinary word, such as
+  `auth` in `author_name` or `key` in `keywords`, doesn't count, and neither
+  do `Idempotency-Key`, `public_key`, and `vapid_key`, which hold no secret. A name-based rule cannot see a secret that is not keyed by a
   name it recognizes, so the default redactor reduces exposure rather than
   guaranteeing there is none. Known gaps, where the value is stored as it
   arrived:
@@ -107,8 +109,10 @@ build, and that even in debug builds it stays bound to the local device.
   - userinfo in a URL (`https://user:password@host/...`);
   - URL-valued headers such as `Location` and `Referer`, including any
     credential in their query string;
-  - a field in a `multipart/form-data` body, whose name and value sit on
-    different lines;
+  - a credential in a `multipart/form-data` part whose field name is ordinary,
+    such as a text file whose content holds a key. OkHttp capture keeps the
+    value of each text part and masks a part whose name is sensitive; it does
+    not keep the bytes of a file or any other part that is not text;
   - the error text of a failed request, which is stored verbatim. This one is
     not a heuristic miss: the `Redactor` SPI has no hook for an error, so a
     custom redactor cannot cover it either. It matters because the platform puts

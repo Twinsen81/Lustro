@@ -39,6 +39,16 @@ internal class LustroTokenStore(context: Context) {
     /** Generates, persists, and returns a fresh token, invalidating the old one. */
     fun rotate(): String = synchronized(LOCK) { generateAndStore() }
 
+    /**
+     * Stores where the server is listening, next to the token, so a tool that
+     * can't read the `LustroToken` log line finds both in this prefs file
+     * (`adb shell run-as <package> cat shared_prefs/lustro_debug.xml`). A
+     * device that drops Info logs drops that line.
+     */
+    fun recordEndpoint(host: String, port: Int) {
+        synchronized(LOCK) { prefs.edit().putString(KEY_HOST, host).putInt(KEY_PORT, port).apply() }
+    }
+
     /** Clears the persisted token. The next [token] call generates a new one. */
     fun reset() {
         synchronized(LOCK) { prefs.edit().remove(KEY_TOKEN).apply() }
@@ -55,6 +65,8 @@ internal class LustroTokenStore(context: Context) {
     private companion object {
         private const val PREFS_NAME = "lustro_debug"
         private const val KEY_TOKEN = "lustro_token"
+        private const val KEY_HOST = "lustro_host"
+        private const val KEY_PORT = "lustro_port"
 
         // 256 bits of entropy.
         private const val TOKEN_BYTES = 32

@@ -390,7 +390,7 @@
             var sc = statusClass(tx);
             var streaming = isStreaming(tx);
             var statusText = tx.error ? 'ERR' : (tx.statusCode ? tx.statusCode + (streaming ? '…' : '') : '…');
-            var dur = tx.durationMs != null ? tx.durationMs + 'ms' + (streaming ? '…' : '') : '…';
+            var dur = (tx.durationMs != null ? tx.durationMs + 'ms' + (streaming ? '…' : '') : '…') + throttleBadge(tx);
             var pathOnly = extractPath(tx.url).split('?')[0];
             var shortUrl = pathOnly.length > 100 ? pathOnly.substring(0, 100) + '…' : pathOnly;
             var sel = tx.id === selectedTxId ? ' dc-row--selected' : '';
@@ -610,6 +610,7 @@
         if (!previous) return true;
         return previous.statusCode !== next.statusCode
             || previous.durationMs !== next.durationMs
+            || previous.throttledMs !== next.throttledMs
             || previous.responseBodyBytes !== next.responseBodyBytes
             || previous.responseComplete !== next.responseComplete
             || previous.error !== next.error
@@ -667,6 +668,7 @@
         lines.push('Status: ' + (tx.error ? 'Error' : (tx.statusCode || 'Pending'))
             + (streaming ? ' (streaming)' : '')
             + (tx.durationMs != null ? '  |  ' + tx.durationMs + 'ms' + (streaming ? ' streaming' : '') : '')
+            + (tx.throttledMs ? '  |  held ' + tx.throttledMs + 'ms by the throttle' : '')
             + '  |  ' + (tx.timestamp || ''));
         if (tx.categories && tx.categories.length) lines.push('Categories: ' + tx.categories.join(', '));
 
@@ -728,6 +730,7 @@
         html += '<div class="net-detail-meta">';
         html += '<span class="' + sc + '">' + statusLabel + '</span>';
         html += '<span>' + (tx.durationMs != null ? tx.durationMs + 'ms' + (streaming ? ' streaming' : '') : '—') + '</span>';
+        if (tx.throttledMs) html += '<span title="' + THROTTLE_TITLE + '">+' + formatThrottle(tx.throttledMs) + ' throttle</span>';
         html += '<span>' + debugEscapeHtml(tx.timestamp || '') + '</span>';
         if (tx.protocol) html += '<span title="Protocol the response came over">' + debugEscapeHtml(tx.protocol) + '</span>';
         html += bodyMeta('↑', 'Request', tx.requestBodyBytes, tx.requestContentType);
@@ -818,16 +821,18 @@
     var BODY_VIEWS = {
         json: ['tree', 'raw'],
         form: ['table', 'raw'],
+        multipart: ['parts', 'raw'],
         xml: ['pretty', 'raw'],
         html: ['pretty', 'raw'],
         image: ['preview', 'raw'],
         binary: ['raw'],
         text: ['raw'],
     };
-    var BODY_VIEW_LABELS = { tree: 'Tree', table: 'Table', pretty: 'Pretty', preview: 'Preview', raw: 'Raw' };
+    var BODY_VIEW_LABELS = { tree: 'Tree', table: 'Table', parts: 'Parts', pretty: 'Pretty', preview: 'Preview', raw: 'Raw' };
     var BODY_VIEW_HELP = {
         tree: 'Show the JSON as a tree. Click a key or bracket to fold it, and Alt-click to fold or unfold everything inside it.',
         table: 'Show the form fields as a table, with names and values decoded.',
+        parts: 'Show the parts as a table: each field and its value. Lustro keeps text parts, and only the type and size of a file.',
         pretty: 'Show the markup indented. Only whitespace is added.',
         preview: 'Show the image.',
         raw: 'Show the body as captured, with line numbers.',
@@ -860,7 +865,8 @@
         var binary = !!tx[dir + 'BodyBinary'];
         var open = '<div class="net-body" data-dir="' + dir + '">';
         if (!binary && !text) {
-            return open + missingBody(tx[dir + 'Headers'], text, dir === 'response' ? 'No response body' : 'No request body') + '</div>';
+            return open + missingBody(tx[dir + 'Headers'], text, dir === 'response' ? 'No response body' : 'No request body',
+                tx[dir + 'BodyBytes'], tx[dir + 'ContentType']) + '</div>';
         }
         var contentType = tx[dir + 'ContentType'];
         var truncated = !!tx[dir + 'BodyTruncated'];
@@ -891,6 +897,8 @@
                     + debugEscapeHtml(bodyUrl(tx, dir)) + '" alt="' + dir + ' body"></div>';
             } else if (view === 'table') {
                 content = debugFormTable(text, options);
+            } else if (view === 'parts') {
+                content = debugMultipartTable(text, contentType, options) || debugLineNumbered(text, options);
             } else if (view === 'pretty') {
                 content = debugHighlightMarkup(text, { searchText: searchText, html: kind === 'html' });
             } else {
@@ -1034,9 +1042,17 @@
 
     // Capture inflates a gzip or deflate body and keeps no body in another
     // content coding, such as br. An empty body is "", so null is one not kept.
-    function missingBody(headers, body, label) {
+    // Why a body has nothing to show. A body with a size was sent or received,
+    // and Lustro did not keep it, which is not the same as an empty one.
+    function missingBody(headers, body, label, bytes, contentType) {
         var coding = body == null ? undecodedCoding(headers) : null;
-        var text = coding ? 'Body not captured: Lustro does not decode the ' + coding + ' encoding' : label;
+        var text = label;
+        if (coding) {
+            text = 'Body not captured: Lustro does not decode the ' + coding + ' encoding';
+        } else if (body == null && bytes > 0) {
+            text = 'Body not stored: ' + formatBytes(bytes) + (contentType ? ' of ' + mediaEssence(contentType) : '')
+                + '. Lustro keeps text and image bodies, and not a body the app can send only once.';
+        }
         return '<div class="net-empty-body">' + debugEscapeHtml(text) + '</div>';
     }
 
@@ -1067,6 +1083,17 @@
             + '</details>';
     }
 
+    var THROTTLE_TITLE = 'The global throttle held the request this long before it was sent. The duration leaves it out.';
+
+    function formatThrottle(ms) {
+        return ms >= 1000 && ms % 1000 === 0 ? (ms / 1000) + 's' : ms + 'ms';
+    }
+
+    function throttleBadge(tx) {
+        if (!tx.throttledMs) return '';
+        return ' <span class="net-throttle" title="' + THROTTLE_TITLE + '">+' + formatThrottle(tx.throttledMs) + '</span>';
+    }
+
     function formatBytes(n) {
         if (n == null) return '';
         if (n < 1024) return n + ' B';
@@ -1093,24 +1120,51 @@
             + arrow + ' ' + debugEscapeHtml(shown.join(' ')) + '</span>';
     }
 
+    window.netCurlCommand = buildCurlCommand;
     function buildCurlCommand(tx) {
         var parts = ['curl', '-X', tx.method || 'GET'];
         var headers = tx.requestHeaders || {};
         var hasBody = tx.requestBody && tx.method !== 'GET' && tx.method !== 'HEAD';
+        // curl builds a multipart body from its parts, with a boundary of its own.
+        var formParts = hasBody ? debugMultipartParts(tx.requestBody, tx.requestContentType) : null;
         Object.keys(headers).forEach(function(k) {
             // The captured body is stored inflated and redacted, so it goes out
             // without its coding, and curl works out its length.
             var name = k.toLowerCase();
             if (hasBody && (name === 'content-encoding' || name === 'content-length')) return;
+            if (formParts && name === 'content-type') return;
             parts.push('-H');
             parts.push(shellQuote(k + ': ' + headers[k]));
         });
-        if (hasBody) {
+        if (formParts) {
+            formParts.forEach(function(part) {
+                var name = part.name == null ? '' : part.name;
+                if (part.value != null && part.filename == null && part.contentType) {
+                    // A typed text part, such as JSON next to a file. curl takes a value in
+                    // double quotes as it is, and the type after it.
+                    parts.push('-F');
+                    parts.push(shellQuote(name + '=' + curlQuote(part.value) + ';type=' + part.contentType));
+                } else if (part.value != null && part.filename == null) {
+                    // --form-string, because -F reads a value that starts with @ or < as a file.
+                    parts.push('--form-string');
+                    parts.push(shellQuote(name + '=' + part.value));
+                } else {
+                    // Lustro did not keep a file's bytes: the command names the file to send.
+                    // In quotes, because curl reads , and ; in a bare file name as separators.
+                    parts.push('-F');
+                    parts.push(shellQuote(name + '=@' + curlQuote(part.filename || 'FILE') + (part.contentType ? ';type=' + part.contentType : '')));
+                }
+            });
+        } else if (hasBody) {
             parts.push('--data-raw');
             parts.push(shellQuote(tx.requestBody));
         }
         parts.push(shellQuote(tx.url || ''));
         return parts.join(' ');
+    }
+    // A -F value or file name in double quotes, which curl takes as it is.
+    function curlQuote(s) {
+        return '"' + String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
     }
     function shellQuote(s) {
         return "'" + String(s == null ? '' : s).replace(/'/g, "'\\''") + "'";
@@ -1147,6 +1201,7 @@
         if (isStreaming(tx)) status += ', streaming';
         meta.push('**' + status + '**');
         if (tx.durationMs != null) meta.push(tx.durationMs + ' ms');
+        if (tx.throttledMs) meta.push('held ' + tx.throttledMs + ' ms by the throttle');
         if (tx.startedAt != null) meta.push(new Date(tx.startedAt).toISOString());
         else if (tx.timestamp) meta.push(tx.timestamp);
         if (tx.protocol) meta.push(markdownCode(tx.protocol));
@@ -1309,11 +1364,24 @@
         if (formEl && !formEl.innerHTML) renderRuleForm();
     }
 
+    // Response headers a new rule gets from the form without showing a field
+    // for them: the Content-Type of the response Mock This Request copies.
+    var pendingRuleHeaders = null;
+
     function renderRuleForm(prefill) {
         prefill = prefill || {};
         var formEl = document.getElementById('rule-form-container');
         if (!formEl) return;
         var isEdit = !!prefill.id;
+        pendingRuleHeaders = isEdit ? null : (prefill.responseHeaders || null);
+        var headerNames = pendingRuleHeaders ? Object.keys(pendingRuleHeaders) : [];
+        var headersRow = headerNames.length
+            ? '<div class="net-form-row"><span class="dc-label" title="Headers of the mocked response, copied from the captured one.">Headers</span>'
+                + '<span class="net-form-fixed">' + debugEscapeHtml(headerNames.map(function(h) { return h + ': ' + pendingRuleHeaders[h]; }).join('\n')) + '</span></div>'
+            : '';
+        var redactedNote = !isEdit && String(prefill.responseBody || '').indexOf('[REDACTED]') >= 0
+            ? '<div class="net-form-warning">The captured body has values that Lustro redacted. Replace each [REDACTED] before you save, or the app gets that text in their place.</div>'
+            : '';
         var heading = isEdit ? 'Edit Mock Rule' : 'Add Mock Rule';
         var submitText = isEdit ? 'Update Rule' : 'Add Rule';
         var submitTooltip = isEdit
@@ -1323,7 +1391,7 @@
             + '<h4>' + heading + (isEdit ? ' <button class="dc-btn dc-btn--icon" data-action="cancelEditRule" title="Cancel editing and return to the empty Add form.">✕</button>' : '') + '</h4>'
             + '<input type="hidden" id="rf-id" name="id" value="' + debugEscapeHtml(prefill.id || '') + '">'
             + '<div class="net-form-row"><label class="dc-label" for="rf-name" title="Optional human label shown in the rule list. Defaults to the URL pattern.">Name</label><input class="dc-input--block" id="rf-name" name="name" placeholder="Optional label" value="' + debugEscapeHtml(prefill.name || '') + '" title="Optional human label. Doesn\'t affect matching."></div>'
-            + '<div class="net-form-row"><label class="dc-label" for="rf-pattern" title="What URLs this rule intercepts.">URL Pattern</label><input class="dc-input--block" id="rf-pattern" name="urlPattern" placeholder="Substring or regex:..." value="' + debugEscapeHtml(prefill.urlPattern || '') + '" title="Substring match by default (e.g. /api/sync). Prefix with regex: for a regular expression (e.g. regex:^.+/api/v\\d+/entries$)."></div>'
+            + '<div class="net-form-row"><label class="dc-label" for="rf-pattern" title="What URLs this rule intercepts.">URL Pattern</label><input class="dc-input--block" id="rf-pattern" name="urlPattern" placeholder="Substring or regex:..." value="' + debugEscapeHtml(prefill.urlPattern || '') + '" title="Looked for anywhere in the URL: a substring by default (e.g. /api/sync), or a regular expression with the regex: prefix (e.g. regex:/api/v\\d+/entries$). Anchor a regex with ^ to match from the start of the URL."></div>'
             + '<div class="net-form-row"><label class="dc-label" for="rf-method" title="HTTP method to match.">Method</label>'
             + '<select class="dc-input--block" id="rf-method" name="method" title="HTTP method this rule applies to. Choose Any to match every method.">'
             + '<option value="">Any</option>'
@@ -1333,7 +1401,9 @@
             }).join('')
             + '</select></div>'
             + '<div class="net-form-row"><label class="dc-label" for="rf-status" title="HTTP status code returned to the app.">Status</label><input class="dc-input--block" id="rf-status" name="statusCode" type="number" value="' + (prefill.statusCode || 200) + '" style="width:80px;flex:none" title="Status code returned to the app (e.g. 200, 404, 503)."></div>'
+            + headersRow
             + '<div class="net-form-row"><label class="dc-label" for="rf-body" title="Body returned to the app when this rule matches.">Body <button type="button" class="net-format-btn" data-action="formatRuleBody" title="Pretty-print the body as JSON (no-op if not valid JSON).">Format</button></label><textarea class="dc-textarea" id="rf-body" name="responseBody" placeholder="Response body (JSON, text, etc.)" title="Response body returned to the app. Can be any string; JSON is auto-formatted in the rule preview.">' + debugEscapeHtml(prefill.responseBody || '') + '</textarea></div>'
+            + redactedNote
             + '<div class="net-form-actions">'
             + '<button class="dc-btn dc-btn--primary" data-action="submitRule" title="' + submitTooltip + '">' + submitText + '</button>'
             + (isEdit ? '<button class="dc-btn" data-action="cancelEditRule" title="Discard changes and return to the empty Add form.">Cancel</button>' : '')
@@ -1538,6 +1608,8 @@
         if (edited) {
             rule.enabled = edited.enabled !== false;
             rule.responseHeaders = edited.responseHeaders || {};
+        } else if (pendingRuleHeaders) {
+            rule.responseHeaders = pendingRuleHeaders;
         }
         debugFetch(netUrl('rules'), {
             method: 'POST',
@@ -1594,15 +1666,47 @@
                 detail = detail || {};
                 switchRightTab('rules');
                 var url = tx.url || '';
+                var contentType = headerValue(detail.responseHeaders, 'content-type');
                 renderRuleForm({
                     name: (tx.method || '') + ' ' + (url.length > 60 ? url.substring(0, 60) + '…' : url),
-                    urlPattern: extractPath(url),
+                    urlPattern: exactUrlPattern(url),
                     method: tx.method,
                     statusCode: detail.statusCode || 200,
+                    responseHeaders: contentType ? { 'Content-Type': contentType } : null,
                     responseBody: detail.responseBody || '',
                 });
             });
     };
+
+    // A pattern for this URL and no other: a sub-resource such as /items/1/comments
+    // contains /items/1 and would match a substring. A redacted query value
+    // matches any value, because the app sends the real one.
+    window.netExactUrlPattern = exactUrlPattern;
+    function exactUrlPattern(url) {
+        var queryStart = url.indexOf('?');
+        if (queryStart < 0) return 'regex:^' + escapeRegex(url) + '$';
+        var pairs = url.slice(queryStart + 1).split('&').map(function(pair) {
+            var eq = pair.indexOf('=');
+            return eq >= 0 && isRedactedValue(pair.slice(eq + 1))
+                ? escapeRegex(pair.slice(0, eq + 1)) + '[^&#]*'
+                : escapeRegex(pair);
+        });
+        return 'regex:^' + escapeRegex(url.slice(0, queryStart)) + '\\?' + pairs.join('&') + '$';
+    }
+    function isRedactedValue(value) {
+        try {
+            return decodeURIComponent(value.replace(/\+/g, ' ')) === '[REDACTED]';
+        } catch(e) {
+            return false;
+        }
+    }
+    function escapeRegex(s) {
+        return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+    function headerValue(headers, name) {
+        var key = Object.keys(headers || {}).find(function(k) { return k.toLowerCase() === name; });
+        return key ? headers[key] : null;
+    }
 
     function extractPath(url) {
         try {

@@ -96,6 +96,9 @@ def test_resolve_raises_clear_error_when_no_token(monkeypatch):
     msg = str(excinfo.value)
     assert "LUSTRO_TOKEN" in msg
     assert "LustroToken" in msg
+    # A device that drops Info logs drops the ready line: the message says what to do.
+    assert "log.tag" in msg
+    assert "setprop log.tag.LustroToken I" in msg
 
 
 def test_resolve_run_as_fallback(monkeypatch):
@@ -222,3 +225,95 @@ def test_forwarded_ports_is_empty_when_adb_can_not_select_a_device(monkeypatch):
 def test_forwarded_ports_is_empty_without_adb(monkeypatch):
     _fake_adb_run(monkeypatch, {})
     assert discovery.forwarded_ports(8080) == []
+
+
+# ── the app's prefs, when the ready line is missing ───────────────────────────
+
+_PREFS_WITH_ENDPOINT = (
+    "<?xml version='1.0' encoding='utf-8' standalone='yes' ?>\n"
+    "<map>\n"
+    '    <string name="lustro_token">prefstok</string>\n'
+    '    <string name="lustro_host">127.0.0.1</string>\n'
+    '    <int name="lustro_port" value="8081" />\n'
+    "</map>"
+)
+
+
+def test_discover_from_run_as_reads_the_endpoint_the_app_stored(monkeypatch):
+    monkeypatch.setattr(discovery, "_run", lambda cmd, timeout=10.0: _PREFS_WITH_ENDPOINT)
+    assert discovery.discover_from_run_as("com.example.app") == Endpoint("127.0.0.1", 8081, "prefstok")
+
+
+def test_discover_from_run_as_defaults_the_endpoint_of_an_app_that_stored_none(monkeypatch):
+    monkeypatch.setattr(discovery, "_run", lambda cmd, timeout=10.0: _PREFS_XML)
+    assert discovery.discover_from_run_as("com.example.app") == Endpoint("127.0.0.1", 8080, "prefstok")
+
+
+@pytest.mark.parametrize(
+    "dumpsys",
+    [
+        "  topResumedActivity=ActivityRecord{164975770 u0 io.example.app/io.example.app.MainActivity t132 d0}\n",
+        "    mResumedActivity: ActivityRecord{3c1d2e u0 io.example.app/.MainActivity t7}\n",
+        "  ResumedActivity: ActivityRecord{136447847 u0 io.example.app/io.example.app.MainActivity t137 d0}\n",
+    ],
+)
+def test_foreground_package_reads_the_resumed_activity(monkeypatch, dumpsys):
+    calls = []
+
+    def run(cmd, timeout=10.0):
+        calls.append(cmd)
+        return dumpsys
+
+    monkeypatch.setattr(discovery, "_run", run)
+    assert discovery.foreground_package("emulator-5554") == "io.example.app"
+    assert calls[0][:3] == ["adb", "-s", "emulator-5554"]
+
+
+def test_foreground_package_is_none_when_adb_cannot_tell(monkeypatch):
+    monkeypatch.setattr(discovery, "_run", lambda cmd, timeout=10.0: None)
+    assert discovery.foreground_package() is None
+
+
+def test_resolve_reads_the_prefs_of_the_foreground_app_when_the_log_has_no_line(monkeypatch):
+    monkeypatch.setattr(discovery, "discover_from_logcat", lambda device=None: None)
+    monkeypatch.setattr(discovery, "foreground_package", lambda device=None: "com.example.app")
+    seen = []
+
+    def run_as(package, device=None):
+        seen.append(package)
+        return Endpoint("127.0.0.1", 8081, "prefstok")
+
+    monkeypatch.setattr(discovery, "discover_from_run_as", run_as)
+    assert resolve(env={}) == Endpoint("127.0.0.1", 8081, "prefstok")
+    assert seen == ["com.example.app"]
+
+
+def test_resolve_prefers_package_over_the_foreground_app(monkeypatch):
+    monkeypatch.setattr(discovery, "discover_from_logcat", lambda device=None: None)
+    monkeypatch.setattr(discovery, "foreground_package", lambda device=None: "com.other.app")
+    seen = []
+    monkeypatch.setattr(
+        discovery, "discover_from_run_as", lambda package, device=None: seen.append(package) or Endpoint("h", 1, "t")
+    )
+    resolve(env={}, package="com.example.app")
+    assert seen == ["com.example.app"]
+
+
+def test_token_from_prefs(monkeypatch):
+    monkeypatch.setattr(discovery, "foreground_package", lambda device=None: "com.example.app")
+    monkeypatch.setattr(discovery, "_run", lambda cmd, timeout=10.0: _PREFS_WITH_ENDPOINT)
+    assert discovery.token_from_prefs() == "prefstok"
+    monkeypatch.setattr(discovery, "foreground_package", lambda device=None: None)
+    monkeypatch.setattr(discovery, "_run", lambda cmd, timeout=10.0: None)
+    assert discovery.token_from_prefs() is None
+
+
+def test_resolve_takes_the_port_from_the_prefs_for_a_token_from_the_environment(monkeypatch):
+    monkeypatch.setattr(discovery, "discover_from_logcat", lambda device=None: None)
+    monkeypatch.setattr(discovery, "foreground_package", lambda device=None: "com.example.app")
+    monkeypatch.setattr(discovery, "discover_from_run_as", lambda package, device=None: Endpoint("127.0.0.1", 8081, "prefstok"))
+    assert resolve(env={"LUSTRO_TOKEN": "envtok"}) == Endpoint("127.0.0.1", 8081, "envtok")
+    # Flags that give all three need no prefs.
+    monkeypatch.setattr(discovery, "discover_from_run_as", lambda package, device=None: pytest.fail("read the prefs"))
+    assert resolve(host="127.0.0.1", port=9000, token="t", env={}) == Endpoint("127.0.0.1", 9000, "t")
+

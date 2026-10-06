@@ -41,6 +41,20 @@ class LustroTokenStoreTest {
     }
 
     @Test
+    fun `the endpoint is stored in the prefs file next to the token`() {
+        val store = store()
+        val token = store.token()
+        store.recordEndpoint("127.0.0.1", 8081)
+
+        val prefs =
+            ApplicationProvider.getApplicationContext<android.content.Context>()
+                .getSharedPreferences("lustro_debug", android.content.Context.MODE_PRIVATE)
+        assertEquals(token, prefs.getString("lustro_token", null))
+        assertEquals("127.0.0.1", prefs.getString("lustro_host", null))
+        assertEquals(8081, prefs.getInt("lustro_port", -1))
+    }
+
+    @Test
     fun `rotate invalidates the previous token`() {
         val s = store()
         val before = s.token()

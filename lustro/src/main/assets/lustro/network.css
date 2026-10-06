@@ -212,6 +212,8 @@
 .net-cell-url { max-width: 0; } /* let the table's 1fr column own the width */
 .net-cell-status { font-weight: 600; }
 .net-cell-time { color: var(--t3); font-size: 11.5px; }
+/* The time the global throttle held a request, after its duration. */
+.net-throttle { color: var(--lvl-w); }
 .net-cell-cat { white-space: normal; } /* several categories wrap onto more lines */
 .net-cell-cat .dc-tag { margin-right: 3px; }
 
@@ -662,3 +664,8 @@
 .net-ws-note-row .dc-cell { color: var(--t3); font-style: italic; white-space: normal; }
 .net-ws-note-row--failure .dc-cell { color: var(--danger); }
 .net-ws-payload { flex: 0 1 auto; max-height: 46%; overflow: auto; margin-top: 12px; }
+
+/* Mock rule form: a value the form shows but doesn't edit, and a warning about
+   the body Mock This Request copied. */
+.net-form-fixed { flex: 1; color: var(--t2); font-family: var(--font-mono); font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.net-form-warning { color: var(--lvl-w); font-size: 12px; line-height: 1.5; margin: 0 0 10px; }
