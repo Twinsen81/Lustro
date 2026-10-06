@@ -303,6 +303,14 @@ comes at least `throttledMs` plus `durationMs` after `startedAt`. `throttledMs` 
 request that wasn't throttled. In the HAR export, the wait is the entry's `timings.blocked`, and
 `time` is the sum. This field arrived in protocol 1.4.
 
+**Redirects.** OkHttp follows a redirect inside the call, so a redirected request is one
+transaction: `url` is what the app requested, and `finalUrl` is where the response came from,
+`null` when that is `url`. The detail's `priorResponses` lists the responses OkHttp answered with
+another request, oldest first: each redirect, and each authentication challenge that an
+`Authenticator` answered, with its `url` and `statusCode`. Search finds a transaction by its
+`finalUrl` too. Platform `HttpURLConnection` capture reports `finalUrl` but no prior responses, which
+the platform doesn't show. These fields arrived in protocol 1.5.
+
 **Multipart request bodies.** An OkHttp `MultipartBody` is captured as text: the parts in order,
 each with its headers (`Content-Disposition`, and `Content-Type` and `Content-Length` when known),
 then the value of a text part. A part that is not text, such as a file, is not read: its content is

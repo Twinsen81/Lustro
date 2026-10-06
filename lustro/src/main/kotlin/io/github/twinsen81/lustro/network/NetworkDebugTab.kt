@@ -653,6 +653,7 @@ public class NetworkDebugTab private constructor(
         append("\"completedAt\":${tx.completedAt ?: "null"},")
         append("\"method\":\"${tx.method.escapeForJson()}\",")
         append("\"url\":\"${tx.url.escapeForJson()}\",")
+        append("\"finalUrl\":${tx.finalUrl.toJsonString()},")
         append("\"protocol\":${tx.protocol.toJsonString()},")
         append("\"statusCode\":${tx.statusCode ?: "null"},")
         append("\"durationMs\":${tx.durationMs ?: "null"},")
@@ -681,7 +682,13 @@ public class NetworkDebugTab private constructor(
             append("\"responseHeaders\":${tx.responseHeaders?.let { headersToJson(it) } ?: "null"},")
             append("\"responseBody\":${tx.responseBody.toJsonString()},")
             append("\"responseBodyTruncated\":${tx.responseBodyTruncated},")
-            append("\"responseBodyBinary\":${tx.responseBinaryBody != null}")
+            append("\"responseBodyBinary\":${tx.responseBinaryBody != null},")
+            append("\"priorResponses\":[")
+            tx.priorResponses.forEachIndexed { i, prior ->
+                if (i > 0) append(",")
+                append("{\"url\":\"${prior.url.escapeForJson()}\",\"statusCode\":${prior.statusCode}}")
+            }
+            append("]")
         }
         append("}")
     }

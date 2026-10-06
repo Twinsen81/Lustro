@@ -45,6 +45,10 @@ internal data class NetworkTransaction(
     val responseComplete: Boolean = false,
     val isMocked: Boolean = false,
     val error: String? = null,
+    // The URL the response came from when it isn't url, as after a redirect. Redacted.
+    val finalUrl: String? = null,
+    // The redirects and auth challenges the client followed up on, oldest first. Redacted.
+    val priorResponses: List<PriorResponse> = emptyList(),
 ) {
     // Polls repeat the same search over a list that mostly hasn't changed, so
     // each snapshot remembers its last result. The store replaces a snapshot
@@ -52,13 +56,14 @@ internal data class NetworkTransaction(
     private val lastSearch = AtomicReference<SearchResult?>()
 
     /**
-     * Whether the URL, method, or either body contains [needle] ignoring
+     * Whether the URL, the final URL, the method, or either body contains [needle] ignoring
      * case. [needle] must already be folded with [foldCase].
      */
     fun matchesSearch(needle: String): Boolean {
         lastSearch.get()?.let { if (it.needle == needle) return it.matched }
         val matched =
             url.containsFolded(needle) ||
+                finalUrl?.containsFolded(needle) == true ||
                 method.containsFolded(needle) ||
                 requestBody?.containsFolded(needle) == true ||
                 responseBody?.containsFolded(needle) == true
@@ -68,6 +73,9 @@ internal data class NetworkTransaction(
 
     private class SearchResult(val needle: String, val matched: Boolean)
 }
+
+/** A response the client answered with another request, as [NetworkTransaction.priorResponses] lists it. */
+internal data class PriorResponse(val url: String, val statusCode: Int)
 
 /** Lowercases each char on its own, the folding [NetworkTransaction.matchesSearch] expects. */
 internal fun String.foldCase(): String = String(CharArray(length) { this[it].foldCase() })

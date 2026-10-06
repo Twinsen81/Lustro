@@ -88,6 +88,29 @@ class HttpUrlConnectionCaptureBodyTest {
         assertEquals(5_000L, body.byteSize)
     }
 
+    @Test
+    fun `a redirect the platform followed is the final URL, and the app still sees it`() {
+        val sink = RecordingSink()
+        val connection = open(sink, FakeConnection.Spec("ok".toByteArray(), "text/plain", redirectTo = "http://cdn.example.com/episode"))
+
+        assertEquals(200, connection.responseCode)
+
+        assertEquals("http://cdn.example.com/episode", connection.url.toString())
+        assertEquals("http://cdn.example.com/episode", sink.completions.single().finalUrl)
+        assertTrue(sink.completions.single().priorResponses.isEmpty())
+    }
+
+    @Test
+    fun `a request that was not redirected has no final URL`() {
+        val sink = RecordingSink()
+        val connection = open(sink, FakeConnection.Spec("ok".toByteArray(), "text/plain"))
+
+        connection.inputStream.readBytes()
+
+        assertEquals("http://example.com/episode", connection.url.toString())
+        assertNull(sink.completions.last().finalUrl)
+    }
+
     private fun open(sink: NetworkCaptureSink, spec: FakeConnection.Spec): HttpURLConnection {
         val platform =
             object : URLStreamHandler() {
@@ -112,6 +135,7 @@ class HttpUrlConnectionCaptureBodyTest {
             val contentType: String,
             val failAfter: Int = -1,
             val declared: Boolean = false,
+            val redirectTo: String? = null,
         )
 
         private val stream =
@@ -142,9 +166,16 @@ class HttpUrlConnectionCaptureBodyTest {
 
         override fun usingProxy(): Boolean = false
 
-        override fun getInputStream(): InputStream = stream
+        // The platform's connection moves its URL when it follows a redirect.
+        override fun getResponseCode(): Int {
+            spec.redirectTo?.let { url = URL(it) }
+            return HTTP_OK
+        }
 
-        override fun getResponseCode(): Int = HTTP_OK
+        override fun getInputStream(): InputStream {
+            responseCode
+            return stream
+        }
 
         override fun getHeaderFields(): MutableMap<String, MutableList<String>> {
             val fields = mutableMapOf("Content-Type" to mutableListOf(spec.contentType))

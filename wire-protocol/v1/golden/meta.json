@@ -1,12 +1,12 @@
 {
   "libraryVersion": "0.1.0-SNAPSHOT",
-  "protocolVersion": "1.4",
+  "protocolVersion": "1.5",
   "tabs": [
     {
       "id": "network",
       "title": "Network",
       "schemaUrl": "/api/v1/network/_schema",
-      "version": "1.4"
+      "version": "1.5"
     }
   ]
 }

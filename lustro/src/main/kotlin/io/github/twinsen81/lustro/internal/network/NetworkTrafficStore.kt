@@ -217,6 +217,8 @@ internal class NetworkTrafficStore(
             completedAt = completedAt,
             protocol = response.protocol,
             isMocked = response.isMocked,
+            finalUrl = response.finalUrl?.let { redactor.redactUrl(it) },
+            priorResponses = response.priorResponses.map { PriorResponse(redactor.redactUrl(it.url), it.statusCode) },
         )
     }
 
@@ -306,6 +308,8 @@ internal class NetworkTrafficStore(
         protocol: String? = null,
         isMocked: Boolean = false,
         responseBinaryBody: ByteArray? = null,
+        finalUrl: String? = null,
+        priorResponses: List<PriorResponse> = emptyList(),
     ) {
         val updated =
             transactionMap.computeIfPresent(id) { _, tx ->
@@ -324,6 +328,8 @@ internal class NetworkTrafficStore(
                         completedAt = completedAt,
                         protocol = protocol,
                         isMocked = isMocked,
+                        finalUrl = finalUrl,
+                        priorResponses = priorResponses,
                     )
                 // The response body now counts toward the budget; reconcile the delta
                 // atomically inside computeIfPresent so concurrent updates can't race.

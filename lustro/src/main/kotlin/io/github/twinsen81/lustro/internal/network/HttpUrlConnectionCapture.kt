@@ -319,7 +319,8 @@ internal class HttpUrlConnectionCapture(
             }
         }
 
-        // No protocol: HttpURLConnection has no public API that reports it.
+        // No protocol: HttpURLConnection has no public API that reports it. Nor the
+        // redirects it followed, but its URL is where they ended.
         private fun capturedResponse(
             statusCode: Int,
             headers: Headers,
@@ -330,6 +331,7 @@ internal class HttpUrlConnectionCapture(
                 .headers(headers)
                 .body(body)
                 .complete(complete)
+                .finalUrl(redirectedUrl(connection, url)?.toExternalForm())
                 .build()
 
         fun recordError(message: String?) {
@@ -399,6 +401,9 @@ internal class HttpUrlConnectionCapture(
         override fun disconnect() = real.disconnect()
 
         override fun usingProxy(): Boolean = real.usingProxy()
+
+        // Where the platform followed redirects to, as without capture.
+        override fun getURL(): URL = redirectedUrl(real, url) ?: url
 
         override fun getOutputStream(): OutputStream = capture.wrapOutput(real.outputStream)
 
@@ -549,6 +554,9 @@ internal class HttpUrlConnectionCapture(
         override fun disconnect() = real.disconnect()
 
         override fun usingProxy(): Boolean = real.usingProxy()
+
+        // Where the platform followed redirects to, as without capture.
+        override fun getURL(): URL = redirectedUrl(real, url) ?: url
 
         override fun getOutputStream(): OutputStream = capture.wrapOutput(real.outputStream)
 
@@ -777,6 +785,10 @@ internal class HttpUrlConnectionCapture(
     }
 
     private companion object {
+        // The URL the real connection ended up at, or null while it is still requested.
+        fun redirectedUrl(real: HttpURLConnection, requested: URL): URL? =
+            real.url?.takeIf { it.toExternalForm() != requested.toExternalForm() }
+
         private const val TAG = "LustroHttpUrlCapture"
         private const val HTTPS_PORT = 443
         private const val HTTP_PORT = 80

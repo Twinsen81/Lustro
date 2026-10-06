@@ -14,6 +14,22 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Added
 
+- **Redirects in the Network tab (wire protocol 1.5).** OkHttp follows a
+  redirect inside the call, so the interceptor listed a redirected request by
+  the URL the app asked for alone: a feed fetched over `http://` and moved
+  to `https://` showed the `http://` URL with protocol `h2` and no sign of the
+  `301`, and a podcast episode's four tracking hops showed as the first one.
+  Every transaction now carries `finalUrl`, the URL the response came from
+  when it isn't `url`, and the detail carries `priorResponses`, each redirect
+  and authentication challenge that OkHttp answered with another request,
+  with its URL and status. Both are redacted like `url`, and search finds a
+  transaction by its `finalUrl`. `CapturedResponse` has the matching
+  `finalUrl` and `priorResponses`, set through its builder, for a custom
+  adapter. Platform `HttpURLConnection` capture reports `finalUrl`, since the
+  platform doesn't show the hops. The Network tab marks a redirected row and
+  shows the hops under the URL, the CLI row ends with `[-> <finalUrl>]`, the
+  copy and Markdown views list the hops, and the HAR export puts both in
+  `_lustro`.
 - **Debug console JavaScript tests**: a dependency-free suite run by Node's own
   test runner (`node --test lustro/src/test/js/*.test.js`) with its own CI job,
   kept out of Gradle `check` so building the library still needs no Node. It
@@ -264,6 +280,11 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Fixed
 
+- **Platform capture hid a redirect from the app.** The connection that
+  platform `HttpURLConnection` capture hands the app returned the URL the app
+  requested from `getURL()`, even after the platform followed a redirect, so
+  an app that reads the URL to learn where a request ended up got the wrong
+  one. It now returns the platform's own URL, as without Lustro.
 - **Platform capture stored audio as text.** Platform `HttpURLConnection`
   capture decoded every body it didn't keep as an image as UTF-8 text, so
   each request of a media player kept up to 256 KB of an MP3 as garbled text.

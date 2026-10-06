@@ -921,6 +921,84 @@ class LustroNetworkInterceptorTest {
     }
 
     @Test
+    fun `a redirect OkHttp follows is one transaction with its hops and the URL the response came from`() {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setResponseCode(301).setHeader("Location", "/feeds/2"))
+        server.enqueue(MockResponse().setResponseCode(302).setHeader("Location", "/feeds/3"))
+        server.enqueue(MockResponse().setHeader("Content-Type", "application/xml").setBody("<rss/>"))
+        server.start()
+        try {
+            val store = store()
+            val client = OkHttpClient.Builder().addInterceptor(interceptor(store)).build()
+
+            client.newCall(Request.Builder().url(server.url("/feeds/1")).build()).execute().use { assertEquals("<rss/>", it.body!!.string()) }
+
+            val tx = store.getTransactions().single()
+            assertEquals(server.url("/feeds/1").toString(), tx.url)
+            assertEquals(server.url("/feeds/3").toString(), tx.finalUrl)
+            assertEquals(
+                listOf(PriorResponse(server.url("/feeds/1").toString(), 301), PriorResponse(server.url("/feeds/2").toString(), 302)),
+                tx.priorResponses,
+            )
+            assertEquals(200, tx.statusCode)
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun `an answered auth challenge is a prior response, with no final URL`() {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setResponseCode(401).setHeader("WWW-Authenticate", "Basic realm=\"feeds\""))
+        server.enqueue(MockResponse().setBody("ok"))
+        server.start()
+        try {
+            val store = store()
+            val client =
+                OkHttpClient.Builder()
+                    .addInterceptor(interceptor(store))
+                    .authenticator { _, response -> response.request.newBuilder().header("Authorization", "Basic dTpw").build() }
+                    .build()
+
+            client.newCall(Request.Builder().url(server.url("/private")).build()).execute().close()
+
+            val tx = store.getTransactions().single()
+            assertNull(tx.finalUrl)
+            assertEquals(listOf(PriorResponse(server.url("/private").toString(), 401)), tx.priorResponses)
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun `a response that was not redirected has no final URL or prior responses`() {
+        val store = store()
+        val request = Request.Builder().url("https://example.com/feed.json").build()
+
+        interceptor(store).intercept(FakeChain(request, responseFor(request, "{}".toResponseBody("application/json".toMediaType()))))
+
+        val tx = store.getTransactions().single()
+        assertNull(tx.finalUrl)
+        assertTrue(tx.priorResponses.isEmpty())
+    }
+
+    @Test
+    fun `the final URL and the hops are redacted`() {
+        val store = store(redactor = DefaultRedactor)
+        val requested = Request.Builder().url("https://example.com/feed?token=s3cret").build()
+        val hop = Request.Builder().url("https://cdn.example.com/feed?token=s3cret").build()
+        val prior = responseFor(requested, ByteArray(0).toResponseBody(null)).newBuilder().code(302).body(null).build()
+        val response = responseFor(hop, "{}".toResponseBody("application/json".toMediaType())).newBuilder().priorResponse(prior).build()
+
+        interceptor(store).intercept(FakeChain(requested, response))
+
+        val tx = store.getTransactions().single()
+        assertFalse(tx.finalUrl!!, tx.finalUrl!!.contains("s3cret"))
+        assertTrue(tx.finalUrl!!.startsWith("https://cdn.example.com/feed?token="))
+        assertFalse(tx.priorResponses.single().url.contains("s3cret"))
+    }
+
+    @Test
     fun `an SVG body is text, so the Redactor reads it`() {
         val store = store()
         val svg = """<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>"""

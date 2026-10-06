@@ -3,11 +3,13 @@ package io.github.twinsen81.lustro.internal.network
 import android.util.Log
 import io.github.twinsen81.lustro.Headers
 import io.github.twinsen81.lustro.network.CapturedBody
+import io.github.twinsen81.lustro.network.CapturedPriorResponse
 import io.github.twinsen81.lustro.network.CapturedResponse
 import io.github.twinsen81.lustro.network.MockRule
 import io.github.twinsen81.lustro.network.NetworkCaptureSink
 import io.github.twinsen81.lustro.network.TransactionId
 import java.io.IOException
+import okhttp3.HttpUrl
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -140,17 +142,17 @@ internal class LustroNetworkInterceptor(
                 return response
             }
 
-            wrapEventStreamResponse(id, response, startTime)?.let { return it }
+            wrapEventStreamResponse(id, request.url, response, startTime)?.let { return it }
 
             val body = captureResponseBody(response)
             if (!response.bodyOutlivesCapture(body)) {
-                sink.completeRequest(id, response.toCapturedResponse(durationMs, body))
+                sink.completeRequest(id, response.toCapturedResponse(request.url, durationMs, body))
                 return response
             }
             // The app reads the rest of the body after this returns, which can take far
             // longer than the headers did, so the response stays in flight until it ends.
-            sink.completeRequest(id, response.toCapturedResponse(durationMs, body, complete = false))
-            trackBodyTransfer(id, response, body, startTime)
+            sink.completeRequest(id, response.toCapturedResponse(request.url, durationMs, body, complete = false))
+            trackBodyTransfer(id, request.url, response, body, startTime)
         } catch (e: IOException) {
             if (id != null) {
                 val durationMs = System.currentTimeMillis() - startTime
@@ -318,6 +320,7 @@ internal class LustroNetworkInterceptor(
 
     private fun trackBodyTransfer(
         id: TransactionId,
+        requestedUrl: HttpUrl,
         response: Response,
         captured: CapturedBody?,
         startTime: Long,
@@ -332,7 +335,7 @@ internal class LustroNetworkInterceptor(
                         // Read to the end, the count is the size even without a Content-Length.
                         val byteSize = declaredSize ?: bytesRead.takeIf { reachedEnd } ?: captured?.byteSize
                         val body = CapturedBody(captured?.text, captured?.truncated ?: false, byteSize, captured?.bytes)
-                        sink.completeRequest(id, response.toCapturedResponse(System.currentTimeMillis() - startTime, body))
+                        sink.completeRequest(id, response.toCapturedResponse(requestedUrl, System.currentTimeMillis() - startTime, body))
                     }
                 },
                 onFailure = { bytesRead, error ->
@@ -356,6 +359,7 @@ internal class LustroNetworkInterceptor(
 
     private fun wrapEventStreamResponse(
         id: TransactionId,
+        requestedUrl: HttpUrl,
         response: Response,
         startTime: Long,
     ): Response? {
@@ -370,6 +374,7 @@ internal class LustroNetworkInterceptor(
         sink.completeRequest(
             id,
             response.toCapturedResponse(
+                requestedUrl = requestedUrl,
                 durationMs = System.currentTimeMillis() - startTime,
                 body = CapturedBody(text = null, truncated = false, byteSize = declaredSize),
                 complete = false,
@@ -387,6 +392,7 @@ internal class LustroNetworkInterceptor(
                         sink.completeRequest(
                             id,
                             response.toCapturedResponse(
+                                requestedUrl = requestedUrl,
                                 durationMs = System.currentTimeMillis() - startTime,
                                 body =
                                     CapturedBody(
@@ -405,7 +411,11 @@ internal class LustroNetworkInterceptor(
             .build()
     }
 
+    // An application interceptor gets the response to the last request OkHttp
+    // sent, so its request is where the redirects ended: the final URL when it
+    // isn't requestedUrl, the URL of the request this interceptor passed on.
     private fun Response.toCapturedResponse(
+        requestedUrl: HttpUrl,
         durationMs: Long,
         body: CapturedBody?,
         complete: Boolean = true,
@@ -416,7 +426,16 @@ internal class LustroNetworkInterceptor(
             .body(body)
             .complete(complete)
             .protocol(protocol.toString())
+            .finalUrl(request.url.takeIf { it != requestedUrl }?.toString())
+            .priorResponses(priorResponses())
             .build()
+
+
+    private fun Response.priorResponses(): List<CapturedPriorResponse> =
+        generateSequence(priorResponse) { it.priorResponse }
+            .map { CapturedPriorResponse(it.request.url.toString(), it.code) }
+            .toList()
+            .asReversed()
 
     // What goes on the wire: OkHttp sends the body's media type, or the header
     // the app set when the body has none. Body capture goes by the same type.

@@ -154,6 +154,33 @@ test('a request in flight, a stream, and a failure say so in the meta line', () 
     assert.ok(failed.includes('**Failed** · 12 ms · 2026-09-28T14:22:09.003Z\n\n**Error:** `java.net.SocketTimeoutException: timeout`'), failed);
 });
 
+test('a redirected request lists each hop and where the response came from', () => {
+    const out = markdown(detail({
+        url: 'http://feeds.example.com/rss',
+        finalUrl: 'https://cdn.example.com/rss',
+        priorResponses: [
+            { url: 'http://feeds.example.com/rss', statusCode: 301 },
+            { url: 'https://feeds.example.com/rss', statusCode: 302 },
+        ],
+    }));
+    assert.ok(out.includes([
+        '**Redirects:**',
+        '',
+        '- 301 `http://feeds.example.com/rss`',
+        '- 302 `https://feeds.example.com/rss`',
+        '- Response from `https://cdn.example.com/rss`',
+    ].join('\n')), out);
+});
+
+test('platform capture names only the final URL', () => {
+    const out = markdown(detail({ url: 'http://a.test/x', finalUrl: 'https://b.test/x', priorResponses: [] }));
+    assert.ok(out.includes('- from `http://a.test/x`\n- Response from `https://b.test/x`'), out);
+});
+
+test('a request that was not redirected has no redirect lines', () => {
+    assert.ok(!markdown(detail({ finalUrl: null, priorResponses: [] })).includes('Redirects'));
+});
+
 test('a selection is one document, with a rule between transactions', () => {
     const out = markdown(detail({ id: 'a', url: 'https://x.test/a' }), detail({ id: 'b', url: 'https://x.test/b' }));
     const parts = out.split('\n\n---\n\n');

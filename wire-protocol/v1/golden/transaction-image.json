@@ -5,6 +5,7 @@
   "completedAt": 1790605333236,
   "method": "GET",
   "url": "https://cdn.example.com/avatars/77e2.png",
+  "finalUrl": "https://img.example-cdn.net/avatars/77e2.png?w=96",
   "protocol": "h2",
   "statusCode": 200,
   "durationMs": 96,
@@ -30,5 +31,8 @@
   },
   "responseBody": null,
   "responseBodyTruncated": false,
-  "responseBodyBinary": true
+  "responseBodyBinary": true,
+  "priorResponses": [
+    { "url": "https://cdn.example.com/avatars/77e2.png", "statusCode": 302 }
+  ]
 }

@@ -76,6 +76,8 @@
           "requestBodyTruncated": false,
           "responseBodyTruncated": false,
           "responseComplete": true,
+          "finalUrl": null,
+          "priorResponses": [],
           "error": null
         }
       },
@@ -141,6 +143,8 @@
           "requestBodyTruncated": false,
           "responseBodyTruncated": false,
           "responseComplete": true,
+          "finalUrl": null,
+          "priorResponses": [],
           "error": null
         }
       },
@@ -207,6 +211,8 @@
           "requestBodyTruncated": false,
           "responseBodyTruncated": false,
           "responseComplete": true,
+          "finalUrl": null,
+          "priorResponses": [],
           "error": null
         }
       },
@@ -277,6 +283,13 @@
           "requestBodyTruncated": false,
           "responseBodyTruncated": true,
           "responseComplete": true,
+          "finalUrl": "https://eu.api.example.com/v1/catalog?page=2&tag=new%20in",
+          "priorResponses": [
+            {
+              "url": "https://api.example.com/v1/catalog?page=2&tag=new%20in",
+              "statusCode": 302
+            }
+          ],
           "error": null
         }
       },
@@ -331,6 +344,8 @@
           "requestBodyTruncated": false,
           "responseBodyTruncated": false,
           "responseComplete": true,
+          "finalUrl": null,
+          "priorResponses": [],
           "error": "java.net.UnknownHostException: Unable to resolve host \"telemetry.example.com\""
         }
       }

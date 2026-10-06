@@ -123,6 +123,8 @@
           "requestBodyTruncated": false,
           "responseBodyTruncated": false,
           "responseComplete": true,
+          "finalUrl": null,
+          "priorResponses": [],
           "error": null,
           "webSocket": {
             "id": "ws_3d2a7f10",

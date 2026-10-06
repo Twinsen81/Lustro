@@ -81,6 +81,15 @@ internal object HarExport {
         append("\"requestBodyTruncated\":").append(tx.requestBodyTruncated).append(',')
         append("\"responseBodyTruncated\":").append(tx.responseBodyTruncated).append(',')
         append("\"responseComplete\":").append(tx.responseComplete).append(',')
+        // HAR's redirectURL is the Location of a redirect the entry is. A redirect the
+        // client followed has no entry of its own, so the hops go here.
+        append("\"finalUrl\":").appendNullable(tx.finalUrl).append(',')
+        append("\"priorResponses\":[")
+        tx.priorResponses.forEachIndexed { index, prior ->
+            if (index > 0) append(',')
+            append("{\"url\":").appendString(prior.url).append(",\"statusCode\":").append(prior.statusCode).append('}')
+        }
+        append("],")
         append("\"error\":")
         tx.error?.let { appendString(it) } ?: append("null")
         if (webSocket != null) {
