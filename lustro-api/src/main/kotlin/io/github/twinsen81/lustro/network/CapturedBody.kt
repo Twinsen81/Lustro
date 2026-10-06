@@ -22,8 +22,8 @@ package io.github.twinsen81.lustro.network
  * decoding, when known: from its `Content-Length`, or as counted. For a body the
  * adapter inflated it is the compressed size, so it can be smaller than [text];
  * for a truncated body it is the full size, so it can be larger. The built-in
- * sink counts a body toward its capture budget as the larger of [byteSize] and
- * what it keeps.
+ * sink counts a body toward its capture budget by what it keeps of [text] or
+ * [bytes], not by [byteSize], so a large body that isn't kept costs nothing.
  *
  * Deliberately NOT a `data class` so the public surface stays stable and
  * mirrorable by `:lustro-noop`.

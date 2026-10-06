@@ -275,20 +275,16 @@ internal class NetworkTrafficStore(
 
     /**
      * Body bytes a single transaction contributes to the capture budget: the
-     * request body plus the response body. Uses the recorded byte counts when
-     * present (they reflect the true on-the-wire size even when the stored body
-     * was truncated) and falls back to the size of the retained text or bytes.
-     * A compressed body is kept inflated, so what is kept can be far more than
-     * its size on the wire; then the body counts what is kept.
+     * request body plus the response body, as kept. The budget bounds memory, so
+     * a body counts what the store holds of it, never its size on the wire: a
+     * 60 MB download whose bytes aren't kept costs nothing, a truncated body
+     * costs its kept prefix, and a compressed body kept inflated costs the
+     * inflated text.
      */
     private fun transactionBytes(tx: NetworkTransaction): Long =
-        bodyBytes(tx.requestBodyBytes, tx.requestBody, tx.requestBinaryBody) +
-            bodyBytes(tx.responseBodyBytes, tx.responseBody, tx.responseBinaryBody)
+        keptBytes(tx.requestBody, tx.requestBinaryBody) + keptBytes(tx.responseBody, tx.responseBinaryBody)
 
-    private fun bodyBytes(wireSize: Long?, text: String?, bytes: ByteArray?): Long {
-        val retained = text?.utf8Size() ?: bytes?.size?.toLong() ?: 0L
-        return if (wireSize == null) retained else maxOf(wireSize, retained)
-    }
+    private fun keptBytes(text: String?, bytes: ByteArray?): Long = text?.utf8Size() ?: bytes?.size?.toLong() ?: 0L
 
     private fun identityKey(method: String, url: String): String {
         val path = url.toHttpUrlOrNull()?.encodedPath ?: url

@@ -25,7 +25,7 @@ public class DebugConfig private constructor(
     public val bindFallback: Boolean,
     /** Base URL for resolving relative "Send Request" URLs, or `null`. Default `null`. */
     public val appServerBaseUrl: String?,
-    /** Total in-memory capture budget in bytes (enforced by the :lustro runtime). Default 50 MB. */
+    /** Total in-memory budget for kept capture bodies, in bytes (enforced by the :lustro runtime). Default 50 MB. */
     public val captureBudgetBytes: Long,
     /** Maximum number of retained transactions (ring cap). Default `1000`. */
     public val maxCaptureTransactions: Int,

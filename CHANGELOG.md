@@ -264,6 +264,14 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Fixed
 
+- **One media download emptied the Network tab.** The capture budget counted
+  each body by the larger of its size on the wire and what Lustro keeps, so an
+  audio or video response that Lustro keeps none of counted its whole
+  `Content-Length`. A single 65 MB episode download went over the 50 MB
+  budget and evicted every other transaction, and the next request evicted the
+  download. The budget bounds memory, so a body now counts only what is kept
+  of it: a truncated body its kept prefix, and a body that isn't kept nothing.
+  `responseBodyBytes` still reports the full size.
 - **The CLI found no token on a device that drops Info logs.** A device with
   `log.tag` set to `E` drops the `LustroToken` ready line, which was the only
   source of the endpoint, and an old line left in the log from an earlier

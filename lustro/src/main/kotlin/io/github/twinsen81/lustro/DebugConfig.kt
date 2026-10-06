@@ -26,7 +26,12 @@ public class DebugConfig private constructor(
     public val bindFallback: Boolean,
     /** Base URL for resolving relative "Send Request" URLs, or `null`. Default `null`. */
     public val appServerBaseUrl: String?,
-    /** Total in-memory capture budget in bytes. Default 50 MB. */
+    /**
+     * Total in-memory capture budget in bytes: the captured bodies the Network
+     * tab keeps, counted as kept. A body that isn't kept, such as a media
+     * download, costs nothing. Past the budget the oldest finished transactions
+     * go first. Default 50 MB.
+     */
     public val captureBudgetBytes: Long,
     /** Maximum number of retained transactions (ring cap). Default `1000`. */
     public val maxCaptureTransactions: Int,
