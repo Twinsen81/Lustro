@@ -307,3 +307,13 @@ def test_token_from_prefs(monkeypatch):
     monkeypatch.setattr(discovery, "_run", lambda cmd, timeout=10.0: None)
     assert discovery.token_from_prefs() is None
 
+
+def test_resolve_takes_the_port_from_the_prefs_for_a_token_from_the_environment(monkeypatch):
+    monkeypatch.setattr(discovery, "discover_from_logcat", lambda device=None: None)
+    monkeypatch.setattr(discovery, "foreground_package", lambda device=None: "com.example.app")
+    monkeypatch.setattr(discovery, "discover_from_run_as", lambda package, device=None: Endpoint("127.0.0.1", 8081, "prefstok"))
+    assert resolve(env={"LUSTRO_TOKEN": "envtok"}) == Endpoint("127.0.0.1", 8081, "envtok")
+    # Flags that give all three need no prefs.
+    monkeypatch.setattr(discovery, "discover_from_run_as", lambda package, device=None: pytest.fail("read the prefs"))
+    assert resolve(host="127.0.0.1", port=9000, token="t", env={}) == Endpoint("127.0.0.1", 9000, "t")
+

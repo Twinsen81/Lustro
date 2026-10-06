@@ -24,36 +24,42 @@ internal object MultipartCapture {
     fun capture(body: MultipartBody, maxBodySize: Long): CapturedBody {
         val declaredSize = body.contentLength().takeIf { it >= 0 }
         val dashBoundary = "--" + body.boundary
-        val out = StringBuilder()
+        // The stored text as UTF-8, so the capture cap counts bytes, as it does for any other body.
+        val out = Buffer()
         var cut = false
-        for (part in body.parts) {
-            out.append(dashBoundary).append(CRLF)
-            part.headers?.forEach { (name, value) -> out.append(name).append(": ").append(value).append(CRLF) }
-            val partBody = part.body
-            val contentType = partBody.contentType()
-            if (contentType != null) out.append("Content-Type: ").append(contentType).append(CRLF)
-            val partSize = partBody.contentLength().takeIf { it >= 0 }
-            if (partSize != null) out.append("Content-Length: ").append(partSize).append(CRLF)
-            out.append(CRLF)
-            val text =
-                if (isText(contentType, part.headers) && !partBody.isOneShot() && !partBody.isDuplex()) {
-                    readText(partBody, contentType, maxBodySize - out.length)
+        try {
+            for (part in body.parts) {
+                out.writeUtf8(dashBoundary).writeUtf8(CRLF)
+                part.headers?.forEach { (name, value) -> out.writeUtf8(name).writeUtf8(": ").writeUtf8(value).writeUtf8(CRLF) }
+                val partBody = part.body
+                val contentType = partBody.contentType()
+                if (contentType != null) out.writeUtf8("Content-Type: ").writeUtf8(contentType.toString()).writeUtf8(CRLF)
+                val partSize = partBody.contentLength().takeIf { it >= 0 }
+                if (partSize != null) out.writeUtf8("Content-Length: ").writeDecimalLong(partSize).writeUtf8(CRLF)
+                out.writeUtf8(CRLF)
+                val text =
+                    if (isText(contentType, part.headers) && !partBody.isOneShot() && !partBody.isDuplex()) {
+                        readText(partBody, contentType, maxBodySize - out.size)
+                    } else {
+                        null
+                    }
+                if (text == null) {
+                    out.writeUtf8(omittedLine(contentType, partSize))
                 } else {
-                    null
+                    out.writeUtf8(text.content)
+                    cut = text.cut
                 }
-            if (text == null) {
-                out.append(omittedLine(contentType, partSize))
-            } else {
-                out.append(text.content)
-                cut = text.cut
+                if (cut || out.size > maxBodySize) break
+                out.writeUtf8(CRLF)
             }
-            if (cut || out.length > maxBodySize) break
-            out.append(CRLF)
+            if (!cut && out.size <= maxBodySize) out.writeUtf8(dashBoundary).writeUtf8("--").writeUtf8(CRLF)
+            // A part decoded from another charset can take more bytes as UTF-8 than it had.
+            val truncated = cut || out.size > maxBodySize
+            val stored = out.readUtf8(minOf(out.size, maxBodySize))
+            return CapturedBody(text = stored, truncated = truncated, byteSize = declaredSize)
+        } finally {
+            out.close()
         }
-        if (!cut && out.length <= maxBodySize) out.append(dashBoundary).append("--").append(CRLF)
-        val truncated = cut || out.length > maxBodySize
-        val stored = if (out.length > maxBodySize) out.substring(0, maxBodySize.toInt()) else out.toString()
-        return CapturedBody(text = stored, truncated = truncated, byteSize = declaredSize)
     }
 
     // A part with no type is text when it is a plain form field. A file with no

@@ -763,6 +763,26 @@ class LustroNetworkInterceptorTest {
     }
 
     @Test
+    fun `the multipart cap counts bytes, as for any other body`() {
+        val store = store()
+        // 30 chars of 3 bytes each: two fields fit in 100 chars but not in 100 bytes.
+        val cjk = "\u6f22".repeat(30)
+        val multipart =
+            MultipartBody.Builder("b").setType(MultipartBody.FORM)
+                .addFormDataPart("a", cjk)
+                .addFormDataPart("b", cjk)
+                .build()
+        val request = Request.Builder().url("https://example.com/notes").post(multipart).build()
+        val response = responseFor(request, TrackingResponseBody("text/plain".toMediaType(), "ok", 2))
+
+        interceptor(store, maxBodySize = 200).intercept(FakeChain(request, response))
+
+        val tx = store.getTransactions().single()
+        assertTrue(tx.requestBodyTruncated)
+        assertTrue("stored ${tx.requestBody!!.toByteArray().size} bytes", tx.requestBody!!.toByteArray().size <= 200)
+    }
+
+    @Test
     fun `a one-shot multipart part is not read`() {
         val store = store()
         var reads = 0

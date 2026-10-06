@@ -241,13 +241,15 @@ def resolve(
             if r_token is None:
                 r_token = discovered.token
 
-    # The app's prefs, through run-as, when the log has no ready line: a device
-    # that drops Info logs drops it. They have the host and port of the last
-    # bind too, unless the app predates storing them.
-    if r_token is None:
+    # The app's prefs, through run-as, for whatever the log line didn't give: a
+    # device that drops Info logs drops the line. They have the host and port of
+    # the last bind too, unless the app predates storing them, so a token from
+    # --token or LUSTRO_TOKEN still gets the app's own port.
+    if r_token is None or r_host is None or r_port is None:
         ra = discover_from_run_as(package or foreground_package(device) or "", device)
         if ra is not None and ra.token:
-            r_token = ra.token
+            if r_token is None:
+                r_token = ra.token
             if r_host is None:
                 r_host = ra.host
             if r_port is None:

@@ -182,6 +182,14 @@ class DefaultRedactorTest {
     }
 
     @Test
+    fun `a multipart body cut inside a part's headers still masks them`() {
+        val type = MediaType.parse("multipart/form-data; boundary=xyz")
+        val head = "--xyz\r\nContent-Disposition: form-data; name=\"doc\"\r\n"
+        assertEquals(head + "X-Api-Key: [REDACTED]", redactor.redactBody(head + "X-Api-Key: sk-live-9", type))
+        assertEquals(head + "X-Api-Key: [REDACTED]", redactor.redactBody(head + "X-Api-Key: sk-li", type))
+    }
+
+    @Test
     fun `a multipart body cut inside a sensitive part is masked to its end`() {
         val type = MediaType.parse("multipart/form-data; boundary=xyz")
         val body = "--xyz\r\nContent-Disposition: form-data; name=\"api_key\"\r\n\r\nsk-live-123"

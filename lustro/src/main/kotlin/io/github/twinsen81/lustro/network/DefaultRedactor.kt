@@ -205,8 +205,8 @@ public object DefaultRedactor : Redactor {
     private fun redactPart(piece: String): String {
         val blankLine = piece.indexOf("\r\n\r\n").takeIf { it >= 0 }?.let { it + 4 }
             ?: piece.indexOf("\n\n").takeIf { it >= 0 }?.let { it + 2 }
-            // Cut off inside the part's headers.
-            ?: return redactTextually(piece)
+            // Cut off inside the part's headers: what arrived is all headers.
+            ?: return redactPartHeaders(piece)
         val head = piece.substring(0, blankLine)
         val lineBreak = if (piece.endsWith("\r\n")) "\r\n" else if (piece.endsWith("\n")) "\n" else ""
         val content = piece.substring(blankLine, piece.length - lineBreak.length)

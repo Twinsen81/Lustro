@@ -1143,15 +1143,16 @@
                     // A typed text part, such as JSON next to a file. curl takes a value in
                     // double quotes as it is, and the type after it.
                     parts.push('-F');
-                    parts.push(shellQuote(name + '="' + part.value.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '";type=' + part.contentType));
+                    parts.push(shellQuote(name + '=' + curlQuote(part.value) + ';type=' + part.contentType));
                 } else if (part.value != null && part.filename == null) {
                     // --form-string, because -F reads a value that starts with @ or < as a file.
                     parts.push('--form-string');
                     parts.push(shellQuote(name + '=' + part.value));
                 } else {
                     // Lustro did not keep a file's bytes: the command names the file to send.
+                    // In quotes, because curl reads , and ; in a bare file name as separators.
                     parts.push('-F');
-                    parts.push(shellQuote(name + '=@' + (part.filename || 'FILE') + (part.contentType ? ';type=' + part.contentType : '')));
+                    parts.push(shellQuote(name + '=@' + curlQuote(part.filename || 'FILE') + (part.contentType ? ';type=' + part.contentType : '')));
                 }
             });
         } else if (hasBody) {
@@ -1160,6 +1161,10 @@
         }
         parts.push(shellQuote(tx.url || ''));
         return parts.join(' ');
+    }
+    // A -F value or file name in double quotes, which curl takes as it is.
+    function curlQuote(s) {
+        return '"' + String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
     }
     function shellQuote(s) {
         return "'" + String(s == null ? '' : s).replace(/'/g, "'\\''") + "'";

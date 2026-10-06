@@ -63,5 +63,17 @@ test('Copy as cURL builds a multipart body from its parts', () => {
     });
     assert.strictEqual(command,
         "curl -X POST -H 'Authorization: [REDACTED]' --form-string 'description=@not a file' "
-            + "-F 'file=@cat.png;type=image/png' 'https://a.test/api/v2/media'");
+            + "-F 'file=@\"cat.png\";type=image/png' 'https://a.test/api/v2/media'");
+});
+
+test('Copy as cURL quotes a file name that curl would split', () => {
+    const command = network.netCurlCommand({
+        method: 'POST',
+        url: 'https://a.test/upload',
+        requestContentType: 'multipart/form-data; boundary=b0',
+        requestHeaders: {},
+        requestBody: '--b0\r\nContent-Disposition: form-data; name="file"; filename="photo,edited;v2.png"\r\n\r\n'
+            + '[Lustro did not store this part: image/png, 7 bytes]\r\n--b0--\r\n',
+    });
+    assert.strictEqual(command, "curl -X POST -F 'file=@\"photo,edited;v2.png\"' 'https://a.test/upload'");
 });
