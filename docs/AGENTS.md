@@ -284,9 +284,13 @@ rules with their hit counts.
 **Times, protocol, and content types.** Every transaction, in the list and in the detail, has
 `startedAt` and `completedAt` in milliseconds since the Unix epoch. Sort and correlate by those,
 with logcat or a server log: `timestamp` is an `HH:mm:ss.SSS` display time in the device's zone.
-`completedAt` is `null` while the request is in flight. It is when the capture recorded the
-outcome, after reading the response body up to the capture cap, so it can differ from `startedAt`
-plus `durationMs`; take a request's duration from `durationMs`. `protocol` (`http/1.1`, `h2`, `h3`) is
+`completedAt` is `null` while the request is in flight. A response with a status can still be in
+flight (`responseComplete: false`): the app is still reading a body that capture didn't read
+whole, such as a download, a body past the capture cap, or a stream. It completes when the app
+reads to the end of the body or closes it, and `durationMs` then covers the whole body, and
+`responseBodyBytes` is counted when the response had no `Content-Length`. A body that fails while
+the app reads it sets `error` and keeps `statusCode`. Take a request's duration from
+`durationMs`: `completedAt` can be later by the time the capture took to record it. `protocol` (`http/1.1`, `h2`, `h3`) is
 `null` before a response, for a mocked one, and for platform `HttpURLConnection` capture.
 `requestContentType` and `responseContentType` give the media type as captured, so a client can
 tell JSON from an image without reading the headers. These fields arrived in protocol 1.2; a 1.1

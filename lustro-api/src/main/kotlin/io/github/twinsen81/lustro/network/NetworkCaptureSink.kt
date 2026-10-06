@@ -37,16 +37,20 @@ public interface NetworkCaptureSink {
     public fun findMockRule(url: String, method: String): MockRule?
 
     /**
-     * Records the [response] to the transaction [id]. An ordinary request
-     * reports one complete response; an event stream reports in-flight ones
-     * as it reads, then a complete one at EOF or close (see
-     * [CapturedResponse.isComplete]).
+     * Records the [response] to the transaction [id]. A request whose body the
+     * adapter captures whole reports one complete response. One whose body the
+     * app reads after that, such as a download or an event stream, reports an
+     * in-flight one when its headers arrive, and more as it reads if the
+     * adapter has progress to show, then a complete one when the app reaches
+     * the end of the body or closes it (see [CapturedResponse.isComplete]).
      */
     public fun completeRequest(id: TransactionId, response: CapturedResponse)
 
     /**
      * Records a failed transaction [id] after [durationMs], with the [error]
-     * description.
+     * description. After a response was reported, it records that the body
+     * failed while the app read it, and the response's status and headers are
+     * kept.
      */
     public fun failRequest(id: TransactionId, durationMs: Long, error: String)
 }

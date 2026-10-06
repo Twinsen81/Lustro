@@ -264,6 +264,19 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Fixed
 
+- **A download looked finished when its headers arrived.** The OkHttp
+  interceptor reported a response complete as soon as the capture had read
+  what it keeps of the body, so a 65 MB episode download showed as a
+  `200` in `153ms` while the app read its body for seconds more, and a
+  download that failed or was cancelled halfway still looked successful. A
+  body that capture doesn't read whole (a download, a body past the cap, a
+  type that isn't kept) now reaches the app through a wrapper that changes
+  nothing it reads. The response is in flight until the app reads to the end
+  or closes the body, `durationMs` then covers the whole body, and
+  `responseBodyBytes` is counted when there is no `Content-Length`. A read that
+  throws sets `error` and keeps the status. Platform `HttpURLConnection`
+  capture does the same once the app opens the body: a caller that only reads
+  the status still sees the response complete.
 - **One media download emptied the Network tab.** The capture budget counted
   each body by the larger of its size on the wire and what Lustro keeps, so an
   audio or video response that Lustro keeps none of counted its whole

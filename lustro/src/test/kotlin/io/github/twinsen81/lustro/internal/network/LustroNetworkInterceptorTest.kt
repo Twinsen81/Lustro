@@ -558,7 +558,7 @@ class LustroNetworkInterceptorTest {
     }
 
     @Test
-    fun `truncated unknown length non event stream responses do not report exact byte count`() {
+    fun `a truncated body of unknown length is sized once the app reads it to the end`() {
         val store = store()
         val interceptor = interceptor(store)
         val request = Request.Builder().url("https://example.com/large").build()
@@ -570,11 +570,20 @@ class LustroNetworkInterceptorTest {
             )
         val response = responseFor(request, body)
 
-        interceptor.intercept(FakeChain(request, response))
+        val result = interceptor.intercept(FakeChain(request, response))
+
+        val inFlight = store.getTransactions().single()
+        assertEquals(256 * 1024, inFlight.responseBody!!.length)
+        assertFalse(inFlight.responseComplete)
+        assertNull("the full size isn't known from the capture alone", inFlight.responseBodyBytes)
+
+        assertEquals(256 * 1024 + 1, result.body!!.string().length)
 
         val tx = store.getTransactions().single()
-        assertEquals(256 * 1024, tx.responseBody!!.length)
         assertTrue(tx.responseComplete)
+        assertEquals(256L * 1024 + 1, tx.responseBodyBytes)
+        assertEquals(256 * 1024, tx.responseBody!!.length)
+        assertTrue(tx.responseBodyTruncated)
     }
 
     @Test
@@ -593,7 +602,7 @@ class LustroNetworkInterceptorTest {
             )
         val response = responseFor(request, body)
 
-        interceptor.intercept(FakeChain(request, response))
+        interceptor.intercept(FakeChain(request, response)).close()
 
         val tx = store.getTransactions().single()
         assertTrue(tx.responseBodyTruncated)
@@ -826,6 +835,89 @@ class LustroNetworkInterceptorTest {
         assertNull(tx.responseBinaryBody)
         assertNull(tx.responseBody)
         assertEquals(5L, tx.responseBodyBytes)
+    }
+
+    @Test
+    fun `a download stays in flight until the app reads its body, then has the read in its duration`() {
+        val store = store()
+        val request = Request.Builder().url("https://example.com/episode.mp3").build()
+        val audio = ByteArray(64 * 1024) { it.toByte() }
+        val body = SlowResponseBody(audio, "audio/mpeg".toMediaType(), delayPerReadMs = 20)
+        val response = responseFor(request, body)
+
+        val result = interceptor(store).intercept(FakeChain(request, response))
+
+        val inFlight = store.getTransactions().single()
+        assertEquals(200, inFlight.statusCode)
+        assertFalse(inFlight.responseComplete)
+        assertNull(inFlight.completedAt)
+        val headersMs = inFlight.durationMs!!
+
+        assertArrayEquals("the app reads the body unchanged", audio, result.body!!.bytes())
+
+        val tx = store.getTransactions().single()
+        assertTrue(tx.responseComplete)
+        assertNotNull(tx.completedAt)
+        assertNull(tx.error)
+        assertEquals(audio.size.toLong(), tx.responseBodyBytes)
+        assertNull(tx.responseBody)
+        assertTrue("duration ${tx.durationMs} covers the reads", tx.durationMs!! >= headersMs + 20 * 4)
+    }
+
+    @Test
+    fun `a body the app closes early completes when it is closed`() {
+        val store = store()
+        val request = Request.Builder().url("https://example.com/episode.mp3").build()
+        val response = responseFor(request, SlowResponseBody(ByteArray(10_000), "audio/mpeg".toMediaType(), declared = true))
+
+        val result = interceptor(store).intercept(FakeChain(request, response))
+        result.body!!.source().readByteArray(100)
+        assertFalse(store.getTransactions().single().responseComplete)
+        result.close()
+
+        val tx = store.getTransactions().single()
+        assertTrue(tx.responseComplete)
+        assertNull(tx.error)
+        assertEquals(10_000L, tx.responseBodyBytes)
+    }
+
+    @Test
+    fun `a body that fails while the app reads it fails the transaction and keeps its status`() {
+        val store = store()
+        val request = Request.Builder().url("https://example.com/episode.mp3").build()
+        val body = SlowResponseBody(ByteArray(10_000), "audio/mpeg".toMediaType(), failAfterBytes = 4_096)
+        val response = responseFor(request, body)
+
+        val result = interceptor(store).intercept(FakeChain(request, response))
+
+        assertThrows(IOException::class.java) { result.body!!.bytes() }
+        val tx = store.getTransactions().single()
+        assertEquals(200, tx.statusCode)
+        assertTrue(tx.responseComplete)
+        assertEquals("Body failed after 4096 bytes: connection reset", tx.error)
+    }
+
+    @Test
+    fun `a response with no body to read is complete at once`() {
+        val store = store()
+        val head = Request.Builder().url("https://example.com/episode.mp3").head().build()
+        val headers = okhttp3.Headers.headersOf("Content-Length", "65000000")
+
+        interceptor(store).intercept(FakeChain(head, responseFor(head, ByteArray(0).toResponseBody("audio/mpeg".toMediaType()), headers = headers)))
+
+        assertTrue("an app may never close the reply to a HEAD", store.getTransactions().single().responseComplete)
+    }
+
+    @Test
+    fun `a body that capture kept whole is complete before the app reads it`() {
+        val store = store()
+        val request = Request.Builder().url("https://example.com/feed.json").build()
+
+        interceptor(store).intercept(FakeChain(request, responseFor(request, "{}".toResponseBody("application/json".toMediaType()))))
+
+        val tx = store.getTransactions().single()
+        assertTrue(tx.responseComplete)
+        assertEquals("{}", tx.responseBody)
     }
 
     @Test
@@ -1095,6 +1187,39 @@ class LustroNetworkInterceptorTest {
                 override fun close() = Unit
             }.buffer()
         }
+    }
+
+    /** Serves [content] in 8 KB reads, each after [delayPerReadMs], and can fail after [failAfterBytes]. */
+    private class SlowResponseBody(
+        private val content: ByteArray,
+        private val contentType: okhttp3.MediaType,
+        private val delayPerReadMs: Long = 0,
+        private val failAfterBytes: Int = -1,
+        private val declared: Boolean = false,
+    ) : ResponseBody() {
+        override fun contentType(): okhttp3.MediaType = contentType
+
+        override fun contentLength(): Long = if (declared) content.size.toLong() else -1L
+
+        override fun source(): BufferedSource =
+            object : Source {
+                private var offset = 0
+
+                override fun read(sink: Buffer, byteCount: Long): Long {
+                    if (offset == failAfterBytes) throw IOException("connection reset")
+                    if (offset == content.size) return -1L
+                    if (delayPerReadMs > 0) Thread.sleep(delayPerReadMs)
+                    val limit = if (failAfterBytes >= 0) failAfterBytes else content.size
+                    val count = minOf(byteCount, 8_192L, (limit - offset).toLong()).toInt()
+                    sink.write(content, offset, count)
+                    offset += count
+                    return count.toLong()
+                }
+
+                override fun timeout(): Timeout = Timeout.NONE
+
+                override fun close() = Unit
+            }.buffer()
     }
 
     private class TrackingRequestBody(private val content: String) : RequestBody() {

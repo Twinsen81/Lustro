@@ -191,7 +191,9 @@ intended trade-off.)
 redaction, classification, and storing run on a background thread, so a request shows up in the
 Network tab a moment after it completes. During a burst of large bodies, once about 4 MB of
 captured text is waiting, calls capture on their own thread until that one catches up, which
-keeps memory bounded.
+keeps memory bounded. A body that capture doesn't read whole, such as a download or a body past
+the cap, reaches your code as it would without Lustro, and the request shows as in flight until
+your code reads to its end or closes it, so its duration covers the whole body.
 
 **Compressed bodies are captured decoded.** OkHttp inflates a gzip response on its own only when
 it added `Accept-Encoding` itself. If your app sets that header, or compresses request bodies in an

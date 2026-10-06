@@ -40,6 +40,14 @@ import okio.buffer
  * one-shot/duplex ones report `CapturedBody(text=null, truncated=false,
  * byteSize=declared)`.
  *
+ * A body that capture doesn't read whole, such as a download, a body past the
+ * cap, or one of a type that isn't kept, reaches the app through a
+ * [TransferTrackingResponseBody]. Its response is reported in flight with its
+ * headers, then complete when the app reads to the end or closes the body, with
+ * the duration up to then and the size counted when there is no
+ * `Content-Length`. A read that throws fails the transaction and keeps its
+ * status.
+ *
  * A gzip or deflate body is inflated first (see [decodeBody]): `truncated` then
  * refers to the inflated body, and `byteSize` stays the size on the wire. A body
  * in a coding capture can't undo, such as `br`, reports `text=null` with its
@@ -134,8 +142,15 @@ internal class LustroNetworkInterceptor(
 
             wrapEventStreamResponse(id, response, startTime)?.let { return it }
 
-            sink.completeRequest(id, response.toCapturedResponse(durationMs, captureResponseBody(response)))
-            response
+            val body = captureResponseBody(response)
+            if (!response.bodyOutlivesCapture(body)) {
+                sink.completeRequest(id, response.toCapturedResponse(durationMs, body))
+                return response
+            }
+            // The app reads the rest of the body after this returns, which can take far
+            // longer than the headers did, so the response stays in flight until it ends.
+            sink.completeRequest(id, response.toCapturedResponse(durationMs, body, complete = false))
+            trackBodyTransfer(id, response, body, startTime)
         } catch (e: IOException) {
             if (id != null) {
                 val durationMs = System.currentTimeMillis() - startTime
@@ -288,6 +303,57 @@ internal class LustroNetworkInterceptor(
         }
     }
 
+    /**
+     * Whether the app still has body bytes to read once capture returns: not for
+     * a response that has no body by its status or method, nor for one whose body
+     * capture kept whole, since reading it for capture already took it all in.
+     */
+    private fun Response.bodyOutlivesCapture(captured: CapturedBody?): Boolean {
+        val responseBody = body ?: return false
+        if (request.method == "HEAD" || code in INFORMATIONAL || code == NO_CONTENT || code == NOT_MODIFIED) return false
+        if (responseBody.contentLength() == 0L) return false
+        val keptWhole = captured != null && (captured.text != null || captured.bytes != null) && !captured.truncated
+        return !keptWhole
+    }
+
+    private fun trackBodyTransfer(
+        id: TransactionId,
+        response: Response,
+        captured: CapturedBody?,
+        startTime: Long,
+    ): Response {
+        val responseBody = response.body ?: return response
+        val declaredSize = responseBody.contentLength().takeIf { it >= 0 }
+        val tracked =
+            TransferTrackingResponseBody(
+                delegate = responseBody,
+                onEnd = { bytesRead, reachedEnd ->
+                    reportSafely {
+                        // Read to the end, the count is the size even without a Content-Length.
+                        val byteSize = declaredSize ?: bytesRead.takeIf { reachedEnd } ?: captured?.byteSize
+                        val body = CapturedBody(captured?.text, captured?.truncated ?: false, byteSize, captured?.bytes)
+                        sink.completeRequest(id, response.toCapturedResponse(System.currentTimeMillis() - startTime, body))
+                    }
+                },
+                onFailure = { bytesRead, error ->
+                    reportSafely {
+                        val reason = error.message ?: error.javaClass.simpleName
+                        sink.failRequest(id, System.currentTimeMillis() - startTime, "Body failed after $bytesRead bytes: $reason")
+                    }
+                },
+            )
+        return response.newBuilder().body(tracked).build()
+    }
+
+    // Runs on the app's thread as it reads the body: capture must never fail that read.
+    private inline fun reportSafely(report: () -> Unit) {
+        try {
+            report()
+        } catch (e: RuntimeException) {
+            Log.w(TAG, "Could not record the end of a response body", e)
+        }
+    }
+
     private fun wrapEventStreamResponse(
         id: TransactionId,
         response: Response,
@@ -359,5 +425,8 @@ internal class LustroNetworkInterceptor(
 
     private companion object {
         private const val TAG = "Lustro"
+        private val INFORMATIONAL = 100..199
+        private const val NO_CONTENT = 204
+        private const val NOT_MODIFIED = 304
     }
 }
