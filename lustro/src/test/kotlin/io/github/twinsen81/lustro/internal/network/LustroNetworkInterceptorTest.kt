@@ -909,6 +909,20 @@ class LustroNetworkInterceptorTest {
     }
 
     @Test
+    fun `a body that capture kept whole has the time it took to arrive in its duration`() {
+        val store = store()
+        val request = Request.Builder().url("https://example.com/feed.json").build()
+        // 3 reads of 8 KB, 50 ms apart: well under the cap, so capture reads it all.
+        val body = SlowResponseBody(ByteArray(24 * 1024) { 'a'.code.toByte() }, "application/json".toMediaType(), delayPerReadMs = 50)
+
+        interceptor(store).intercept(FakeChain(request, responseFor(request, body)))
+
+        val tx = store.getTransactions().single()
+        assertTrue(tx.responseComplete)
+        assertTrue("duration ${tx.durationMs} covers the body", tx.durationMs!! >= 150)
+    }
+
+    @Test
     fun `a body that capture kept whole is complete before the app reads it`() {
         val store = store()
         val request = Request.Builder().url("https://example.com/feed.json").build()

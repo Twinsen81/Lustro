@@ -136,7 +136,6 @@ internal class LustroNetworkInterceptor(
         // Proceed with the real request.
         return try {
             val response = chain.proceed(request)
-            val durationMs = System.currentTimeMillis() - startTime
 
             if (id == null) {
                 return response
@@ -145,6 +144,8 @@ internal class LustroNetworkInterceptor(
             wrapEventStreamResponse(id, request.url, response, startTime)?.let { return it }
 
             val body = captureResponseBody(response)
+            // Read after capture: peeking the body waits for it to arrive, up to the cap.
+            val durationMs = System.currentTimeMillis() - startTime
             if (!response.bodyOutlivesCapture(body)) {
                 sink.completeRequest(id, response.toCapturedResponse(request.url, durationMs, body))
                 return response
