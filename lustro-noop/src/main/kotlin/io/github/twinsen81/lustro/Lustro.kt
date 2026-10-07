@@ -1,6 +1,8 @@
 package io.github.twinsen81.lustro
 
 import android.app.Application
+import io.github.twinsen81.lustro.internal.NoOpCaptureSink
+import io.github.twinsen81.lustro.network.NetworkCaptureSink
 import okhttp3.Interceptor
 import okhttp3.WebSocket
 
@@ -10,8 +12,9 @@ import okhttp3.WebSocket
  * This is the release-safe `:lustro-noop` mirror of the `:lustro` runtime
  * facade. It exposes byte-identical public signatures so consumer code compiles
  * unchanged, but every runtime body is a no-op: no socket is bound, no traffic
- * is captured, [networkInterceptor] returns a pass-through interceptor, and
- * [webSocketFactory] returns the factory it is given.
+ * is captured, [networkInterceptor] returns a pass-through interceptor,
+ * [webSocketFactory] returns the factory it is given, and [networkCaptureSink]
+ * returns a sink that records nothing.
  *
  * Build one with [builder], register [DebugTab]s, and [start] it. In this build
  * [start] returns [LustroStatus.DISABLED] and [stop] does nothing; both are
@@ -29,6 +32,13 @@ public class Lustro internal constructor() {
      * this is [delegate] itself: nothing is wrapped and nothing is recorded.
      */
     public fun webSocketFactory(delegate: WebSocket.Factory): WebSocket.Factory = delegate
+
+    /**
+     * Returns a [NetworkCaptureSink] for the requests of another HTTP client. In
+     * the no-op build it records nothing, finds no mock rule, and every
+     * [NetworkCaptureSink.beginRequest] returns the same id.
+     */
+    public fun networkCaptureSink(): NetworkCaptureSink = NoOpCaptureSink
 
     /**
      * Starts the debug server. In the no-op build nothing binds and this always

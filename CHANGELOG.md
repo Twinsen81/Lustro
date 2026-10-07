@@ -14,6 +14,17 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Added
 
+- **`Lustro.networkCaptureSink()` records the requests of another HTTP
+  client.** `NetworkCaptureSink` lets an adapter report a request and its
+  response, but an app could not get one. In a file sync app on an emulator,
+  most requests (folder listings, uploads, move, rename, delete, previews)
+  went through Apache Commons HttpClient 3, so the Network tab showed 12 of
+  about 30 requests at login. The new facade method returns a sink that
+  records into the registered `NetworkDebugTab` with the same redaction,
+  capture filter, and pause as OkHttp capture. A request that the filter
+  leaves out or that starts while capture is paused is not recorded, and
+  `findMockRule` counts a hit on the rule it returns. No call throws. With no
+  network tab, and in `lustro-noop`, the sink records nothing.
 - **Redirects in the Network tab (wire protocol 1.5).** OkHttp follows a
   redirect inside the call, so the interceptor listed a redirected request by
   the URL the app asked for alone: a feed fetched over `http://` and moved

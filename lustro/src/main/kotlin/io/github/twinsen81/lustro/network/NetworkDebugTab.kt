@@ -9,6 +9,7 @@ import io.github.twinsen81.lustro.Headers
 import io.github.twinsen81.lustro.MediaType
 import io.github.twinsen81.lustro.escapeForJson
 import io.github.twinsen81.lustro.internal.Versions
+import io.github.twinsen81.lustro.internal.network.AppCaptureSink
 import io.github.twinsen81.lustro.internal.network.CapturingWebSocketFactory
 import io.github.twinsen81.lustro.internal.network.HarExport
 import io.github.twinsen81.lustro.internal.network.HarWebSocket
@@ -118,6 +119,13 @@ public class NetworkDebugTab private constructor(
             maxBodySize = maxBodyCaptureBytes,
             recordThrottle = { id, delayMs -> store.recordThrottle(id, delayMs) },
             recordRequestBody = { id, body, contentType -> store.recordRequestBody(id, body, contentType) },
+        )
+
+    override fun createAppCaptureSink(captureEnabled: () -> Boolean): NetworkCaptureSink =
+        AppCaptureSink(
+            store = store,
+            captureEnabled = { captureEnabled() && !store.isPaused() },
+            captureFilter = captureFilter,
         )
 
     /** Records the live bind address so the Send panel can detect self-requests. */

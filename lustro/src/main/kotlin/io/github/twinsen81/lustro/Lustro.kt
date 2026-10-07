@@ -14,6 +14,8 @@ import io.github.twinsen81.lustro.internal.DebugTabRegistry
 import io.github.twinsen81.lustro.internal.LustroServer
 import io.github.twinsen81.lustro.internal.LustroTokenStore
 import io.github.twinsen81.lustro.internal.network.NetworkCaptureProvider
+import io.github.twinsen81.lustro.internal.network.NoOpCaptureSink
+import io.github.twinsen81.lustro.network.NetworkCaptureSink
 import io.github.twinsen81.lustro.network.NetworkDebugTab
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -144,6 +146,30 @@ public class Lustro internal constructor(
      */
     public fun webSocketFactory(delegate: WebSocket.Factory): WebSocket.Factory =
         networkProvider?.wrapWebSocketFactory(delegate) ?: delegate
+
+    /**
+     * Returns a [NetworkCaptureSink] that records the requests of an HTTP client
+     * that Lustro has no adapter for, in the registered [NetworkDebugTab]. Your
+     * adapter calls [NetworkCaptureSink.beginRequest] when the client sends a
+     * request, then [NetworkCaptureSink.completeRequest] with the response, or
+     * [NetworkCaptureSink.failRequest]:
+     *
+     * ```
+     * val sink = lustro.networkCaptureSink()
+     * val id = sink.beginRequest(url, "PROPFIND", headers, requestBody = null, contentType = null)
+     * sink.completeRequest(id, CapturedResponse.Builder(207, durationMs).headers(responseHeaders).build())
+     * ```
+     *
+     * The transactions go through the same redaction, capture filter, and pause
+     * as OkHttp's. A request that the filter leaves out, or that starts while
+     * capture is paused, is not recorded, and the calls for it do nothing. Mock
+     * rules and the throttle are your adapter's to apply: [NetworkCaptureSink.findMockRule]
+     * returns the matching rule and counts a hit on it. No call throws.
+     *
+     * When no network tab is registered, the sink records nothing.
+     */
+    public fun networkCaptureSink(): NetworkCaptureSink =
+        networkProvider?.createAppCaptureSink { captureEnabled } ?: NoOpCaptureSink
 
     /**
      * ARMS the debug server: freezes the tab registry and registers the
