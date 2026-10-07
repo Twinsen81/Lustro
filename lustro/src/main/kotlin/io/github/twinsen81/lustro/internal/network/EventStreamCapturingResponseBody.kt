@@ -1,5 +1,6 @@
 package io.github.twinsen81.lustro.internal.network
 
+import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.charset.CharacterCodingException
 import java.nio.charset.Charset
@@ -23,6 +24,7 @@ internal class EventStreamCapturingResponseBody(
     private val declaredSize: Long?,
     private val maxBodySize: Long,
     private val onCapture: (EventStreamBodyCapture) -> Unit,
+    private val onFailure: (bytesRead: Long, error: IOException) -> Unit = { _, _ -> },
 ) : ResponseBody() {
     private val captureBuffer = Buffer()
     private val charset = delegate.contentType().resolvedCharset()
@@ -31,13 +33,25 @@ internal class EventStreamCapturingResponseBody(
     private var decodedText: String? = null
     private var decodedBufferSize = -1L
 
+    // A read that throws ends the capture: the close after it doesn't report the stream as complete.
+    private var failed = false
+
     private val capturingSource: BufferedSource by lazy {
         object : ForwardingSource(delegate.source()) {
             override fun read(
                 sink: Buffer,
                 byteCount: Long,
             ): Long {
-                val bytesRead = super.read(sink, byteCount)
+                val bytesRead =
+                    try {
+                        super.read(sink, byteCount)
+                    } catch (e: IOException) {
+                        if (!failed) {
+                            failed = true
+                            onFailure(totalBytesRead, e)
+                        }
+                        throw e
+                    }
                 when {
                     bytesRead > 0L -> {
                         captureBytes(sink, bytesRead)
@@ -84,6 +98,7 @@ internal class EventStreamCapturingResponseBody(
     }
 
     private fun publishCapture(responseComplete: Boolean) {
+        if (failed) return
         val capture =
             EventStreamBodyCapture(
                 text = decodeCapturedText(),

@@ -187,6 +187,31 @@ internal class NetworkTrafficStore(
         }
     }
 
+    /**
+     * Records the [body] of the request [id], which began with its size only
+     * because the adapter captures the body as it is sent. Queued behind the
+     * request's own capture, so it finds it stored.
+     */
+    @Suppress("RestrictedApi") // id.value is @RestrictTo(LIBRARY_GROUP); same-group call (see beginRequest).
+    fun recordRequestBody(id: TransactionId, body: CapturedBody, contentType: MediaType?) {
+        worker.submit(id.value, body.backlogWeight()) {
+            val updated =
+                transactionMap.computeIfPresent(id.value) { _, tx ->
+                    val updated =
+                        tx.copy(
+                            requestBody = body.text?.let { redactBody(it, contentType) },
+                            requestBinaryBody = body.binaryBytes(),
+                            requestBodyTruncated = body.truncated,
+                            requestBodyBytes = body.byteSize,
+                        )
+                    capturedBytes.addAndGet(transactionBytes(updated) - transactionBytes(tx))
+                    updated
+                }
+            val evicted = trimToBudget()
+            if (updated != null || evicted) sequence.incrementAndGet()
+        }
+    }
+
     /** Waits up to [timeoutMs] until the captures reported so far are stored. For tests. */
     fun awaitCaptures(timeoutMs: Long = 5_000L): Boolean = worker.awaitIdle(timeoutMs)
 

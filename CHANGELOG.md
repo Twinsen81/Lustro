@@ -280,6 +280,33 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Fixed
 
+- **OkHttp capture wrote a request body a second time.** To capture a text
+  or image request body, the interceptor wrote the body into a buffer before
+  OkHttp sent it, so the app's body was written twice. In a notification app
+  on a physical device, the upload progress listener of an image attachment
+  ran once for capture and once for the upload, and the file was read twice;
+  a body that reads a stream it can read only once would have sent nothing.
+  The interceptor now copies the bytes as OkHttp writes them, so the body is
+  written as it is without Lustro. The request is listed with the body's
+  size first and its bytes once they are sent, and a one-shot body is now
+  captured too. A `FormBody` is still written once more for capture, as are
+  the text parts of a `MultipartBody`.
+- **OkHttp capture dropped a request body with no type.** A body built with
+  `String.toRequestBody()`, which has no media type, showed only its size,
+  so a message the app published showed no body. Platform capture already
+  kept such a body as text; OkHttp capture now does the same.
+- **JSON streams showed no body.** A subscription that the server answers
+  with `application/x-ndjson`, one JSON message a line, stays open, and the
+  interceptor kept only its size: in a notification app on a physical device,
+  the stream of a subscribed topic showed no messages, even after it ended.
+  Newline-delimited JSON, JSON Lines, JSON text sequences, and
+  `application/stream+json` are now captured as the app reads them, as event
+  streams are, so the Network tab shows each message as it arrives. Lustro
+  doesn't read such a stream ahead, which would hold the app's call until
+  the stream filled the capture cap.
+  A stream that breaks while the app reads it, an event stream too, now
+  records the failure and keeps what arrived; before, the close after the
+  failure marked it complete.
 - **Platform capture lost a body written after `connect()`.** An app that
   calls `connect()` and then writes the request body, as a video player does
   for each `POST` of a media segment, had its request recorded at the
