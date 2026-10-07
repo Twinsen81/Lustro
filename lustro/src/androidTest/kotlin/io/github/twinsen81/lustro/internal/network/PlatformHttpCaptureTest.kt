@@ -11,6 +11,7 @@ import io.github.twinsen81.lustro.network.MockRule
 import io.github.twinsen81.lustro.network.NetworkCaptureSink
 import io.github.twinsen81.lustro.network.NoOpNetworkCaptureFilter
 import io.github.twinsen81.lustro.network.TransactionId
+import java.io.FileNotFoundException
 import java.net.HttpURLConnection
 import java.net.InetAddress
 import java.net.URL
@@ -140,6 +141,40 @@ class PlatformHttpCaptureTest {
         assertEquals("application/json", response.headers.get("Content-Type"))
         assertEquals("""{"id":7}""", response.body?.text)
         assertNull(tx.error)
+    }
+
+    // Glide's fetcher opens the body before it asks for the status, and the
+    // platform throws there for a status of 400 or more.
+    @Test
+    fun errorStatusMetByOpeningTheBodyIsAResponseNotAFailure() {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(404)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{"error":"missing"}"""),
+        )
+        val url = URL("http://$LOOPBACK:${server.port}/preview")
+
+        val connection = url.openConnection() as HttpURLConnection
+        val thrown = runCatching { connection.inputStream }.exceptionOrNull()
+        val code = connection.responseCode
+        val errorBody = connection.errorStream.use { it.readBytes().decodeToString() }
+        connection.disconnect()
+
+        assertTrue("the app gets the platform's exception, got $thrown", thrown is FileNotFoundException)
+        assertEquals(404, code)
+        assertEquals("""{"error":"missing"}""", errorBody)
+        assertEquals(1, server.requestCount)
+
+        if (capture.httpSource == null) {
+            assertTrue(sink.transactions.isEmpty())
+            return
+        }
+        val tx = sink.transactions.single()
+        assertNull(tx.error)
+        val response = requireNotNull(tx.response) { "no response was captured" }
+        assertEquals(404, response.statusCode)
+        assertEquals("""{"error":"missing"}""", response.body?.text)
     }
 
     @Test

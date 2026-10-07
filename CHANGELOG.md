@@ -280,6 +280,15 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Fixed
 
+- **Platform capture showed an error response as a failed request.** The
+  platform's `getInputStream()` throws `FileNotFoundException` for a status
+  of 400 or more. Lustro recorded that as a failure with the URL as its
+  message, unless the app had asked for the status first. Glide's
+  `HttpUrlFetcher` opens the body first, so in a file sync app on an
+  emulator, every image preview that the server answered with a `404` was
+  listed as `ERR`. Such a response now keeps its status and headers, with no
+  error, and a body that the app then reads from `getErrorStream()` is
+  captured as before.
 - **OkHttp capture wrote a request body a second time.** To capture a text
   or image request body, the interceptor wrote the body into a buffer before
   OkHttp sent it, so the app's body was written twice. In a notification app
