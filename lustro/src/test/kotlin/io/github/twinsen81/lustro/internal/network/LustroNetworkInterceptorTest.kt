@@ -817,6 +817,20 @@ class LustroNetworkInterceptorTest {
     }
 
     @Test
+    fun `an HLS playlist is kept as text`() {
+        val store = store()
+        val request = Request.Builder().url("https://example.com/live/index.m3u8").build()
+        val playlist = "#EXTM3U\n#EXT-X-TARGETDURATION:5\n#EXTINF:5.0,\nsegment-1.ts\n"
+        val response = responseFor(request, playlist.toResponseBody("application/vnd.apple.mpegurl".toMediaType()))
+
+        interceptor(store).intercept(FakeChain(request, response)).body!!.string()
+
+        val tx = store.getTransactions().single()
+        assertEquals(playlist, tx.responseBody)
+        assertEquals(playlist.length.toLong(), tx.responseBodyBytes)
+    }
+
+    @Test
     fun `other binary bodies are still dropped, keeping their size`() {
         val store = store()
         val request =

@@ -10,7 +10,11 @@ internal fun isTextLike(type: String, subtype: String): Boolean =
         subtype == "xml" ||
         subtype == "x-www-form-urlencoded" ||
         subtype.endsWith("+json") ||
-        subtype.endsWith("+xml")
+        subtype.endsWith("+xml") ||
+        subtype in HLS_PLAYLIST_SUBTYPES
+
+// An HLS playlist is text, under any of the types that servers send it with.
+private val HLS_PLAYLIST_SUBTYPES = setOf("vnd.apple.mpegurl", "x-mpegurl", "mpegurl")
 
 // A body kept as bytes is stored as it arrived, because the Redactor can't read
 // it. So only types that seldom carry a secret belong here. SVG is XML, so the

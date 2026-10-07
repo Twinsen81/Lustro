@@ -60,6 +60,24 @@ class PlatformCapturedBodyTest {
     }
 
     @Test
+    fun `an HLS playlist is kept as text, under each type it is sent with`() {
+        val playlist = "#EXTM3U\n#EXTINF:5.0,\nsegment-1.ts\n"
+        for (type in listOf("application/vnd.apple.mpegurl", "application/x-mpegURL", "audio/mpegurl", "audio/x-mpegurl")) {
+            val body =
+                platformCapturedBody(
+                    playlist.toByteArray(),
+                    maxBodySize = 64,
+                    contentType = MediaType.parse(type),
+                    contentEncoding = emptyList(),
+                    declaredSize = null,
+                )
+
+            assertEquals(type, playlist, body.text)
+            assertNull(type, body.bytes)
+        }
+    }
+
+    @Test
     fun `a body whose type is not text is not kept, only its size`() {
         for (type in listOf("audio/mpeg", "video/mp4", "application/octet-stream")) {
             val body =

@@ -247,13 +247,14 @@ below summarizes it. All routes are token-authenticated and use the shared error
 | Toggle rule | `POST rules/toggle` | Body `{ id }`; flips `enabled`. |
 | Pause capture | `POST pause` | Toggles capture-only pause. While paused, mocks and throttle **still apply**; only recording into the list stops, for requests and for WebSocket messages. Returns `{ status: "ok", paused }`. |
 | Overwrite mode | `POST overwrite-mode` | Toggles overwrite mode (a new request evicts earlier **completed** transactions with the same method + URL path; in-flight ones are never evicted). Returns `{ status: "ok", overwriteMode }`. |
-| Throttle | `POST throttle` | Body `{ delayMs }` (≥ 0); a global pre-request sleep applied to mocked and real requests alike. A throttled transaction is listed while it waits and records the wait in `throttledMs`. Returns `{ status: "ok", delayMs }`. |
+| Throttle | `POST throttle` | Body `{ delayMs }` (≥ 0); a global pre-request sleep applied to mocked and real OkHttp requests alike; platform `HttpURLConnection` requests are not held. A throttled transaction is listed while it waits and records the wait in `throttledMs`. Returns `{ status: "ok", delayMs }`. |
 | Send request | `POST send` | **Synchronous** dispatch through the configured `NetworkSender`. See below. |
 
 **Mock rule semantics.** `urlPattern` is looked for anywhere in the URL: a substring, or a regular
 expression when prefixed with `regex:` (found, not matched against the whole URL, so anchor it with
 `^` and `$` when it must match all of it). `method` is `null` to match any method. `hitCount` is a runtime-only counter (not
-persisted).
+persisted). Rules answer OkHttp calls only; a platform `HttpURLConnection` request is captured, but
+no rule matches it, so a rule for one keeps `hitCount` at 0.
 
 **Rules are validated on the way in.** A `regex:` pattern must compile and must not be empty,
 `statusCode` must be within 100–599, `responseHeaders` must
