@@ -304,6 +304,9 @@ see [DECISIONS.md](DECISIONS.md).
   streams are, so the Network tab shows each message as it arrives. Lustro
   doesn't read such a stream ahead, which would hold the app's call until
   the stream filled the capture cap.
+  A stream that breaks while the app reads it, an event stream too, now
+  records the failure and keeps what arrived; before, the close after the
+  failure marked it complete.
 - **Platform capture lost a body written after `connect()`.** An app that
   calls `connect()` and then writes the request body, as a video player does
   for each `POST` of a media segment, had its request recorded at the

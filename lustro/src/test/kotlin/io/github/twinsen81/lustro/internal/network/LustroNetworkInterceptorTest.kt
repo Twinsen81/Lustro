@@ -600,6 +600,71 @@ class LustroNetworkInterceptorTest {
     }
 
     @Test
+    fun `a mocked one-shot request body is captured, written once`() {
+        val store = store()
+        store.addMockRule(MockRuleImpl(id = "rule-1", name = "upload fails", urlPattern = "example.com/logs", statusCode = 500))
+        val requestBody = TrackingRequestBody("streamed log", "text/plain".toMediaType(), oneShot = true)
+        val request = Request.Builder().url("https://example.com/logs").put(requestBody).build()
+        val chain = FakeChain(request, responseFor(request, TrackingResponseBody("text/plain".toMediaType(), "real", 4)))
+
+        interceptor(store).intercept(chain)
+
+        assertEquals(1, requestBody.writes)
+        assertEquals("streamed log", store.getTransactions().single().requestBody)
+    }
+
+    @Test
+    fun `a request body whose length lookup throws is captured and sent`() {
+        val store = store()
+        val requestBody =
+            object : RequestBody() {
+                override fun contentType(): okhttp3.MediaType = "text/plain".toMediaType()
+
+                override fun contentLength(): Long = throw IOException("length unavailable")
+
+                override fun writeTo(sink: BufferedSink) {
+                    sink.writeUtf8("hello")
+                }
+            }
+        val request = Request.Builder().url("https://example.com/upload").post(requestBody).build()
+        val chain = FakeChain(request, responseFor(request, TrackingResponseBody("text/plain".toMediaType(), "ok", 2)))
+
+        interceptor(store).intercept(chain)
+
+        assertEquals(listOf("hello"), chain.sentBodies)
+        val tx = store.getTransactions().single()
+        assertEquals("hello", tx.requestBody)
+        assertEquals(5L, tx.requestBodyBytes)
+    }
+
+    @Test
+    fun `a JSON stream that breaks records the failure and keeps what arrived`() {
+        val store = store()
+        val request = Request.Builder().url("https://example.com/alerts/json").build()
+        val open = """{"event":"open"}""" + "\n"
+        val body =
+            SlowResponseBody(
+                content = (open + """{"event":"message"}""" + "\n").toByteArray(),
+                contentType = "application/x-ndjson".toMediaType(),
+                failAfterBytes = open.length,
+            )
+
+        val result = interceptor(store).intercept(FakeChain(request, responseFor(request, body)))
+        val source = result.body!!.source()
+        assertThrows(IOException::class.java) {
+            while (source.read(Buffer(), 8_192) != -1L) {
+                // Read until the stream breaks.
+            }
+        }
+        result.close()
+
+        val tx = store.getTransactions().single()
+        assertEquals(200, tx.statusCode)
+        assertEquals(open, tx.responseBody)
+        assertEquals("Body failed after ${open.length} bytes: connection reset", tx.error)
+    }
+
+    @Test
     fun `a request body that OkHttp sends again after a redirect is captured from the first send`() {
         val server = MockWebServer()
         server.enqueue(MockResponse().setResponseCode(307).setHeader("Location", "/moved"))

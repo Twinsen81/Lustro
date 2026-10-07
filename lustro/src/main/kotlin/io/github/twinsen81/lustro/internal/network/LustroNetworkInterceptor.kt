@@ -123,7 +123,7 @@ internal class LustroNetworkInterceptor(
             if (id != null) {
                 // No request is sent, so nothing else writes the body.
                 if (bodyOnWrite) {
-                    captureRequestBody(request, contentType)?.let { recordRequestBody(id, it, contentType.toApiMediaType()) }
+                    captureRequestBody(request, contentType, sent = false)?.let { recordRequestBody(id, it, contentType.toApiMediaType()) }
                 }
                 val durationMs = System.currentTimeMillis() - startTime
                 val mockBodyBytes = mockRule.responseBody.toByteArray(Charsets.UTF_8)
@@ -195,7 +195,7 @@ internal class LustroNetworkInterceptor(
         val requestBody =
             if (bodyOnWrite) {
                 // Its bytes are recorded when OkHttp has written them.
-                CapturedBody(text = null, truncated = false, byteSize = request.body?.contentLength()?.takeIf { it >= 0 })
+                CapturedBody(text = null, truncated = false, byteSize = request.body?.declaredLength())
             } else {
                 captureRequestBody(request, contentType)
             }
@@ -221,16 +221,25 @@ internal class LustroNetworkInterceptor(
 
     private fun okhttp3.Request.withBodyCapturedOnWrite(id: TransactionId, contentType: okhttp3.MediaType?): okhttp3.Request {
         val original = body ?: return this
+        val declaredSize = original.declaredLength()
         val captured =
             CapturingRequestBody(original, maxBodySize + 1) { raw, fullSize ->
                 // Runs on the thread that sends the request: capture must never fail it.
                 reportSafely {
-                    val body = requestCapturedBody(raw, fullSize, original.contentLength().takeIf { it >= 0 }, contentType, headers)
+                    val body = requestCapturedBody(raw, fullSize, declaredSize, contentType, headers)
                     recordRequestBody(id, body, contentType.toApiMediaType())
                 }
             }
         return newBuilder().method(method, captured).build()
     }
+
+    // A body can compute its length, and fail to; OkHttp then fails the call itself, not capture.
+    private fun RequestBody.declaredLength(): Long? =
+        try {
+            contentLength().takeIf { it >= 0 }
+        } catch (_: IOException) {
+            null
+        }
 
     private fun buildMockResponse(request: okhttp3.Request, rule: MockRule): Response {
         val mediaType =
@@ -249,7 +258,12 @@ internal class LustroNetworkInterceptor(
             .build()
     }
 
-    private fun captureRequestBody(request: okhttp3.Request, contentType: okhttp3.MediaType?): CapturedBody? {
+    // A one-shot body is written only when the request isn't [sent]: then this is its one write.
+    private fun captureRequestBody(
+        request: okhttp3.Request,
+        contentType: okhttp3.MediaType?,
+        sent: Boolean = true,
+    ): CapturedBody? {
         val body = request.body ?: return null
         if (body is MultipartBody) {
             return try {
@@ -258,8 +272,8 @@ internal class LustroNetworkInterceptor(
                 CapturedBody(text = null, truncated = false, byteSize = body.contentLength().takeIf { it >= 0 })
             }
         }
-        val declaredSize = body.contentLength().takeIf { it >= 0 }
-        if (body.isOneShot() || body.isDuplex() || contentType.isUnkeptType()) {
+        val declaredSize = body.declaredLength()
+        if ((sent && body.isOneShot()) || body.isDuplex() || contentType.isUnkeptType()) {
             return CapturedBody(text = null, truncated = false, byteSize = declaredSize)
         }
         val buffer = Buffer()
@@ -445,6 +459,12 @@ internal class LustroNetworkInterceptor(
                     delegate = body,
                     declaredSize = declaredSize,
                     maxBodySize = maxBodySize,
+                    onFailure = { bytesRead, error ->
+                        reportSafely {
+                            val reason = error.message ?: error.javaClass.simpleName
+                            sink.failRequest(id, System.currentTimeMillis() - startTime, "Body failed after $bytesRead bytes: $reason")
+                        }
+                    },
                     onCapture = { capture ->
                         sink.completeRequest(
                             id,
