@@ -203,9 +203,9 @@ in `gzip`, `x-gzip`, or `deflate` before it stores it, and keeps at most
 `DebugConfig.maxBodyCaptureBytes` of the inflated body; the size the Network tab shows for it is the
 compressed size. Platform `HttpURLConnection` capture does the same. Lustro does not decode Brotli
 (`br`) or any other encoding: for such a body it keeps only the size, and the Network tab says why.
-To see Brotli bodies from OkHttp, add OkHttp's `BrotliInterceptor` (from `okhttp-brotli`) after
-Lustro's interceptor: it then decodes the body before Lustro captures it, as OkHttp does with its own
-gzip. Event streams are captured as they arrive, without decoding.
+To see Brotli bodies from OkHttp, add OkHttp's `BrotliInterceptor` (from `okhttp-brotli`), or the
+`CompressionInterceptor` of OkHttp 5, after Lustro's interceptor: it then decodes the body before
+Lustro captures it, as OkHttp does with its own gzip. Event streams are captured as they arrive, without decoding.
 
 **Multipart uploads are captured part by part.** For an OkHttp `MultipartBody`, such as the body of
 a Retrofit `@Multipart` call, Lustro stores the body as multipart text: each part's headers, the
@@ -362,7 +362,9 @@ HAR from `GET /api/v1/network/transactions/_/export` or `lustro net export --har
 ## Mock rules
 
 The Network tab's **Mock Rules** panel short-circuits matching requests with a synthetic
-response: the interceptor answers from the rule and the request never leaves the device.
+response: the interceptor answers from the rule and the request never leaves the device. Rules
+answer OkHttp calls only: [platform `HttpURLConnection` capture](#platform-httpurlconnection-capture)
+records traffic, and a rule never matches it.
 `urlPattern` is looked for anywhere in the request URL: as a substring, or as a regular expression
 when prefixed with `regex:`. So `regex:/api/v1/statuses$` matches
 `https://example.com/api/v1/statuses` and not `.../statuses/1/favourite`; anchor a pattern with `^`
@@ -410,6 +412,9 @@ platform detail (a process-global URL stream handler):
 
 - **Best-effort and fail-open**: if it cannot install, capture is simply skipped; your app keeps
   working.
+- **Capture only**: mock rules and the throttle apply to OkHttp calls alone. A platform request
+  is never answered by a rule and never held by the throttle, so a rule made with **Mock This
+  Request** from a platform request has no effect.
 - **Process-wide**: it installs a global handler once, affecting all `HttpURLConnection` traffic
   in the process. A [capture filter](#okhttp-capture-setup) leaves out the traffic you don't
   need, such as an analytics SDK's.

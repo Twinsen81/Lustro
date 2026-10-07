@@ -99,6 +99,11 @@ build, and that even in debug builds it stays bound to the local device.
   name it recognizes, so the default redactor reduces exposure rather than
   guaranteeing there is none. Known gaps, where the value is stored as it
   arrived:
+  - a credential in an object that names its value in a sibling field, such as
+    `{"key": "api_key", "value": "..."}` or `{"name": "token", "value": "..."}`.
+    The rules see the field names `key`, `name`, and `value`, so `value` is
+    stored as it arrived, while a field named `key` is masked although it
+    holds only the name;
   - a credential inside a string value under an ordinary key, such as a `url`,
     `next`, or `download` field holding a presigned URL, a paging link, or a
     query string carrying an `access_token`;
