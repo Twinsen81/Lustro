@@ -32,6 +32,7 @@
 .net-filter-flag:hover { color: var(--lvl-w); background: color-mix(in srgb, var(--lvl-w) 28%, transparent); }
 .net-filter-flag[hidden] { display: none; }
 .net-filter-note { margin: 0; color: var(--t2); font-size: 12px; line-height: 1.5; }
+.net-mock-note { color: var(--t3); font-size: 12px; }
 .net-filter-field { display: flex; flex-direction: column; gap: 6px; }
 .net-filter-description { margin: 0; color: var(--t1); font-size: 13px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
 .net-filter-counts { display: flex; gap: 40px; }

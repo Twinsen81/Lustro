@@ -12,6 +12,7 @@
   "throttledMs": 1000,
   "categories": ["api"],
   "isMocked": true,
+  "source": "okhttp",
   "requestContentType": null,
   "responseContentType": "application/json",
   "requestBodyBytes": 0,

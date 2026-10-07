@@ -11,7 +11,7 @@ the protocol a stable public contract independent of the library's Kotlin API.
   A future incompatible revision becomes `/api/v2/`, and the old major stays
   alive for at least one major release.
 - The **minor** protocol version is reported at runtime in
-  `GET /api/v1/_meta` as `_meta.protocolVersion` (currently `1.5`).
+  `GET /api/v1/_meta` as `_meta.protocolVersion` (currently `1.6`).
 
 ## Contents
 
@@ -104,6 +104,13 @@ client got them.
   until the app reads to the end of the body or closes it, and `durationMs`
   then covers the whole body. A body that fails while the app reads it sets
   `error` and keeps `statusCode`.
+
+- **1.6** - Every transaction carries `source`, the adapter that captured
+  it: `okhttp` for Lustro's OkHttp interceptor, where mock rules and the
+  throttle apply; `platform` for platform `HttpURLConnection` capture, which
+  only records; or `app` for a request that the app's own adapter reports
+  through `Lustro.networkCaptureSink()`, which a mock rule answers only if
+  the adapter asks for it. The HAR export puts it in `_lustro`.
 
 ## Status
 

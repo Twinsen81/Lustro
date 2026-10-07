@@ -113,13 +113,24 @@ internal class NetworkTrafficStore(
     // :lustro-api share the io.github.twinsen81 group, so these calls are legitimate.
     // Android Lint's RestrictedApi check can't resolve the group across local project
     // modules, so suppress it precisely at the sink boundary rather than project-wide.
-    @Suppress("RestrictedApi")
+    // The OkHttp interceptor reports to the store itself. The other adapters
+    // report through sinkFor, or name their source.
     override fun beginRequest(
         url: String,
         method: String,
         headers: Headers,
         requestBody: CapturedBody?,
         contentType: MediaType?,
+    ): TransactionId = beginRequest(url, method, headers, requestBody, contentType, CaptureSource.OKHTTP)
+
+    @Suppress("RestrictedApi")
+    fun beginRequest(
+        url: String,
+        method: String,
+        headers: Headers,
+        requestBody: CapturedBody?,
+        contentType: MediaType?,
+        source: CaptureSource,
     ): TransactionId {
         val id = UUID.randomUUID().toString()
         val startedAt = System.currentTimeMillis()
@@ -143,6 +154,7 @@ internal class NetworkTrafficStore(
                     requestBodyTruncated = requestBody?.truncated ?: false,
                     requestContentType = contentType?.let { redactContentType(it) },
                     requestBodyBytes = requestBody?.byteSize,
+                    source = source,
                 )
             synchronized(captureLock) {
                 if (clearCount == clears) recordRequest(transaction)
@@ -150,6 +162,18 @@ internal class NetworkTrafficStore(
         }
         return TransactionId(id)
     }
+
+    /** This store as the adapter for [source] reports to it: each request it begins is from [source]. */
+    fun sinkFor(source: CaptureSource): NetworkCaptureSink =
+        object : NetworkCaptureSink by this {
+            override fun beginRequest(
+                url: String,
+                method: String,
+                headers: Headers,
+                requestBody: CapturedBody?,
+                contentType: MediaType?,
+            ): TransactionId = this@NetworkTrafficStore.beginRequest(url, method, headers, requestBody, contentType, source)
+        }
 
     override fun findMockRule(url: String, method: String): MockRule? =
         mockRules.values.firstOrNull { it.matches(url, method) }

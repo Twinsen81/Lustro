@@ -75,6 +75,14 @@ test('a transaction renders as a heading, its meta, and fenced headers and bodie
     ].join('\n'));
 });
 
+test('the meta names an adapter other than OkHttp', () => {
+    const meta = (tx) => markdown(detail(tx)).split('\n')[2];
+    assert.strictEqual(meta({ source: 'okhttp' }), '**200** · 12 ms · 2026-09-28T14:22:09.003Z · `h2`');
+    assert.strictEqual(meta({ source: 'platform', protocol: 'http/1.1' }),
+        '**200** · 12 ms · 2026-09-28T14:22:09.003Z · `http/1.1` · captured by platform HttpURLConnection');
+    assert.strictEqual(meta({ source: 'app', protocol: null }), "**200** · 12 ms · 2026-09-28T14:22:09.003Z · reported by the app's own adapter");
+});
+
 test('a JSON body is indented without changing a value', () => {
     const out = markdown(detail({ responseBody: '{"big":12345678901234567890,"n":1.10,"s":"\\u00e9"}' }));
     assert.ok(out.includes('```json\n{\n  "big": 12345678901234567890,\n  "n": 1.10,\n  "s": "\\u00e9"\n}\n```'), out);

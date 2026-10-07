@@ -254,7 +254,8 @@ below summarizes it. All routes are token-authenticated and use the shared error
 expression when prefixed with `regex:` (found, not matched against the whole URL, so anchor it with
 `^` and `$` when it must match all of it). `method` is `null` to match any method. `hitCount` is a runtime-only counter (not
 persisted). Rules answer OkHttp calls only; a platform `HttpURLConnection` request is captured, but
-no rule matches it, so a rule for one keeps `hitCount` at 0.
+no rule matches it, so a rule for one keeps `hitCount` at 0. A transaction's `source` says which
+adapter captured it (see "Capture source" below).
 
 **Rules are validated on the way in.** A `regex:` pattern must compile and must not be empty,
 `statusCode` must be within 100–599, `responseHeaders` must
@@ -312,6 +313,15 @@ another request, oldest first: each redirect, and each authentication challenge 
 `finalUrl` too. Platform `HttpURLConnection` capture reports `finalUrl` but no prior responses, which
 the platform doesn't show. These fields arrived in protocol 1.5.
 
+**Capture source.** Every transaction has `source`, the adapter that captured it. `okhttp` is
+Lustro's OkHttp interceptor: mock rules and the throttle apply to its requests. `platform` is
+platform `HttpURLConnection` capture, which only records: no rule answers the request and the
+throttle doesn't hold it, so don't make a mock rule from one. `app` is the app's own adapter,
+through `Lustro.networkCaptureSink()`: a rule answers its request only if the adapter asks for it
+with `findMockRule`, and the throttle doesn't hold it. Treat a value you don't know as one that no
+rule or throttle reaches. The CLI row ends with `[platform]` or `[app]`. This field arrived in
+protocol 1.6.
+
 **Multipart request bodies.** An OkHttp `MultipartBody` is captured as text: the parts in order,
 each with its headers (`Content-Disposition`, and `Content-Type` and `Content-Length` when known),
 then the value of a text part. A part that is not text, such as a file, is not read: its content is
@@ -337,7 +347,7 @@ the route are part of protocol 1.2.
 HAR 1.2 document, oldest first, which browser devtools, proxies, and HAR viewers import. It is
 built from the store, so it has the same redacted values as the detail. Without `ids` it has every
 transaction; an id the app no longer has is left out. Each entry's `_lustro` has the transaction
-`id`, `isMocked`, `categories`, `requestBodyTruncated`, `responseBodyTruncated`,
+`id`, `isMocked`, `source`, `categories`, `requestBodyTruncated`, `responseBodyTruncated`,
 `responseComplete`, and `error`. The capture has no phase timings, so each entry spends its whole
 `durationMs` in `timings.wait` and the throttle's wait in `timings.blocked`, and `_resourceType`
 (`fetch`, or `image` for an image) tells Chrome DevTools how to file it. A body kept as bytes is base64: `content.encoding` says so for a

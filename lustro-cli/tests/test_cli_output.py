@@ -214,6 +214,17 @@ def test_list_rows_say_where_a_redirected_response_came_from(client, capsys):
     ]
 
 
+def test_list_rows_name_an_adapter_other_than_okhttp(client, capsys):
+    # The server lists the newest first.
+    client.responses = [envelope([transaction(3, source="app"), transaction(2, source="platform"), transaction(1, source="okhttp")])]
+    cli.main(["net", "list"])
+    assert lines(capsys.readouterr().out) == [
+        "tx_1  14:22:01.000  GET     200   100ms  https://api.example.com/v1/items/1",
+        "tx_2  14:22:02.000  GET     200   100ms  https://api.example.com/v1/items/2 [platform]",
+        "tx_3  14:22:03.000  GET     200   100ms  https://api.example.com/v1/items/3 [app]",
+    ]
+
+
 def test_list_prints_the_newest_50_and_says_how_many_it_left_out(client, capsys):
     client.responses = [envelope([transaction(n) for n in range(1000)])]
     assert cli.main(["net", "list"]) == 0

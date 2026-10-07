@@ -29,7 +29,7 @@ internal class AppCaptureSink(
     ): TransactionId =
         try {
             if (captureEnabled() && captureFilter.shouldCapture(url, method, headers)) {
-                store.beginRequest(url, method, headers, requestBody, contentType)
+                store.beginRequest(url, method, headers, requestBody, contentType, CaptureSource.APP)
             } else {
                 SKIPPED_TRANSACTION
             }

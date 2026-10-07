@@ -10,6 +10,7 @@ import io.github.twinsen81.lustro.MediaType
 import io.github.twinsen81.lustro.escapeForJson
 import io.github.twinsen81.lustro.internal.Versions
 import io.github.twinsen81.lustro.internal.network.AppCaptureSink
+import io.github.twinsen81.lustro.internal.network.CaptureSource
 import io.github.twinsen81.lustro.internal.network.CapturingWebSocketFactory
 import io.github.twinsen81.lustro.internal.network.HarExport
 import io.github.twinsen81.lustro.internal.network.HarWebSocket
@@ -167,7 +168,7 @@ public class NetworkDebugTab private constructor(
         // so it observes the configured body cap.
         if (capturePlatformHttp) {
             HttpUrlConnectionCapture(
-                sink = store,
+                sink = store.sinkFor(CaptureSource.PLATFORM),
                 isPaused = { store.isPaused() },
                 captureFilter = captureFilter,
                 maxBodySize = maxBodyCaptureBytes.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
@@ -191,7 +192,7 @@ public class NetworkDebugTab private constructor(
                     <button class="dc-btn net-http-only" id="select-btn" data-action="toggleSelectMode" title="Select requests to export as a HAR file or copy as Markdown. A filter change keeps only the selected requests it still shows.">Select</button>
                     <button class="dc-btn" id="pause-btn" data-action="togglePause" title="Pause traffic capture. The interceptor still runs but new requests and WebSocket messages are not recorded. Click again to resume.">⏸ Pause</button>
                     <button class="dc-btn net-http-only" id="overwrite-btn" data-action="toggleOverwriteMode" title="Overwrite mode: when a new request arrives, any earlier completed transaction with the same method + URL path is removed from the list. In-flight requests are never evicted.">Overwrite: off</button>
-                    <select class="dc-btn net-http-only" id="throttle-select" name="throttleDelayMs" aria-label="Global throttle" data-action="setThrottle" title="Global throttle: sleep this long before every request (mocked or real). Useful for testing loading spinners and timeout handling.">
+                    <select class="dc-btn net-http-only" id="throttle-select" name="throttleDelayMs" aria-label="Global throttle" data-action="setThrottle" title="Global throttle: sleep this long before every OkHttp request, mocked or real. A platform HttpURLConnection request, or one that the app's own adapter reports, is not held. Useful for testing loading spinners and timeout handling.">
                         <option value="0">No throttle</option>
                         <option value="500">500ms</option>
                         <option value="1000">1s</option>
@@ -674,6 +675,7 @@ public class NetworkDebugTab private constructor(
         }
         append("],")
         append("\"isMocked\":${tx.isMocked},")
+        append("\"source\":\"${tx.source.wireName}\",")
         append("\"requestContentType\":${tx.requestContentType.toJsonString()},")
         append("\"responseContentType\":${tx.responseContentType.toJsonString()},")
         append("\"requestBodyBytes\":${tx.requestBodyBytes ?: "null"},")

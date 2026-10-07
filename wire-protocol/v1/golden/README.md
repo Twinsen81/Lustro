@@ -57,7 +57,8 @@ with no source checkout required.
 
 - **HAR export.** `export-har.json` is the export of five transactions: a POST
   with a JSON body, the mocked `tx_77e2c014`, a GIF kept as bytes (base64 with
-  `encoding`), a response cut at the capture cap
+  `encoding`) that platform `HttpURLConnection` capture recorded
+  (`_lustro.source: platform`), a response cut at the capture cap
   (`_lustro.responseBodyTruncated`), and a failed request (status `0`, with
   the error in `response._error` and `_lustro.error`). A unit test in
   `:lustro` checks that the export writes exactly this document for those

@@ -12,6 +12,7 @@
   "throttledMs": null,
   "categories": ["media"],
   "isMocked": false,
+  "source": "okhttp",
   "requestContentType": null,
   "responseContentType": "image/png",
   "requestBodyBytes": null,

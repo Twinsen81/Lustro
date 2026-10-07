@@ -674,6 +674,8 @@
             + (tx.throttledMs ? '  |  held ' + tx.throttledMs + 'ms by the throttle' : '')
             + '  |  ' + (tx.timestamp || ''));
         if (tx.categories && tx.categories.length) lines.push('Categories: ' + tx.categories.join(', '));
+        var source = captureSource(tx);
+        if (source) lines.push(source.note.charAt(0).toUpperCase() + source.note.slice(1));
         redirectSteps(tx).forEach(function(step) { lines.push(step.label + ' ' + step.url); });
 
         lines.push('');
@@ -710,6 +712,19 @@
         copyNetworkText(text, ev);
     };
 
+    // No mock rule can answer a platform request, so a rule made from one would
+    // never match it.
+    window.netMockThisButton = mockThisButton;
+    function mockThisButton(tx) {
+        if (tx.source === 'platform') {
+            return '<button class="dc-btn" disabled title="' + debugEscapeHtml(SOURCES.platform.title) + '">Mock This Request</button>'
+                + ' <span class="net-mock-note">Mock rules answer OkHttp requests only, and this request came through platform HttpURLConnection.</span>';
+        }
+        var title = 'Switch to Mock Rules and pre-fill a new rule that intercepts this request. Edit the status/body before saving to control the response on the next match.';
+        if (tx.source === 'app') title += " The app's own adapter reported this request, so the rule answers it only if the adapter asks for it.";
+        return '<button class="dc-btn" data-action="mockThis" title="' + debugEscapeHtml(title) + '">Mock This Request</button>';
+    }
+
     function renderDetail(tx) {
         // A search or a refresh renders the bodies again; keep what was folded in
         // each one that is the same, such as a request's while its response streams.
@@ -737,6 +752,8 @@
         if (tx.throttledMs) html += '<span title="' + THROTTLE_TITLE + '">+' + formatThrottle(tx.throttledMs) + ' throttle</span>';
         html += '<span>' + debugEscapeHtml(tx.timestamp || '') + '</span>';
         if (tx.protocol) html += '<span title="Protocol the response came over">' + debugEscapeHtml(tx.protocol) + '</span>';
+        var source = captureSource(tx);
+        if (source) html += '<span title="' + debugEscapeHtml(source.title) + '">' + source.label + '</span>';
         html += bodyMeta('↑', 'Request', tx.requestBodyBytes, tx.requestContentType);
         html += bodyMeta('↓', 'Response', tx.responseBodyBytes, tx.responseContentType);
         (tx.categories || []).forEach(function(c) { html += '<span class="dc-tag" data-cat="' + debugEscapeHtml(c) + '">' + debugEscapeHtml(c) + '</span>'; });
@@ -771,7 +788,7 @@
         html += '</div>';
 
         html += '<div style="margin-top:16px">';
-        html += '<button class="dc-btn" data-action="mockThis" title="Switch to Mock Rules and pre-fill a new rule that intercepts this request. Edit the status/body before saving to control the response on the next match.">Mock This Request</button>';
+        html += mockThisButton(tx);
         if (tx.webSocketId) {
             html += ' <button class="dc-btn" data-action="openWebSocket" data-ws-id="' + debugEscapeHtml(tx.webSocketId)
                 + '" title="This request is the handshake of a WebSocket. Show the socket and its messages.">WebSocket messages</button>';
@@ -1118,6 +1135,25 @@
 
     var THROTTLE_TITLE = 'The global throttle held the request this long before it was sent. The duration leaves it out.';
 
+    // Mock rules and the throttle act on OkHttp requests, so a request that another
+    // adapter captured says which one. Unknown before protocol 1.6, read as OkHttp.
+    var SOURCES = {
+        platform: {
+            label: 'HttpURLConnection',
+            note: 'captured by platform HttpURLConnection',
+            title: 'Captured by platform HttpURLConnection capture, which only records: no mock rule answers this request, and the throttle does not hold it.',
+        },
+        app: {
+            label: 'App adapter',
+            note: "reported by the app's own adapter",
+            title: "Reported by the app's own adapter through Lustro.networkCaptureSink(). A mock rule answers this request only if the adapter asks for it, and the throttle does not hold it.",
+        },
+    };
+
+    function captureSource(tx) {
+        return (tx && SOURCES[tx.source]) || null;
+    }
+
     function formatThrottle(ms) {
         return ms >= 1000 && ms % 1000 === 0 ? (ms / 1000) + 's' : ms + 'ms';
     }
@@ -1239,6 +1275,8 @@
         else if (tx.timestamp) meta.push(tx.timestamp);
         if (tx.protocol) meta.push(markdownCode(tx.protocol));
         if (tx.isMocked) meta.push('mocked by Lustro');
+        var source = captureSource(tx);
+        if (source) meta.push(source.note);
         (tx.categories || []).forEach(function(c) { meta.push(markdownCode(c)); });
         out.push(meta.join(' · '));
         var steps = redirectSteps(tx);

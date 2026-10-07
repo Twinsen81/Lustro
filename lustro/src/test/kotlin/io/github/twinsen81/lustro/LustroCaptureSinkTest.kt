@@ -52,6 +52,7 @@ class LustroCaptureSinkTest {
         val tx = transactions(tab).getJSONObject(0)
         assertEquals("PROPFIND", tx.getString("method"))
         assertEquals(207, tx.getInt("statusCode"))
+        assertEquals("the app's own adapter reported it", "app", tx.getString("source"))
         val detail = tab.handle(DebugRequest(path = "transactions/${tx.getString("id")}", method = "GET")).json()
         assertEquals("[REDACTED]", detail.getJSONObject("requestHeaders").getString("Authorization"))
         assertEquals("1", detail.getJSONObject("requestHeaders").getString("Depth"))

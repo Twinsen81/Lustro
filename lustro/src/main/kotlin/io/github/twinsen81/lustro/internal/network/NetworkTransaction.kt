@@ -44,6 +44,8 @@ internal data class NetworkTransaction(
     val responseBodyBytes: Long? = null,
     val responseComplete: Boolean = false,
     val isMocked: Boolean = false,
+    // Which adapter captured the request, and so whether a mock rule can answer it.
+    val source: CaptureSource = CaptureSource.OKHTTP,
     val error: String? = null,
     // The URL the response came from when it isn't url, as after a redirect. Redacted.
     val finalUrl: String? = null,
@@ -76,6 +78,18 @@ internal data class NetworkTransaction(
 
 /** A response the client answered with another request, as [NetworkTransaction.priorResponses] lists it. */
 internal data class PriorResponse(val url: String, val statusCode: Int)
+
+/** The capture adapter that recorded a transaction, by the name the wire protocol gives it. */
+internal enum class CaptureSource(val wireName: String) {
+    /** Lustro's OkHttp interceptor. Mock rules and the throttle apply to its requests. */
+    OKHTTP("okhttp"),
+
+    /** Platform `HttpURLConnection` capture, which only records: no mock rule or throttle applies. */
+    PLATFORM("platform"),
+
+    /** The app's own adapter, through `Lustro.networkCaptureSink()`. A mock rule applies only if the adapter asks for it. */
+    APP("app"),
+}
 
 /** Lowercases each char on its own, the folding [NetworkTransaction.matchesSearch] expects. */
 internal fun String.foldCase(): String = String(CharArray(length) { this[it].foldCase() })

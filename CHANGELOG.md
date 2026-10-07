@@ -14,6 +14,19 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Added
 
+- **Each transaction says which adapter captured it (wire protocol 1.6).**
+  Mock rules and the throttle act on OkHttp requests only, but the Network
+  tab offered **Mock This Request** for every row. In a video app on a
+  physical device, playback and downloads went through platform
+  `HttpURLConnection`, and a rule made from one of those requests never
+  matched: its hit count stayed at 0, and the real request went out. Every
+  transaction now carries `source`: `okhttp`, `platform` for platform
+  `HttpURLConnection` capture, or `app` for a request that the app's own
+  adapter reports through `Lustro.networkCaptureSink()`. On a platform row,
+  **Mock This Request** is disabled and says why. The detail, the copy and
+  Markdown views, and the CLI row name a source other than OkHttp, and the
+  HAR export puts it in `_lustro`. The throttle's tooltip now says that it
+  holds OkHttp requests only.
 - **`Lustro.networkCaptureSink()` records the requests of another HTTP
   client.** `NetworkCaptureSink` lets an adapter report a request and its
   response, but an app could not get one. In a file sync app on an emulator,

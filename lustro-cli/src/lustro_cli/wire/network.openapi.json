@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Lustro Network debug tab",
-    "version": "1.5",
+    "version": "1.6",
     "description": "Capture, inspect, mock, throttle, and replay HTTP traffic, and inspect the messages of WebSocket connections. All routes are token-authenticated (Bearer header or HttpOnly cookie) and live under /api/v1/network. Errors use the shared error envelope."
   },
   "servers": [
@@ -369,6 +369,7 @@
           "throttledMs": { "type": ["integer", "null"], "description": "How long the global throttle held the request before it was sent, in milliseconds, or null when it wasn't throttled. The request is listed, with startedAt, from when the app made the call. Since protocol 1.4." },
           "categories": { "type": "array", "items": { "type": "string" }, "description": "Labels from the configured NetworkClassifier (may be empty)." },
           "isMocked": { "type": "boolean" },
+          "source": { "type": "string", "enum": ["okhttp", "platform", "app"], "description": "The adapter that captured the request. okhttp: Lustro's OkHttp interceptor, where mock rules and the throttle apply. platform: platform HttpURLConnection capture, which only records, so no mock rule answers the request and the throttle doesn't hold it. app: the app's own adapter, through Lustro.networkCaptureSink(), where a mock rule applies only if the adapter asks for it, and the throttle doesn't. Since protocol 1.6; treat a value you don't know as one that no mock rule or throttle reaches." },
           "requestContentType": { "type": ["string", "null"], "description": "The request's media type as captured, e.g. application/json; charset=utf-8. null when the request declares none." },
           "responseContentType": { "type": ["string", "null"], "description": "The response's Content-Type as captured, e.g. application/json; charset=utf-8. null before a response, and when the header is missing or isn't a media type." },
           "requestBodyBytes": { "type": ["integer", "null"], "description": "Size of the request body on the wire, before a gzip or deflate Content-Encoding is inflated; null when not known." },
@@ -581,10 +582,11 @@
           "_lustro": {
             "type": "object",
             "description": "What HAR has no field for. HAR reserves names that start with an underscore for a tool's own fields.",
-            "required": ["id", "isMocked", "categories", "requestBodyTruncated", "responseBodyTruncated", "responseComplete", "finalUrl", "priorResponses", "error"],
+            "required": ["id", "isMocked", "source", "categories", "requestBodyTruncated", "responseBodyTruncated", "responseComplete", "finalUrl", "priorResponses", "error"],
             "properties": {
               "id": { "type": "string", "description": "The transaction id." },
               "isMocked": { "type": "boolean" },
+              "source": { "type": "string", "enum": ["okhttp", "platform", "app"], "description": "As the transaction's source. Since protocol 1.6." },
               "categories": { "type": "array", "items": { "type": "string" } },
               "requestBodyTruncated": { "type": "boolean", "description": "true when postData has only the first part of the body." },
               "responseBodyTruncated": { "type": "boolean", "description": "true when content has only the first part of the body." },
