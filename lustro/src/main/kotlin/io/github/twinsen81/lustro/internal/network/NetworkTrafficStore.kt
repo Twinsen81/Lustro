@@ -109,10 +109,6 @@ internal class NetworkTrafficStore(
         }
     }
 
-    // TransactionId's constructor/value are @RestrictTo(LIBRARY_GROUP); :lustro and
-    // :lustro-api share the io.github.twinsen81 group, so these calls are legitimate.
-    // Android Lint's RestrictedApi check can't resolve the group across local project
-    // modules, so suppress it precisely at the sink boundary rather than project-wide.
     // The OkHttp interceptor reports to the store itself. The other adapters
     // report through sinkFor, or name their source.
     override fun beginRequest(
@@ -123,6 +119,10 @@ internal class NetworkTrafficStore(
         contentType: MediaType?,
     ): TransactionId = beginRequest(url, method, headers, requestBody, contentType, CaptureSource.OKHTTP)
 
+    // TransactionId's constructor/value are @RestrictTo(LIBRARY_GROUP); :lustro and
+    // :lustro-api share the io.github.twinsen81 group, so these calls are legitimate.
+    // Android Lint's RestrictedApi check can't resolve the group across local project
+    // modules, so suppress it precisely at the sink boundary rather than project-wide.
     @Suppress("RestrictedApi")
     fun beginRequest(
         url: String,
