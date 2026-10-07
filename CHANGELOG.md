@@ -287,6 +287,11 @@ see [DECISIONS.md](DECISIONS.md).
   `POST` with no body. A request with `doOutput` set is now recorded when the
   app closes the body stream or reads the response, so its body is captured.
   A request with no body is still recorded at `connect()`.
+- **HLS playlists were not kept.** A playlist sent as
+  `application/vnd.apple.mpegurl`, `application/x-mpegurl`, `audio/mpegurl`, or
+  `audio/x-mpegurl` is text, but neither OkHttp nor platform capture treated
+  it as text, so the Network tab showed no body for the playlists of a live
+  stream. Those types are now kept as text, and a saved one ends in `.m3u8`.
 - **Platform capture hid a redirect from the app.** The connection that
   platform `HttpURLConnection` capture hands the app returned the URL the app
   requested from `getURL()`, even after the platform followed a redirect, so

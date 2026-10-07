@@ -975,6 +975,8 @@
         'application/x-www-form-urlencoded': 'txt', 'text/plain': 'txt', 'text/event-stream': 'txt',
         'application/javascript': 'js', 'text/javascript': 'js',
         'image/jpeg': 'jpg', 'image/svg+xml': 'svg', 'image/x-icon': 'ico', 'image/vnd.microsoft.icon': 'ico',
+        'application/vnd.apple.mpegurl': 'm3u8', 'application/x-mpegurl': 'm3u8', 'audio/mpegurl': 'm3u8',
+        'audio/x-mpegurl': 'm3u8',
     });
     function bodyFileName(tx, dir, contentType) {
         var essence = mediaEssence(contentType);
