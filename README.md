@@ -477,7 +477,9 @@ try {
 - **Mock rules and the throttle are your adapter's.** `sink.findMockRule(url, method)` returns
   the rule that matches, and counts a hit on it. To answer the request from the rule, report the
   response with `.mocked(true)`. Nothing holds the request for the throttle.
-- **No call throws.** The sink returns right away, and records on a background thread.
+- **No call throws.** The capture filter runs on your thread. Redaction and storing run on a
+  background thread, except during a burst of large bodies, when a call captures on your thread
+  until the background thread catches up, as OkHttp capture does.
 - In `lustro-noop`, the sink records nothing and finds no rule.
 
 ## Security model
