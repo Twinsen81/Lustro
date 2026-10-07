@@ -20,6 +20,12 @@ internal interface NetworkCaptureProvider {
     fun createInterceptor(captureEnabled: () -> Boolean): Interceptor
 
     /**
+     * Builds the sink that the app reports another HTTP client's requests to.
+     * [captureEnabled] gates capture, as it does for the interceptor.
+     */
+    fun createAppCaptureSink(captureEnabled: () -> Boolean): NetworkCaptureSink
+
+    /**
      * Returns a factory that creates its sockets with [delegate] and records
      * their messages into this provider's tab.
      */
