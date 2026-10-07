@@ -280,6 +280,13 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Fixed
 
+- **Platform capture lost a body written after `connect()`.** An app that
+  calls `connect()` and then writes the request body, as a video player does
+  for each `POST` of a media segment, had its request recorded at the
+  `connect()` call, before the body existed, so the Network tab showed the
+  `POST` with no body. A request with `doOutput` set is now recorded when the
+  app closes the body stream or reads the response, so its body is captured.
+  A request with no body is still recorded at `connect()`.
 - **Platform capture hid a redirect from the app.** The connection that
   platform `HttpURLConnection` capture hands the app returned the URL the app
   requested from `getURL()`, even after the platform followed a redirect, so

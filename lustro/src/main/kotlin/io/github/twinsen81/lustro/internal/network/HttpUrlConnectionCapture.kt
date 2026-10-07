@@ -216,7 +216,13 @@ internal class HttpUrlConnectionCapture(
             if (!passesFilter()) return real
             val buffer = ByteArrayOutputStream()
             requestBodyBuffer = buffer
-            return BoundedTeeOutputStream(real, buffer, maxBodySize).also { wrappedOutput = it }
+            return BoundedTeeOutputStream(real, buffer, maxBodySize, onClose = ::recordRequestOnce).also { wrappedOutput = it }
+        }
+
+        // An app that sends a body can connect before it writes the body, so the
+        // request is recorded when the body is closed or the response is read.
+        fun onConnect() {
+            if (!connection.doOutput) recordRequestOnce()
         }
 
         fun recordRequestOnce() {
@@ -352,8 +358,8 @@ internal class HttpUrlConnectionCapture(
                     .also { filterAnswer = it }
 
         // The method that goes on the wire. The platform sends a GET with doOutput set
-        // as a POST, but switches the method only when it connects, and an explicit
-        // connect() records the request before that.
+        // as a POST, but switches the method only when it connects, which can be
+        // after the request is recorded.
         private fun requestMethod(): String =
             connection.requestMethod.let { if (it == "GET" && connection.doOutput) "POST" else it }
 
@@ -394,7 +400,7 @@ internal class HttpUrlConnectionCapture(
         private val capture = CaptureState(url, real, sink, captureFilter, maxBodySize)
 
         override fun connect() {
-            capture.recordRequestOnce()
+            capture.onConnect()
             real.connect()
         }
 
@@ -547,7 +553,7 @@ internal class HttpUrlConnectionCapture(
         private val capture = CaptureState(url, real, sink, captureFilter, maxBodySize)
 
         override fun connect() {
-            capture.recordRequestOnce()
+            capture.onConnect()
             real.connect()
         }
 
@@ -716,6 +722,7 @@ internal class HttpUrlConnectionCapture(
         private val delegate: OutputStream,
         private val sink: ByteArrayOutputStream,
         private val max: Int,
+        private val onClose: () -> Unit,
     ) : FilterOutputStream(delegate) {
         override fun write(b: Int) {
             if (sink.size() < max) sink.write(b)
@@ -726,6 +733,14 @@ internal class HttpUrlConnectionCapture(
             val remaining = max - sink.size()
             if (remaining > 0) sink.write(b, off, minOf(len, remaining))
             delegate.write(b, off, len)
+        }
+
+        override fun close() {
+            try {
+                super.close()
+            } finally {
+                onClose()
+            }
         }
     }
 

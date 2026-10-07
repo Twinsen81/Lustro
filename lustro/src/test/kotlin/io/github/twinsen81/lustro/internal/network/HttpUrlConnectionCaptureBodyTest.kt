@@ -8,8 +8,10 @@ import io.github.twinsen81.lustro.network.MockRule
 import io.github.twinsen81.lustro.network.NetworkCaptureSink
 import io.github.twinsen81.lustro.network.NoOpNetworkCaptureFilter
 import io.github.twinsen81.lustro.network.TransactionId
+import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStream
+import java.io.OutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLConnection
@@ -111,6 +113,36 @@ class HttpUrlConnectionCaptureBodyTest {
         assertNull(sink.completions.last().finalUrl)
     }
 
+    @Test
+    fun `a body written after an explicit connect is captured`() {
+        val sink = RecordingSink()
+        val connection = open(sink, FakeConnection.Spec("ok".toByteArray(), "text/plain"))
+        connection.requestMethod = "POST"
+        connection.doOutput = true
+
+        connection.connect()
+        assertTrue("not recorded before the body is written", sink.requests.isEmpty())
+        connection.outputStream.use { it.write(byteArrayOf(0x78, 0)) }
+
+        val request = sink.requests.single()
+        assertEquals("POST", request.method)
+        assertEquals(2L, request.body?.byteSize)
+        connection.inputStream.readBytes()
+        assertEquals(1, sink.requests.size)
+        assertTrue(sink.completions.last().isComplete)
+    }
+
+    @Test
+    fun `a request with no body is recorded when the app connects`() {
+        val sink = RecordingSink()
+        val connection = open(sink, FakeConnection.Spec("ok".toByteArray(), "text/plain"))
+
+        connection.connect()
+
+        assertEquals("GET", sink.requests.single().method)
+        assertNull(sink.requests.single().body)
+    }
+
     private fun open(sink: NetworkCaptureSink, spec: FakeConnection.Spec): HttpURLConnection {
         val platform =
             object : URLStreamHandler() {
@@ -177,6 +209,8 @@ class HttpUrlConnectionCaptureBodyTest {
             return stream
         }
 
+        override fun getOutputStream(): OutputStream = ByteArrayOutputStream()
+
         override fun getHeaderFields(): MutableMap<String, MutableList<String>> {
             val fields = mutableMapOf("Content-Type" to mutableListOf(spec.contentType))
             if (spec.declared) fields["Content-Length"] = mutableListOf(spec.body.size.toString())
@@ -185,6 +219,9 @@ class HttpUrlConnectionCaptureBodyTest {
     }
 
     private class RecordingSink : NetworkCaptureSink {
+        class Recorded(val method: String, val body: CapturedBody?)
+
+        val requests = mutableListOf<Recorded>()
         val completions = mutableListOf<CapturedResponse>()
         val failures = mutableListOf<String>()
 
@@ -194,7 +231,10 @@ class HttpUrlConnectionCaptureBodyTest {
             headers: Headers,
             requestBody: CapturedBody?,
             contentType: MediaType?,
-        ): TransactionId = TransactionId("tx")
+        ): TransactionId {
+            requests += Recorded(method, requestBody)
+            return TransactionId("tx")
+        }
 
         override fun findMockRule(url: String, method: String): MockRule? = null
 
