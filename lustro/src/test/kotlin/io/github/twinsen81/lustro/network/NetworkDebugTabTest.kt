@@ -4,6 +4,7 @@ import io.github.twinsen81.lustro.DebugRequest
 import io.github.twinsen81.lustro.DebugResponse
 import io.github.twinsen81.lustro.Headers
 import io.github.twinsen81.lustro.MediaType
+import io.github.twinsen81.lustro.internal.network.CaptureSource
 import io.github.twinsen81.lustro.internal.network.NetworkTrafficStore
 import io.github.twinsen81.lustro.internal.toDebugTimestamp
 import java.util.concurrent.TimeUnit
@@ -164,6 +165,25 @@ class NetworkDebugTabTest {
             assertEquals("h2", tx.getString("protocol"))
             assertEquals("application/json; charset=utf-8", tx.getString("requestContentType"))
             assertEquals("application/json", tx.getString("responseContentType"))
+        }
+    }
+
+    @Test
+    fun `list and detail name the adapter that captured each request`() {
+        val tab = tab()
+        val store = tab.captureSink as NetworkTrafficStore
+        store.beginRequest("https://example.com/okhttp", "GET", Headers.EMPTY, null, null)
+        store.sinkFor(CaptureSource.PLATFORM).beginRequest("https://example.com/platform", "GET", Headers.EMPTY, null, null)
+        tab.createAppCaptureSink { true }.beginRequest("https://example.com/app", "GET", Headers.EMPTY, null, null)
+        assertTrue(store.awaitCaptures())
+
+        val items = tab.handle(get("transactions"))!!.json().getJSONArray("items")
+        val sources = (0 until items.length()).map { items.getJSONObject(it) }.associate { it.getString("url") to it }
+        for ((url, source) in listOf("okhttp" to "okhttp", "platform" to "platform", "app" to "app")) {
+            val brief = sources.getValue("https://example.com/$url")
+            val detail = tab.handle(get("transactions/${brief.getString("id")}"))!!.json()
+            assertEquals(source, brief.getString("source"))
+            assertEquals(source, detail.getString("source"))
         }
     }
 

@@ -14,6 +14,19 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Added
 
+- **Each transaction says which adapter captured it (wire protocol 1.6).**
+  Mock rules and the throttle act on OkHttp requests only, but the Network
+  tab offered **Mock This Request** for every row. In a video app on a
+  physical device, playback and downloads went through platform
+  `HttpURLConnection`, and a rule made from one of those requests never
+  matched: its hit count stayed at 0, and the real request went out. Every
+  transaction now carries `source`: `okhttp`, `platform` for platform
+  `HttpURLConnection` capture, or `app` for a request that the app's own
+  adapter reports through `Lustro.networkCaptureSink()`. On a platform row,
+  **Mock This Request** is disabled and says why. The detail, the copy and
+  Markdown views, and the CLI row name a source other than OkHttp, and the
+  HAR export puts it in `_lustro`. The throttle's tooltip now says that it
+  holds OkHttp requests only.
 - **`Lustro.networkCaptureSink()` records the requests of another HTTP
   client.** `NetworkCaptureSink` lets an adapter report a request and its
   response, but an app could not get one. In a file sync app on an emulator,
@@ -291,6 +304,16 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Fixed
 
+- **Platform capture listed the platform's own headers as response
+  headers, and no protocol.** Android's `HttpURLConnection` adds
+  `X-Android-Sent-Millis`, `X-Android-Received-Millis`,
+  `X-Android-Response-Source`, and `X-Android-Selected-Protocol` to every
+  response it gives the app. The server doesn't send them, but the Network
+  tab, the copy and Markdown views, and the HAR export showed them as the
+  server's, and `protocol` was always `null`, so a HAR entry had an empty
+  `httpVersion`. Platform capture now leaves these four headers out, and
+  takes `protocol` from `X-Android-Selected-Protocol`. The headers the app
+  reads are unchanged.
 - **Platform capture showed an error response as a failed request.** The
   platform's `getInputStream()` throws `FileNotFoundException` for a status
   of 400 or more. Lustro recorded that as a failure with the URL as its

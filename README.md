@@ -389,7 +389,9 @@ pattern that matches its URL and no other, so a rule for `/items/1` doesn't also
 `/items/1/comments`, its method, its status, its `Content-Type`, and its body. A query value that
 Lustro redacted matches any value, because the app sends the real one. The body is the stored one,
 so a redacted value in it is `[REDACTED]`: the form says when that is so, and you replace those
-values before you save.
+values before you save. The button is disabled for a request that
+[platform `HttpURLConnection` capture](#platform-httpurlconnection-capture) recorded,
+because no rule answers one.
 
 **Rules live in the app, not in the browser.** They are kept in memory unless you pass a
 `MockRuleStorage` to `NetworkDebugTab.create(...)`, so without one they are gone when the process
@@ -426,8 +428,8 @@ platform detail (a process-global URL stream handler):
 - **Best-effort and fail-open**: if it cannot install, capture is simply skipped; your app keeps
   working.
 - **Capture only**: mock rules and the throttle apply to OkHttp calls alone. A platform request
-  is never answered by a rule and never held by the throttle, so a rule made with **Mock This
-  Request** from a platform request has no effect.
+  is never answered by a rule and never held by the throttle. The detail of a platform request
+  says **HttpURLConnection**, and its **Mock This Request** button is disabled.
 - **Process-wide**: it installs a global handler once, affecting all `HttpURLConnection` traffic
   in the process. A [capture filter](#okhttp-capture-setup) leaves out the traffic you don't
   need, such as an analytics SDK's.

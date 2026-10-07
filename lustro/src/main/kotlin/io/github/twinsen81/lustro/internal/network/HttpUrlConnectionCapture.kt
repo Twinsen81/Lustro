@@ -257,7 +257,7 @@ internal class HttpUrlConnectionCapture(
                 // check the response code but never read the body stream, so finalizeBody
                 // would never fire and the transaction would be stuck "in flight". If the app
                 // opens the body, it is in flight again until finalizeBody or failBody.
-                sink.completeRequest(id, capturedResponse(statusCode, flatten(headers), body = null))
+                sink.completeRequest(id, capturedResponse(statusCode, headers, body = null))
             } catch (t: Throwable) {
                 Log.w(TAG, "recordResponseHeaders failed: ${t.javaClass.simpleName}")
             }
@@ -284,7 +284,7 @@ internal class HttpUrlConnectionCapture(
             if (bodyFinalized.get()) return
             val id = transactionId ?: return
             try {
-                sink.completeRequest(id, capturedResponse(statusCode, flatten(headers), body = null, complete = false))
+                sink.completeRequest(id, capturedResponse(statusCode, headers, body = null, complete = false))
             } catch (t: Throwable) {
                 Log.w(TAG, "reportBodyInFlight failed: ${t.javaClass.simpleName}")
             }
@@ -309,7 +309,7 @@ internal class HttpUrlConnectionCapture(
                     } else {
                         platformCapturedBody(responseBodyBuffer.toByteArray(), maxBodySize, contentType, flat.getAll(CONTENT_ENCODING), size)
                     }
-                sink.completeRequest(id, capturedResponse(statusCode, flat, body))
+                sink.completeRequest(id, capturedResponse(statusCode, headers, body))
             } catch (t: Throwable) {
                 Log.w(TAG, "finalizeBody failed: ${t.javaClass.simpleName}")
             }
@@ -326,18 +326,19 @@ internal class HttpUrlConnectionCapture(
             }
         }
 
-        // No protocol: HttpURLConnection has no public API that reports it. Nor the
-        // redirects it followed, but its URL is where they ended.
+        // HttpURLConnection has no API for the redirects it followed, but its URL is
+        // where they ended.
         private fun capturedResponse(
             statusCode: Int,
-            headers: Headers,
+            headers: Map<String, List<String>>,
             body: CapturedBody?,
             complete: Boolean = true,
         ): CapturedResponse =
             CapturedResponse.Builder(statusCode, System.currentTimeMillis() - startTime)
-                .headers(headers)
+                .headers(flatten(headers))
                 .body(body)
                 .complete(complete)
+                .protocol(selectedProtocol(headers))
                 .finalUrl(redirectedUrl(connection, url)?.toExternalForm())
                 .build()
 
@@ -404,6 +405,7 @@ internal class HttpUrlConnectionCapture(
             @Suppress("USELESS_ELVIS")
             for ((key, values) in headers) {
                 val name = key ?: continue
+                if (isPlatformHeader(name)) continue
                 builder.add(name, values.joinToString(", "))
             }
             return builder.build()
@@ -845,6 +847,22 @@ internal class HttpUrlConnectionCapture(
         // The URL the real connection ended up at, or null while it is still requested.
         fun redirectedUrl(real: HttpURLConnection, requested: URL): URL? =
             real.url?.takeIf { it.toExternalForm() != requested.toExternalForm() }
+
+        // The platform's HttpURLConnection adds these to every response it hands the
+        // app. The server didn't send them, so capture leaves them out, but one of
+        // them names the protocol, which the connection has no API for.
+        private const val SELECTED_PROTOCOL = "X-Android-Selected-Protocol"
+        private val PLATFORM_HEADERS =
+            listOf("X-Android-Sent-Millis", "X-Android-Received-Millis", "X-Android-Response-Source", SELECTED_PROTOCOL)
+
+        fun isPlatformHeader(name: String): Boolean = PLATFORM_HEADERS.any { it.equals(name, ignoreCase = true) }
+
+        fun selectedProtocol(headers: Map<String, List<String>>): String? =
+            headers.entries
+                .firstOrNull { (key, _) -> SELECTED_PROTOCOL.equals(key, ignoreCase = true) }
+                ?.value
+                ?.firstOrNull()
+                ?.takeIf { it.isNotBlank() }
 
         private const val TAG = "LustroHttpUrlCapture"
         private const val HTTPS_PORT = 443

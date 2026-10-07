@@ -38,6 +38,29 @@ test('Mock This Request fills in a pattern for that URL and no other', async (t)
     });
 });
 
+test('Mock This Request is disabled for a request that no rule can answer', async (t) => {
+    await t.test('an OkHttp request, or one from before the source was sent, can be mocked', () => {
+        for (const source of ['okhttp', undefined]) {
+            const button = network.netMockThisButton({ source });
+            assert.match(button, /data-action="mockThis"/);
+            assert.doesNotMatch(button, /disabled/);
+        }
+    });
+
+    await t.test('a platform HttpURLConnection request cannot', () => {
+        const button = network.netMockThisButton({ source: 'platform' });
+        assert.doesNotMatch(button, /data-action/);
+        assert.match(button, /<button class="dc-btn" disabled /);
+        assert.match(button, /Mock rules answer OkHttp requests only/);
+    });
+
+    await t.test("the app's own adapter can, if it asks for the rule", () => {
+        const button = network.netMockThisButton({ source: 'app' });
+        assert.match(button, /data-action="mockThis"/);
+        assert.match(button, /only if the adapter asks for it/);
+    });
+});
+
 test('Copy as cURL keeps the type of a typed text part', () => {
     const command = network.netCurlCommand({
         method: 'POST',

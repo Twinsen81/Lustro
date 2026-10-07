@@ -72,6 +72,7 @@ internal object HarExport {
         append("\"_lustro\":{")
         append("\"id\":").appendString(tx.id).append(',')
         append("\"isMocked\":").append(tx.isMocked).append(',')
+        append("\"source\":").appendString(tx.source.wireName).append(',')
         append("\"categories\":[")
         tx.categories.forEachIndexed { index, category ->
             if (index > 0) append(',')

@@ -139,6 +139,9 @@ def _format_row(tx: dict, id_length: Optional[int] = None, *, update: bool = Fal
     flags = ""
     if tx.get("isMocked"):
         flags += " [mock]"
+    # Mock rules and the throttle act on OkHttp requests; a request another adapter captured says which.
+    if tx.get("source") not in (None, "okhttp"):
+        flags += " [{}]".format(tx["source"])
     if tx.get("throttledMs"):
         flags += " [throttled {}ms]".format(tx["throttledMs"])
     if tx.get("finalUrl"):

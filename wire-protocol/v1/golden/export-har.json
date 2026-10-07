@@ -70,6 +70,7 @@
         "_lustro": {
           "id": "tx_4b1d77a0",
           "isMocked": false,
+          "source": "okhttp",
           "categories": [
             "api"
           ],
@@ -137,6 +138,7 @@
         "_lustro": {
           "id": "tx_77e2c014",
           "isMocked": true,
+          "source": "okhttp",
           "categories": [
             "api"
           ],
@@ -154,7 +156,7 @@
         "request": {
           "method": "GET",
           "url": "https://cdn.example.com/pixel.gif",
-          "httpVersion": "h2",
+          "httpVersion": "http/1.1",
           "cookies": [],
           "headers": [
             {
@@ -169,7 +171,7 @@
         "response": {
           "status": 200,
           "statusText": "",
-          "httpVersion": "h2",
+          "httpVersion": "http/1.1",
           "cookies": [],
           "headers": [
             {
@@ -205,6 +207,7 @@
         "_lustro": {
           "id": "tx_e6b0d413",
           "isMocked": false,
+          "source": "platform",
           "categories": [
             "media"
           ],
@@ -277,6 +280,7 @@
         "_lustro": {
           "id": "tx_5e8a2f61",
           "isMocked": false,
+          "source": "okhttp",
           "categories": [
             "api"
           ],
@@ -340,6 +344,7 @@
         "_lustro": {
           "id": "tx_d03a9b44",
           "isMocked": false,
+          "source": "okhttp",
           "categories": [],
           "requestBodyTruncated": false,
           "responseBodyTruncated": false,

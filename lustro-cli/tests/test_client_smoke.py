@@ -95,7 +95,7 @@ def server():
 def test_meta(server):
     client = LustroClient(server, TOKEN)
     meta = client.get("/api/v1/_meta")
-    assert meta["protocolVersion"] == "1.5"
+    assert meta["protocolVersion"] == "1.6"
     assert meta["tabs"][0]["id"] == "network"
 
 
@@ -163,7 +163,7 @@ def test_a_401_retries_once_with_a_fresh_token(server):
         return TOKEN
 
     client = LustroClient(server, "stale-token", refresh_token=refresh)
-    assert client.get("/api/v1/_meta")["protocolVersion"] == "1.5"
+    assert client.get("/api/v1/_meta")["protocolVersion"] == "1.6"
     assert client.token == TOKEN
     # The client asks once: a later 401 is an error.
     assert asked == [True]
