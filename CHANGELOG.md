@@ -286,7 +286,9 @@ see [DECISIONS.md](DECISIONS.md).
   `connect()` call, before the body existed, so the Network tab showed the
   `POST` with no body. A request with `doOutput` set is now recorded when the
   app closes the body stream or reads the response, so its body is captured.
-  A request with no body is still recorded at `connect()`.
+  A request with no body is still recorded at `connect()`. A `connect()` or
+  `getOutputStream()` that throws, as on a timeout, now lists the request with
+  the error, where before the request stayed in flight.
 - **HLS playlists were not kept.** A playlist sent as
   `application/vnd.apple.mpegurl`, `application/x-mpegurl`, `audio/mpegurl`, or
   `audio/x-mpegurl` is text, but neither OkHttp nor platform capture treated

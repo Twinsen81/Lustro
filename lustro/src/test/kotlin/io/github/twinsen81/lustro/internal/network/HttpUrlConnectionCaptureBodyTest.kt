@@ -133,6 +133,20 @@ class HttpUrlConnectionCaptureBodyTest {
     }
 
     @Test
+    fun `a request with a body whose connect fails is recorded as failed`() {
+        val sink = RecordingSink()
+        val connection = open(sink, FakeConnection.Spec("ok".toByteArray(), "text/plain", connectError = "timeout"))
+        connection.requestMethod = "POST"
+        connection.doOutput = true
+
+        val thrown = assertThrows(IOException::class.java) { connection.connect() }
+
+        assertEquals("the app gets the platform's exception", "timeout", thrown.message)
+        assertEquals("POST", sink.requests.single().method)
+        assertEquals("timeout", sink.failures.single())
+    }
+
+    @Test
     fun `a request with no body is recorded when the app connects`() {
         val sink = RecordingSink()
         val connection = open(sink, FakeConnection.Spec("ok".toByteArray(), "text/plain"))
@@ -168,6 +182,7 @@ class HttpUrlConnectionCaptureBodyTest {
             val failAfter: Int = -1,
             val declared: Boolean = false,
             val redirectTo: String? = null,
+            val connectError: String? = null,
         )
 
         private val stream =
@@ -191,6 +206,7 @@ class HttpUrlConnectionCaptureBodyTest {
             }
 
         override fun connect() {
+            spec.connectError?.let { throw IOException(it) }
             connected = true
         }
 

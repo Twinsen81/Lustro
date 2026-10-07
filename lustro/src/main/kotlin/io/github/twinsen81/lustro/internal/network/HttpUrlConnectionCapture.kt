@@ -340,6 +340,13 @@ internal class HttpUrlConnectionCapture(
                 .finalUrl(redirectedUrl(connection, url)?.toExternalForm())
                 .build()
 
+        // A request that fails before the app can write its body or read the
+        // response is recorded here, or a deferred one would never be listed.
+        fun recordFailedRequest(message: String?) {
+            recordRequestOnce()
+            recordError(message)
+        }
+
         fun recordError(message: String?) {
             // A response (incl. 4xx/5xx) was already captured; don't clobber it with an "error"
             // when the caller's getInputStream() subsequently throws reading the error body.
@@ -401,7 +408,12 @@ internal class HttpUrlConnectionCapture(
 
         override fun connect() {
             capture.onConnect()
-            real.connect()
+            try {
+                real.connect()
+            } catch (e: Exception) {
+                capture.recordFailedRequest(e.message)
+                throw e
+            }
         }
 
         override fun disconnect() = real.disconnect()
@@ -411,7 +423,13 @@ internal class HttpUrlConnectionCapture(
         // Where the platform followed redirects to, as without capture.
         override fun getURL(): URL = redirectedUrl(real, url) ?: url
 
-        override fun getOutputStream(): OutputStream = capture.wrapOutput(real.outputStream)
+        override fun getOutputStream(): OutputStream =
+            try {
+                capture.wrapOutput(real.outputStream)
+            } catch (e: Exception) {
+                capture.recordFailedRequest(e.message)
+                throw e
+            }
 
         override fun getInputStream(): InputStream {
             capture.recordRequestOnce()
@@ -554,7 +572,12 @@ internal class HttpUrlConnectionCapture(
 
         override fun connect() {
             capture.onConnect()
-            real.connect()
+            try {
+                real.connect()
+            } catch (e: Exception) {
+                capture.recordFailedRequest(e.message)
+                throw e
+            }
         }
 
         override fun disconnect() = real.disconnect()
@@ -564,7 +587,13 @@ internal class HttpUrlConnectionCapture(
         // Where the platform followed redirects to, as without capture.
         override fun getURL(): URL = redirectedUrl(real, url) ?: url
 
-        override fun getOutputStream(): OutputStream = capture.wrapOutput(real.outputStream)
+        override fun getOutputStream(): OutputStream =
+            try {
+                capture.wrapOutput(real.outputStream)
+            } catch (e: Exception) {
+                capture.recordFailedRequest(e.message)
+                throw e
+            }
 
         override fun getInputStream(): InputStream {
             capture.recordRequestOnce()
