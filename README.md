@@ -194,7 +194,20 @@ Network tab a moment after it completes. During a burst of large bodies, once ab
 captured text is waiting, calls capture on their own thread until that one catches up, which
 keeps memory bounded. A body that capture doesn't read whole, such as a download or a body past
 the cap, reaches your code as it would without Lustro, and the request shows as in flight until
-your code reads to its end or closes it, so its duration covers the whole body.
+your code reads to its end or closes it, so its duration covers the whole body. An event stream
+(`text/event-stream`) or a JSON stream (`application/x-ndjson`, JSON Lines, `application/json-seq`,
+`application/stream+json`) can stay open with no end, so Lustro doesn't read it ahead: it captures
+the stream as your code reads it, and the Network tab shows each event as it arrives.
+
+**A request body is copied as OkHttp sends it.** Lustro doesn't write your request body a second
+time to capture it, so the body is written as it would be without Lustro: an upload's progress
+listener runs once, a file is read once, and a body that reads a stream once still works. The
+request is listed with the body's size first, and its bytes once OkHttp has sent them; a request
+that fails before it sends the body keeps the size alone. A mocked request isn't sent, so Lustro
+writes its body once to capture it. A `FormBody` is in memory, and Lustro writes it once more
+for capture, as it does the text parts of a `MultipartBody`. A request body with no
+`Content-Type` is captured as text, as platform capture does: apps send a message or JSON
+without one.
 
 **Compressed bodies are captured decoded.** OkHttp inflates a gzip response on its own only when
 it added `Accept-Encoding` itself. If your app sets that header, or compresses request bodies in an

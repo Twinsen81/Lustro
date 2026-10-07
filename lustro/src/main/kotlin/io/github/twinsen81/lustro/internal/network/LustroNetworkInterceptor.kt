@@ -2,6 +2,7 @@ package io.github.twinsen81.lustro.internal.network
 
 import android.util.Log
 import io.github.twinsen81.lustro.Headers
+import io.github.twinsen81.lustro.MediaType
 import io.github.twinsen81.lustro.network.CapturedBody
 import io.github.twinsen81.lustro.network.CapturedPriorResponse
 import io.github.twinsen81.lustro.network.CapturedResponse
@@ -9,12 +10,14 @@ import io.github.twinsen81.lustro.network.MockRule
 import io.github.twinsen81.lustro.network.NetworkCaptureSink
 import io.github.twinsen81.lustro.network.TransactionId
 import java.io.IOException
+import okhttp3.FormBody
 import okhttp3.HttpUrl
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.Protocol
+import okhttp3.RequestBody
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
 import okio.Buffer
@@ -31,16 +34,19 @@ import okio.buffer
  * either says no, the interceptor still mocks and throttles (those are
  * independent of capture). "Pause" lives in the store and is capture-only: the
  * [NetworkTrafficStore] still matches mocks and applies throttle while paused.
- * Uses peekBody() for regular response capture and wraps event streams so they
- * can be captured without buffering upfront.
+ * Uses peekBody() for regular response capture and wraps event streams and
+ * JSON streams so they can be captured without buffering upfront.
  *
  * Body capture: text-like request/response bodies are captured as text, and
- * image ones as bytes, up to [maxBodySize]. A multipart request body is
- * captured as text too, with its text parts and a line for each other part
- * (see [MultipartCapture]); `truncated = fullSize > cap` and
- * `byteSize = declaredContentLength ?: fullSize`. Other binary bodies and
- * one-shot/duplex ones report `CapturedBody(text=null, truncated=false,
- * byteSize=declared)`.
+ * image ones as bytes, up to [maxBodySize]. A request body with no type is
+ * captured as text. A request body is copied as OkHttp writes it (see
+ * [CapturingRequestBody]), so the request is listed with the body's size first
+ * and its bytes once they are sent. A form body is written once more for
+ * capture, and a multipart one is captured as text too, with its text parts
+ * and a line for each other part (see [MultipartCapture]);
+ * `truncated = fullSize > cap` and `byteSize = declaredContentLength ?: fullSize`.
+ * Other binary bodies and duplex ones report `CapturedBody(text=null,
+ * truncated=false, byteSize=declared)`.
  *
  * A body that capture doesn't read whole, such as a download, a body past the
  * cap, or one of a type that isn't kept, reaches the app through a
@@ -65,14 +71,17 @@ internal class LustroNetworkInterceptor(
     private val incrementMockHit: (String) -> Unit,
     private val maxBodySize: Long,
     private val recordThrottle: (TransactionId, Long) -> Unit = { _, _ -> },
+    private val recordRequestBody: (TransactionId, CapturedBody, MediaType?) -> Unit = { _, _, _ -> },
 ) : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
         val url = request.url.toString()
+        val contentType = requestContentType(request)
+        val bodyOnWrite = capturesBodyOnWrite(request.body, contentType)
 
         // Capture starts before the throttle: the request is listed while it
         // waits, and its start time is when the app made the call.
-        val id = if (captureEnabled()) beginCapture(request, url) else null
+        val id = if (captureEnabled()) beginCapture(request, url, contentType, bodyOnWrite) else null
 
         // Throttle applies regardless of capture/pause (mocks + throttle still run).
         val throttleMs = throttleDelayMs()
@@ -112,6 +121,10 @@ internal class LustroNetworkInterceptor(
                 }
             incrementMockHit(mockRule.id)
             if (id != null) {
+                // No request is sent, so nothing else writes the body.
+                if (bodyOnWrite) {
+                    captureRequestBody(request, contentType)?.let { recordRequestBody(id, it, contentType.toApiMediaType()) }
+                }
                 val durationMs = System.currentTimeMillis() - startTime
                 val mockBodyBytes = mockRule.responseBody.toByteArray(Charsets.UTF_8)
                 // No protocol: the mock response's HTTP/1.1 is made up, not negotiated.
@@ -135,13 +148,14 @@ internal class LustroNetworkInterceptor(
 
         // Proceed with the real request.
         return try {
-            val response = chain.proceed(request)
+            val sent = if (id != null && bodyOnWrite) request.withBodyCapturedOnWrite(id, contentType) else request
+            val response = chain.proceed(sent)
 
             if (id == null) {
                 return response
             }
 
-            wrapEventStreamResponse(id, request.url, response, startTime)?.let { return it }
+            wrapTextStreamResponse(id, request.url, response, startTime)?.let { return it }
 
             val body = captureResponseBody(response)
             // Read after capture: peeking the body waits for it to arrive, up to the cap.
@@ -165,7 +179,12 @@ internal class LustroNetworkInterceptor(
 
     // Null when the filter skips the request: none of it is read for capture or reported.
     @Suppress("RestrictedApi") // id.value is @RestrictTo(LIBRARY_GROUP); same-group call.
-    private fun beginCapture(request: okhttp3.Request, url: String): TransactionId? {
+    private fun beginCapture(
+        request: okhttp3.Request,
+        url: String,
+        contentType: okhttp3.MediaType?,
+        bodyOnWrite: Boolean,
+    ): TransactionId? {
         val headers = request.headers.toApiHeaders()
         // The handshake of a socket from the capturing factory. The factory asked
         // the filter when the app created the socket, so it isn't asked again.
@@ -173,14 +192,44 @@ internal class LustroNetworkInterceptor(
         val capture =
             if (webSocket != null) webSocket.recorder != null else captureFilter.shouldCapture(url, request.method, headers)
         if (!capture) return null
-        val contentType = requestContentType(request)
+        val requestBody =
+            if (bodyOnWrite) {
+                // Its bytes are recorded when OkHttp has written them.
+                CapturedBody(text = null, truncated = false, byteSize = request.body?.contentLength()?.takeIf { it >= 0 })
+            } else {
+                captureRequestBody(request, contentType)
+            }
         return sink.beginRequest(
             url = url,
             method = request.method,
             headers = headers,
-            requestBody = captureRequestBody(request, contentType),
+            requestBody = requestBody,
             contentType = contentType.toApiMediaType(),
         ).also { id -> webSocket?.recorder?.linkTransaction(id.value) }
+    }
+
+    /**
+     * Whether a request body is captured as OkHttp writes it, rather than by
+     * writing it once more for capture. A form or multipart body is written for
+     * capture, part by part for a multipart one: both are built in memory, and
+     * an interceptor or a network interceptor after this one may cast the body
+     * to its class. A duplex body is still being written while the response
+     * arrives, so it isn't captured at all.
+     */
+    private fun capturesBodyOnWrite(body: RequestBody?, contentType: okhttp3.MediaType?): Boolean =
+        body != null && body !is FormBody && body !is MultipartBody && !body.isDuplex() && !contentType.isUnkeptType()
+
+    private fun okhttp3.Request.withBodyCapturedOnWrite(id: TransactionId, contentType: okhttp3.MediaType?): okhttp3.Request {
+        val original = body ?: return this
+        val captured =
+            CapturingRequestBody(original, maxBodySize + 1) { raw, fullSize ->
+                // Runs on the thread that sends the request: capture must never fail it.
+                reportSafely {
+                    val body = requestCapturedBody(raw, fullSize, original.contentLength().takeIf { it >= 0 }, contentType, headers)
+                    recordRequestBody(id, body, contentType.toApiMediaType())
+                }
+            }
+        return newBuilder().method(method, captured).build()
     }
 
     private fun buildMockResponse(request: okhttp3.Request, rule: MockRule): Response {
@@ -210,11 +259,7 @@ internal class LustroNetworkInterceptor(
             }
         }
         val declaredSize = body.contentLength().takeIf { it >= 0 }
-        if (body.isOneShot() || body.isDuplex()) {
-            return CapturedBody(text = null, truncated = false, byteSize = declaredSize)
-        }
-        val binary = contentType.isRetainedBinary()
-        if (!binary && !contentType.isTextLike()) {
+        if (body.isOneShot() || body.isDuplex() || contentType.isUnkeptType()) {
             return CapturedBody(text = null, truncated = false, byteSize = declaredSize)
         }
         val buffer = Buffer()
@@ -225,20 +270,31 @@ internal class LustroNetworkInterceptor(
             // before we ever truncate; the response path is already bounded via peekBody.
             val capturing = CappingSink(buffer, maxBodySize + 1)
             capturing.buffer().use { body.writeTo(it) }
-            val fullSize = capturing.bytesSeen
-            val byteSize = declaredSize ?: fullSize
-            val decoded =
-                decodeBody(buffer.readByteArray(), fullSize > maxBodySize, request.headers.values(CONTENT_ENCODING), maxBodySize)
-                    ?: return CapturedBody(text = null, truncated = false, byteSize = byteSize)
-            if (binary) {
-                CapturedBody(text = null, truncated = decoded.truncated, byteSize = byteSize, bytes = decoded.bytes())
-            } else {
-                CapturedBody(text = decoded.text(Charsets.UTF_8), truncated = decoded.truncated, byteSize = byteSize)
-            }
+            requestCapturedBody(buffer.readByteArray(), capturing.bytesSeen, declaredSize, contentType, request.headers)
         } catch (_: Exception) {
             CapturedBody(text = null, truncated = false, byteSize = declaredSize)
         } finally {
             buffer.close()
+        }
+    }
+
+    // A body with no type is captured as text, as platform capture does: apps
+    // send text, such as a message or JSON, without one.
+    private fun requestCapturedBody(
+        raw: ByteArray,
+        fullSize: Long,
+        declaredSize: Long?,
+        contentType: okhttp3.MediaType?,
+        headers: okhttp3.Headers,
+    ): CapturedBody {
+        val byteSize = declaredSize ?: fullSize
+        val decoded =
+            decodeBody(raw, fullSize > maxBodySize, headers.values(CONTENT_ENCODING), maxBodySize)
+                ?: return CapturedBody(text = null, truncated = false, byteSize = byteSize)
+        return if (contentType.isRetainedBinary()) {
+            CapturedBody(text = null, truncated = decoded.truncated, byteSize = byteSize, bytes = decoded.bytes())
+        } else {
+            CapturedBody(text = decoded.text(Charsets.UTF_8), truncated = decoded.truncated, byteSize = byteSize)
         }
     }
 
@@ -358,14 +414,14 @@ internal class LustroNetworkInterceptor(
         }
     }
 
-    private fun wrapEventStreamResponse(
+    private fun wrapTextStreamResponse(
         id: TransactionId,
         requestedUrl: HttpUrl,
         response: Response,
         startTime: Long,
     ): Response? {
         val body = response.body ?: return null
-        if (!body.contentType().isEventStream()) return null
+        if (!body.contentType().isTextStream()) return null
 
         val responseHeaders = response.headers.toApiHeaders()
         val declaredSize = body.contentLength().takeIf { it >= 0 }

@@ -391,7 +391,14 @@ next message, with a new log, so a cursor from before the clear gets a `reset`. 
 the encoding, and `requestBodyBytes` and `responseBodyBytes` are the size on the wire, before
 inflating, so drop `Content-Encoding` when you send a stored body again. A body in another
 encoding, such as `br`, is not stored: its body is `null`, and its size is kept. Event streams are
-stored as they arrive, without decoding.
+stored as they arrive, without decoding, and so are JSON streams (`application/x-ndjson`,
+`application/ndjson`, JSON Lines, `application/json-seq`, `application/stream+json`): poll the
+transaction while it is in flight to see each line as the app reads it.
+
+**Request bodies arrive after the request.** OkHttp capture copies a request body while OkHttp
+sends it, so a transaction is listed first with `requestBodyBytes` alone and gets its
+`requestBody` once the body is sent; a request that fails before that keeps the size alone. A
+request body with no `Content-Type` is stored as text, and its `requestContentType` is `null`.
 
 ## Common workflows
 

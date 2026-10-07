@@ -95,6 +95,7 @@ class LustroNetworkInterceptorTest {
             incrementMockHit = onMockHit,
             maxBodySize = maxBodySize,
             recordThrottle = { id, delayMs -> (sink as? NetworkTrafficStore)?.recordThrottle(id, delayMs) },
+            recordRequestBody = { id, body, contentType -> (sink as? NetworkTrafficStore)?.recordRequestBody(id, body, contentType) },
         )
 
     @Test
@@ -219,7 +220,7 @@ class LustroNetworkInterceptorTest {
         val result = interceptor.intercept(FakeChain(request, response))
 
         assertSame(response, result)
-        assertFalse(requestBody.written)
+        assertEquals("only the send writes the body", 1, requestBody.writes)
         assertFalse(body.sourceRequested)
         assertTrue(store.getTransactions().isEmpty())
     }
@@ -525,6 +526,141 @@ class LustroNetworkInterceptorTest {
     }
 
     @Test
+    fun `a request body is written once, by the send`() {
+        val store = store()
+        val requestBody = TrackingRequestBody("""{"photo":1}""")
+        val request = Request.Builder().url("https://example.com/upload").post(requestBody).build()
+        val chain = FakeChain(request, responseFor(request, TrackingResponseBody("text/plain".toMediaType(), "ok", 2)))
+
+        interceptor(store).intercept(chain)
+
+        assertEquals(1, requestBody.writes)
+        assertEquals(listOf("""{"photo":1}"""), chain.sentBodies)
+        assertEquals("""{"photo":1}""", store.getTransactions().single().requestBody)
+    }
+
+    @Test
+    fun `a one-shot request body is captured as it is sent`() {
+        val store = store()
+        val requestBody = TrackingRequestBody("streamed log", "text/plain".toMediaType(), oneShot = true)
+        val request = Request.Builder().url("https://example.com/logs").put(requestBody).build()
+        val chain = FakeChain(request, responseFor(request, TrackingResponseBody("text/plain".toMediaType(), "ok", 2)))
+
+        interceptor(store).intercept(chain)
+
+        assertEquals(listOf("streamed log"), chain.sentBodies)
+        assertEquals("streamed log", store.getTransactions().single().requestBody)
+    }
+
+    @Test
+    fun `a request body with no type is captured as text`() {
+        val store = store()
+        val request = Request.Builder().url("https://example.com/topic").put("From phone".toRequestBody()).build()
+        val chain = FakeChain(request, responseFor(request, TrackingResponseBody("application/json".toMediaType(), "{}", 2)))
+
+        interceptor(store).intercept(chain)
+
+        val tx = store.getTransactions().single()
+        assertEquals("From phone", tx.requestBody)
+        assertNull(tx.requestContentType)
+        assertEquals(10L, tx.requestBodyBytes)
+    }
+
+    @Test
+    fun `a request that fails before its body is sent keeps the body size`() {
+        val store = store()
+        val request = Request.Builder().url("https://example.com/upload").post(TrackingRequestBody("""{"photo":1}""")).build()
+
+        assertThrows(IOException::class.java) {
+            interceptor(store).intercept(FakeChain(request, response = null, proceedError = IOException("connect failed")))
+        }
+
+        val tx = store.getTransactions().single()
+        assertNull(tx.requestBody)
+        assertNull(tx.requestBodyBytes)
+        assertEquals("connect failed", tx.error)
+    }
+
+    @Test
+    fun `a mocked request records its body, written once`() {
+        val store = store()
+        store.addMockRule(MockRuleImpl(id = "rule-1", name = "publish fails", urlPattern = "example.com/topic", statusCode = 429))
+        val requestBody = TrackingRequestBody("should fail", contentType = null)
+        val request = Request.Builder().url("https://example.com/topic").put(requestBody).build()
+        val chain = FakeChain(request, responseFor(request, TrackingResponseBody("text/plain".toMediaType(), "real", 4)))
+
+        val result = interceptor(store).intercept(chain)
+
+        assertEquals(429, result.code)
+        assertEquals(0, chain.proceedCount)
+        assertEquals(1, requestBody.writes)
+        val tx = store.getTransactions().single()
+        assertTrue(tx.isMocked)
+        assertEquals("should fail", tx.requestBody)
+    }
+
+    @Test
+    fun `a request body that OkHttp sends again after a redirect is captured from the first send`() {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setResponseCode(307).setHeader("Location", "/moved"))
+        server.enqueue(MockResponse().setBody("ok"))
+        server.start()
+        try {
+            val store = store()
+            val client = OkHttpClient.Builder().addInterceptor(interceptor(store)).build()
+            val json = """{"id":7,"note":"héllo"}"""
+            val requestBody = TrackingRequestBody(json)
+            val request = Request.Builder().url(server.url("/orders")).post(requestBody).build()
+
+            client.newCall(request).execute().use { assertEquals(200, it.code) }
+
+            assertEquals(json, server.takeRequest().body.readUtf8())
+            assertEquals(json, server.takeRequest().body.readUtf8())
+            // OkHttp writes the body for each send, as it does without Lustro.
+            assertEquals(2, requestBody.writes)
+            val tx = store.getTransactions().single()
+            assertEquals(json, tx.requestBody)
+            assertEquals(json.toByteArray().size.toLong(), tx.requestBodyBytes)
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun `an NDJSON stream is captured as the app reads it`() {
+        val store = store()
+        val request = Request.Builder().url("https://example.com/alerts/json").build()
+        val open = """{"event":"open"}""" + "\n"
+        val message = """{"event":"message","message":"hi"}""" + "\n"
+        val body =
+            TrackingResponseBody(
+                contentType = "application/x-ndjson; charset=utf-8".toMediaType(),
+                content = open + message,
+                chunkSize = open.length,
+            )
+
+        val result = interceptor(store).intercept(FakeChain(request, responseFor(request, body)))
+
+        // Not read ahead: the stream can stay open, and the app must get the response now.
+        assertFalse(body.sourceRequested)
+        assertNull(store.getTransactions().single().responseBody)
+
+        val source = result.body!!.source()
+        val sink = Buffer()
+        source.read(sink, 8_192)
+        var tx = store.getTransactions().single()
+        assertEquals(open, tx.responseBody)
+        assertFalse(tx.responseComplete)
+
+        while (source.read(sink, 8_192) != -1L) {
+            // Drain the stream.
+        }
+        tx = store.getTransactions().single()
+        assertEquals(open + message, tx.responseBody)
+        assertTrue(tx.responseComplete)
+    }
+
+    @Test
     fun `a failure before a response records no protocol`() {
         val store = store()
         val interceptor = interceptor(store)
@@ -765,7 +901,7 @@ class LustroNetworkInterceptorTest {
 
         interceptor(store).intercept(FakeChain(request, response))
 
-        assertEquals(0, reads)
+        assertEquals("only the send writes the file", 1, reads)
         val body = store.getTransactions().single().requestBody!!
         assertTrue(body, body.contains("\r\n\r\nnotes\r\n"))
         assertTrue(body, body.contains("[Lustro did not store this part: content, 4 bytes]"))
@@ -812,7 +948,7 @@ class LustroNetworkInterceptorTest {
 
         interceptor(store).intercept(FakeChain(request, response))
 
-        assertEquals(0, reads)
+        assertEquals("only the send writes the part", 1, reads)
         assertTrue(store.getTransactions().single().requestBody!!.contains("[Lustro did not store this part: text/plain, size unknown]"))
     }
 
@@ -1328,14 +1464,21 @@ class LustroNetworkInterceptorTest {
             }.buffer()
     }
 
-    private class TrackingRequestBody(private val content: String) : RequestBody() {
-        var written: Boolean = false
+    private class TrackingRequestBody(
+        private val content: String,
+        private val contentType: okhttp3.MediaType? = "application/json".toMediaType(),
+        private val oneShot: Boolean = false,
+    ) : RequestBody() {
+        var writes: Int = 0
             private set
 
-        override fun contentType(): okhttp3.MediaType = "application/json".toMediaType()
+        override fun contentType(): okhttp3.MediaType? = contentType
+
+        override fun isOneShot(): Boolean = oneShot
 
         override fun writeTo(sink: BufferedSink) {
-            written = true
+            check(!oneShot || writes == 0) { "a one-shot body was written twice" }
+            writes++
             sink.writeUtf8(content)
         }
     }
@@ -1348,12 +1491,18 @@ class LustroNetworkInterceptorTest {
         var proceedCount: Int = 0
             private set
 
+        /** The request bodies written, as OkHttp writes one before it reads the response. */
+        val sentBodies = mutableListOf<String>()
+
         override fun request(): Request = request
 
         @Throws(IOException::class)
         override fun proceed(request: Request): Response {
             proceedCount++
             proceedError?.let { throw it }
+            request.body?.takeUnless { it.isDuplex() }?.let { body ->
+                sentBodies += Buffer().also { body.writeTo(it) }.readUtf8()
+            }
             return response ?: error("no response configured")
         }
 

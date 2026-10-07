@@ -30,8 +30,9 @@ internal fun okhttp3.MediaType?.isTextLike(): Boolean = this != null && isTextLi
 
 internal fun okhttp3.MediaType?.isRetainedBinary(): Boolean = this != null && isRetainedBinary(type, subtype)
 
-internal fun okhttp3.MediaType?.isEventStream(): Boolean =
-    this?.type == "text" && subtype == "event-stream"
+internal fun okhttp3.MediaType?.isUnkeptType(): Boolean = this != null && !isTextLike(type, subtype) && !isRetainedBinary(type, subtype)
+
+internal fun okhttp3.MediaType?.isTextStream(): Boolean = this != null && isTextStream(type, subtype)
 
 internal fun okhttp3.MediaType?.resolvedCharset(): Charset =
     this?.charset(Charsets.UTF_8) ?: Charsets.UTF_8

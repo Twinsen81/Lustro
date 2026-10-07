@@ -117,6 +117,7 @@ public class NetworkDebugTab private constructor(
             incrementMockHit = { store.incrementHitCount(it) },
             maxBodySize = maxBodyCaptureBytes,
             recordThrottle = { id, delayMs -> store.recordThrottle(id, delayMs) },
+            recordRequestBody = { id, body, contentType -> store.recordRequestBody(id, body, contentType) },
         )
 
     /** Records the live bind address so the Send panel can detect self-requests. */

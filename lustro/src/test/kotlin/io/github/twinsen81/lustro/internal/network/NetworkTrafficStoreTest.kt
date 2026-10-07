@@ -305,6 +305,36 @@ class NetworkTrafficStoreTest {
     }
 
     @Test
+    fun `a request body recorded after the request is redacted and counts toward the budget`() {
+        val redactor =
+            object : Redactor by IdentityRedactor {
+                override fun redactBody(body: String, contentType: MediaType?): String = body.replace("hunter2", "[REDACTED]")
+            }
+        val store = store(redactor = redactor, captureBudgetBytes = 1000)
+        val id = store.beginRequest("https://example.com/login", "POST", Headers.EMPTY, CapturedBody(null, false, 22), MediaType.JSON)
+        assertEquals(0L, store.capturedBytes())
+
+        store.recordRequestBody(id, captured("""{"password":"hunter2"}"""), MediaType.JSON)
+
+        val tx = store.getTransaction(id.value)!!
+        assertEquals("""{"password":"[REDACTED]"}""", tx.requestBody)
+        assertEquals(22L, tx.requestBodyBytes)
+        assertEquals(tx.requestBody!!.length.toLong(), store.capturedBytes())
+    }
+
+    @Test
+    fun `a request body recorded after a clear is dropped`() {
+        val store = store()
+        val id = store.beginRequest("https://example.com/1", "POST", Headers.EMPTY, CapturedBody(null, false, 5), MediaType.TEXT)
+        store.clear()
+
+        store.recordRequestBody(id, captured("hello"), MediaType.TEXT)
+
+        assertTrue(store.getTransactions().isEmpty())
+        assertEquals(0L, store.capturedBytes())
+    }
+
+    @Test
     fun `clear resets the captured byte total`() {
         val store = store(captureBudgetBytes = 1000)
         store.beginRequest("https://example.com/1", "POST", Headers.EMPTY, captured("z".repeat(50)), MediaType.TEXT)
