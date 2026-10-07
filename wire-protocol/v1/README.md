@@ -110,7 +110,10 @@ client got them.
   throttle apply; `platform` for platform `HttpURLConnection` capture, which
   only records; or `app` for a request that the app's own adapter reports
   through `Lustro.networkCaptureSink()`, which a mock rule answers only if
-  the adapter asks for it. The HAR export puts it in `_lustro`.
+  the adapter asks for it. The HAR export puts it in `_lustro`. Platform
+  capture also reports `protocol`, from the `X-Android-Selected-Protocol`
+  header that the platform adds, and leaves the platform's four `X-Android-*`
+  headers out of `responseHeaders`.
 
 ## Status
 

@@ -104,6 +104,38 @@ class HttpUrlConnectionCaptureBodyTest {
     }
 
     @Test
+    fun `the headers the platform adds are left out, and the protocol is read from one`() {
+        val sink = RecordingSink()
+        val platformHeaders =
+            mapOf(
+                "X-Android-Sent-Millis" to "1790605327000",
+                "X-Android-Received-Millis" to "1790605327090",
+                "X-Android-Response-Source" to "NETWORK 200",
+                "X-Android-Selected-Protocol" to "http/1.1",
+            )
+        val connection = open(sink, FakeConnection.Spec("ok".toByteArray(), "text/plain", headers = platformHeaders + ("X-Request-Id" to "r1")))
+
+        assertEquals(200, connection.responseCode)
+        connection.inputStream.readBytes()
+
+        sink.completions.forEach { response ->
+            assertEquals("http/1.1", response.protocol)
+            assertEquals(listOf("Content-Type", "X-Request-Id"), response.headers.names().sorted())
+        }
+        assertEquals("the app still reads them", "NETWORK 200", connection.headerFields["X-Android-Response-Source"]?.single())
+    }
+
+    @Test
+    fun `a response without the platform's protocol header has no protocol`() {
+        val sink = RecordingSink()
+        val connection = open(sink, FakeConnection.Spec("ok".toByteArray(), "text/plain"))
+
+        connection.inputStream.readBytes()
+
+        assertNull(sink.completions.last().protocol)
+    }
+
+    @Test
     fun `a request that was not redirected has no final URL`() {
         val sink = RecordingSink()
         val connection = open(sink, FakeConnection.Spec("ok".toByteArray(), "text/plain"))
@@ -227,6 +259,7 @@ class HttpUrlConnectionCaptureBodyTest {
             val redirectTo: String? = null,
             val connectError: String? = null,
             val status: Int = HTTP_OK,
+            val headers: Map<String, String> = emptyMap(),
         )
 
         private val stream =
@@ -279,6 +312,7 @@ class HttpUrlConnectionCaptureBodyTest {
         override fun getHeaderFields(): MutableMap<String, MutableList<String>> {
             val fields = mutableMapOf("Content-Type" to mutableListOf(spec.contentType))
             if (spec.declared) fields["Content-Length"] = mutableListOf(spec.body.size.toString())
+            spec.headers.forEach { (name, value) -> fields[name] = mutableListOf(value) }
             return fields
         }
     }

@@ -304,6 +304,16 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Fixed
 
+- **Platform capture listed the platform's own headers as response
+  headers, and no protocol.** Android's `HttpURLConnection` adds
+  `X-Android-Sent-Millis`, `X-Android-Received-Millis`,
+  `X-Android-Response-Source`, and `X-Android-Selected-Protocol` to every
+  response it gives the app. The server doesn't send them, but the Network
+  tab, the copy and Markdown views, and the HAR export showed them as the
+  server's, and `protocol` was always `null`, so a HAR entry had an empty
+  `httpVersion`. Platform capture now leaves these four headers out, and
+  takes `protocol` from `X-Android-Selected-Protocol`. The headers the app
+  reads are unchanged.
 - **Platform capture showed an error response as a failed request.** The
   platform's `getInputStream()` throws `FileNotFoundException` for a status
   of 400 or more. Lustro recorded that as a failure with the URL as its

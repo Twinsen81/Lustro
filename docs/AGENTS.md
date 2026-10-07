@@ -293,7 +293,9 @@ reads to the end of the body or closes it, and `durationMs` then covers the whol
 `responseBodyBytes` is counted when the response had no `Content-Length`. A body that fails while
 the app reads it sets `error` and keeps `statusCode`. Take a request's duration from
 `durationMs`: `completedAt` can be later by the time the capture took to record it. `protocol` (`http/1.1`, `h2`, `h3`) is
-`null` before a response, for a mocked one, and for platform `HttpURLConnection` capture.
+`null` before a response and for a mocked one. Platform `HttpURLConnection` capture reads it from
+`X-Android-Selected-Protocol`, a header that the platform adds to the response, and leaves the
+platform's `X-Android-*` headers out of `responseHeaders`, since the server didn't send them.
 `requestContentType` and `responseContentType` give the media type as captured, so a client can
 tell JSON from an image without reading the headers. These fields arrived in protocol 1.2; a 1.1
 server leaves them out.
