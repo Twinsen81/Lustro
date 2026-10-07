@@ -10,6 +10,7 @@ import io.github.twinsen81.lustro.network.CapturedResponse
 import io.github.twinsen81.lustro.network.NetworkCaptureSink
 import io.github.twinsen81.lustro.network.TransactionId
 import java.io.ByteArrayOutputStream
+import java.io.FileNotFoundException
 import java.io.FilterInputStream
 import java.io.FilterOutputStream
 import java.io.IOException
@@ -347,6 +348,18 @@ internal class HttpUrlConnectionCapture(
             recordError(message)
         }
 
+        // The platform's getInputStream() throws FileNotFoundException for any status of
+        // 400 or more. That is a response, not a failed request, and Glide's fetcher, for
+        // one, opens the body before it asks for the status.
+        fun recordInputStreamError(error: Exception) {
+            val code = if (error is FileNotFoundException) runCatching { connection.responseCode }.getOrNull() else null
+            if (code != null && code >= HttpURLConnection.HTTP_BAD_REQUEST) {
+                recordResponseHeaders(code, connection.headerFields)
+            } else {
+                recordError(error.message)
+            }
+        }
+
         fun recordError(message: String?) {
             // A response (incl. 4xx/5xx) was already captured; don't clobber it with an "error"
             // when the caller's getInputStream() subsequently throws reading the error body.
@@ -436,7 +449,7 @@ internal class HttpUrlConnectionCapture(
             return try {
                 capture.wrapInput(real.inputStream, real.responseCode, real.headerFields)
             } catch (e: Exception) {
-                capture.recordError(e.message)
+                capture.recordInputStreamError(e)
                 throw e
             }
         }
@@ -600,7 +613,7 @@ internal class HttpUrlConnectionCapture(
             return try {
                 capture.wrapInput(real.inputStream, real.responseCode, real.headerFields)
             } catch (e: Exception) {
-                capture.recordError(e.message)
+                capture.recordInputStreamError(e)
                 throw e
             }
         }

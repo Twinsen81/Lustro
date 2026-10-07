@@ -9,6 +9,7 @@ import io.github.twinsen81.lustro.network.NetworkCaptureSink
 import io.github.twinsen81.lustro.network.NoOpNetworkCaptureFilter
 import io.github.twinsen81.lustro.network.TransactionId
 import java.io.ByteArrayOutputStream
+import java.io.FileNotFoundException
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
@@ -157,6 +158,48 @@ class HttpUrlConnectionCaptureBodyTest {
         assertNull(sink.requests.single().body)
     }
 
+    @Test
+    fun `an error status that the app meets by opening the body is a response, not a failure`() {
+        val sink = RecordingSink()
+        val connection = open(sink, FakeConnection.Spec("[]".toByteArray(), "application/json", status = 404))
+
+        val thrown = assertThrows(FileNotFoundException::class.java) { connection.inputStream }
+
+        assertEquals("the app gets the platform's exception", "http://example.com/episode", thrown.message)
+        assertTrue(sink.failures.isEmpty())
+        val response = sink.completions.single()
+        assertEquals(404, response.statusCode)
+        assertTrue(response.isComplete)
+        assertEquals(404, connection.responseCode)
+        assertEquals(1, sink.completions.size)
+    }
+
+    @Test
+    fun `an error body that the app reads after opening the body failed is captured`() {
+        val sink = RecordingSink()
+        val connection = open(sink, FakeConnection.Spec("""{"error":"gone"}""".toByteArray(), "application/json", status = 500))
+
+        assertThrows(FileNotFoundException::class.java) { connection.inputStream }
+        connection.errorStream!!.readBytes()
+
+        val done = sink.completions.last()
+        assertEquals(500, done.statusCode)
+        assertTrue(done.isComplete)
+        assertEquals("""{"error":"gone"}""", done.body?.text)
+        assertTrue(sink.failures.isEmpty())
+    }
+
+    @Test
+    fun `a request that fails before a response when the app opens the body is recorded as failed`() {
+        val sink = RecordingSink()
+        val connection = open(sink, FakeConnection.Spec("ok".toByteArray(), "text/plain", connectError = "timeout"))
+
+        assertThrows(IOException::class.java) { connection.inputStream }
+
+        assertEquals("timeout", sink.failures.single())
+        assertTrue(sink.completions.isEmpty())
+    }
+
     private fun open(sink: NetworkCaptureSink, spec: FakeConnection.Spec): HttpURLConnection {
         val platform =
             object : URLStreamHandler() {
@@ -174,7 +217,7 @@ class HttpUrlConnectionCaptureBodyTest {
         return URL(null, "http://example.com/episode", handler).openConnection() as HttpURLConnection
     }
 
-    /** Answers with a 200 and [Spec.body], which can fail after [Spec.failAfter] bytes. */
+    /** Answers with [Spec.status] and [Spec.body], which can fail after [Spec.failAfter] bytes. */
     private class FakeConnection(url: URL, private val spec: Spec) : HttpURLConnection(url) {
         class Spec(
             val body: ByteArray,
@@ -183,6 +226,7 @@ class HttpUrlConnectionCaptureBodyTest {
             val declared: Boolean = false,
             val redirectTo: String? = null,
             val connectError: String? = null,
+            val status: Int = HTTP_OK,
         )
 
         private val stream =
@@ -216,14 +260,19 @@ class HttpUrlConnectionCaptureBodyTest {
 
         // The platform's connection moves its URL when it follows a redirect.
         override fun getResponseCode(): Int {
+            spec.connectError?.let { throw IOException(it) }
             spec.redirectTo?.let { url = URL(it) }
-            return HTTP_OK
+            return spec.status
         }
 
+        // As the platform does, any status of 400 or more throws here, and its body
+        // is in the error stream.
         override fun getInputStream(): InputStream {
-            responseCode
+            if (getResponseCode() >= HTTP_BAD_REQUEST) throw FileNotFoundException(url.toString())
             return stream
         }
+
+        override fun getErrorStream(): InputStream? = if (spec.status >= HTTP_BAD_REQUEST) stream else null
 
         override fun getOutputStream(): OutputStream = ByteArrayOutputStream()
 
