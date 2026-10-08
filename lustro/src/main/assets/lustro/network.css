@@ -294,6 +294,10 @@
     margin-bottom: 12px;
 }
 .net-rules-empty::before { content: '// '; }
+.net-rules-order {
+    font-size: 12px;
+    margin-bottom: 12px;
+}
 
 /* ── Detail view ── */
 .net-detail-header {

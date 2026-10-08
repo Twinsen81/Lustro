@@ -384,6 +384,11 @@ when prefixed with `regex:`. So `regex:/api/v1/statuses$` matches
 when it must match from the start of the URL. A `regex:` pattern that does not compile is rejected
 when you save the rule, because a rule that never matches lets the real request through.
 
+**The first match answers.** Rules are tried from the top of the list: the first enabled rule
+whose pattern and method match a request answers it. A new rule goes on top, so the rule you added
+last wins when two match; editing a rule keeps its place, and `POST rules/_/sync` sets the list in
+the order posted.
+
 **Mock This Request**, in a transaction's detail, fills in a rule for that request: a `regex:`
 pattern that matches its URL and no other, so a rule for `/items/1` doesn't also answer
 `/items/1/comments`, its method, its status, its `Content-Type`, and its body. A query value that
@@ -405,6 +410,9 @@ NetworkDebugTab.create(
     ),
 )
 ```
+
+Lustro reads the storage once, when the rules are first needed, off the main thread, and writes
+it on every change, in the order the rules are tried.
 
 **A rule must be one the interceptor can serve.** Its `statusCode` has to be within 100–599, its
 `responseHeaders` have to be header names and values OkHttp accepts, and a `Content-Type` among

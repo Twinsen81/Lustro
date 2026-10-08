@@ -244,7 +244,7 @@ public class NetworkDebugTab private constructor(
             <div class="dc-pane net-detail-pane">
                 <div class="dc-tabs">
                     <button class="dc-tab dc-tab--active" id="tab-btn-detail" data-action="switchRightTab" data-tab="detail" title="Inspect the selected transaction: headers, body, status, timing, byte sizes.">Detail</button>
-                    <button class="dc-tab" id="tab-btn-rules" data-action="switchRightTab" data-tab="rules" title="Manage mock rules — short-circuit matching requests with a synthetic response. Rules live in the app and survive a restart when it gives Lustro a rule storage.">Mock Rules</button>
+                    <button class="dc-tab" id="tab-btn-rules" data-action="switchRightTab" data-tab="rules" title="Manage mock rules: a matching request gets the rule's response and never leaves the device. Rules are tried from the top, so the first match answers, and a new rule goes on top. Rules live in the app and survive a restart when it gives Lustro a rule storage.">Mock Rules</button>
                     <button class="dc-tab" id="tab-btn-send" data-action="switchRightTab" data-tab="send" title="Dispatch an arbitrary request through the app's OkHttpClient. The result appears in the traffic list only when that client carries the Lustro interceptor. Self-requests to the debug server are rejected.">Send Request</button>
                     <div class="net-tab-actions">
                         <button class="dc-btn dc-btn--sm" id="copy-curl-btn" data-action="copyCurl" style="display:none" title="Copy a cURL command that reproduces the selected request (paste into a terminal to re-run).">cURL</button>
@@ -447,6 +447,7 @@ public class NetworkDebugTab private constructor(
         return ok()
     }
 
+    // In the order the rules are tried, which the store keeps.
     private fun handleGetRules(): DebugResponse =
         DebugResponse.json {
             append("{\"items\":[")

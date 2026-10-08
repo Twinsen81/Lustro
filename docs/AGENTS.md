@@ -240,9 +240,9 @@ below summarizes it. All routes are token-authenticated and use the shared error
 | Poll a connection's events | `GET websockets/{id}/events?cursor=&limit=&direction=&search=` | Stream envelope: the messages and lifecycle events, in order. See below. |
 | Message payload | `GET websockets/{id}/events/{seq}/payload` | One message's payload as it is stored: bytes, or the redacted text as UTF-8. Not JSON. |
 | Clear | `POST clear` | Clears the captured list and the WebSocket connections, and starts the capture filter's counts again; mock rules and settings are preserved. |
-| List rules | `GET rules` | `{ items: [MockRule...] }`. |
-| Add / upsert rule | `POST rules` | Body `MockRuleInput` (`urlPattern` required). Supplying a stable `id` makes the write **idempotent** (upsert by id); omitting it generates one. Returns `{ status: "ok", id }`. |
-| Sync rules | `POST rules/_/sync` | **Atomic** full replacement: posts an array; the resulting set exactly equals it, with no empty window observed by the interceptor. Returns `{ status: "ok", count }`. |
+| List rules | `GET rules` | `{ items: [MockRule...] }`, in the order the rules are tried. |
+| Add / upsert rule | `POST rules` | Body `MockRuleInput` (`urlPattern` required). Supplying a stable `id` makes the write **idempotent** (upsert by id); omitting it generates one. A new rule goes first; a rule replaced by id keeps its place. Returns `{ status: "ok", id }`. |
+| Sync rules | `POST rules/_/sync` | **Atomic** full replacement: posts an array; the resulting list exactly equals it, in that order, with no empty window observed by the interceptor. Returns `{ status: "ok", count }`. |
 | Delete rule | `POST rules/delete` | Body `{ id }`. |
 | Toggle rule | `POST rules/toggle` | Body `{ id }`; flips `enabled`. |
 | Pause capture | `POST pause` | Toggles capture-only pause. While paused, mocks and throttle **still apply**; only recording into the list stops, for requests and for WebSocket messages. Returns `{ status: "ok", paused }`. |
@@ -252,7 +252,10 @@ below summarizes it. All routes are token-authenticated and use the shared error
 
 **Mock rule semantics.** `urlPattern` is looked for anywhere in the URL: a substring, or a regular
 expression when prefixed with `regex:` (found, not matched against the whole URL, so anchor it with
-`^` and `$` when it must match all of it). `method` is `null` to match any method. `hitCount` is a runtime-only counter (not
+`^` and `$` when it must match all of it). `method` is `null` to match any method. The rules are
+tried in the order `GET rules` lists them, and the first enabled rule that matches answers the
+request: a new rule goes first, so the rule added last wins when two match, a rule replaced by id
+keeps its place, and a sync sets the order as posted. `hitCount` is a runtime-only counter (not
 persisted). Rules answer OkHttp calls only; a platform `HttpURLConnection` request is captured, but
 no rule matches it, so a rule for one keeps `hitCount` at 0. A transaction's `source` says which
 adapter captured it (see "Capture source" below).

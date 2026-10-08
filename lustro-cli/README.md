@@ -116,6 +116,10 @@ does not take over a local port that a forward of another device holds.
 `--no-forward` skips the forward, and the URL then uses `--local-port N`, else
 the app's port.
 
+The commands connect to the forward directly, whatever `http_proxy`,
+`HTTPS_PROXY`, or the system's proxy settings say: the server is an adb forward
+on this computer, which a proxy cannot reach, and the token must not leave it.
+
 ## Output
 
 The output is small by default, because an agent reads all of it.

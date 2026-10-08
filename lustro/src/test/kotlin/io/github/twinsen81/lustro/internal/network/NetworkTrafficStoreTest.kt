@@ -684,11 +684,78 @@ class NetworkTrafficStoreTest {
     }
 
     @Test
-    fun `rules are loaded from storage at construction`() {
+    fun `stored rules are loaded when the rules are first needed`() {
         val storage = InMemoryMockRuleStorage()
         storage.saved = listOf(rule(id = "persisted"))
         val store = store(storage = storage)
         assertEquals(listOf("persisted"), store.getMockRules().map { it.id })
+    }
+
+    @Test
+    fun `storage is not read until the rules are needed`() {
+        // The tab is built where the app builds it, usually on the main thread
+        // in Application.onCreate, and a prefs-backed storage reads a file.
+        val storage = CountingMockRuleStorage()
+        val store = store(storage = storage)
+        assertEquals(0, storage.loads)
+        store.beginRequest("https://example.com/a", "GET", Headers.EMPTY, null, null)
+        assertEquals(0, storage.loads)
+
+        assertNull(store.findMockRule("https://example.com/a", "GET"))
+        assertEquals(1, storage.loads)
+        store.getMockRules()
+        store.addMockRule(rule(id = "r"))
+        store.incrementHitCount("r")
+        assertEquals(1, storage.loads)
+    }
+
+    @Test
+    fun `a storage that fails to load leaves the store with no rules`() {
+        val storage =
+            object : MockRuleStorage {
+                override fun load(): List<MockRule> = error("corrupt")
+
+                override fun save(rules: List<MockRule>) = Unit
+            }
+        val store = store(storage = storage)
+        assertTrue(store.getMockRules().isEmpty())
+        store.addMockRule(rule(id = "r"))
+        assertEquals(listOf("r"), store.getMockRules().map { it.id })
+    }
+
+    @Test
+    fun `the rule added last is tried first`() {
+        val store = store()
+        store.addMockRule(rule(id = "broad", urlPattern = "/api"))
+        store.addMockRule(rule(id = "specific", urlPattern = "/api/users/42"))
+        assertEquals(listOf("specific", "broad"), store.getMockRules().map { it.id })
+        assertEquals("specific", store.findMockRule("https://a.test/api/users/42", "GET")?.id)
+        assertEquals("broad", store.findMockRule("https://a.test/api/items", "GET")?.id)
+    }
+
+    @Test
+    fun `a rule replaced by id keeps its place`() {
+        val store = store()
+        store.addMockRule(rule(id = "first", urlPattern = "/a"))
+        store.addMockRule(rule(id = "second", urlPattern = "/b"))
+        store.addMockRule(rule(id = "first", urlPattern = "/a2"))
+        assertEquals(listOf("second", "first"), store.getMockRules().map { it.id })
+        assertEquals("/a2", store.getMockRules().last().urlPattern)
+    }
+
+    @Test
+    fun `a sync keeps the order it was posted in, and a stored list its order`() {
+        val storage = InMemoryMockRuleStorage()
+        val store = store(storage = storage)
+        store.replaceMockRules(listOf(rule(id = "a", urlPattern = "/x"), rule(id = "b", urlPattern = "/x"), rule(id = "a")))
+        assertEquals(listOf("a", "b"), store.getMockRules().map { it.id })
+        assertEquals("a", store.findMockRule("https://a.test/x", "GET")?.id)
+        assertEquals(listOf("a", "b"), storage.saved.map { it.id })
+
+        storage.saved = listOf(rule(id = "b", urlPattern = "/x"), rule(id = "a", urlPattern = "/x"))
+        val reloaded = store(storage = storage)
+        assertEquals(listOf("b", "a"), reloaded.getMockRules().map { it.id })
+        assertEquals("b", reloaded.findMockRule("https://a.test/x", "GET")?.id)
     }
 
     @Test
@@ -1057,5 +1124,16 @@ class NetworkTrafficStoreTest {
         override fun save(rules: List<MockRule>) {
             saved = rules
         }
+    }
+
+    private class CountingMockRuleStorage : MockRuleStorage {
+        var loads = 0
+
+        override fun load(): List<MockRule> {
+            loads++
+            return emptyList()
+        }
+
+        override fun save(rules: List<MockRule>) = Unit
     }
 }

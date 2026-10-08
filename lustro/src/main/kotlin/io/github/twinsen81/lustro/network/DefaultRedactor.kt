@@ -26,9 +26,13 @@ import org.json.JSONTokener
  *   A name is split into words, at separators and camelCase humps, and the
  *   token must be in a word that isn't an ordinary one that happens to contain
  *   it: `author_name`, `design`, and `keywords` are kept, while `authorization`,
- *   `accessToken`, and `presigned_url` are masked. A few names that hold no
- *   secret although they have a sensitive word are kept too: `Idempotency-Key`,
- *   `public_key`, and `vapid_key`, in any spelling.
+ *   `accessToken`, and `presigned_url` are masked. Names that hold no secret
+ *   although they have a sensitive word are kept too, in any spelling:
+ *   `Idempotency-Key`, `public_key`, and `vapid_key`; a token count or limit,
+ *   where `token` or `tokens` sits next to a word such as `max`, `total`,
+ *   `count`, `remaining`, `prompt`, or `input`, as in `prompt_tokens`,
+ *   `max_tokens`, `totalTokenCount`, and `x-ratelimit-remaining-tokens`; and a
+ *   key that names a column, such as `primary_key` and `partitionKey`.
  * - The parts of a `multipart/form-data` body: a part whose field name is
  *   sensitive is masked whole, and any other part is redacted as a body of its
  *   own type, so a JSON part is redacted as JSON. A part's own headers are
@@ -78,10 +82,32 @@ public object DefaultRedactor : Redactor {
         setOf("access-control-allow-credentials", "www-authenticate", "proxy-authenticate")
 
     // Names that have a sensitive word but hold no secret: an idempotency key
-    // names a request, and a VAPID or other public key is published. Compared
+    // names a request, a VAPID or other public key is published, a primary or
+    // partition key names a column, and a session count is a number. Compared
     // with the name's words joined, so `Idempotency-Key`, `idempotency_key`, and
     // `idempotencyKey` all match.
-    private val PUBLIC_NAMES = setOf("idempotencykey", "publickey", "vapidkey")
+    private val PUBLIC_NAMES =
+        setOf(
+            "idempotencykey", "publickey", "vapidkey",
+            "primarykey", "foreignkey", "partitionkey", "sortkey", "rowkey",
+            "sessioncount",
+        )
+
+    // The word `token` or `tokens` next to one of these is a count or a limit,
+    // as LLM APIs report usage and take a cap, and as rate-limit headers say
+    // what is left: `prompt_tokens`, `max_tokens`, `totalTokenCount`,
+    // `x-ratelimit-remaining-tokens`. A credential's name has none of them:
+    // `access_token`, `refresh_tokens`, `device_tokens`.
+    private val COUNT_WORDS =
+        setOf(
+            "count", "counts", "total", "totals", "max", "maximum", "min", "minimum",
+            "limit", "limits", "remaining", "used", "usage", "num", "number", "budget",
+            "quota", "ratelimit", "per", "prompt", "completion", "input", "output",
+            "reasoning", "cached", "candidates", "thoughts", "prediction", "estimated",
+            "billed", "cost",
+        )
+
+    private val TOKEN_WORDS = setOf("token", "tokens")
 
     // Ordinary words that contain a sensitive fragment. A word that only has a
     // fragment as part of one of these doesn't make its name sensitive.
@@ -92,6 +118,7 @@ public object DefaultRedactor : Redactor {
             "signup", "signal", "signals",
             "assign", "assigned", "assignee", "assignment",
             "keyboard", "keyword", "keywords",
+            "authority", "insight", "insights",
         )
 
     private val SENSITIVE_KEY_FRAGMENTS =
@@ -250,13 +277,16 @@ public object DefaultRedactor : Redactor {
     // Runs for every key and element name in a captured body. Most names have no
     // sensitive fragment at all, so that is checked first, without allocating.
     // Only a name that has one is looked at word by word, and a part of it stays
-    // sensitive unless the ordinary words in it were what held the fragment.
+    // sensitive unless the ordinary words in it, or a counted `token`, were what
+    // held the fragment.
     private fun isSensitiveKey(name: String): Boolean {
         if (!hasSensitiveFragment(name)) return false
         val parts = nameParts(name)
         if (parts.joinToString("").lowercase() in PUBLIC_NAMES) return false
-        return parts.any { part ->
-            val rest = camelCaseWords(part).filterNot { it in NON_SENSITIVE_WORDS }.joinToString("")
+        val words = parts.map { camelCaseWords(it) }
+        val counted = words.any { part -> part.any { it in COUNT_WORDS } }
+        return words.any { part ->
+            val rest = part.filterNot { it in NON_SENSITIVE_WORDS || (counted && it in TOKEN_WORDS) }.joinToString("")
             SENSITIVE_KEY_FRAGMENTS.any { rest.contains(it) }
         }
     }

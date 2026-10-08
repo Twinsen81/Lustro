@@ -99,6 +99,17 @@ def test_meta(server):
     assert meta["tabs"][0]["id"] == "network"
 
 
+def test_requests_ignore_a_proxy_from_the_environment(server, monkeypatch):
+    # The server is an adb forward on this machine, which a proxy can't reach,
+    # and the token must not leave it.
+    for name in ("http_proxy", "HTTP_PROXY", "https_proxy", "HTTPS_PROXY", "all_proxy", "ALL_PROXY"):
+        monkeypatch.setenv(name, "http://127.0.0.1:9/")
+    monkeypatch.delenv("no_proxy", raising=False)
+    monkeypatch.delenv("NO_PROXY", raising=False)
+    client = LustroClient(server, TOKEN)
+    assert client.get("/api/v1/_meta")["protocolVersion"] == "1.6"
+
+
 def test_transactions_cursor(server):
     client = LustroClient(server, TOKEN)
     data = client.get("/api/v1/network/transactions")
