@@ -168,14 +168,22 @@ internal class LustroNetworkInterceptor(
             // longer than the headers did, so the response stays in flight until it ends.
             sink.completeRequest(id, response.toCapturedResponse(request.url, durationMs, body, complete = false))
             trackBodyTransfer(id, request.url, response, body, startTime)
-        } catch (e: IOException) {
+        } catch (t: Throwable) {
+            // Whatever the call throws below this interceptor fails the
+            // transaction: an IOException, and a RuntimeException from a network
+            // interceptor too, or the row would stay in flight for good.
             if (id != null) {
                 val durationMs = System.currentTimeMillis() - startTime
-                sink.failRequest(id, durationMs, e.message ?: e.javaClass.simpleName)
+                sink.failRequest(id, durationMs, failureReason(t))
             }
-            throw e
+            throw t
         }
     }
+
+    // An IOException's message says what went wrong; another throwable is named
+    // too, since it isn't a network failure.
+    private fun failureReason(t: Throwable): String =
+        if (t is IOException) t.message ?: t.javaClass.simpleName else t.toString()
 
     // Null when the filter skips the request: none of it is read for capture or reported.
     @Suppress("RestrictedApi") // id.value is @RestrictTo(LIBRARY_GROUP); same-group call.

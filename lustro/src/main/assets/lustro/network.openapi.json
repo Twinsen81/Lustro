@@ -187,7 +187,7 @@
         "operationId": "listMockRules",
         "summary": "List mock rules.",
         "responses": {
-          "200": { "description": "Mock rules.", "content": { "application/json": { "schema": { "type": "object", "required": ["items"], "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/MockRule" } } } } } } },
+          "200": { "description": "Mock rules, in the order they are tried: the first enabled rule that matches a request answers it.", "content": { "application/json": { "schema": { "type": "object", "required": ["items"], "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/MockRule" }, "description": "In the order the rules are tried." } } } } } },
           "401": { "$ref": "#/components/responses/Error" },
           "403": { "$ref": "#/components/responses/Error" },
           "413": { "$ref": "#/components/responses/Error" },
@@ -197,6 +197,7 @@
       "post": {
         "operationId": "addMockRule",
         "summary": "Add (or upsert by id) a mock rule.",
+        "description": "A new rule goes first, so the rule added last wins when two match a request. A rule with the id of an existing one replaces it in place, whole: send enabled and responseHeaders when editing one, or they fall back to true and empty.",
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MockRuleInput" } } } },
         "responses": {
           "200": { "description": "Created.", "content": { "application/json": { "schema": { "type": "object", "required": ["status", "id"], "properties": { "status": { "const": "ok" }, "id": { "type": "string" } } } } } },
@@ -212,7 +213,7 @@
       "post": {
         "operationId": "syncMockRules",
         "summary": "Atomically replace the entire set of mock rules.",
-        "description": "Idempotent: the resulting rule set exactly equals the posted array. The interceptor never observes an empty window during the swap.",
+        "description": "Idempotent: the resulting rule list exactly equals the posted array, in that order, so the first rule posted is tried first. The interceptor never observes an empty window during the swap.",
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/MockRuleInput" } } } } },
         "responses": {
           "200": { "description": "Replaced.", "content": { "application/json": { "schema": { "type": "object", "required": ["status", "count"], "properties": { "status": { "const": "ok" }, "count": { "type": "integer" } } } } } },

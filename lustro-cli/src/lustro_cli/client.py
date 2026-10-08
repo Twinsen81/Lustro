@@ -94,6 +94,12 @@ class RawBody(NamedTuple):
     content_type: Optional[str]
 
 
+# urllib honours http_proxy, HTTPS_PROXY, and the system's proxy settings. The
+# server is an adb forward on this machine, which a proxy can't reach, and the
+# token must not leave it, so requests never go through one.
+_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
 class LustroClient:
     """Minimal JSON-over-HTTP client for ``/api/v1/*`` routes.
 
@@ -194,7 +200,7 @@ class LustroClient:
         if data is not None:
             headers["Content-Type"] = "application/json"
         req = urllib.request.Request(url, data=data, headers=headers, method=method.upper())
-        with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+        with _OPENER.open(req, timeout=self.timeout) as resp:
             return resp.read(), resp.headers.get("Content-Type")
 
     def _take_fresh_token(self) -> bool:

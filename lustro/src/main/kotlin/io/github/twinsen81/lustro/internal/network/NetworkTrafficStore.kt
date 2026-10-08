@@ -30,7 +30,8 @@ import okio.utf8Size
  *
  * Notable behavior:
  * - Mock rules persist through an injected [MockRuleStorage] instead of
- *   direct SharedPreferences.
+ *   direct SharedPreferences. They are tried in order: the first one that
+ *   matches a request answers it, and a new rule goes first.
  * - The transaction ring cap comes from `DebugConfig.maxCaptureTransactions`.
  * - Capture calls return right away: redaction with the [Redactor],
  *   classification with the [NetworkClassifier], and storing run later on a
@@ -70,7 +71,22 @@ internal class NetworkTrafficStore(
 
     private val transactionMap = ConcurrentHashMap<String, NetworkTransaction>()
     private val insertionOrder = ConcurrentLinkedDeque<String>()
-    private val mockRules = ConcurrentHashMap<String, MockRuleImpl>()
+
+    // The rules in the order they are tried: the first one that matches a request
+    // answers it. A new rule goes first, so the rule added last wins when two
+    // match, and a sync keeps the order it was posted in. The list is replaced
+    // whole under rulesLock, so the interceptor reads one snapshot per request
+    // without taking it.
+    @Volatile
+    private var mockRules: List<MockRuleImpl> = emptyList()
+    private val rulesLock = Any()
+
+    // Storage is read when the rules are first needed, which is off the main
+    // thread: on a call's thread, or on a route's. The constructor runs where the
+    // app builds the tab, usually Application.onCreate on the main thread, and a
+    // prefs-backed storage reads a file there.
+    @Volatile
+    private var rulesLoaded = storage == null
     private val sequence = AtomicLong(0)
     private val paused = AtomicBoolean(false)
     private val overwriteMode = AtomicBoolean(false)
@@ -94,20 +110,6 @@ internal class NetworkTrafficStore(
 
     // Stream progress still waiting for the worker, by transaction id.
     private val pendingProgress = ConcurrentHashMap<String, CapturedResponse>()
-
-    init {
-        // A stored rule is checked again on the way in: any MockRuleStorage can
-        // hand back a rule the interceptor could not build a response from, and
-        // such a rule would throw inside the app's own call every time it matched.
-        storage?.load()?.forEach { rule ->
-            val rejection = MockRuleCodec.validate(rule)
-            if (rejection == null) {
-                mockRules[rule.id] = rule.toImpl()
-            } else {
-                Log.w(TAG, "Ignoring stored mock rule '${rule.id}': ${rejection.message}")
-            }
-        }
-    }
 
     // The OkHttp interceptor reports to the store itself. The other adapters
     // report through sinkFor, or name their source.
@@ -176,7 +178,7 @@ internal class NetworkTrafficStore(
         }
 
     override fun findMockRule(url: String, method: String): MockRule? =
-        mockRules.values.firstOrNull { it.matches(url, method) }
+        rules().firstOrNull { it.matches(url, method) }
 
     @Suppress("RestrictedApi") // id.value is @RestrictTo(LIBRARY_GROUP); same-group call (see beginRequest).
     override fun completeRequest(id: TransactionId, response: CapturedResponse) {
@@ -457,42 +459,82 @@ internal class NetworkTrafficStore(
 
     fun getTransaction(id: String): NetworkTransaction? = transactionMap[id]
 
+    /**
+     * Adds [rule] first, so it is tried before the rules already there, or
+     * replaces the rule with its id where that one is.
+     */
     fun addMockRule(rule: MockRuleImpl) {
-        mockRules[rule.id] = rule
-        persistRules()
-    }
-
-    fun removeMockRule(id: String) {
-        mockRules.remove(id)
-        persistRules()
-    }
-
-    fun toggleMockRule(id: String) {
-        mockRules.computeIfPresent(id) { _, rule -> rule.copy(enabled = !rule.enabled) }
-        persistRules()
-    }
-
-    fun replaceMockRules(rules: List<MockRuleImpl>) {
-        // Avoid a transient empty window: putAll the new set first (overwriting
-        // any existing entries with matching ids), then retain only those keys
-        // so dropped rules are removed last. The interceptor never sees a
-        // moment with zero rules, just briefly sees the union.
-        val newRules = rules.associateBy { it.id }
-        mockRules.putAll(newRules)
-        mockRules.keys.retainAll(newRules.keys)
-        persistRules()
-    }
-
-    fun getMockRules(): List<MockRuleImpl> = mockRules.values.toList()
-
-    fun incrementHitCount(ruleId: String) {
-        mockRules.computeIfPresent(ruleId) { _, rule ->
-            rule.copy(hitCount = rule.hitCount + 1)
+        updateRules { current ->
+            val index = current.indexOfFirst { it.id == rule.id }
+            if (index < 0) listOf(rule) + current else current.toMutableList().also { it[index] = rule }
         }
     }
 
-    private fun persistRules() {
-        storage?.save(mockRules.values.toList())
+    fun removeMockRule(id: String) {
+        updateRules { current -> current.filterNot { it.id == id } }
+    }
+
+    fun toggleMockRule(id: String) {
+        updateRules { current -> current.map { if (it.id == id) it.copy(enabled = !it.enabled) else it } }
+    }
+
+    /** Replaces every rule with [rules], tried in the order given. One list replaces the other: there is no empty window. */
+    fun replaceMockRules(rules: List<MockRuleImpl>) {
+        updateRules { rules.distinctBy { it.id } }
+    }
+
+    /** The rules in the order they are tried. */
+    fun getMockRules(): List<MockRuleImpl> = rules()
+
+    fun incrementHitCount(ruleId: String) {
+        synchronized(rulesLock) {
+            mockRules = rules().map { if (it.id == ruleId) it.copy(hitCount = it.hitCount + 1) else it }
+        }
+    }
+
+    private fun rules(): List<MockRuleImpl> {
+        if (!rulesLoaded) loadRules()
+        return mockRules
+    }
+
+    private inline fun updateRules(change: (List<MockRuleImpl>) -> List<MockRuleImpl>) {
+        synchronized(rulesLock) {
+            val updated = change(rules())
+            mockRules = updated
+            storage?.save(updated)
+        }
+    }
+
+    private fun loadRules() {
+        synchronized(rulesLock) {
+            if (rulesLoaded) return
+            mockRules = loadStoredRules()
+            rulesLoaded = true
+        }
+    }
+
+    // A stored rule is checked again on the way in: any MockRuleStorage can
+    // hand back a rule the interceptor could not build a response from, and
+    // such a rule would throw inside the app's own call every time it matched.
+    private fun loadStoredRules(): List<MockRuleImpl> {
+        val stored =
+            try {
+                storage?.load().orEmpty()
+            } catch (t: Throwable) {
+                Log.w(TAG, "Could not load the stored mock rules; starting with none", t)
+                return emptyList()
+            }
+        return stored
+            .mapNotNull { rule ->
+                val rejection = MockRuleCodec.validate(rule)
+                if (rejection == null) {
+                    rule.toImpl()
+                } else {
+                    Log.w(TAG, "Ignoring stored mock rule '${rule.id}': ${rejection.message}")
+                    null
+                }
+            }
+            .distinctBy { it.id }
     }
 
     fun isPaused(): Boolean = paused.get()

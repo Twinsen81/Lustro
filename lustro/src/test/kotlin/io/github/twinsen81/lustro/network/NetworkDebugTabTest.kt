@@ -406,6 +406,25 @@ class NetworkDebugTabTest {
     }
 
     @Test
+    fun `rules are listed in the order they are tried, and a new rule goes first`() {
+        val tab = tab()
+        tab.handle(post("rules", """{"id":"broad","urlPattern":"/api"}"""))
+        tab.handle(post("rules", """{"id":"specific","urlPattern":"/api/users/42"}"""))
+        assertEquals(listOf("specific", "broad"), tab.ruleIds())
+        assertEquals("specific", tab.captureSink.findMockRule("https://a.test/api/users/42", "GET")?.id)
+
+        // A sync sets the list as posted.
+        tab.handle(post("rules/_/sync", """[{"id":"broad","urlPattern":"/api"},{"id":"specific","urlPattern":"/api/users/42"}]"""))
+        assertEquals(listOf("broad", "specific"), tab.ruleIds())
+        assertEquals("broad", tab.captureSink.findMockRule("https://a.test/api/users/42", "GET")?.id)
+    }
+
+    private fun NetworkDebugTab.ruleIds(): List<String> {
+        val items = handle(get("rules"))!!.json().getJSONArray("items")
+        return (0 until items.length()).map { items.getJSONObject(it).getString("id") }
+    }
+
+    @Test
     fun `sync rejects an invalid entry with 400 and leaves the rule set untouched`() {
         val tab = tab()
         tab.handle(post("rules", """{"urlPattern":"/keep"}"""))

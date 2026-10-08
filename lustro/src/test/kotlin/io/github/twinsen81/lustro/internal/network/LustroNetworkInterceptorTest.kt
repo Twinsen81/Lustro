@@ -451,6 +451,21 @@ class LustroNetworkInterceptorTest {
     }
 
     @Test
+    fun `a RuntimeException below the interceptor fails the transaction and is rethrown`() {
+        // A network interceptor can throw one. Without a failure on record the
+        // row would stay in flight for good, with nothing to say what happened.
+        val sink = RecordingSink()
+        val interceptor = interceptor(sink)
+        val request = Request.Builder().url("https://example.com/boom").build()
+        val boom = IllegalStateException("interceptor bug")
+        val chain = FakeChain(request, response = null, proceedError = boom)
+
+        val thrown = assertThrows(IllegalStateException::class.java) { interceptor.intercept(chain) }
+        assertSame(boom, thrown)
+        assertEquals("java.lang.IllegalStateException: interceptor bug", sink.failures.single().error)
+    }
+
+    @Test
     fun `the negotiated protocol and both content types are captured`() {
         val store = store()
         val interceptor = interceptor(store)
@@ -1551,7 +1566,7 @@ class LustroNetworkInterceptorTest {
     private class FakeChain(
         private val request: Request,
         private val response: Response?,
-        private val proceedError: IOException? = null,
+        private val proceedError: Throwable? = null,
     ) : Interceptor.Chain {
         var proceedCount: Int = 0
             private set

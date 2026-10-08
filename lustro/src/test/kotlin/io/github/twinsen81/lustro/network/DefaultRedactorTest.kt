@@ -139,6 +139,37 @@ class DefaultRedactorTest {
     }
 
     @Test
+    fun `a token count or limit keeps its value, and a token does not`() {
+        // What LLM APIs report as usage and take as a cap, and what a rate-limit
+        // header says is left: numbers a developer reads, not credentials.
+        val usage =
+            """{"usage":{"prompt_tokens":12,"completion_tokens":34,"total_tokens":46,"input_tokens":1,""" +
+                """"output_tokens":2,"cache_read_input_tokens":3,"completion_tokens_details":{"reasoning_tokens":5},""" +
+                """"promptTokenCount":4,"totalTokenCount":9},"max_tokens":1024,"maxOutputTokens":256,"token_limit":8}"""
+        assertEquals(usage, redactor.redactBody(usage, MediaType.JSON))
+        assertEquals("149000", redactor.redactHeaderValue("x-ratelimit-remaining-tokens", "149000"))
+        assertEquals("40000", redactor.redactHeaderValue("anthropic-ratelimit-input-tokens-limit", "40000"))
+
+        val secrets =
+            """{"token":"a","tokens":["b"],"access_token":"c","refresh_tokens":["d"],"api_token":"e","device_tokens":["f"]}"""
+        val out = JSONObject(redactor.redactBody(secrets, MediaType.JSON))
+        for (key in out.keys()) {
+            assertEquals(key, "[REDACTED]", out.getString(key))
+        }
+        assertEquals("[REDACTED]", redactor.redactHeaderValue("X-Access-Tokens", "t"))
+        // A count word exempts the token word alone, not another sensitive one.
+        assertEquals("[REDACTED]", redactor.redactHeaderValue("X-Session-Token-Count", "t"))
+    }
+
+    @Test
+    fun `a key that names a column, a count of sessions, and ordinary words with a fragment keep their value`() {
+        val body =
+            """{"primary_key":"id","partitionKey":"tenant","sort_key":"ts","sessionCount":7,""" +
+                """"authority":"a.test:443","insights":["x"]}"""
+        assertEquals(body, redactor.redactBody(body, MediaType.JSON))
+    }
+
+    @Test
     fun `a sensitive word is masked wherever it sits in the name`() {
         val body =
             """{"authorization":"a","accessToken":"b","accesstoken":"c","APIKey":"d",""" +

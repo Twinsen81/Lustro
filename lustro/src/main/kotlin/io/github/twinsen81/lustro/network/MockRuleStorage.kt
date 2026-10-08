@@ -9,8 +9,12 @@ import org.json.JSONArray
 /**
  * Persistence seam for network [MockRule]s.
  *
- * The runtime [load]s rules at startup and [save]s the full set on every
- * mutation. Provide an implementation to survive app restarts (see
+ * The runtime [load]s the rules once, when they are first needed, off the main
+ * thread: on the thread of the first request a rule could answer, or of the
+ * first debug API call that reads or changes them. It [save]s the full set on
+ * every mutation, on the thread of the debug API call that made it. Both lists
+ * are in the order the rules are tried: the first rule that matches a request
+ * answers it. Provide an implementation to survive app restarts (see
  * [SharedPreferencesMockRuleStorage]); pass `null` to [NetworkDebugTab.create]
  * for in-memory-only rules.
  */

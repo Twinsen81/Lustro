@@ -304,6 +304,33 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Fixed
 
+- **A mock rule's place in the list now decides which rule answers.** The
+  rules were kept in a hash map, so when two enabled rules matched a request,
+  which one answered depended on the hashes of their ids: a rule for
+  `/api/users/42` added after one for `/api` could stay at 0 hits, with
+  nothing to say why. The rules are now an ordered list, tried from the top.
+  A new rule goes first, so the rule added last wins; a rule replaced by id
+  keeps its place; `POST rules/_/sync` sets the list as posted; and
+  `GET rules`, the stored list, and the Mock Rules panel show that order.
+- **Stored mock rules are no longer read on the thread that builds the tab.**
+  `NetworkDebugTab.create(...)` with a `SharedPreferencesMockRuleStorage` read
+  the prefs file at once, which in `Application.onCreate` is a disk read on
+  the main thread: StrictMode reports it, and a debug build with
+  `penaltyDeath` on disk reads died at startup. The storage is now read once,
+  when the rules are first needed, on the thread of the first request a rule
+  could answer or of the first debug API call that touches them. A storage
+  whose `load()` throws leaves the tab with no rules instead of failing the
+  app.
+- **A request that failed with something other than an `IOException` stayed
+  in flight.** The OkHttp interceptor recorded a failure for an `IOException`
+  only, so a `RuntimeException` thrown below it, by a network interceptor for
+  one, left the row pending for good, with no error on it. Any throwable now
+  fails the transaction, named with its class, and reaches the app as before.
+- **The CLI no longer sends its requests through a proxy.** `urllib` honours
+  `http_proxy`, `HTTPS_PROXY`, and the system's proxy settings, so with one
+  set and `no_proxy` not covering `127.0.0.1`, every command sent its request,
+  Bearer token included, to the proxy instead of the adb forward, and failed.
+  Requests now bypass every proxy.
 - **Platform capture listed the platform's own headers as response
   headers, and no protocol.** Android's `HttpURLConnection` adds
   `X-Android-Sent-Millis`, `X-Android-Received-Millis`,
@@ -710,6 +737,16 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Changed
 
+- **The default redactor keeps token counts and column keys.** A name with
+  `token` in it was always masked, so `prompt_tokens`, `max_tokens`,
+  `totalTokenCount`, and `x-ratelimit-remaining-tokens` showed as
+  `[REDACTED]`: the numbers a developer reads when debugging a call to an LLM
+  API. The word `token` or `tokens` next to a count or limit word (`max`,
+  `total`, `count`, `remaining`, `prompt`, `completion`, `input`, `output`,
+  and the like) is kept now, and so are `primary_key`, `partitionKey`, and
+  the other column keys, `sessionCount`, `authority`, and `insights`. A
+  credential such as `access_token`, `refresh_tokens`, or a bare `tokens` is
+  masked as before.
 - **Wire protocol 1.4: a throttled request shows how long the throttle held
   it.** The global throttle waited before the capture began, so a request
   held for 3 s was listed only after the wait, as a 390 ms request, with

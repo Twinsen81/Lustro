@@ -1412,7 +1412,11 @@
         if (loadedRules.length === 0) {
             listEl.innerHTML = '<div class="net-rules-empty">No mock rules defined.</div>';
         } else {
-            listEl.innerHTML = loadedRules.map(function(r) {
+            // The list route returns the rules in the order they are tried.
+            var orderNote = loadedRules.length > 1
+                ? '<div class="dc-comment net-rules-order" title="The first rule whose pattern and method match a request answers it. A new rule goes on top; editing one keeps its place.">// Tried from the top: the first match answers</div>'
+                : '';
+            listEl.innerHTML = orderNote + loadedRules.map(function(r) {
                 var disabled = r.enabled ? '' : ' disabled';
                 var checked = r.enabled ? ' checked' : '';
                 var editing = r.id === editingRuleId ? ' editing' : '';
