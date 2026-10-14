@@ -13,6 +13,12 @@ updates:
     ignore:
       - dependency-name: "org.jetbrains.kotlin:*"
       - dependency-name: "org.jetbrains.kotlin.*"
+      # OkHttp types are part of Lustro's public API, so the published 4.x floor
+      # lets consumers on either OkHttp 4 or 5 resolve to their own version.
+      # Raising it to 5.x would force OkHttp 5 on every consumer, and
+      # okhttp-android 5.x also requires compileSdk 36.
+      - dependency-name: "com.squareup.okhttp3:*"
+        update-types: ["version-update:semver-major"]
     groups:
       gradle-dependencies:
         patterns:
