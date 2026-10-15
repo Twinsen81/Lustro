@@ -176,3 +176,59 @@ corrected.
 
 For canonical package, version, and module facts, see the project README,
 CONTRIBUTING, and the module build files.
+
+## Dependency floors
+
+**Decision:** every dependency of a published artifact is a floor, the oldest
+version that has the APIs Lustro uses, not the version this repository builds
+with. Gradle resolves a module to the highest version requested, so an app keeps
+its own, newer versions, and adding Lustro does not change the build the
+developer wants to inspect.
+
+**Why:** the artifacts used to require the catalog's current versions. In an app
+on androidx.lifecycle 2.10.0 and compileSdk 36, the lifecycle 2.11.0 that
+`lustro` required moved every lifecycle artifact of the app to 2.11.0 through
+the group's own alignment constraints, the Compose ones included; those need
+compileSdk 37 and AGP 9.1, and the debug build failed in
+`checkDebugAarMetadata`. The other dependencies carried the same risk:
+kotlin-stdlib 2.3.21 compiled in a Kotlin 2.2 app only because a compiler reads
+the metadata of the next minor version, and an app with Gradle dependency
+verification needs a checksum for every artifact a raise brings in. A debug tool
+must not need a `resolutionStrategy` workaround in the app.
+
+**How it is done:**
+
+- `gradle/libs.versions.toml` holds the floors: `kotlinFloor` 2.0.21, OkHttp
+  4.12.0, `lifecycle-process` 2.4.1 (the oldest release line with
+  `DefaultLifecycleObserver` in `lifecycle-common`), and NanoHTTPD 2.3.1.
+  `lifecycle-runtime-ktx`, coroutines, and `androidx.annotation` are no longer
+  dependencies of `lustro`: nothing used them. `androidx.annotation` stays
+  `compileOnly` in `lustro-api`, for its CLASS-retention annotations.
+- The three published modules set `coreLibrariesVersion`, `languageVersion`,
+  and `apiVersion` from `kotlinFloor`. Whatever compiler the catalog pins, they
+  compile against kotlin-stdlib 2.0.21, use only its API, and carry Kotlin 2.0
+  metadata. The compiler deprecates a language version before it drops it (2.3
+  deprecates 2.0), so `-Xsuppress-version-warnings` keeps that warning out of
+  every build; dropping the version is a compile error, and the moment the
+  floor must move. `kotlin.io.encoding.Base64` is stable since Kotlin 2.2 but
+  experimental in stdlib 2.0, hence the opt-in in `:lustro` and `:lustro-api`.
+- Dependabot ignores the floors (`.github/dependabot.yml`); they move by hand.
+- The `consumer` CI job publishes the checkout to the local Maven repository
+  and builds [`consumer-check/`](consumer-check/), an app on the oldest
+  supported toolchain (AGP 8.6.1, Kotlin 2.0.21, compileSdk 35) whose own
+  dependencies are the floors, and once more on a current toolchain with
+  OkHttp 5 and the lifecycle Compose artifacts. Its `checkLustroKeepsAppVersions`
+  task fails on any module whose version differs between the app with and
+  without Lustro. The unit tests also run with OkHttp 5 on the test runtime
+  classpath (`-PlustroTestOkHttpVersion`).
+- README.md documents the minimum versions, and CONTRIBUTING.md the commands.
+
+**How to change:** to raise a floor, change it in `gradle/libs.versions.toml`,
+in `consumer-check/gradle.properties`, and in README.md together, and say so in
+CHANGELOG.md: it is a requirement every app has to meet. OkHttp 5 as the floor
+would be that decision for the public API types, and is not planned while apps
+on 4.x exist. The Kotlin floor is the one the toolchain can force: when the
+catalog's compiler no longer supports language version 2.0, `kotlinFloor` moves
+to the oldest version it does support. An app on the previous version still
+reads the metadata, since a compiler reads one minor version ahead, but gets the
+newer stdlib.

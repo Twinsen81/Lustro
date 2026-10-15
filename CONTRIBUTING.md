@@ -37,10 +37,17 @@ Other useful targets:
 ./gradlew test                           # all module unit tests
 ```
 
-Tests use MockK (preferred over Mockito), Turbine for Flow assertions, and
-MockWebServer for OkHttp-side tests. Wire-protocol changes must keep the
-contract tests and JSON Schema validation green. CI does not require internet
-access — network tests run against MockWebServer fixtures.
+Tests use JUnit 4, Robolectric for the Android pieces, and MockWebServer for
+OkHttp-side tests. Wire-protocol changes must keep the contract tests and JSON
+Schema validation green. CI does not require internet access — network tests
+run against MockWebServer fixtures.
+
+The modules compile against OkHttp 4.12.0, the floor an app can stay on. To run
+the suite with OkHttp 5 on the test runtime classpath, as CI does:
+
+```bash
+./gradlew :lustro:testDebugUnitTest :sample:testDebugUnitTest -PlustroTestOkHttpVersion=5.5.0
+```
 
 The debug console's browser JavaScript ships inside the runtime AAR but is not
 built by Gradle, so it has its own runner — the one built into Node, with no
@@ -239,6 +246,20 @@ compatible with Apache-2.0:
 A `licensee`-based automated license check is wired into CI; until it is
 active, the commands above plus a manual license review are the gate. New runtime
 dependencies must be justified in the PR description.
+
+Every runtime dependency of a published artifact is a floor: the oldest version
+with the APIs Lustro uses, so that adding Lustro does not raise an app's own
+versions (see [DECISIONS.md](DECISIONS.md#dependency-floors)). Dependabot leaves
+them alone, and a bump is a change to the minimum versions README.md documents.
+Before you change one, or anything the published POMs carry, publish the checkout
+locally and build the app in [`consumer-check/`](consumer-check/), which is what
+CI does:
+
+```bash
+./gradlew publishToMavenLocal
+cd consumer-check
+./gradlew :app:assembleWithLustroDebug :app:assembleWithLustroRelease :app:checkLustroKeepsAppVersions
+```
 
 ## Code of Conduct
 

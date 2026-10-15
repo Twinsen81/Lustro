@@ -72,7 +72,27 @@ dependencyResolutionManagement {
 }
 ```
 
-Lustro requires **minSdk 24** and declares the `INTERNET` permission in its manifest.
+Lustro declares the `INTERNET` permission in its manifest.
+
+### Minimum versions
+
+Adding Lustro does not raise the versions of your app's own dependencies. Each published
+artifact declares the oldest version of a dependency that has the APIs it uses, and Gradle
+keeps your newer one.
+
+| | Minimum | Notes |
+| --- | --- | --- |
+| Android Gradle Plugin | 8.6 | The oldest that supports `compileSdk` 35. |
+| `compileSdk` | 35 | |
+| `minSdk` | 24 | |
+| Kotlin | 2.0 | The artifacts carry Kotlin 2.0 metadata and need `kotlin-stdlib` 2.0.21 or newer. |
+| OkHttp | 4.12.0 | 4.x or 5.x. CI runs Lustro's tests against OkHttp 5 as well. |
+| `androidx.lifecycle` | 2.4.1 | `lifecycle-process` only, and only in `lustro`. |
+| `kotlinx.coroutines` | none | Lustro has no coroutines dependency. |
+
+`lustro` also brings NanoHTTPD 2.3.1, its embedded server. CI builds a small app in
+[`consumer-check/`](consumer-check/) with exactly these versions, and again on a current
+toolchain, and fails when a published artifact would change any version the app has.
 
 ## Quick start
 

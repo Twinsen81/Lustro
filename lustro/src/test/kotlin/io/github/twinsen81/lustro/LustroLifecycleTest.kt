@@ -45,7 +45,7 @@ class LustroLifecycleTest {
     /** A standalone [LifecycleOwner] backed by a drivable [LifecycleRegistry]. */
     private class FakeLifecycleOwner : LifecycleOwner {
         val registry = LifecycleRegistry(this)
-        override val lifecycle: Lifecycle get() = registry
+        override fun getLifecycle(): Lifecycle = registry
     }
 
     @Before

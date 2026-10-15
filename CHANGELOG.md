@@ -737,6 +737,28 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Changed
 
+- **Adding Lustro no longer raises the app's dependency versions.** The
+  published `lustro` module required androidx.lifecycle 2.11.0, coroutines
+  1.11.0, androidx.annotation 1.11.0, and kotlin-stdlib 2.3.21: the versions
+  this repository builds with. In an app on lifecycle 2.10.0 with compileSdk
+  36, that moved every lifecycle artifact to 2.11.0 through the group's own
+  alignment constraints, the Compose ones included, which need compileSdk 37
+  and AGP 9.1, and the debug build failed in `checkDebugAarMetadata`. An app
+  on Kotlin 2.1 or older could not have compiled against the artifacts' 2.3
+  metadata, and an app with Gradle dependency verification had to add
+  checksums for more than 30 artifacts. Each runtime dependency is now a
+  floor, the oldest version with the APIs Lustro uses, and Gradle keeps the
+  app's newer one: `lifecycle-process` 2.4.1 is the only lifecycle artifact
+  (the runtime uses `ProcessLifecycleOwner` and `DefaultLifecycleObserver`),
+  coroutines, `lifecycle-runtime-ktx`, and `androidx.annotation` are gone
+  (nothing used them), and the artifacts are compiled as Kotlin 2.0 against
+  kotlin-stdlib 2.0.21, so they carry 2.0 metadata and need no newer Kotlin.
+  OkHttp stays at 4.12.0, and the tests now also run against OkHttp 5.
+  Dependabot leaves the floors alone, README.md documents the minimum
+  versions (AGP 8.6, compileSdk 35, Kotlin 2.0, OkHttp 4.12.0, lifecycle
+  2.4.1, no coroutines), and a new CI job builds a small app on that
+  toolchain, and on a current one, against the published artifacts; it fails
+  when any of them would change a version the app had without Lustro.
 - **`minSdk` is 24, down from 26.** An app with `minSdk` 24 could not add
   Lustro without raising its own, and `lustro-noop` had the same floor, so
   the block was in release builds too. The runtime used `java.time` for the

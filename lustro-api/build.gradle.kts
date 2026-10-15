@@ -1,6 +1,8 @@
 import com.vanniktech.maven.publish.JavadocJar
 import com.vanniktech.maven.publish.KotlinJvm
+import org.jetbrains.kotlin.gradle.dsl.JvmDefaultMode
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.jetbrains.kotlin.gradle.dsl.KotlinVersion
 
 plugins {
     alias(libs.plugins.kotlin.jvm)
@@ -22,11 +24,33 @@ java {
     targetCompatibility = JavaVersion.VERSION_17
 }
 
+// Same Kotlin floor as :lustro: the jar is compiled as Kotlin 2.0 against
+// kotlin-stdlib 2.0.21, so it carries 2.0 metadata and requires that stdlib.
+// See DECISIONS.md ("Dependency floors").
+val kotlinFloor = libs.versions.kotlinFloor.get()
+val kotlinFloorVersion = KotlinVersion.fromVersion(kotlinFloor.substringBeforeLast('.'))
+
 kotlin {
     explicitApi()
     jvmToolchain(21)
+    coreLibrariesVersion = kotlinFloor
     compilerOptions {
         jvmTarget.set(JvmTarget.JVM_17)
+        languageVersion.set(kotlinFloorVersion)
+        apiVersion.set(kotlinFloorVersion)
+        // Since Kotlin 2.2 an interface's default methods are JVM default methods
+        // (with DefaultImpls kept for older callers), but only for language
+        // version 2.2 and up: 2.0 alone would go back to DefaultImpls only, a
+        // different public API that apiCheck rejects and that breaks Java
+        // implementers of the SPI interfaces.
+        jvmDefault.set(JvmDefaultMode.ENABLE)
+        // kotlin.io.encoding.Base64 is stable since Kotlin 2.2, but experimental
+        // in the stdlib 2.0 this module compiles against.
+        optIn.add("kotlin.io.encoding.ExperimentalEncodingApi")
+        // The compiler deprecates the floor's language version before it drops it
+        // (Kotlin 2.3 deprecates 2.0) and would warn on every build. Dropping it
+        // is still an error, which is when the floor must move.
+        freeCompilerArgs.add("-Xsuppress-version-warnings")
     }
 }
 

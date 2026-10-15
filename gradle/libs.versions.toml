@@ -11,12 +11,19 @@ compileSdk = "35"
 minSdk = "24"
 targetSdk = "35"
 
-# Library runtime (published :lustro / :lustro-noop deps).
+# Library runtime: the dependencies of the published :lustro / :lustro-noop
+# artifacts. Each is a floor, the oldest version with the APIs Lustro uses, so
+# that adding Lustro does not raise an app's own versions (Gradle keeps the
+# higher one). Dependabot ignores them, consumer-check/ builds an app with
+# exactly these versions, and README.md documents them: move all of them
+# together. kotlinFloor is the kotlin-stdlib the artifacts require and the
+# language and API version they are compiled as (Kotlin 2.0 metadata).
+kotlinFloor = "2.0.21"
 okhttp = "4.12.0"
 nanohttpd = "2.3.1"
+androidxLifecycle = "2.4.1"
+# compileOnly in :lustro-api (CLASS-retention annotations), so not published.
 androidxAnnotation = "1.11.0"
-androidxLifecycle = "2.11.0"
-coroutines = "1.11.0"
 
 # Sample app only.
 volley = "1.2.1"
@@ -31,8 +38,6 @@ kover = "0.9.11"
 # Test.
 junit = "4.13.2"
 robolectric = "4.17"
-mockk = "1.14.11"
-turbine = "1.2.1"
 json = "20260814"
 androidxTestCore = "1.7.0"
 androidxTestRunner = "1.7.0"
@@ -44,9 +49,6 @@ okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhtt
 nanohttpd = { group = "org.nanohttpd", name = "nanohttpd", version.ref = "nanohttpd" }
 androidx-annotation = { group = "androidx.annotation", name = "annotation", version.ref = "androidxAnnotation" }
 androidx-lifecycle-process = { group = "androidx.lifecycle", name = "lifecycle-process", version.ref = "androidxLifecycle" }
-androidx-lifecycle-runtime = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "androidxLifecycle" }
-kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
-kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "coroutines" }
 
 # Sample app only.
 volley = { group = "com.android.volley", name = "volley", version.ref = "volley" }
@@ -56,10 +58,6 @@ okhttp-mockwebserver = { group = "com.squareup.okhttp3", name = "mockwebserver",
 okhttp-tls = { group = "com.squareup.okhttp3", name = "okhttp-tls", version.ref = "okhttp" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
-mockk = { group = "io.mockk", name = "mockk", version.ref = "mockk" }
-mockk-android = { group = "io.mockk", name = "mockk-android", version.ref = "mockk" }
-turbine = { group = "app.cash.turbine", name = "turbine", version.ref = "turbine" }
-kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }
 json = { group = "org.json", name = "json", version.ref = "json" }
 androidx-test-core = { group = "androidx.test", name = "core", version.ref = "androidxTestCore" }
 androidx-test-runner = { group = "androidx.test", name = "runner", version.ref = "androidxTestRunner" }

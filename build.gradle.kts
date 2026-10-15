@@ -29,6 +29,35 @@ allprojects {
     version = providers.gradleProperty("VERSION_NAME").get()
 }
 
+// `-PlustroTestOkHttpVersion=<version>` runs every module's unit tests with that
+// OkHttp on the test runtime classpath, MockWebServer included. The modules
+// still compile against the published floor (4.12.0), which is what an app on
+// OkHttp 5 runs. CI uses it to run the suite against OkHttp 5. OkHttp 5 is
+// multiplatform, and the Android variant of `okhttp` is the `okhttp-android`
+// AAR, whose metadata asks for a compileSdk above this repository's. The unit
+// tests run on the JVM, so they take the JVM variant, `okhttp-jvm`, as they
+// took the 4.x jar; the consumer check builds a real app with the Android one.
+val testOkHttpVersion = providers.gradleProperty("lustroTestOkHttpVersion")
+if (testOkHttpVersion.isPresent) {
+    val version = testOkHttpVersion.get()
+    val multiplatform = version.substringBefore('.').toInt() >= 5
+    subprojects {
+        configurations.matching { it.name.endsWith("UnitTestRuntimeClasspath") }.configureEach {
+            resolutionStrategy {
+                if (multiplatform) {
+                    dependencySubstitution {
+                        substitute(module("com.squareup.okhttp3:okhttp"))
+                            .using(module("com.squareup.okhttp3:okhttp-jvm:$version"))
+                    }
+                }
+                eachDependency {
+                    if (requested.group == "com.squareup.okhttp3") useVersion(version)
+                }
+            }
+        }
+    }
+}
+
 // Registers `checkFacadeParity`: BCV can't dump the AGP-built Kotlin Android
 // facades, so this task diffs the compiled :lustro / :lustro-noop facades directly.
 // See gradle/facade-parity.gradle.kts and DECISIONS.md ("BCV / apiCheck").

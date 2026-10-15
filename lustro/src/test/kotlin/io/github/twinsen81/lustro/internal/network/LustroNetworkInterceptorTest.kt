@@ -1231,7 +1231,10 @@ class LustroNetworkInterceptorTest {
         val store = store(redactor = DefaultRedactor)
         val requested = Request.Builder().url("https://example.com/feed?token=s3cret").build()
         val hop = Request.Builder().url("https://cdn.example.com/feed?token=s3cret").build()
-        val prior = responseFor(requested, ByteArray(0).toResponseBody(null)).newBuilder().code(302).body(null).build()
+        // A prior response has no body of its own: null on OkHttp 4, which rejects
+        // anything else, and the builder's empty default on OkHttp 5, which
+        // rejects null. Not setting one is right on both.
+        val prior = Response.Builder().request(requested).protocol(Protocol.HTTP_1_1).code(302).message("Found").build()
         val response = responseFor(hop, "{}".toResponseBody("application/json".toMediaType())).newBuilder().priorResponse(prior).build()
 
         interceptor(store).intercept(FakeChain(requested, response))
