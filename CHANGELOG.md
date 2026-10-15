@@ -737,6 +737,18 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Changed
 
+- **`minSdk` is 24, down from 26.** An app with `minSdk` 24 could not add
+  Lustro without raising its own, and `lustro-noop` had the same floor, so
+  the block was in release builds too. The runtime used `java.time` for the
+  timestamps of the Network tab and of the HAR export, and `java.util.Base64`
+  for the access token, the HAR export, and the cursors of the wire protocol.
+  Both need API 26 or core library desugaring, which every app that adds
+  Lustro would then have to enable. The timestamps now come from a small
+  formatter of Lustro's own, checked against `java.time` in the unit tests,
+  and Base64 goes through the Kotlin standard library. The output is the
+  same. Checked on API 24 and 25 emulators: the sample app, the platform
+  `HttpURLConnection` capture, the token store, the CLI end to end, and the
+  web console. The lowest emulator in CI is API 24 now.
 - **The default redactor keeps token counts and column keys.** A name with
   `token` in it was always masked, so `prompt_tokens`, `max_tokens`,
   `totalTokenCount`, and `x-ratelimit-remaining-tokens` showed as

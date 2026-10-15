@@ -8,7 +8,7 @@ project's [Apache License 2.0](LICENSE).
 ## Prerequisites
 
 - JDK 21 (the Kotlin toolchain targets JVM 17 bytecode).
-- The Android SDK with `compileSdk 35`. `minSdk` is 26.
+- The Android SDK with `compileSdk 35`. `minSdk` is 24.
 - Use the Gradle wrapper (`./gradlew`); do not install a separate Gradle.
 - Node 18+ **only** to run the debug console's JavaScript tests. It is not
   needed to build the library, and those tests are deliberately outside
@@ -77,7 +77,7 @@ through logcat. It needs `adb`, Python 3.9 or later, and a free host port 8080
 for `adb forward`, or another free port in `CLI_E2E_LOCAL_PORT`; `0` lets adb
 choose one. The run changes the device and does not change it back: it
 replaces the sample's mock rules with one rule that mocks `GET /get`, and it
-sets the device to stay awake while it charges. CI runs both on API 26, 35, and
+sets the device to stay awake while it charges. CI runs both on API 24, 35, and
 36 emulators.
 
 ## Module layout

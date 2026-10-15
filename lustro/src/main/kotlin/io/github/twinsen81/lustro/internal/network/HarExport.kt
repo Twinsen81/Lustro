@@ -1,10 +1,8 @@
 package io.github.twinsen81.lustro.internal.network
 
 import io.github.twinsen81.lustro.escapeForJson
-import java.time.Instant
-import java.time.ZoneOffset
-import java.time.format.DateTimeFormatter
-import java.util.Base64
+import io.github.twinsen81.lustro.internal.toUtcTimestamp
+import kotlin.io.encoding.Base64
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okio.utf8Size
 
@@ -22,9 +20,6 @@ import okio.utf8Size
  * writes and reads.
  */
 internal object HarExport {
-    private val STARTED_DATE_TIME: DateTimeFormatter =
-        DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'").withZone(ZoneOffset.UTC)
-
     // What browser devtools write when a response has no media type.
     private const val UNKNOWN_MIME_TYPE = "x-unknown"
 
@@ -51,7 +46,7 @@ internal object HarExport {
         // The throttle's wait is HAR's blocked time: the request waited before it was sent.
         val throttledMs = tx.throttledMs?.coerceAtLeast(0L)
         append('{')
-        append("\"startedDateTime\":\"").append(STARTED_DATE_TIME.format(Instant.ofEpochMilli(tx.startedAt))).append("\",")
+        append("\"startedDateTime\":\"").append(tx.startedAt.toUtcTimestamp()).append("\",")
         append("\"time\":").append(durationMs + (throttledMs ?: 0L)).append(',')
         appendRequest(tx)
         append(',')
@@ -223,7 +218,7 @@ internal object HarExport {
         append(']')
     }
 
-    private fun base64(bytes: ByteArray?): String = Base64.getEncoder().encodeToString(bytes ?: ByteArray(0))
+    private fun base64(bytes: ByteArray?): String = Base64.encode(bytes ?: ByteArray(0))
 
     private fun StringBuilder.appendString(value: String): StringBuilder =
         append('"').append(value.escapeForJson()).append('"')
