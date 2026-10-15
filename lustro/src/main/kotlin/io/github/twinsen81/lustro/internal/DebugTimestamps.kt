@@ -17,6 +17,8 @@ private const val MILLIS_PER_SECOND = 1000L
 private const val SECONDS_PER_MINUTE = 60L
 private const val MINUTES_PER_HOUR = 60L
 private const val MILLIS_PER_DAY = 24L * MINUTES_PER_HOUR * SECONDS_PER_MINUTE * MILLIS_PER_SECOND
+private const val TIME_LENGTH = 12
+private const val UTC_LENGTH = 24
 
 /** This instant, in epoch milliseconds, as `HH:mm:ss.SSS` in the device's time zone. */
 internal fun Long.toDebugTimestamp(): String =
@@ -31,9 +33,6 @@ internal fun Long.toUtcTimestamp(): String =
         append('Z')
     }
 
-private const val TIME_LENGTH = 12
-private const val UTC_LENGTH = 24
-
 private fun StringBuilder.appendTimeOfDay(millis: Long) {
     val millisOfDay = millis.mod(MILLIS_PER_DAY)
     val secondOfDay = millisOfDay / MILLIS_PER_SECOND
@@ -45,6 +44,14 @@ private fun StringBuilder.appendTimeOfDay(millis: Long) {
     append('.')
     appendPadded(millisOfDay % MILLIS_PER_SECOND, 3)
 }
+
+private const val DAYS_FROM_ERA_START_TO_EPOCH = 719_468L
+private const val YEARS_PER_ERA = 400L
+private const val DAYS_PER_ERA = 146_097L
+private const val DAYS_PER_100_YEARS = 36_524L
+private const val DAYS_PER_4_YEARS = 1_460L
+private const val DAYS_PER_YEAR = 365L
+private const val DAYS_PER_5_MONTHS = 153L
 
 // Days since 1970-01-01 to a proleptic Gregorian date, as yyyy-MM-dd. This is
 // Howard Hinnant's civil_from_days: it counts from 0000-03-01 so that a leap
@@ -65,14 +72,6 @@ private fun StringBuilder.appendDate(daysSinceEpoch: Long) {
     append('-')
     appendPadded(day, 2)
 }
-
-private const val DAYS_FROM_ERA_START_TO_EPOCH = 719_468L
-private const val YEARS_PER_ERA = 400L
-private const val DAYS_PER_ERA = 146_097L
-private const val DAYS_PER_100_YEARS = 36_524L
-private const val DAYS_PER_4_YEARS = 1_460L
-private const val DAYS_PER_YEAR = 365L
-private const val DAYS_PER_5_MONTHS = 153L
 
 private fun StringBuilder.appendPadded(value: Long, width: Int) {
     val digits = value.toString()
