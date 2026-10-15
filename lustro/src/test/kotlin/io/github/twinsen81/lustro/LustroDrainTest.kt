@@ -60,7 +60,7 @@ class LustroDrainTest {
 
     private class FakeLifecycleOwner : LifecycleOwner {
         val registry = LifecycleRegistry(this)
-        override val lifecycle: Lifecycle get() = registry
+        override fun getLifecycle(): Lifecycle = registry
     }
 
     /**
@@ -244,13 +244,12 @@ class LustroDrainTest {
         assertFalse("socket must close once the handler returns", lustro.isBound())
     }
 
-    /** Delegates to [delegate], except that [currentState] throws [failure] once it is set. */
+    /** Delegates to [delegate], except that [getCurrentState] throws [failure] once it is set. */
     private class FailingLifecycle(private val delegate: Lifecycle) : Lifecycle() {
         @Volatile
         var failure: Throwable? = null
 
-        override val currentState: State
-            get() = failure?.let { throw it } ?: delegate.currentState
+        override fun getCurrentState(): State = failure?.let { throw it } ?: delegate.currentState
 
         override fun addObserver(observer: LifecycleObserver) = delegate.addObserver(observer)
 

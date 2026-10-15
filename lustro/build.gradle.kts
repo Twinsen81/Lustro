@@ -6,7 +6,9 @@ import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.TaskAction
+import org.jetbrains.kotlin.gradle.dsl.JvmDefaultMode
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.jetbrains.kotlin.gradle.dsl.KotlinVersion
 
 plugins {
     // AGP 9 provides built-in Kotlin; no org.jetbrains.kotlin.android plugin.
@@ -54,13 +56,43 @@ android {
     }
 }
 
+// The published AAR must not raise an app's Kotlin. It is compiled as Kotlin
+// 2.0 (language and API version) against kotlin-stdlib 2.0.21, whatever compiler
+// this build uses, so it carries 2.0 metadata and requires that stdlib. See
+// DECISIONS.md ("Dependency floors").
+val kotlinFloor = libs.versions.kotlinFloor.get()
+val kotlinFloorVersion = KotlinVersion.fromVersion(kotlinFloor.substringBeforeLast('.'))
+
 kotlin {
     explicitApi()
     jvmToolchain(21)
+    coreLibrariesVersion = kotlinFloor
     compilerOptions {
         jvmTarget.set(JvmTarget.JVM_17)
+        languageVersion.set(kotlinFloorVersion)
+        apiVersion.set(kotlinFloorVersion)
+        // Since Kotlin 2.2 an interface's default methods are JVM default methods
+        // (with DefaultImpls kept for older callers), but only for language
+        // version 2.2 and up: 2.0 alone would go back to DefaultImpls only, a
+        // different public API that apiCheck rejects and that breaks Java
+        // implementers of the SPI interfaces.
+        jvmDefault.set(JvmDefaultMode.ENABLE)
+        // kotlin.io.encoding.Base64 is stable since Kotlin 2.2, but experimental
+        // in the stdlib 2.0 this module compiles against.
+        optIn.add("kotlin.io.encoding.ExperimentalEncodingApi")
+        // The compiler deprecates the floor's language version before it drops it
+        // (Kotlin 2.3 deprecates 2.0) and would warn on every build. Dropping it
+        // is still an error, which is when the floor must move.
+        freeCompilerArgs.add("-Xsuppress-version-warnings")
     }
 }
+
+// checkKotlinFloor: the published variant's compile classpath must hold the
+// floor's kotlin-stdlib, not a newer one a dependency brings. See
+// gradle/kotlin-floor.gradle.kts.
+extra["kotlinFloorVersion"] = kotlinFloor
+extra["kotlinFloorClasspath"] = "releaseCompileClasspath"
+apply(from = rootProject.file("gradle/kotlin-floor.gradle.kts"))
 
 // Library detekt rules (shared config at config/detekt/detekt.yml): explicit
 // return types, no public data classes, and public-API documentation. Only
@@ -128,18 +160,14 @@ dependencies {
     // consumers get the "Lustro debug usage outside src/debug" check automatically.
     lintPublish(project(":lustro-lint"))
 
-    // Server engine and Android runtime support stay internal to this module.
+    // The server engine and the process lifecycle (ProcessLifecycleOwner and
+    // DefaultLifecycleObserver only) stay internal to this module. Both are
+    // floors that an app's own versions override; see gradle/libs.versions.toml.
     implementation(libs.nanohttpd)
     implementation(libs.androidx.lifecycle.process)
-    implementation(libs.androidx.lifecycle.runtime)
-    implementation(libs.kotlinx.coroutines.android)
-    implementation(libs.androidx.annotation)
 
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
-    testImplementation(libs.mockk)
-    testImplementation(libs.kotlinx.coroutines.test)
-    testImplementation(libs.turbine)
     testImplementation(libs.okhttp.mockwebserver)
     testImplementation(libs.json)
     testImplementation(libs.androidx.test.core)

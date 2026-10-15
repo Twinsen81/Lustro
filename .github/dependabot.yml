@@ -9,16 +9,19 @@ updates:
     # version-locked to the exact Kotlin release, and the Android modules' Kotlin
     # comes from AGP's built-in compiler rather than this catalog ref, so a lone
     # catalog bump only moves the JVM modules and skews the published artifacts.
-    # The trailing "." / ":" keep org.jetbrains.kotlinx (coroutines) in scope.
+    # The trailing "." / ":" keep org.jetbrains.kotlinx (the BCV and Kover plugins) in scope.
     ignore:
       - dependency-name: "org.jetbrains.kotlin:*"
       - dependency-name: "org.jetbrains.kotlin.*"
-      # OkHttp types are part of Lustro's public API, so the published 4.x floor
-      # lets consumers on either OkHttp 4 or 5 resolve to their own version.
-      # Raising it to 5.x would force OkHttp 5 on every consumer, and
-      # okhttp-android 5.x also requires compileSdk 36.
+      # The runtime dependencies of the published artifacts are floors: Lustro
+      # declares the oldest version with the APIs it uses, and an app keeps its
+      # own, newer version. A bump here would raise the floor for every app, so
+      # these move by hand, together with consumer-check/ and README.md (see
+      # DECISIONS.md, "Dependency floors"). OkHttp types are also part of the
+      # public API, and okhttp-android 5.x requires compileSdk 36.
       - dependency-name: "com.squareup.okhttp3:*"
-        update-types: ["version-update:semver-major"]
+      - dependency-name: "androidx.lifecycle:*"
+      - dependency-name: "org.nanohttpd:*"
     groups:
       gradle-dependencies:
         patterns:

@@ -72,8 +72,19 @@ jobs:
       - name: Assemble all modules
         run: ./gradlew assemble --console=plain --stacktrace
 
+      # The published modules compile against the floor's kotlin-stdlib, not a
+      # newer one a dependency brings (see gradle/kotlin-floor.gradle.kts).
+      - name: Published modules compile against the Kotlin floor
+        run: ./gradlew checkKotlinFloor --console=plain --stacktrace
+
       - name: Unit + Robolectric tests
         run: ./gradlew test --console=plain --stacktrace
+
+      # The modules compile against OkHttp 4.12.0, the floor, and an app on OkHttp
+      # 5 runs them against that. Same suite, OkHttp 5 on the test runtime
+      # classpath (see the root build.gradle.kts).
+      - name: Unit + Robolectric tests against OkHttp 5
+        run: ./gradlew :lustro:testDebugUnitTest :sample:testDebugUnitTest -PlustroTestOkHttpVersion=5.5.0 --console=plain --stacktrace
 
       - name: Android Lint (runtime + sample, incl. release-safety check)
         run: ./gradlew :lustro:lintDebug :sample:lintDebug --console=plain --stacktrace
@@ -113,6 +124,47 @@ jobs:
             **/build/reports/lint-results-*.html
             **/build/reports/detekt/**
           if-no-files-found: ignore
+
+  # --- Consumer check: the published artifacts in an app on older tools --------
+  # Adding Lustro must not raise an app's own dependency versions, and the
+  # artifacts must build on the oldest toolchain README.md promises. The job
+  # publishes the checkout to the local Maven repository, then builds the app in
+  # consumer-check/ against it: once with that directory's gradle.properties,
+  # the floors, and once with current versions, OkHttp 5 and the lifecycle
+  # Compose artifacts among them. Its check task fails on any module whose
+  # version Lustro changes. See consumer-check/README.md.
+  consumer:
+    name: Consumer check (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: oldest supported toolchain
+            overrides: ""
+          # OkHttp 5 is multiplatform, and its Android artifact carries AAR
+          # metadata: 5.4.0 is the newest for compileSdk 36 (5.5.0 asks for 37).
+          - name: current toolchain, OkHttp 5
+            overrides: >-
+              -PagpVersion=8.13.2 -PkotlinVersion=2.2.21 -PcompileSdk=36
+              -PokhttpVersion=5.4.0 -PlifecycleVersion=2.10.0
+              -PcoroutinesVersion=1.11.0 -PannotationVersion=1.11.0
+              -PextraDependencies=androidx.lifecycle:lifecycle-runtime-compose:2.10.0,androidx.lifecycle:lifecycle-viewmodel-compose:2.10.0
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up JDK + Gradle
+        uses: ./.github/actions/setup
+
+      - name: Publish the checkout to the local Maven repository
+        run: ./gradlew publishToMavenLocal --console=plain --stacktrace
+
+      - name: Build the app and check its dependency versions
+        working-directory: consumer-check
+        run: >-
+          ./gradlew :app:assembleWithLustroDebug :app:assembleWithLustroRelease
+          :app:checkLustroKeepsAppVersions ${{ matrix.overrides }}
+          --console=plain --stacktrace
 
   # --- CLI: Python wire-protocol contract tests -------------------------------
   cli:

@@ -6,7 +6,7 @@ Facts to get right when you add Lustro to an app:
 
 - Coordinates: `io.github.twinsen81:lustro:0.1.0-SNAPSHOT` is the debug runtime, and `io.github.twinsen81:lustro-noop:0.1.0-SNAPSHOT` is a no-op with the same API for release builds. Add `lustro` with `debugImplementation` and `lustro-noop` with `releaseImplementation`. They declare the same Gradle capability, so they cannot be on one configuration.
 - A `-SNAPSHOT` version resolves only from the Sonatype Central snapshots repository, `https://central.sonatype.com/repository/maven-snapshots/`.
-- Lustro needs `minSdk` 24.
+- Lustro needs `minSdk` 24, `compileSdk` 35, Android Gradle Plugin 8.6, and Kotlin 2.0. It does not raise the app's own dependency versions: OkHttp 4.12.0 or newer (5.x included) and `androidx.lifecycle` 2.4.1 or newer stay as they are, and Lustro has no coroutines dependency.
 - Build Lustro once, in `Application.onCreate()`, and call `start()` there, on the main thread. Add every tab with the builder, before `build()`: after `start()`, `addTab()` throws.
 - Add `lustro.networkInterceptor()` with `addInterceptor`, not `addNetworkInterceptor`, after the app's own interceptors that change the URL, the headers, or the body.
 - The interceptor shows only the handshake of a WebSocket. To capture the messages, create the sockets with `lustro.webSocketFactory(okHttpClient).newWebSocket(request, listener)`, or pass that `WebSocket.Factory` to the library that creates them. `lustro-noop` returns the client itself.

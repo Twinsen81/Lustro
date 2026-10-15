@@ -476,8 +476,8 @@ public class NetworkDebugTab private constructor(
             DebugResponse.error("Invalid JSON: ${e.message}")
         }
 
-    private fun handleSyncRules(body: String?): DebugResponse =
-        try {
+    private fun handleSyncRules(body: String?): DebugResponse {
+        return try {
             val arr = JSONArray(body ?: "[]")
             val rules = ArrayList<MockRuleImpl>(arr.length())
             for (i in 0 until arr.length()) {
@@ -502,6 +502,7 @@ public class NetworkDebugTab private constructor(
         } catch (e: Exception) {
             DebugResponse.error("Invalid JSON: ${e.message}")
         }
+    }
 
     private fun handleDeleteRule(body: String?): DebugResponse =
         try {
