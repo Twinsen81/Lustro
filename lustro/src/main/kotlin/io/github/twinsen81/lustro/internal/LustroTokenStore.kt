@@ -3,15 +3,16 @@ package io.github.twinsen81.lustro.internal
 import android.content.Context
 import android.content.SharedPreferences
 import java.security.SecureRandom
-import java.util.Base64
+import kotlin.io.encoding.Base64
 
 /**
  * Persists the always-on access token used to authenticate debug requests.
  *
  * The token is a 256-bit [SecureRandom] value, Base64-URL encoded without
- * padding (via [java.util.Base64], NOT `android.util.Base64`, so it works under
- * plain JVM unit tests). It is stored in a private `lustro_debug`
- * [SharedPreferences] file (`Context.MODE_PRIVATE`).
+ * padding. The encoder is the Kotlin standard library's: `android.util.Base64`
+ * is absent under plain JVM unit tests, and `java.util.Base64` needs API 26.
+ * The token is stored in a private `lustro_debug` [SharedPreferences] file
+ * (`Context.MODE_PRIVATE`).
  *
  * Because the prefs file lives in app-private storage, clearing the app's data
  * or a fresh install naturally yields a new (empty) prefs file and therefore a
@@ -57,7 +58,7 @@ internal class LustroTokenStore(context: Context) {
     private fun generateAndStore(): String {
         val raw = ByteArray(TOKEN_BYTES)
         SecureRandom().nextBytes(raw)
-        val token = ENCODER.encodeToString(raw)
+        val token = ENCODER.encode(raw)
         prefs.edit().putString(KEY_TOKEN, token).apply()
         return token
     }
@@ -71,7 +72,7 @@ internal class LustroTokenStore(context: Context) {
         // 256 bits of entropy.
         private const val TOKEN_BYTES = 32
 
-        private val ENCODER: Base64.Encoder = Base64.getUrlEncoder().withoutPadding()
+        private val ENCODER: Base64 = Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT)
 
         // Process-wide rather than per instance: every store shares the one prefs
         // file, so two stores reading it concurrently for the first time must not

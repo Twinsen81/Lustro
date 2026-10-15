@@ -8,7 +8,7 @@ lint = "32.2.1"
 
 # Android SDK levels.
 compileSdk = "35"
-minSdk = "26"
+minSdk = "24"
 targetSdk = "35"
 
 # Library runtime (published :lustro / :lustro-noop deps).

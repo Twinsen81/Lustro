@@ -290,7 +290,7 @@ class PlatformHttpCaptureTest {
         /**
          * The handler path this release allows, or null where the hidden-API policy
          * blocks both paths and capture stays off. Measured with target SDK 35 on
-         * API 26, 28, 30, and 34 to 37: every one allows the handler class. ART logs
+         * API 24 to 26, 28, 30, and 34 to 37: every one allows the handler class. ART logs
          * its constructor as a greylisted ("unsupported") hidden API, which a later
          * release can block. When one does, branch on `Build.VERSION.SDK_INT` here.
          */

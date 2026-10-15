@@ -1,6 +1,6 @@
 package io.github.twinsen81.lustro
 
-import java.util.Base64
+import kotlin.io.encoding.Base64
 import kotlin.random.Random
 
 /**
@@ -59,17 +59,21 @@ public object CursorCodec {
         return text.substring(separator + 1).toLongOrNull()
     }
 
-    private fun encodeText(text: String): String =
-        Base64.getUrlEncoder().encodeToString(text.toByteArray(Charsets.UTF_8))
+    private fun encodeText(text: String): String = CODEC.encode(text.toByteArray(Charsets.UTF_8))
 
     private fun decodeText(cursor: String?): String? {
         if (cursor == null) return null
         return try {
-            String(Base64.getUrlDecoder().decode(cursor), Charsets.UTF_8)
+            String(CODEC.decode(cursor), Charsets.UTF_8)
         } catch (_: IllegalArgumentException) {
             null
         }
     }
 
     private const val EPOCH_SEPARATOR = ':'
+
+    // The Kotlin standard library's codec runs on every API level, where
+    // java.util.Base64 needs API 26. It accepts a cursor whose padding a client
+    // dropped, for example by trimming `=` from a query value.
+    private val CODEC: Base64 = Base64.UrlSafe.withPadding(Base64.PaddingOption.PRESENT_OPTIONAL)
 }

@@ -72,7 +72,7 @@ dependencyResolutionManagement {
 }
 ```
 
-Lustro requires **minSdk 26** and declares the `INTERNET` permission in its manifest.
+Lustro requires **minSdk 24** and declares the `INTERNET` permission in its manifest.
 
 ## Quick start
 
@@ -443,8 +443,8 @@ platform detail (a process-global URL stream handler):
   need, such as an analytics SDK's.
 - **Not covered** by the library's binary- or behaviour-compatibility guarantees, and may
   degrade across OS/SDK versions.
-- **Checked in CI on API 26, 35, and 36**: the capture creates the platform's internal
-  `com.android.okhttp` URL handlers by reflection. Every release checked, from API 26 to 37,
+- **Checked in CI on API 24, 35, and 36**: the capture creates the platform's internal
+  `com.android.okhttp` URL handlers by reflection. Every release checked, from API 24 to 37,
   allows this, but Android lists these constructors as unsupported hidden APIs, so a later
   release can block them. An instrumented test fails on a release that blocks them, after that
   release is in the CI matrix. The test runs as an app that targets SDK 35, so it does not show
