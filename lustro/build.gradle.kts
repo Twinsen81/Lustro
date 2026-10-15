@@ -87,6 +87,13 @@ kotlin {
     }
 }
 
+// checkKotlinFloor: the published variant's compile classpath must hold the
+// floor's kotlin-stdlib, not a newer one a dependency brings. See
+// gradle/kotlin-floor.gradle.kts.
+extra["kotlinFloorVersion"] = kotlinFloor
+extra["kotlinFloorClasspath"] = "releaseCompileClasspath"
+apply(from = rootProject.file("gradle/kotlin-floor.gradle.kts"))
+
 // Library detekt rules (shared config at config/detekt/detekt.yml): explicit
 // return types, no public data classes, and public-API documentation. Only
 // src/main is analysed so the rules never fire on tests; the UndocumentedPublic*

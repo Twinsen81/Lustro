@@ -72,6 +72,11 @@ jobs:
       - name: Assemble all modules
         run: ./gradlew assemble --console=plain --stacktrace
 
+      # The published modules compile against the floor's kotlin-stdlib, not a
+      # newer one a dependency brings (see gradle/kotlin-floor.gradle.kts).
+      - name: Published modules compile against the Kotlin floor
+        run: ./gradlew checkKotlinFloor --console=plain --stacktrace
+
       - name: Unit + Robolectric tests
         run: ./gradlew test --console=plain --stacktrace
 

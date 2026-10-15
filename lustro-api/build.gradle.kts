@@ -57,8 +57,18 @@ kotlin {
 dependencies {
     // @RestrictTo only — CLASS retention, so it stays off the runtime classpath
     // and :lustro-api remains a dependency-free pure-Kotlin SPI jar at runtime.
-    compileOnly(libs.androidx.annotation)
+    // Its own kotlin-stdlib stays off the compile classpath too: it is newer
+    // than the floor, and Gradle would keep the higher one (checkKotlinFloor).
+    compileOnly(libs.androidx.annotation) {
+        exclude(group = "org.jetbrains.kotlin")
+    }
 }
+
+// checkKotlinFloor: the compile classpath must hold the floor's kotlin-stdlib,
+// not a newer one a dependency brings. See gradle/kotlin-floor.gradle.kts.
+extra["kotlinFloorVersion"] = kotlinFloor
+extra["kotlinFloorClasspath"] = "compileClasspath"
+apply(from = rootProject.file("gradle/kotlin-floor.gradle.kts"))
 
 // Library detekt rules (shared config at config/detekt/detekt.yml): explicit
 // return types, no public data classes, and public-API documentation. Only

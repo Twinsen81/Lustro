@@ -212,6 +212,12 @@ must not need a `resolutionStrategy` workaround in the app.
   every build; dropping the version is a compile error, and the moment the
   floor must move. `kotlin.io.encoding.Base64` is stable since Kotlin 2.2 but
   experimental in stdlib 2.0, hence the opt-in in `:lustro` and `:lustro-api`.
+  A dependency can still put a newer stdlib on a module's compile classpath,
+  which Gradle keeps while the POM still names the floor, so each published
+  module runs `checkKotlinFloor` (`gradle/kotlin-floor.gradle.kts`), in `check`
+  and in CI: it fails when the compile classpath resolves kotlin-stdlib to
+  anything but the floor. `:lustro-api` excludes `org.jetbrains.kotlin` from
+  its `compileOnly` androidx.annotation for that reason.
 - Dependabot ignores the floors (`.github/dependabot.yml`); they move by hand.
 - The `consumer` CI job publishes the checkout to the local Maven repository
   and builds [`consumer-check/`](consumer-check/), an app on the oldest

@@ -251,9 +251,10 @@ Every runtime dependency of a published artifact is a floor: the oldest version
 with the APIs Lustro uses, so that adding Lustro does not raise an app's own
 versions (see [DECISIONS.md](DECISIONS.md#dependency-floors)). Dependabot leaves
 them alone, and a bump is a change to the minimum versions README.md documents.
-Before you change one, or anything the published POMs carry, publish the checkout
-locally and build the app in [`consumer-check/`](consumer-check/), which is what
-CI does:
+`./gradlew checkKotlinFloor` fails when a dependency puts a kotlin-stdlib newer
+than the floor on a published module's compile classpath. Before you change a
+floor, or anything the published POMs carry, publish the checkout locally and
+build the app in [`consumer-check/`](consumer-check/), which is what CI does:
 
 ```bash
 ./gradlew publishToMavenLocal
