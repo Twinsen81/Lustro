@@ -55,9 +55,15 @@
     // net-replaced-flash animation in network.css.
     var replacedAt = {};
     var REPLACED_FLASH_MS = 1600;
-    // The request the selection moved to from the one the detail shows, when
-    // overwrite mode replaced it. Its detail continues the one on screen.
-    var detailContinuesTo = null;
+    // The request the selection moved to when overwrite mode replaced the one
+    // the detail shows, as { to, view }. Its detail continues the one on screen:
+    // view holds that one's folds and scroll position, and they are kept until
+    // the new request's response arrives, as a render while it waits has no body.
+    var continuation = null;
+    // The last brief seen of each request the selection tracks. A copy can be
+    // listed polls after the request it replaced left the list, as when the
+    // search matches only a response.
+    var trackedBriefs = {};
 
     function loadFilters() {
         try {
@@ -795,7 +801,7 @@
 
     window.selectTransaction = function(id) {
         selectedTxId = id;
-        detailContinuesTo = null;
+        continuation = null;
         renderList();
         showRightPane('detail');
         loadTransactionDetail(id);
@@ -969,20 +975,23 @@
         // A search or a refresh renders the bodies again; keep what was folded in
         // each one that is the same, such as a request's while its response streams.
         var previous = currentDetailTx;
-        // The copy that replaced the request on screen continues its detail: it
-        // keeps the folds and the scroll position, as a refresh of the same one does.
-        var continued = !!previous && (previous.id === tx.id || detailContinuesTo === tx.id);
-        if (detailContinuesTo === tx.id) detailContinuesTo = null;
-        var folded = continued ? foldedNodes() : {};
+        var el = document.getElementById('detail-content');
+        // The copy that replaced the request on screen takes its folds and scroll position.
+        var cont = continuation && continuation.to === tx.id ? continuation : null;
+        if (cont && !cont.view) {
+            cont.view = { from: previous, folded: previous ? foldedNodes() : {}, scrollTop: el ? el.scrollTop : 0 };
+        }
+        var view = cont ? cont.view : null;
+        var compared = view ? view.from : previous;
+        var folded = view ? Object.assign({}, view.folded) : (previous && previous.id === tx.id ? foldedNodes() : {});
         ['request', 'response'].forEach(function(dir) {
-            if (previous && previous[dir + 'Body'] !== tx[dir + 'Body']) delete folded[dir];
+            if (compared && compared[dir + 'Body'] !== tx[dir + 'Body']) delete folded[dir];
         });
         if (!previous || previous.id !== tx.id) hexDumps = {};
         currentDetailTx = tx;
         showDetailActions(true);
         copyStore = {};
         copyIdSeq = 0;
-        var el = document.getElementById('detail-content');
         if (!el) return;
         var sc = statusClass(tx);
         var streaming = isStreaming(tx);
@@ -1038,10 +1047,10 @@
                 + '" title="This request is the handshake of a WebSocket. Show the socket and its messages.">WebSocket messages</button></div>';
         }
 
-        var scrollTop = el.scrollTop;
         el.innerHTML = html;
         refold(folded);
-        if (continued) el.scrollTop = scrollTop;
+        if (view) el.scrollTop = view.scrollTop;
+        if (cont && (tx.statusCode || tx.error)) continuation = null;
         loadHexDumps();
         // The rules filtered to this request follow what it matches now.
         if (rightPane === 'rules' && rulesFilterTxId === tx.id && (!previous || previous.id !== tx.id
@@ -2505,6 +2514,7 @@
         // A list for another search has other rows, not new ones.
         if (listSearchGen === searchGen) noteReplacements(list);
         listSearchGen = searchGen;
+        rememberTracked(list);
         var previousSelected = selectedTxId ? findTransactionById(allTransactions, selectedTxId) : null;
         var nextSelected = selectedTxId ? findTransactionById(list, selectedTxId) : null;
         var refreshSelected = selectedBriefChanged(previousSelected, nextSelected) || isStreaming(nextSelected);
@@ -2532,7 +2542,8 @@
         var selected = follow(selectedTxId);
         if (selected !== selectedTxId) {
             selectedTxId = selected;
-            detailContinuesTo = selected;
+            // Before the new detail renders, the one on screen is still the one it continues.
+            continuation = { to: selected, view: continuation ? continuation.view : null };
         }
         selectionBeforePane = follow(selectionBeforePane);
         rulesFilterTxId = follow(rulesFilterTxId);
@@ -2567,10 +2578,17 @@
         return String(tx.method || '').toUpperCase() + ' ' + extractPath(tx.url || '').split('?')[0];
     }
 
-    // A request that overwrite mode removed is no longer in the list, but the detail can still show it.
     function lastKnownTransaction(id) {
-        return findTransactionById(allTransactions, id)
-            || (currentDetailTx && currentDetailTx.id === id ? currentDetailTx : null);
+        return findTransactionById(allTransactions, id) || trackedBriefs[id] || null;
+    }
+
+    // Called before allTransactions becomes list.
+    function rememberTracked(list) {
+        var briefs = {};
+        [selectedTxId, selectionBeforePane, rulesFilterTxId].forEach(function(id) {
+            if (id) briefs[id] = findTransactionById(list, id) || lastKnownTransaction(id);
+        });
+        trackedBriefs = briefs;
     }
 
     function idSet(list) {
