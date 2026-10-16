@@ -6,6 +6,7 @@ import io.github.twinsen81.lustro.Headers
 import io.github.twinsen81.lustro.MediaType
 import io.github.twinsen81.lustro.internal.network.CaptureSource
 import io.github.twinsen81.lustro.internal.network.NetworkTrafficStore
+import io.github.twinsen81.lustro.internal.network.SearchQuery
 import io.github.twinsen81.lustro.internal.toDebugTimestamp
 import java.util.concurrent.TimeUnit
 import okhttp3.OkHttpClient
@@ -160,6 +161,21 @@ class NetworkDebugTabTest {
     }
 
     private fun org.json.JSONArray.objects(): List<JSONObject> = (0 until length()).map { getJSONObject(it) }
+
+    @Test
+    fun `each example in the regex help compiles as the device's regex`() {
+        val html = tab().renderContent()
+        val examples =
+            Regex("""<th class="dc-kv__key">([^<]+)</th>""")
+                .findAll(html.substringAfter("net-search-examples").substringBefore("</table>"))
+                .map { it.groupValues[1].replace("&quot;", "\"") }
+                .toList()
+        assertTrue(examples.toString(), examples.size >= 5)
+        for (example in examples) {
+            // Throws when it doesn't compile.
+            SearchQuery.parse(example, regex = true)
+        }
+    }
 
     @Test
     fun `a cursor from another tab instance gets a reset`() {

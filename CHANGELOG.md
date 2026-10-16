@@ -21,8 +21,9 @@ see [DECISIONS.md](DECISIONS.md).
   each as the line `Name: value` as stored after redaction, so a redacted
   value is found as `[REDACTED]`. A **Regex** button next to each search
   field, the `regex=true` parameter, and the CLI's `--regex` make the text a
-  Java regular expression, found ignoring case. With it off, the text is
-  found as typed, as before. A regex that doesn't compile gets a `400` that
+  Java regular expression, found ignoring case, and a **?** button lists
+  common ones with examples. With it off, the text is found as typed, as
+  before. A regex that doesn't compile gets a `400` that
   says why, and a search stops after 5 s. The console shows the error under
   the field and keeps the last results, and marks a regex's matches in the
   URL, the headers, and the bodies. A **×** button and Escape clear the

@@ -206,7 +206,7 @@ public class NetworkDebugTab private constructor(
                     </div>
                 </div>
                 <div class="net-search net-http-only">
-                    <label class="dc-field" for="search-input"><span class="dc-field__prefix" aria-hidden="true">&gt;</span><input type="text" id="search-input" name="search" aria-label="Search network traffic" aria-describedby="search-input-error" class="dc-input" placeholder="filter url, method, headers, body…" autocomplete="off" spellcheck="false" data-action="onSearchInput" title="Search the URL, the method, the headers, and the bodies for this text, ignoring case, on the device, 300 ms after you stop typing. With REGEX on, the text is a regular expression. Matches are marked in the detail. Ctrl/Cmd+K focuses the field, and Escape clears it." /><button type="button" class="dc-btn dc-btn--icon net-search-clear" data-action="clearSearch" data-target="search-input" hidden aria-label="Clear the search" title="Clear the search. Escape in the field does the same.">×</button><button type="button" class="dc-btn dc-btn--sm net-search-regex" data-action="toggleSearchRegex" data-target="search-input" aria-pressed="false" title="Regular expression. On: the search is a Java regular expression that ignores case, such as featured|popular or v\d+/feed. Off: the text is found as typed. Remembered in your browser.">Regex</button></label>
+                    <label class="dc-field" for="search-input"><span class="dc-field__prefix" aria-hidden="true">&gt;</span><input type="text" id="search-input" name="search" aria-label="Search network traffic" aria-describedby="search-input-error" class="dc-input" placeholder="filter url, method, headers, body…" autocomplete="off" spellcheck="false" data-action="onSearchInput" title="Search the URL, the method, the headers, and the bodies for this text, ignoring case, on the device, 300 ms after you stop typing. With REGEX on, the text is a regular expression. Matches are marked in the detail. Ctrl/Cmd+K focuses the field, and Escape clears it." /><button type="button" class="dc-btn dc-btn--icon net-search-clear" data-action="clearSearch" data-target="search-input" hidden aria-label="Clear the search" title="Clear the search. Escape in the field does the same.">×</button><button type="button" class="dc-btn dc-btn--sm net-search-regex" data-action="toggleSearchRegex" data-target="search-input" aria-pressed="false" title="Regular expression. On: the search is a Java regular expression that ignores case, such as featured|popular or v\d+/feed. Off: the text is found as typed. Remembered in your browser.">Regex</button><button type="button" class="dc-btn dc-btn--icon net-search-help" data-action="showSearchHelp" aria-label="Regex examples" title="Common regular expressions, with examples.">?</button></label>
                     <div class="net-search-error" id="search-input-error" role="alert" hidden></div>
                 </div>
                 <div class="net-category-bar net-http-only" id="category-filters"></div>
@@ -268,6 +268,33 @@ public class NetworkDebugTab private constructor(
                 </div>
                 <div id="send-content" class="dc-tabpanel net-tab-content">
                     <div id="send-form-container"></div>
+                </div>
+            </div>
+        </div>
+        <div id="search-help-modal" class="dc-modal-scrim" hidden>
+            <div class="dc-modal dc-modal--wide" role="dialog" aria-labelledby="search-help-title">
+                <div class="dc-modal__head">
+                    <span class="dc-modal__title" id="search-help-title">Regular expressions</span>
+                    <button class="dc-modal__close" data-action="closeSearchHelp" title="Close.">×</button>
+                </div>
+                <div class="dc-modal__body">
+                    <p class="net-filter-note">Turn on Regex next to the search field to search with these.</p>
+                    <table class="dc-kv net-search-examples">
+                        <tr><th class="dc-kv__key">featured|popular</th><td class="dc-kv__value">Either word.</td></tr>
+                        <tr><th class="dc-kv__key">feat.*\.json</th><td class="dc-kv__value">Both parts, in this order, in one field.</td></tr>
+                        <tr><th class="dc-kv__key">/v\d+/</th><td class="dc-kv__value">A version in a path, such as /v1/ or /v12/.</td></tr>
+                        <tr><th class="dc-kv__key">\.(png|jpe?g|webp)</th><td class="dc-kv__value">An image file.</td></tr>
+                        <tr><th class="dc-kv__key">^post$</th><td class="dc-kv__value">The whole method: ^ and $ are the start and the end of a field.</td></tr>
+                        <tr><th class="dc-kv__key">^cache-control:</th><td class="dc-kv__value">A header by its name. A header is searched as the line Name: value.</td></tr>
+                        <tr><th class="dc-kv__key">^content-type: .*json</th><td class="dc-kv__value">A header with a value.</td></tr>
+                        <tr><th class="dc-kv__key">"id":\s*42</th><td class="dc-kv__value">A JSON key and value, with or without a space between them.</td></tr>
+                        <tr><th class="dc-kv__key">[0-9a-f]{8}-[0-9a-f]{4}-</th><td class="dc-kv__value">The start of a UUID.</td></tr>
+                    </table>
+                    <p class="net-filter-note">Case is ignored. A regex is found anywhere in a field: the URL, the method, one header line, or one body. A . is any character, so write \. for a dot, and .* is any text. \d is a digit, \s is a space, and \ before a character such as ( or ? makes it plain text. The search runs on the device, with Java's regular expressions.</p>
+                    <p class="net-filter-note">In the search of a WebSocket's messages, a field is the text of one message.</p>
+                </div>
+                <div class="dc-modal__foot">
+                    <button class="dc-btn dc-btn--primary" data-action="closeSearchHelp" title="Close.">Close</button>
                 </div>
             </div>
         </div>

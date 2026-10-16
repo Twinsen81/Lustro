@@ -389,6 +389,15 @@
         return lastSearchMark.re;
     }
 
+    var searchHelpModal = null;
+    window.showSearchHelp = function() {
+        if (!searchHelpModal) searchHelpModal = window.debugModal('search-help-modal');
+        searchHelpModal.show();
+    };
+    window.closeSearchHelp = function() {
+        if (searchHelpModal) searchHelpModal.hide();
+    };
+
     window.onSearchInput = function(val) {
         updateSearchClear('search-input');
         // A query that is still on its way, or waiting to try again, is out of date.
@@ -2332,7 +2341,9 @@
             + '<button type="button" class="dc-btn dc-btn--icon net-search-clear" data-action="clearSearch" data-target="ws-search"' + (wsSearch ? '' : ' hidden')
             + ' aria-label="Clear the search" title="Clear the search. Escape in the field does the same.">×</button>'
             + '<button type="button" class="dc-btn dc-btn--sm net-search-regex" data-action="toggleSearchRegex" data-target="ws-search" aria-pressed="false"'
-            + ' title="Regular expression. On: the search is a Java regular expression that ignores case, such as ping|pong. Off: the text is found as typed. Remembered in your browser.">Regex</button></label>'
+            + ' title="Regular expression. On: the search is a Java regular expression that ignores case, such as ping|pong. Off: the text is found as typed. Remembered in your browser.">Regex</button>'
+            + '<button type="button" class="dc-btn dc-btn--icon net-search-help" data-action="showSearchHelp" aria-label="Regex examples"'
+            + ' title="Common regular expressions, with examples.">?</button></label>'
             + '<button class="dc-btn dc-btn--sm" data-action="copyWsMarkdown" title="Copy the connection and its last ' + WS_MARKDOWN_EVENTS
             + ' events as Markdown, for a bug report, a pull request, or a chat.">Markdown</button>'
             + '<button class="dc-btn dc-btn--sm" id="ws-har-btn" data-action="exportWsHar" title="Save the handshake request and the messages as a HAR file, which Chrome DevTools imports with the messages.">Export HAR</button>'
@@ -2907,6 +2918,8 @@
         exportWsHar: function() { window.exportWsHar(); },
         clearSearch: function(el) { window.clearSearch(el.dataset.target); },
         toggleSearchRegex: function(el) { window.toggleSearchRegex(el.dataset.target); },
+        showSearchHelp: function() { window.showSearchHelp(); },
+        closeSearchHelp: function() { window.closeSearchHelp(); },
     };
 
     var delegationRoot = null;

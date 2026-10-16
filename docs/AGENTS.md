@@ -97,7 +97,7 @@ searched as stored, so a redacted value is found as `[REDACTED]`, not as the sec
 header. A regex that doesn't compile makes the command print the reason and exit 2, and so does a
 search that takes longer than 5 s. `--url` is always plain text. `net ws events --search` and
 `--regex` work the same way over the text of the messages. The Network tab's search fields have a
-**Regex** button that does the same.
+**Regex** button that does the same, and a **?** button that lists common regular expressions.
 
 `lustro net poll` prints transactions as they arrive. When a request that was in flight finishes
 or fails, it prints its row again, marked `[update]`; with `--json`, the later line for an id
