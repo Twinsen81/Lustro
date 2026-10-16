@@ -1,0 +1,6 @@
+{
+  "items": [
+    { "name": "API", "baseUrl": "https://api.example.com/v1" },
+    { "name": "Any host", "baseUrl": null }
+  ]
+}

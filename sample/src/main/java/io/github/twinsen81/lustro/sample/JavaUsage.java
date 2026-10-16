@@ -8,6 +8,7 @@ import io.github.twinsen81.lustro.network.DefaultRedactor;
 import io.github.twinsen81.lustro.network.NetworkCaptureFilter;
 import io.github.twinsen81.lustro.network.NetworkClassifierKt;
 import io.github.twinsen81.lustro.network.NetworkDebugTab;
+import io.github.twinsen81.lustro.network.OkHttpSender;
 import io.github.twinsen81.lustro.network.Redactor;
 import okhttp3.OkHttpClient;
 
@@ -59,6 +60,12 @@ public final class JavaUsage {
         NetworkDebugTab tab = NetworkDebugTab.create();
         NetworkDebugTab tabWithSender = NetworkDebugTab.create((OkHttpClient) null);
 
+        // Named senders with a lazy client, with and without a base URL.
+        OkHttpClient client = new OkHttpClient();
+        NetworkDebugTab tabWithSenders = NetworkDebugTab.create(java.util.Arrays.asList(
+                OkHttpSender.create("API", "https://api.example.com", () -> client),
+                OkHttpSender.create("Any host", () -> client)));
+
         // The experimental @ExperimentalPlatformCapture overload (with the
         // required capturePlatformHttp flag) is exercised from Kotlin in
         // LustroBootstrap.start (capturePlatformHttp = true); from Java the safe
@@ -67,21 +74,22 @@ public final class JavaUsage {
 
         // A capture filter from a Java lambda and the description the Network tab
         // shows. It is the last parameter, so Java passes the ones before it too.
+        // A null sender client needs its type: create also takes a list of senders.
         NetworkDebugTab filtered = NetworkDebugTab.create(
-                null,
+                (OkHttpClient) null,
                 NetworkClassifierKt.getNoOpNetworkClassifier(),
                 DefaultRedactor.INSTANCE,
                 null,
                 NetworkCaptureFilter.of("Analytics calls", request -> !request.getUrl().contains("/analytics/")));
 
-        NetworkDebugTab redacted = NetworkDebugTab.create(null, NetworkClassifierKt.getNoOpNetworkClassifier(), new JavaRedactor());
+        NetworkDebugTab redacted = NetworkDebugTab.create((OkHttpClient) null, NetworkClassifierKt.getNoOpNetworkClassifier(), new JavaRedactor());
 
         // @JvmStatic / @JvmField factories on the api facades.
         Headers headers = Headers.of();
         DebugResponse response = DebugResponse.ok("{}");
 
         // Keep the locals "used" so this compiles cleanly under -Werror-style lint.
-        if (config == null || tab == null || tabWithSender == null
+        if (config == null || tab == null || tabWithSender == null || tabWithSenders == null
                 || tabWithFlag == null || filtered == null || redacted == null || headers == null || response == null) {
             throw new IllegalStateException("unreachable");
         }

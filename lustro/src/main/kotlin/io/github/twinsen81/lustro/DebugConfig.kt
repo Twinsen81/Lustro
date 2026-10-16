@@ -24,7 +24,11 @@ public class DebugConfig private constructor(
     public val bindAddress: String,
     /** Whether to fall back to an ephemeral port when [serverPort] is taken. Default `false`. */
     public val bindFallback: Boolean,
-    /** Base URL for resolving relative "Send Request" URLs, or `null`. Default `null`. */
+    /**
+     * Base URL for the relative URLs of the Send form when the Network tab sends
+     * through a `senderClient`, or `null`. A sender from `OkHttpSender.create`
+     * has its own base URL instead. Default `null`.
+     */
     public val appServerBaseUrl: String?,
     /**
      * Total in-memory capture budget in bytes: the captured bodies the Network

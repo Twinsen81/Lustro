@@ -100,14 +100,19 @@ Build the runtime once (typically in your `Application`), register tabs, wire th
 interceptor, and start it:
 
 ```kotlin
-val client = OkHttpClient() // powers "Send Request"; carries no interceptor, so replays through
-                            // it are not captured (see Send Request)
+lateinit var httpClient: OkHttpClient
 
 val lustro = Lustro.builder(application)
-    .addTab(NetworkDebugTab.create(senderClient = client))
+    .addTab(
+        NetworkDebugTab.create(
+            // The console's Send form sends through httpClient. Lustro asks for it only when you
+            // send a request, so it can be the client built below (see Send Request).
+            senders = listOf(OkHttpSender.create("API", baseUrl = "https://api.example.com") { httpClient }),
+        ),
+    )
     .build()
 
-val httpClient = OkHttpClient.Builder()
+httpClient = OkHttpClient.Builder()
     .addInterceptor(lustro.networkInterceptor())
     .build()
 
@@ -360,24 +365,56 @@ and it records only OkHttp sockets.
 
 ## Send Request
 
-The Network tab's **Send Request** panel dispatches an arbitrary request through a configured
-`NetworkSender` and is **synchronous**: the HTTP call blocks until the sender returns the final
-result (within the per-request timeout), so you get a single round-trip outcome instead of having
-to poll.
+The Network tab can send a request through the app's own OkHttp clients. **+ New request**, next
+to the search field, opens an empty Send form in the right pane. **Edit and resend**, in the detail
+of a request, opens it filled from that request: method, URL, headers, and body. The form says
+where the request will go before you send it, and shows the status when the response comes back.
+Sending is **synchronous**: the HTTP call blocks until the sender returns the final result (within
+the per-request timeout), so you get a single round-trip outcome instead of having to poll.
 
-Pass `senderClient` to `NetworkDebugTab.create(...)` to enable it — the client is wrapped in an
-`OkHttpSender`. When no sender is configured, the Send panel and its route are hidden. Relative
-URLs resolve against `DebugConfig.appServerBaseUrl` (rejected when it is unset); requests aimed at
-the debug server's own bind host:port are rejected.
+**Senders.** The app registers each client the form can send through, with a name and an optional
+base URL. An app often has several clients, with their own interceptors (one that signs requests
+in, one for downloads) and their own hosts, and a request sent through the wrong one goes to the
+wrong host or lacks its auth:
 
-**A replay is captured only if the sender client carries the interceptor.** Nothing about sending
-captures on its own: the request shows up in the traffic list only when the client you passed as
-`senderClient` has `lustro.networkInterceptor()` installed, which the [Quick start](#quick-start)
-wiring cannot do (the sender client has to exist before `lustro` does). The send response's
-`transactionId` field is currently always `null` either way, so poll `GET transactions` rather
-than following it.
+```kotlin
+NetworkDebugTab.create(
+    senders = listOf(
+        OkHttpSender.create("API (signed in)", baseUrl = "https://api.example.com/v1") { apiClient },
+        OkHttpSender.create("CDN", baseUrl = "https://cdn.example.com") { cdnClient },
+        OkHttpSender.create("Any host") { plainClient },
+    ),
+)
+```
 
-The panel reports only the status and outcome, so the sender reads at most
+The form lists them in that order, and the first is the default. An absolute URL is sent as
+entered. A relative one is appended to the base URL of the chosen sender, path and all, so `/items`
+through "API (signed in)" goes to `https://api.example.com/v1/items`; a sender without a base URL
+takes absolute URLs only. Names must be unique.
+
+**Lustro asks for each client only when you send.** The lambda runs at the first send through
+that sender, off the main thread, and Lustro keeps the client it returns. So a sender can be a
+client that carries `lustro.networkInterceptor()`, although that client has to be built after
+Lustro, and the requests you send are then captured like the app's own. The form then has a
+**Show the response** link to the new row; through a client without the interceptor, you get the
+status only.
+
+`senderClient = client` is the short form for one sender, named "Default", whose relative URLs
+resolve against `DebugConfig.appServerBaseUrl`. With neither, the Send form and its route are
+hidden. Requests aimed at the debug server's own bind host:port are rejected.
+
+**What the form promises.** Lustro controls only which client sends. Which interceptors run
+(auth, logging, capture) depends on how the app built that client. A sender whose client signs
+requests in lets anyone who has the Lustro token send requests as the signed-in user. The server
+is loopback-only and needs the token, but register such a sender only in builds you trust with
+that.
+
+**Edit and resend** leaves out the headers that OkHttp sets itself, such as `Host`,
+`Content-Length`, and `Accept-Encoding`: sent by hand, an `Accept-Encoding` turns off OkHttp's gzip
+decoding. A value that Lustro redacted is `[REDACTED]` in the form, and the form says so: replace
+it before you send.
+
+The form reports only the status and outcome, so the sender reads at most
 `DebugConfig.maxBodyCaptureBytes` of the response body and then closes the response: a large
 download or an endless stream cannot exhaust the app's heap. A send still running when the
 per-request timeout answers `504` has its call cancelled right after.

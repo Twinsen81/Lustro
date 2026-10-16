@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Lustro Network debug tab",
-    "version": "1.7",
+    "version": "1.8",
     "description": "Capture, inspect, mock, throttle, and replay HTTP traffic, and inspect the messages of WebSocket connections. All routes are token-authenticated (Bearer header or HttpOnly cookie) and live under /api/v1/network. Errors use the shared error envelope."
   },
   "servers": [
@@ -266,18 +266,51 @@
         "responses": { "200": { "description": "New delay.", "content": { "application/json": { "schema": { "type": "object", "required": ["status", "delayMs"], "properties": { "status": { "const": "ok" }, "delayMs": { "type": "integer" } } } } } }, "401": { "$ref": "#/components/responses/Error" }, "403": { "$ref": "#/components/responses/Error" }, "413": { "$ref": "#/components/responses/Error" }, "503": { "$ref": "#/components/responses/Error" } }
       }
     },
+    "/api/v1/network/senders": {
+      "get": {
+        "operationId": "listSenders",
+        "summary": "List the senders that POST send can use, in order; the first one is the default.",
+        "description": "Each sender is an OkHttp client that the app registered under a name. An empty list means that the app registered none, and POST send is not available.",
+        "responses": {
+          "200": {
+            "description": "The senders, in order.",
+            "content": { "application/json": { "schema": {
+              "type": "object",
+              "required": ["items"],
+              "properties": {
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["name", "baseUrl"],
+                    "properties": {
+                      "name": { "type": "string", "description": "The name to pass as sender to POST send." },
+                      "baseUrl": { "type": ["string", "null"], "description": "The URL a relative url is appended to; null when the sender takes absolute URLs only." }
+                    }
+                  }
+                }
+              }
+            } } }
+          },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "503": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
     "/api/v1/network/send": {
       "post": {
         "operationId": "sendRequest",
-        "summary": "Dispatch a request through the configured NetworkSender (synchronous).",
-        "description": "Blocks until the sender returns, within the per-request timeout. Relative URLs resolve against the configured app server base. Self-requests to the debug server's own bind host:port are rejected. Only available when a NetworkSender is configured.",
+        "summary": "Send a request through one of the app's senders (synchronous).",
+        "description": "Blocks until the sender returns, within the per-request timeout. An absolute url is sent as given; a relative one is appended to the base URL of the sender. Self-requests to the debug server's own bind host:port are rejected. Only available when the app registered a sender (see GET senders).",
         "requestBody": {
           "required": true,
           "content": { "application/json": { "schema": {
             "type": "object",
             "required": ["url"],
             "properties": {
-              "url": { "type": "string", "description": "Absolute URL, or relative path resolved against the app server base." },
+              "url": { "type": "string", "description": "Absolute URL, or a path appended to the base URL of the sender." },
+              "sender": { "type": ["string", "null"], "description": "The name of a sender from GET senders. Left out or null: the first one." },
               "method": { "type": "string", "default": "GET" },
               "headers": { "type": "object", "additionalProperties": { "type": "string" } },
               "body": { "type": "string" }
@@ -291,9 +324,11 @@
               "type": "object",
               "required": ["ok"],
               "properties": {
-                "transactionId": { "type": ["string", "null"], "description": "Captured transaction id, when the runtime can correlate it (may be null)." },
-                "statusCode": { "type": ["integer", "null"] },
-                "ok": { "type": "boolean" },
+                "transactionId": { "type": ["string", "null"], "description": "The transaction that the Lustro interceptor recorded for this request; null when the sender's client has no Lustro interceptor, or the request was not captured." },
+                "sender": { "type": "string", "description": "The name of the sender that sent the request. Since 1.7." },
+                "url": { "type": "string", "description": "The URL the request went to, after a relative url was resolved. Since 1.7." },
+                "statusCode": { "type": ["integer", "null"], "description": "The response status; 0 when ok is false." },
+                "ok": { "type": "boolean", "description": "true when a response came back, whatever its status; false when the call failed, and error says why." },
                 "error": { "type": "string" }
               }
             } } }
@@ -301,7 +336,7 @@
           "400": { "$ref": "#/components/responses/Error" },
           "401": { "$ref": "#/components/responses/Error" },
           "403": { "$ref": "#/components/responses/Error" },
-          "404": { "description": "No sender configured (Send Request disabled).", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } } },
+          "404": { "description": "The app registered no sender, so Send is not available.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } } },
           "413": { "$ref": "#/components/responses/Error" },
           "503": { "$ref": "#/components/responses/Error" },
           "504": { "$ref": "#/components/responses/Error" }

@@ -164,6 +164,16 @@ esac
 lustro_to net-get-short.json --json net get "$short"
 check transaction "$RULES" < "$OUT/net-get-short.json"
 
+# The sample's default sender has the fixture host as its base URL, and its client
+# carries the interceptor: the rule answers the relative /get, and the request is
+# captured.
+lustro_to senders.json --json senders
+check senders < "$OUT/senders.json"
+lustro_to send.json --json send --url /get
+sent="$(check send "$RULES" < "$OUT/send.json")"
+lustro_to send-get.json --json net get "$sent"
+check transaction "$RULES" < "$OUT/send-get.json"
+
 # net export takes the short id too, and writes the same entry that a full export has.
 step "lustro net export --har: the mocked request, then every transaction"
 lustro net export --har "$OUT/export-one.har" --ids "$short"

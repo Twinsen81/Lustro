@@ -95,7 +95,7 @@ def server():
 def test_meta(server):
     client = LustroClient(server, TOKEN)
     meta = client.get("/api/v1/_meta")
-    assert meta["protocolVersion"] == "1.7"
+    assert meta["protocolVersion"] == "1.8"
     assert meta["tabs"][0]["id"] == "network"
 
 
@@ -107,7 +107,7 @@ def test_requests_ignore_a_proxy_from_the_environment(server, monkeypatch):
     monkeypatch.delenv("no_proxy", raising=False)
     monkeypatch.delenv("NO_PROXY", raising=False)
     client = LustroClient(server, TOKEN)
-    assert client.get("/api/v1/_meta")["protocolVersion"] == "1.7"
+    assert client.get("/api/v1/_meta")["protocolVersion"] == "1.8"
 
 
 def test_transactions_cursor(server):
@@ -174,7 +174,7 @@ def test_a_401_retries_once_with_a_fresh_token(server):
         return TOKEN
 
     client = LustroClient(server, "stale-token", refresh_token=refresh)
-    assert client.get("/api/v1/_meta")["protocolVersion"] == "1.7"
+    assert client.get("/api/v1/_meta")["protocolVersion"] == "1.8"
     assert client.token == TOKEN
     # The client asks once: a later 401 is an error.
     assert asked == [True]
@@ -193,9 +193,10 @@ def test_send_post(server):
         "/api/v1/network/send", json_body={"url": "https://x/y", "method": "GET"}
     )
     assert result["ok"] is True
-    # The synchronous send path does not correlate the replay to a captured
-    # transaction, so the server emits transactionId:null (schema allows null).
-    assert result["transactionId"] is None
+    # The fixture models a sender whose client carries the Lustro interceptor,
+    # so the result names the transaction it recorded.
+    assert result["transactionId"] == "tx_5c1f9a02"
+    assert result["sender"] == "API"
 
 
 def test_query_params_encoded(server):

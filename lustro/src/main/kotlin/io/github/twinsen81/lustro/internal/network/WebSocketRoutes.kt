@@ -64,29 +64,20 @@ internal class WebSocketRoutes(
                 else -> given.toIntOrNull()?.takeIf { it >= 1 }
                     ?: return DebugResponse.error("limit must be a whole number, 1 or more", field = "limit")
             }
-        val search =
-            try {
-                SearchQuery.fromParams(request.queryParam("search"), request.queryParam("regex"))
-            } catch (e: SearchQueryException) {
-                return DebugResponse.error(e.message.orEmpty(), field = e.field)
+        return respondWithSearch(request) { search ->
+            val budget = SearchBudget(searchTimeoutMs())
+            eventsEnvelope(log, limit, request) { event ->
+                (direction == null || event.outgoing == (direction == SENT)) &&
+                    (search == null || search.matchesText(event.text, budget))
             }
-        val budget = SearchBudget(searchTimeoutMs())
-        val matches = { event: WebSocketEvent ->
-            (direction == null || event.outgoing == (direction == SENT)) &&
-                (search == null || search.matchesText(event.text, budget))
-        }
-        return try {
-            eventsEnvelope(log, matches, limit, request)
-        } catch (e: SearchTimeoutException) {
-            DebugResponse.error(e.message.orEmpty(), field = "search")
         }
     }
 
     private fun eventsEnvelope(
         log: WebSocketEventLog,
-        matches: (WebSocketEvent) -> Boolean,
         limit: Int,
         request: DebugRequest,
+        matches: (WebSocketEvent) -> Boolean,
     ): DebugResponse {
         val events = log.events
         return DebugResponse.streamEnvelope(

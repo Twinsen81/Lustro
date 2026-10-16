@@ -46,8 +46,11 @@ public class NetworkDebugTab private constructor() : DebugTab() {
          * [overload][create] that takes `capturePlatformHttp`, which is gated by
          * [ExperimentalPlatformCapture].
          *
-         * @param senderClient when non-null, wrapped in an [OkHttpSender] to power
-         *   the "Send Request" panel; when `null`, the Send route is hidden.
+         * @param senderClient when non-null, the Send form sends through this
+         *   client, as one sender named "Default" whose relative URLs resolve
+         *   against `DebugConfig.appServerBaseUrl`; when `null`, the Send route
+         *   is hidden. To send through several clients, or through one that is
+         *   built after Lustro, use the overload that takes `senders`.
          * @param classifier tags captured URLs with category labels (default: none).
          * @param redactor removes sensitive data at capture time (default:
          *   [DefaultRedactor]).
@@ -70,6 +73,32 @@ public class NetworkDebugTab private constructor() : DebugTab() {
         ): NetworkDebugTab = NetworkDebugTab()
 
         /**
+         * Creates a [NetworkDebugTab] whose Send form offers [senders], for
+         * example one for each OkHttp client that the app builds with its own
+         * interceptors or for its own host. Otherwise the same as the
+         * [overload][create] that takes `senderClient`.
+         *
+         * @param senders the senders the Send form lists, in this order; the
+         *   first one is the default. An empty list hides the Send route.
+         * @param classifier tags captured URLs with category labels (default: none).
+         * @param redactor removes sensitive data at capture time (default:
+         *   [DefaultRedactor]).
+         * @param mockRuleStorage persists mock rules; `null` keeps them in memory.
+         * @param captureFilter decides which requests are captured (default: all).
+         *
+         * No-op build: all parameters are accepted for API parity but never used.
+         */
+        @JvmStatic
+        @JvmOverloads
+        public fun create(
+            senders: List<OkHttpSender>,
+            classifier: NetworkClassifier = NoOpNetworkClassifier,
+            redactor: Redactor = DefaultRedactor,
+            mockRuleStorage: MockRuleStorage? = null,
+            captureFilter: NetworkCaptureFilter = NoOpNetworkCaptureFilter,
+        ): NetworkDebugTab = NetworkDebugTab()
+
+        /**
          * Creates a [NetworkDebugTab], optionally installing the process-global
          * `HttpURLConnection` capture.
          *
@@ -79,8 +108,10 @@ public class NetworkDebugTab private constructor() : DebugTab() {
          * rests on a non-public platform detail, hence the
          * [ExperimentalPlatformCapture] opt-in.
          *
-         * @param senderClient when non-null, wrapped in an [OkHttpSender] to power
-         *   the "Send Request" panel; when `null`, the Send route is hidden.
+         * @param senderClient when non-null, the Send form sends through this
+         *   client, as one sender named "Default" whose relative URLs resolve
+         *   against `DebugConfig.appServerBaseUrl`; when `null`, the Send route
+         *   is hidden.
          * @param capturePlatformHttp when `true`, installs the process-global
          *   `HttpURLConnection` capture (best-effort, fail-open).
          * @param classifier tags captured URLs with category labels (default: none).
@@ -99,6 +130,35 @@ public class NetworkDebugTab private constructor() : DebugTab() {
         @JvmOverloads
         public fun create(
             senderClient: OkHttpClient?,
+            capturePlatformHttp: Boolean,
+            classifier: NetworkClassifier = NoOpNetworkClassifier,
+            redactor: Redactor = DefaultRedactor,
+            mockRuleStorage: MockRuleStorage? = null,
+            captureFilter: NetworkCaptureFilter = NoOpNetworkCaptureFilter,
+        ): NetworkDebugTab = NetworkDebugTab()
+
+        /**
+         * Creates a [NetworkDebugTab] whose Send form offers [senders],
+         * optionally installing the process-global `HttpURLConnection` capture.
+         *
+         * @param senders the senders the Send form lists, in this order; the
+         *   first one is the default. An empty list hides the Send route.
+         * @param capturePlatformHttp when `true`, installs the process-global
+         *   `HttpURLConnection` capture (best-effort, fail-open).
+         * @param classifier tags captured URLs with category labels (default: none).
+         * @param redactor removes sensitive data at capture time (default:
+         *   [DefaultRedactor]).
+         * @param mockRuleStorage persists mock rules; `null` keeps them in memory.
+         * @param captureFilter decides which requests are captured, OkHttp and
+         *   `HttpURLConnection` alike (default: all).
+         *
+         * No-op build: all parameters are accepted for API parity but never used.
+         */
+        @ExperimentalPlatformCapture
+        @JvmStatic
+        @JvmOverloads
+        public fun create(
+            senders: List<OkHttpSender>,
             capturePlatformHttp: Boolean,
             classifier: NetworkClassifier = NoOpNetworkClassifier,
             redactor: Redactor = DefaultRedactor,

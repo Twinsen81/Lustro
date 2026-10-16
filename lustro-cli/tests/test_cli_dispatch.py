@@ -299,6 +299,21 @@ def test_send_route(rec):
     assert body["method"] == "POST"
     assert body["headers"] == {"X-Test": "1"}
     assert body["body"] == "hi"
+    assert "sender" not in body
+
+
+def test_send_with_a_sender(rec):
+    run(["send", "--url", "/popular.json", "--sender", "Lists"])
+    method, path, _, body = rec.calls[-1]
+    assert (method, path) == ("POST", "/api/v1/network/send")
+    assert body["sender"] == "Lists"
+    assert body["url"] == "/popular.json"
+
+
+def test_senders_route(rec):
+    run(["senders"])
+    method, path, _, _ = rec.calls[-1]
+    assert (method, path) == ("GET", "/api/v1/network/senders")
 
 
 def test_open_prints_bootstrap_url(rec, capsys):
@@ -332,6 +347,7 @@ def test_all_openapi_paths_are_covered():
         "/api/v1/network/pause",
         "/api/v1/network/overwrite-mode",
         "/api/v1/network/throttle",
+        "/api/v1/network/senders",
         "/api/v1/network/send",
     }
     assert declared == covered, declared.symmetric_difference(covered)

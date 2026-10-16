@@ -130,6 +130,26 @@ def check_transaction(text: str, rules: List[dict]) -> None:
     expect(tx["responseBody"] == rule["responseBody"], "body {!r}, the rule sets {!r}".format(tx["responseBody"], rule["responseBody"]))
 
 
+def check_senders(text: str, rules: List[dict]) -> None:
+    listed = json.loads(text)
+    response("/api/v1/network/senders", "get").validate(listed)
+    expect(bool(listed["items"]), "the sample registers no sender")
+    expect(listed["items"][0]["baseUrl"] is not None, "the sample's default sender has no base URL")
+
+
+def check_send(text: str, rules: List[dict]) -> None:
+    """``send`` of the path the first rule mocks: prints the id of the captured transaction."""
+    result = json.loads(text)
+    response("/api/v1/network/send", "post").validate(result)
+    rule = rules[0]
+    expect(result["ok"] is True, "the send failed: {}".format(result.get("error")))
+    expect(result["url"] == rule["urlPattern"], "sent to {}, the rule mocks {}".format(result["url"], rule["urlPattern"]))
+    expect(result["statusCode"] == rule["statusCode"], "status {}, the rule sets {}".format(result["statusCode"], rule["statusCode"]))
+    # The sample's sender is the client with the interceptor, so the request is captured.
+    expect(result["transactionId"] is not None, "the sent request was not captured")
+    print(result["transactionId"])
+
+
 def check_har(text: str, rules: List[dict]) -> None:
     """``net export --har`` writes a HAR document; the request the first rule served is in it."""
     har = json.loads(text)
@@ -207,6 +227,8 @@ CHECKS: Dict[str, Callable[[str, List[dict]], None]] = {
     "find": find,
     "transaction": check_transaction,
     "har": check_har,
+    "senders": check_senders,
+    "send": check_send,
     "ws-list": check_ws_list,
     "ws-find": ws_find,
     "ws-connection": check_ws_connection,

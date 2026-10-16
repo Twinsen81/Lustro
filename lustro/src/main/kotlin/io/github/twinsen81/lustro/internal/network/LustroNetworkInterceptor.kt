@@ -213,7 +213,10 @@ internal class LustroNetworkInterceptor(
             headers = headers,
             requestBody = requestBody,
             contentType = contentType.toApiMediaType(),
-        ).also { id -> webSocket?.recorder?.linkTransaction(id.value) }
+        ).also { id ->
+            webSocket?.recorder?.linkTransaction(id.value)
+            request.tag(SendCaptureTag::class.java)?.transactionId = id
+        }
     }
 
     /**

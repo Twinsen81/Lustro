@@ -62,7 +62,7 @@ class OkHttpSenderTest {
                 .setBody("""{"ok":true}"""),
         )
 
-        val result = OkHttpSender(client, maxResponseBodyBytes = 1024, callTimeoutMs = 0).send(get("/small"))
+        val result = OkHttpSender(client).send(get("/small"), maxResponseBodyBytes = 1024, callTimeoutMs = 0, captureTag = null)
 
         assertTrue(result.isSuccess)
         assertEquals(201, result.statusCode)
@@ -82,7 +82,7 @@ class OkHttpSenderTest {
         )
 
         val started = System.nanoTime()
-        val result = OkHttpSender(client, maxResponseBodyBytes = 4096, callTimeoutMs = 0).send(get("/big"))
+        val result = OkHttpSender(client).send(get("/big"), maxResponseBodyBytes = 4096, callTimeoutMs = 0, captureTag = null)
         val elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started)
 
         assertTrue(result.errorMessage, result.isSuccess)
@@ -128,7 +128,7 @@ class OkHttpSenderTest {
                 )
                 .build()
 
-        val result = OkHttpSender(capturingClient, maxResponseBodyBytes = 1024, callTimeoutMs = 0).send(get("/sse"))
+        val result = OkHttpSender(capturingClient).send(get("/sse"), maxResponseBodyBytes = 1024, callTimeoutMs = 0, captureTag = null)
 
         assertEquals(1024, result.body?.size)
         assertTrue(store.awaitCaptures())
@@ -141,7 +141,7 @@ class OkHttpSenderTest {
         server.enqueue(MockResponse().setBody("xy").throttleBody(1, 3, TimeUnit.SECONDS))
 
         val started = System.nanoTime()
-        val result = OkHttpSender(client, maxResponseBodyBytes = 1024, callTimeoutMs = 300).send(get("/stall"))
+        val result = OkHttpSender(client).send(get("/stall"), maxResponseBodyBytes = 1024, callTimeoutMs = 300, captureTag = null)
         val elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started)
 
         assertFalse(result.isSuccess)
@@ -155,7 +155,7 @@ class OkHttpSenderTest {
         val tightClient = client.newBuilder().callTimeout(300, TimeUnit.MILLISECONDS).build()
 
         val started = System.nanoTime()
-        val result = OkHttpSender(tightClient, maxResponseBodyBytes = 1024, callTimeoutMs = 60_000).send(get("/stall"))
+        val result = OkHttpSender(tightClient).send(get("/stall"), maxResponseBodyBytes = 1024, callTimeoutMs = 60_000, captureTag = null)
         val elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started)
 
         assertFalse(result.isSuccess)

@@ -1,5 +1,7 @@
 package io.github.twinsen81.lustro.internal.network
 
+import io.github.twinsen81.lustro.DebugRequest
+import io.github.twinsen81.lustro.DebugResponse
 import java.util.concurrent.TimeUnit
 import java.util.regex.Pattern
 import java.util.regex.PatternSyntaxException
@@ -92,6 +94,25 @@ internal class SearchQuery private constructor(
             }
 
         private val WHITESPACE = Regex("\\s+")
+    }
+}
+
+/**
+ * Answers [request] with [respond], given the search of its `search` and
+ * `regex` parameters, or with a 400 on the parameter at fault when the search
+ * can't run or passes its time.
+ */
+internal inline fun respondWithSearch(request: DebugRequest, respond: (SearchQuery?) -> DebugResponse): DebugResponse {
+    val search =
+        try {
+            SearchQuery.fromParams(request.queryParam("search"), request.queryParam("regex"))
+        } catch (e: SearchQueryException) {
+            return DebugResponse.error(e.message.orEmpty(), field = e.field)
+        }
+    return try {
+        respond(search)
+    } catch (e: SearchTimeoutException) {
+        DebugResponse.error(e.message.orEmpty(), field = "search")
     }
 }
 

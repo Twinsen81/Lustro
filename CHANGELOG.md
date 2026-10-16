@@ -14,8 +14,8 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Added
 
-- **Search the headers, and search with a regular expression (wire protocol
-  1.7).** The Network tab's search looked at the URL, the method, and the
+- **Search the headers, and search with regular expressions (wire protocol
+  1.8).** The Network tab's search looked at the URL, the method, and the
   bodies, so a header such as `Cache-Control` found nothing, and it took only
   plain text. The search now also looks at the request and response headers,
   each as the line `Name: value` as stored after redaction, so a redacted
@@ -24,13 +24,35 @@ see [DECISIONS.md](DECISIONS.md).
   of the text a Java regular expression, found ignoring case: all words must
   match, each in any field, and `-word` leaves out, as in
   `featured|popular -analytics`. A **?** button lists common ones with
-  examples. With Regex off, the text is found as typed, as before. A regex that doesn't compile gets a `400` that
-  says why, and a search stops after 5 s. The console shows the error under
-  the field and keeps the last results, and marks a regex's matches in the
-  URL, the headers, and the bodies. A **×** button and Escape clear the
-  field, also in the WebSocket view. The CLI exits 2 on a rejected search
-  instead of polling again, and `--search -1` is now the value of
-  `--search`.
+  examples. With Regex off, the text is found as typed, as before. A regex
+  that doesn't compile gets a `400` that says why, and a search stops after
+  5 s. The console shows the error under the field and keeps the last
+  results, and marks a regex's matches in the URL, the headers, and the
+  bodies. A **×** button and Escape clear the field, also in the WebSocket
+  view. The CLI exits 2 on a rejected search instead of polling again, and
+  `--search -1` is now the value of `--search`.
+- **The Send form sends through the app's named senders (wire protocol
+  1.7).** The Network tab sent through one client and resolved a relative URL
+  against one base URL, but an app often has several clients, with their own
+  interceptors and hosts. In a podcast app on a physical device,
+  `GET /popular-us.json` went to the API host and got a 401: the file is on
+  another host, and the one sender had no auth interceptor. The app now
+  registers each client with `OkHttpSender.create(name, baseUrl) { client }`
+  and passes them as `NetworkDebugTab.create(senders = ...)`. The form has a
+  Sender dropdown and shows where the request will go before it is sent. A
+  relative URL is appended to the base URL of the chosen sender, and is
+  rejected for a sender without one. Lustro calls the lambda only at the first
+  send, so a sender can be the client that carries
+  `lustro.networkInterceptor()`, although it is built after Lustro, and the
+  requests sent from the console are then captured. `senderClient` still
+  works, as one sender named "Default" with `DebugConfig.appServerBaseUrl`.
+  The new route `GET network/senders` lists the senders, `POST network/send`
+  takes `sender`, and its result gains `sender` and `url`. Its
+  `transactionId`, which was always `null`, now names the captured
+  transaction. The CLI has `lustro senders` and `lustro send --sender NAME`.
+  From Java, a `null` first argument of `NetworkDebugTab.create` now needs a
+  cast, `(OkHttpClient) null`, because `create` also takes a list of senders.
+
 - **Each transaction says which adapter captured it (wire protocol 1.6).**
   Mock rules and the throttle act on OkHttp requests only, but the Network
   tab offered **Mock This Request** for every row. In a video app on a
@@ -321,6 +343,17 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Fixed
 
+- **The default redactor masked `assignments`, `assignees`, `designers`, and
+  `authorities`.** An ordinary word that contains a sensitive fragment, such
+  as `sig` in `assignment` or `auth` in `author`, kept its value only in the
+  forms the allowlist spelled out, so the `assignments` object of an
+  experiment-assignment response showed as `[REDACTED]`, as did `assignees`,
+  `designers`, and `authorities`. A listed word now covers its regular
+  inflections, the plural, the past tense, and the `-ing` form, so each form
+  needs no entry of its own, and so does a public name: `public_keys` and
+  `primary_keys` are kept like `public_key`. A credential is masked as
+  before: `authorization`, `signatures`, `signing_key`, `assignments_token`,
+  and `limitedUseToken` still are.
 - **A mock rule's place in the list now decides which rule answers.** The
   rules were kept in a hash map, so when two enabled rules matched a request,
   which one answered depended on the hashes of their ids: a rule for
@@ -753,6 +786,21 @@ see [DECISIONS.md](DECISIONS.md).
   body, and a gzip response over `HttpURLConnection`.
 
 ### Changed
+
+- **Send has no tab of its own.** "Send Request" was a tab next to the
+  detail of the selected request, so it looked related to that request,
+  although its form was always empty. **+ New request**, next to the search
+  field, now opens an empty form in the right pane and clears the selection,
+  and **Edit and resend**, with the detail's other actions, opens the form
+  filled from the selected request: method, URL, headers, and body. The form
+  leaves out the headers that OkHttp sets itself, and says when it has values
+  that Lustro redacted. The result shows the status as an error from 400 on,
+  for example "HTTP 401 Unauthorized" in red, where a 401 showed as a green
+  "OK (401)". It links to the captured request when there is one. The tooltip
+  of **Send** says only what Lustro controls: which interceptors run depends
+  on how the app built the sender's client. Checked on a physical device:
+  an edited `POST /post` went out through the sample's capturing client and
+  appeared as a new row, and `GET /status/401` showed in red.
 
 - **Adding Lustro no longer raises the app's dependency versions.** The
   published `lustro` module required androidx.lifecycle 2.11.0, coroutines
