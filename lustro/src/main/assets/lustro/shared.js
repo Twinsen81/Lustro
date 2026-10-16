@@ -1008,10 +1008,17 @@ window.debugLineNumbered = function(text, options) {
     starts.push(at);
     var endsWithBreak = lines.length > 1 && lines[lines.length - 1] === '';
     if (endsWithBreak) lines.pop();
+    // The ranges and the lines are both in order, so each line takes only the
+    // ranges that reach into it, and a long body with many matches stays linear.
+    var next = 0;
     return '<pre class="dc-code dc-lines" style="--dc-lines-digits: ' + String(lines.length).length + '">'
         + lines.map(function(lineText, i) {
             var lineBreak = i < lines.length - 1 || endsWithBreak ? '\n' : '';
-            return '<span class="dc-lines__line">' + debugMarkRanges(lineText, ranges, starts[i]) + lineBreak + '</span>';
+            var end = starts[i] + lineText.length;
+            while (next < ranges.length && ranges[next][1] <= starts[i]) next++;
+            var last = next;
+            while (last < ranges.length && ranges[last][0] < end) last++;
+            return '<span class="dc-lines__line">' + debugMarkRanges(lineText, ranges.slice(next, last), starts[i]) + lineBreak + '</span>';
         }).join('')
         + '</pre>';
 };

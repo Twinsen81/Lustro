@@ -54,3 +54,13 @@ test('the line-numbered view marks matches in the whole text, as the device find
         '<span class="dc-lines__line"><mark>b</mark> c</span>',
     ]);
 });
+
+test('the line-numbered view marks many matches in many lines in linear time', () => {
+    const text = Array.from({ length: 20000 }, () => 'a b a').join('\n');
+    const started = Date.now();
+    const html = win.debugLineNumbered(text, { searchText: 'a' });
+    assert.ok(Date.now() - started < 2000, 'took ' + (Date.now() - started) + ' ms');
+    assert.strictEqual(html.split('<mark>a</mark>').length - 1, 40000);
+    // A match that spans lines is marked on each of them.
+    assert.ok(win.debugLineNumbered('x\nab\ncd\ny', { searchText: /b\s+c/gi }).includes('a<mark>b</mark>\n</span><span class="dc-lines__line"><mark>c</mark>d'));
+});

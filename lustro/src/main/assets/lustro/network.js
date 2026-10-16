@@ -374,14 +374,16 @@
         input.focus();
     };
 
-    // What a viewer marks for a search: the text, or the regex. A regex this
-    // browser can't compile marks nothing; the app decides whether it is valid.
+    // What a viewer marks for a search: the text, or the regex. The app runs a
+    // Java regex, and the u flag makes this browser reject the Java-only escapes,
+    // such as \A or \Q, that it would otherwise read as letters. A regex it can't
+    // compile marks nothing; the app decides whether the regex is valid.
     var lastSearchMark = { text: null, re: null };
     function searchMark(text, regex) {
         if (!text || !regex) return text;
         if (lastSearchMark.text !== text) {
             var re = null;
-            try { re = new RegExp(text, 'gi'); } catch(e) {}
+            try { re = new RegExp(text, 'giu'); } catch(e) {}
             lastSearchMark = { text: text, re: re };
         }
         return lastSearchMark.re;
