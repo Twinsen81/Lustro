@@ -87,3 +87,10 @@ test('a poll lets its caller handle a rejected response, as a search that stoppe
     assert.strictEqual(answered, false);
     assert.deepStrictEqual(statuses, ['connected']);
 });
+
+test('an array of RegExps, the words of a regex search, marks each of them', () => {
+    assert.strictEqual(mark('featured and popular json', [/featured/giu, /json/giu]), '<mark>featured</mark> and popular <mark>json</mark>');
+    // Overlapping or touching matches make one mark.
+    assert.strictEqual(mark('abc', [/ab/gi, /bc/gi]), '<mark>abc</mark>');
+    assert.strictEqual(JSON.stringify(win.debugMatchRanges('xabxcd', [/cd/gi, /ab/gi])), '[[1,3],[4,6]]');
+});

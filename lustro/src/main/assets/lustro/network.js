@@ -347,8 +347,8 @@
     // expression; off, it is found as typed. Remembered in the browser.
     var SEARCH_REGEX_KEYS = { 'search-input': 'debug-network-search-regex', 'ws-search': 'debug-network-ws-search-regex' };
     var SEARCH_PLACEHOLDERS = {
-        'search-input': ['filter url, method, headers, body…', 'featured|popular'],
-        'ws-search': ['filter messages…', 'ping|pong'],
+        'search-input': ['filter url, method, headers, body…', 'featured|popular -analytics'],
+        'ws-search': ['filter messages…', 'ping|pong -heartbeat'],
     };
     function searchRegexOn(inputId) {
         try { return localStorage.getItem(SEARCH_REGEX_KEYS[inputId]) === '1'; } catch(e) { return false; }
@@ -374,19 +374,24 @@
         input.focus();
     };
 
-    // What a viewer marks for a search: the text, or the regex. The app runs a
-    // Java regex, and the u flag makes this browser reject the Java-only escapes,
+    // What a viewer marks for a search: the text, or the regex of each word that
+    // doesn't start with a minus, split as the app splits them. The app runs Java
+    // regexes, and the u flag makes this browser reject the Java-only escapes,
     // such as \A or \Q, that it would otherwise read as letters. A regex it can't
-    // compile marks nothing; the app decides whether the regex is valid.
-    var lastSearchMark = { text: null, re: null };
+    // compile marks nothing; the app decides whether a regex is valid.
+    var lastSearchMark = { text: null, res: null };
     function searchMark(text, regex) {
         if (!text || !regex) return text;
         if (lastSearchMark.text !== text) {
-            var re = null;
-            try { re = new RegExp(text, 'giu'); } catch(e) {}
-            lastSearchMark = { text: text, re: re };
+            var res = [];
+            // Java's \s, which the app splits on: no Unicode spaces.
+            text.split(/[ \t\n\x0B\f\r]+/).forEach(function(word) {
+                if (!word || (word.length > 1 && word[0] === '-')) return;
+                try { res.push(new RegExp(word, 'giu')); } catch(e) {}
+            });
+            lastSearchMark = { text: text, res: res };
         }
-        return lastSearchMark.re;
+        return lastSearchMark.res;
     }
 
     var searchHelpModal = null;
@@ -2354,11 +2359,11 @@
             + '<div class="dc-field net-ws-search"><label class="net-search-label" for="ws-search"><span class="dc-field__prefix" aria-hidden="true">&gt;</span>'
             + '<input type="text" id="ws-search" name="wsSearch" aria-label="Search the messages" aria-describedby="ws-search-error" class="dc-input" placeholder=""'
             + ' autocomplete="off" spellcheck="false" data-action="onWsSearchInput" value="' + debugEscapeHtml(wsSearch) + '"'
-            + ' title="Show only the text messages that contain this text, ignoring case, on the device, 300 ms after you stop typing. With REGEX on, the text is a regular expression. Escape clears the field."></label>'
+            + ' title="Show only the text messages that contain this text, ignoring case, on the device, 300 ms after you stop typing. With REGEX on, each word is a regular expression: all must match, and -word leaves out. Escape clears the field."></label>'
             + '<button type="button" class="dc-btn dc-btn--icon net-search-clear" data-action="clearSearch" data-target="ws-search"' + (wsSearch ? '' : ' hidden')
             + ' aria-label="Clear the search" title="Clear the search. Escape in the field does the same.">×</button>'
             + '<button type="button" class="dc-btn dc-btn--sm net-search-regex" data-action="toggleSearchRegex" data-target="ws-search" aria-pressed="false"'
-            + ' title="Regular expression. On: the search is a Java regular expression that ignores case, such as ping|pong. Off: the text is found as typed. Remembered in your browser.">Regex</button>'
+            + ' title="Regular expressions. On: each word is a Java regular expression that ignores case, all words must match, and -word leaves out, such as ping|pong -heartbeat. Off: the text is found as typed. Remembered in your browser.">Regex</button>'
             + '<button type="button" class="dc-btn dc-btn--icon net-search-help" data-action="showSearchHelp" aria-label="Regex examples"'
             + ' title="Common regular expressions, with examples.">?</button></div>'
             + '<button class="dc-btn dc-btn--sm" data-action="copyWsMarkdown" title="Copy the connection and its last ' + WS_MARKDOWN_EVENTS

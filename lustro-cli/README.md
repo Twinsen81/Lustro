@@ -142,8 +142,9 @@ The output is small by default, because an agent reads all of it.
   class such as `5xx`), and `--errors` (status 400 or higher, or a failed
   request). They combine with each other and with `--search TEXT`, which the
   app runs over the URL, the method, the headers, and the bodies, ignoring
-  case. `--regex` makes the text a Java regular expression; one that doesn't
-  compile exits 2 with the reason. `--url` is always plain text.
+  case. `--regex` makes each word of the text a Java regular expression: all
+  words must match, each in any field, and `-word` leaves out. A regex that
+  doesn't compile exits 2 with the reason. `--url` is always plain text.
 - **JSON Lines.** With `--json`, these commands print one compact JSON object
   per transaction, so `head` and `jq` can cut the output. `--fields
   id,statusCode,url` keeps only those keys, and implies `--json`. Other

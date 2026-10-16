@@ -117,10 +117,11 @@ client got them.
 
 - **1.7** - The `search` of `GET network/transactions` also looks at the
   request and response headers, each as the line `Name: value` as stored
-  after redaction. The new parameter `regex=true` makes `search` a Java
-  regular expression, found ignoring case, for the transactions and for
-  `GET network/websockets/{id}/events`. Without it, `search` is text, as
-  before. A regex that doesn't compile, or a search that takes longer than
+  after redaction. The new parameter `regex=true` makes each word of
+  `search`, up to a space, a Java regular expression found ignoring case,
+  for the transactions and for `GET network/websockets/{id}/events`: every
+  word must be found, each in any field, and a word that starts with `-`
+  must be found in none. Without it, `search` is text, as before. A regex that doesn't compile, or a search that takes longer than
   5 s, gets a `400` with `field: search`, and a `regex` other than `true` or
   `false` a `400` with `field: regex`.
 

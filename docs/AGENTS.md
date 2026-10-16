@@ -92,9 +92,19 @@ final URL, the method, a request or response header (as the line `Name: value`),
 text has no syntax: `a|b`, `-1`, and `/api/v1/` are found as typed. Headers and bodies are
 searched as stored, so a redacted value is found as `[REDACTED]`, not as the secret.
 
-`--regex` makes the text a Java regular expression, found ignoring case in each of those fields:
-`--search 'featured|popular' --regex` finds either word, and `--search '^set-cookie:' --regex` a
-header. A regex that doesn't compile makes the command print the reason and exit 2, and so does a
+`--regex` makes each word of the text, up to a space, a Java regular expression found ignoring
+case. Every word must be found, each in any of those fields, and a word that starts with `-` must
+be found in none:
+
+| `--search` with `--regex` | Finds |
+| --- | --- |
+| `'featured\|popular'` | either word |
+| `'lists json'` | both words, each in any field |
+| `'podcasts -analytics'`, `'-analytics'` | the first, but not the second; not the word |
+| `'^content-type:\s.*json'` | a header with a value (a space in a regex is `\s`) |
+| `'/v\d+/ -status/5'` | a versioned path, without the 5xx status paths |
+
+A regex that doesn't compile makes the command print the reason and exit 2, and so does a
 search that takes longer than 5 s. `--url` is always plain text. `net ws events --search` and
 `--regex` work the same way over the text of the messages. The Network tab's search fields have a
 **Regex** button that does the same, and a **?** button that lists common regular expressions.

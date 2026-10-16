@@ -62,6 +62,28 @@ class SearchQueryTest {
     }
 
     @Test
+    fun `regex words must all match, each in any field, and a minus word must match in none`() {
+        // featured is in the URL, and no-cache in a header.
+        assertTrue(matches("featured no-cache", regex = true))
+        assertFalse(matches("featured popular", regex = true))
+        assertTrue(matches("featured|popular podcast_list", regex = true))
+        assertTrue(matches("podcasts -analytics", regex = true))
+        assertFalse(matches("podcasts -no-cache", regex = true))
+        // Only words that leave out.
+        assertTrue(matches("-analytics", regex = true))
+        assertFalse(matches("-ärger", regex = true))
+        assertFalse(matches("-podcasts -analytics", regex = true))
+        // A space in a regex is \s or \x20, as a space ends the word, and a leading minus is [-].
+        assertTrue(matches("cache-control:\\sno-cache", regex = true))
+        assertTrue(matches("cache-control:\\x20no", regex = true))
+        assertTrue(matches("[-]cache", regex = true))
+        assertTrue(matches("- cache", regex = true))
+        // Plain text has no words: the spaces and the minus are text.
+        assertFalse(matches("podcasts -analytics"))
+        assertTrue(matches("Cache-Control: no-cache"))
+    }
+
+    @Test
     fun `search finds the headers by name, by value, and as the line Name colon value`() {
         for (regex in listOf(false, true)) {
             assertTrue(matches("cache-control", regex))
@@ -85,13 +107,13 @@ class SearchQueryTest {
     }
 
     @Test
-    fun `a regex that doesn't compile is an error on the search field that says why`() {
-        for (text in listOf("feat(", "[a", "*")) {
+    fun `a regex that doesn't compile is an error on the search field that names it`() {
+        for ((text, word) in listOf("feat(" to "feat(", "[a" to "[a", "*" to "*", "ok -feat(" to "feat(")) {
             try {
                 SearchQuery.parse(text, regex = true)
                 fail("compiled: $text")
             } catch (e: SearchQueryException) {
-                assertTrue(e.message!!, e.message!!.startsWith("The regex is not valid: "))
+                assertTrue(e.message!!, e.message!!.startsWith("The regex \"$word\" is not valid: "))
                 assertEquals("search", e.field)
             }
         }
@@ -118,7 +140,10 @@ class SearchQueryTest {
     fun `a message search looks at the text, and an entry without text never matches`() {
         assertTrue(SearchQuery.parse("PING").matchesText("{\"type\":\"ping\"}", budget))
         assertTrue(SearchQuery.parse("^\\{.*ping", regex = true).matchesText("{\"type\":\"ping\"}", budget))
+        assertTrue(SearchQuery.parse("type ping -pong", regex = true).matchesText("{\"type\":\"ping\"}", budget))
+        assertFalse(SearchQuery.parse("type -ping", regex = true).matchesText("{\"type\":\"ping\"}", budget))
         assertFalse(SearchQuery.parse("ping").matchesText(null, budget))
+        assertFalse(SearchQuery.parse("-ping", regex = true).matchesText(null, budget))
     }
 
     @Test

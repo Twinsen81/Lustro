@@ -141,6 +141,9 @@ class NetworkDebugTabTest {
             listOf("https://example.com/v1/popular.json", "https://example.com/v1/featured.json"),
             urls("search" to "featured|popular", "regex" to "true"),
         )
+        // Regex words must all match, each in any field, and a minus word in none.
+        assertEquals(listOf("https://example.com/v1/featured.json"), urls("search" to "v1 cache-control", "regex" to "true"))
+        assertEquals(listOf("https://example.com/v1/popular.json"), urls("search" to "v1 -cache-control", "regex" to "true"))
         // The header is stored redacted, so the secret isn't there to find.
         assertEquals(listOf("https://example.com/v1/featured.json"), urls("search" to "authorization: [redacted]"))
         assertEquals(emptyList<String>(), urls("search" to "secret"))

@@ -534,38 +534,50 @@ window.debugSyntaxHighlightJson = function(jsonString, options) {
 };
 
 // What a viewer marks: options.searchText is a string, found as typed and
-// ignoring case, as the plain search finds it, or a RegExp, as the regex search
-// finds it. The last one is kept, because a body is marked piece by piece.
-var debugSearchCache = { search: null, re: null };
-function debugSearchRegExp(search) {
-    if (!search) return null;
+// ignoring case, as the plain search finds it, or a RegExp or an array of them,
+// as the regex search finds each of its words. The last one is kept, because a
+// body is marked piece by piece.
+var debugSearchCache = { search: null, res: [] };
+function debugSearchRegExps(search) {
+    if (!search) return [];
     if (debugSearchCache.search !== search) {
-        var re = null;
-        try {
-            re = typeof search === 'string'
-                ? new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi')
-                : new RegExp(search.source, search.flags.indexOf('g') >= 0 ? search.flags : search.flags + 'g');
-        } catch(e) {}
-        debugSearchCache = { search: search, re: re };
+        var res = [];
+        (Array.isArray(search) ? search : [search]).forEach(function(one) {
+            try {
+                res.push(typeof one === 'string'
+                    ? new RegExp(one.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi')
+                    : new RegExp(one.source, one.flags.indexOf('g') >= 0 ? one.flags : one.flags + 'g'));
+            } catch(e) {}
+        });
+        debugSearchCache = { search: search, res: res };
     }
-    return debugSearchCache.re;
+    return debugSearchCache.res;
 }
 
-// Where search is found in text, as [start, end) pairs in order.
+// Where search is found in text, as [start, end) pairs in order that don't overlap.
 function debugMatchRanges(text, search) {
-    var re = debugSearchRegExp(search);
+    var res = debugSearchRegExps(search);
     var ranges = [];
-    if (!re) return ranges;
-    re.lastIndex = 0;
-    for (var match = re.exec(text); match; match = re.exec(text)) {
-        // A regex such as a* also matches nothing, which has nothing to mark.
-        if (!match[0].length) {
-            re.lastIndex++;
-            continue;
+    res.forEach(function(re) {
+        re.lastIndex = 0;
+        for (var match = re.exec(text); match; match = re.exec(text)) {
+            // A regex such as a* also matches nothing, which has nothing to mark.
+            if (!match[0].length) {
+                re.lastIndex++;
+                continue;
+            }
+            ranges.push([match.index, match.index + match[0].length]);
         }
-        ranges.push([match.index, match.index + match[0].length]);
-    }
-    return ranges;
+    });
+    if (res.length < 2) return ranges;
+    ranges.sort(function(a, b) { return a[0] - b[0] || a[1] - b[1]; });
+    var merged = [];
+    ranges.forEach(function(r) {
+        var last = merged[merged.length - 1];
+        if (last && r[0] <= last[1]) last[1] = Math.max(last[1], r[1]);
+        else merged.push(r.slice());
+    });
+    return merged;
 }
 window.debugMatchRanges = debugMatchRanges;
 

@@ -230,6 +230,8 @@ class NetworkWebSocketCaptureTest {
         val either = tab.events(id, "search" to "shipped|^order p", "regex" to "true", "direction" to "sent")
         assertEquals(listOf("message sent text Order SHIPPED", "message sent text order paid"), either.getJSONArray("items").objects().map { it.summary() })
         assertEquals(0, tab.events(id, "search" to "shipped|^order p").getJSONArray("items").length())
+        val notPaid = tab.events(id, "search" to "order -paid", "regex" to "true", "direction" to "sent")
+        assertEquals(listOf("message sent text Order SHIPPED"), notPaid.getJSONArray("items").objects().map { it.summary() })
 
         for ((name, value) in listOf("limit" to "0", "limit" to "many", "direction" to "up", "regex" to "yes")) {
             val error = tab.handle(get("websockets/$id/events", name to value))!!

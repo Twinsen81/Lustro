@@ -1222,7 +1222,10 @@ def _selection_options() -> argparse.ArgumentParser:
         help="the URL, the method, a header, or a body contains TEXT, ignoring case (on the server)",
     )
     filters.add_argument(
-        "--regex", action="store_true", help="--search TEXT is a Java regular expression, found ignoring case"
+        "--regex",
+        action="store_true",
+        help="each word of --search TEXT is a Java regular expression, found ignoring case: all words must match, "
+        "each in any field, and -word leaves out",
     )
     filters.add_argument("--url", default=None, metavar="TEXT", help="the URL contains TEXT (ignores case)")
     filters.add_argument("--method", default=None, help="the HTTP method, such as POST")
@@ -1443,7 +1446,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--search", default=None, metavar="TEXT", help="only the text messages that contain TEXT (on the server)"
     )
     w_events.add_argument(
-        "--regex", action="store_true", help="--search TEXT is a Java regular expression, found ignoring case"
+        "--regex",
+        action="store_true",
+        help="each word of --search TEXT is a Java regular expression, found ignoring case: all words must match, "
+        "and -word leaves out",
     )
     w_events.add_argument("--follow", action="store_true", help="then print each new event as it comes, until Ctrl-C")
     w_events.add_argument(
