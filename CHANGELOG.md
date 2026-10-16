@@ -14,6 +14,25 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Added
 
+- **Search with or, not, phrases, regular expressions, and fields, and search
+  the headers (wire protocol 1.7).** The Network tab's search was one
+  substring over the URL, the method, and the bodies. It could not find
+  either of two words, leave a word out, or use a regex, and a header such as
+  `Cache-Control` found nothing. The search field, the `search` parameter, and
+  the CLI's `--search` now take a query: terms separated by spaces must all
+  match, `a | b` or `a OR b` matches either, `-term` or `NOT term` leaves out,
+  `"a phrase"` keeps its spaces, `/pattern/` or `regex:pattern` is a regular
+  expression, and `url:`, `method:`, `status:`, `header:`, and `body:` limit a
+  term to one field. Without a field, a term also looks at the request and
+  response headers, as stored after redaction. Text without the syntax, such
+  as `/api/v1/users`, finds what it found before. A query that can't run,
+  such as a regex that doesn't compile, gets a `400` that says why, and a
+  search stops after 5 s. The console shows the error under the field and
+  keeps the last results, marks the matches of every term in the URL, the
+  headers, and the bodies, and explains the syntax behind a **?** button. A
+  **×** button and Escape clear the field, also in the WebSocket view, whose
+  message search takes the same syntax without the fields. The CLI exits 2 on
+  a rejected search instead of polling again, and `--url` stays plain text.
 - **Each transaction says which adapter captured it (wire protocol 1.6).**
   Mock rules and the throttle act on OkHttp requests only, but the Network
   tab offered **Mock This Request** for every row. In a video app on a

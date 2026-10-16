@@ -92,3 +92,37 @@ def test_open_percent_encodes_token_fragment(monkeypatch, capsys):
 
     assert fragment == urllib.parse.quote(nasty_token, safe="")
     assert urllib.parse.unquote(fragment) == nasty_token
+
+
+class _SearchRejectingClient(LustroClient):
+    """A client whose every request gets the app's 400 for a search that can't run."""
+
+    def __init__(self):
+        super().__init__("http://127.0.0.1:8080", "tok")
+        self.attempts = 0
+
+    def request(self, method, path, *, params=None, json_body=None):
+        self.attempts += 1
+        raise LustroError(
+            "bad_request",
+            "The regex /feat(/ is not valid: Unclosed group",
+            status=400,
+            field="search",
+        )
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["net", "poll", "--search", "/feat(/"],
+        ["net", "wait", "--search", "/feat(/", "--timeout", "1"],
+        ["net", "list", "--search", "/feat(/"],
+    ],
+)
+def test_a_rejected_search_exits_2_without_polling_again(monkeypatch, capsys, argv):
+    client = _SearchRejectingClient()
+    monkeypatch.setattr(cli, "_build_client", lambda args: client)
+    rc = _run_with_watchdog(argv)
+    assert rc == 2
+    assert client.attempts == 1
+    assert "The regex /feat(/ is not valid: Unclosed group (field: search)" in capsys.readouterr().err

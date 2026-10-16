@@ -525,9 +525,7 @@ window.debugSyntaxHighlightJson = function(jsonString, options) {
     }
 
     function escapeAndMark(text, searchText) {
-        var escaped = String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-        if (searchText) escaped = highlightMatches(escaped, searchText);
-        return escaped;
+        return debugHighlightPlain(String(text), searchText);
     }
 
     function repeat(s, n) {
@@ -535,29 +533,281 @@ window.debugSyntaxHighlightJson = function(jsonString, options) {
     }
 };
 
-function debugHighlightPlain(text, searchText) {
-    var escaped = String(text == null ? '' : text)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
-    if (searchText) escaped = highlightMatches(escaped, searchText);
-    return escaped;
-}
-window.debugHighlightPlain = debugHighlightPlain;
+// The search syntax of the Network tab's search fields. The search runs on the
+// device, which parses it in SearchQuery.kt; this copy only finds what to mark,
+// and search-queries.json keeps the two in step. Terms separated by spaces must
+// all match, and | or OR between terms, which binds closer than a space, means
+// either. -term or NOT term leaves out what the term matches. A term is a word,
+// a "quoted phrase", or a regex, /pattern/ or regex:pattern, and can name the
+// field it looks at: url:, method:, status:, header:, or body:. Text that uses
+// none of it, such as /api/v1/users or "id":42, is a word as before.
+//
+// Returns { groups: [[term]] }, where a term is { negated, field, kind, value }:
+// field is '' for every field, and kind is 'text', 'regex', or 'status'. With
+// options.fields false, as for a WebSocket message, a field prefix is text.
+// Throws an Error for a status: that is not a code. A regex is not compiled.
+window.debugParseSearch = function(text, options) {
+    var fields = !(options && options.fields === false);
+    text = String(text == null ? '' : text);
+    var pos = 0;
+    var groups = [];
+    // A | or OR came before the next term, so that term joins the last group.
+    var joinNext = false;
+    for (;;) {
+        skipSpaces();
+        if (pos >= text.length) break;
+        if (text[pos] === '|') {
+            pos++;
+            joinNext = true;
+            continue;
+        }
+        var word = wordAt(pos);
+        if (word === 'OR') {
+            pos += 2;
+            joinNext = true;
+            continue;
+        }
+        if (word === 'AND') {
+            pos += 3;
+            continue;
+        }
+        var t = term();
+        if (!t) continue;
+        if (joinNext && groups.length) groups[groups.length - 1].push(t);
+        else groups.push([t]);
+        joinNext = false;
+    }
+    return { groups: groups };
 
-function highlightMatches(html, searchText) {
-    if (!searchText) return html;
-    var escapedQuery = String(searchText)
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-        .replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    if (!escapedQuery) return html;
-    try {
-        var re = new RegExp(escapedQuery, 'gi');
-        return html.replace(re, function(match) { return '<mark>' + match + '</mark>'; });
-    } catch(e) {
-        return html;
+    // Null for an operator with no term after it, such as a NOT at the end.
+    function term() {
+        var negated = false;
+        if (wordAt(pos) === 'NOT') {
+            pos += 3;
+            skipSpaces();
+            if (!startsTerm(pos)) return null;
+            negated = true;
+        }
+        if (text[pos] === '-' && startsTerm(pos + 1)) {
+            pos++;
+            negated = true;
+        }
+        var field = fieldPrefix();
+        var v = value();
+        if (field === 'status' && v.kind === 'text') {
+            if (!/^[0-9xX]{3}$/.test(v.value)) {
+                throw new Error('status: takes a code such as 404 or a class such as 4xx, not "' + v.value + '"');
+            }
+            v.kind = 'status';
+        }
+        return { negated: negated, field: field, kind: v.kind, value: v.value };
+    }
+
+    function fieldPrefix() {
+        if (!fields) return '';
+        for (var i = 0; i < DEBUG_SEARCH_FIELDS.length; i++) {
+            var name = DEBUG_SEARCH_FIELDS[i];
+            var end = pos + name.length;
+            if (text.substr(pos, name.length).toLowerCase() === name && text[end] === ':' && startsTerm(end + 1)) {
+                pos = end + 1;
+                return name;
+            }
+        }
+        return '';
+    }
+
+    function value() {
+        var v = null;
+        if (text[pos] === '"') {
+            v = quoted();
+            if (v != null) return { kind: 'text', value: v };
+        } else if (text[pos] === '/') {
+            v = slashRegex();
+            if (v != null) return { kind: 'regex', value: v };
+        } else if (text.substr(pos, 6).toLowerCase() === 'regex:' && pos + 6 < text.length && !isSpace(text[pos + 6])) {
+            pos += 6;
+            return { kind: 'regex', value: text[pos] === '"' ? quotedToEnd() : tokenToSpace() };
+        }
+        return { kind: 'text', value: plainWord() };
+    }
+
+    // A quote that opens a phrase, or null when it is text, as in "id":42, where the
+    // closing quote isn't followed by a space. A quote that is never closed runs to the end.
+    function quoted() {
+        var close = closingQuote(pos + 1);
+        if (close < 0) return pos + 1 < text.length ? quotedToEnd() : null;
+        if (close === pos + 1 || !endsTerm(close + 1)) return null;
+        var phrase = unquote(text.slice(pos + 1, close));
+        pos = close + 1;
+        return phrase;
+    }
+
+    function quotedToEnd() {
+        var close = closingQuote(pos + 1);
+        var end = close < 0 ? text.length : close;
+        var v = unquote(text.slice(pos + 1, end));
+        pos = close < 0 ? text.length : close + 1;
+        return v;
+    }
+
+    // From a slash to the next one, which must end the term, is a regex, and it can
+    // have spaces. A slash between them must be escaped as \/, so a path such as
+    // /api/v1/ stays text: its second slash doesn't end a term.
+    function slashRegex() {
+        var close = pos + 1;
+        while (close < text.length && text[close] !== '/') close += text[close] === '\\' ? 2 : 1;
+        if (close >= text.length || close === pos + 1 || !endsTerm(close + 1)) return null;
+        var source = text.slice(pos + 1, close);
+        pos = close + 1;
+        return source;
+    }
+
+    function tokenToSpace() {
+        var end = tokenEnd(pos);
+        var token = text.slice(pos, end);
+        pos = end;
+        return token;
+    }
+
+    function plainWord() {
+        var start = pos;
+        while (pos < text.length && !isSpace(text[pos]) && text[pos] !== '|') pos++;
+        if (pos === start) pos++;
+        return text.slice(start, pos);
+    }
+
+    function closingQuote(from) {
+        var i = from;
+        while (i < text.length) {
+            if (text[i] === '\\') i += 2;
+            else if (text[i] === '"') return i;
+            else i++;
+        }
+        return -1;
+    }
+
+    function unquote(v) {
+        return v.replace(/\\"/g, '"');
+    }
+
+    function wordAt(at) {
+        var end = at;
+        while (end < text.length && !isSpace(text[end]) && text[end] !== '|') end++;
+        return text.slice(at, end);
+    }
+
+    function tokenEnd(from) {
+        var end = from;
+        while (end < text.length && !isSpace(text[end])) end++;
+        return end;
+    }
+
+    function startsTerm(at) {
+        return at < text.length && !isSpace(text[at]) && text[at] !== '|';
+    }
+
+    function endsTerm(at) {
+        return at >= text.length || isSpace(text[at]) || text[at] === '|';
+    }
+
+    function isSpace(c) {
+        return /\s/.test(c);
+    }
+
+    function skipSpaces() {
+        while (pos < text.length && isSpace(text[pos])) pos++;
+    }
+};
+
+var DEBUG_SEARCH_FIELDS = ['url', 'method', 'status', 'header', 'body'];
+
+// The last search the viewers marked, and its RegExps by field: a body is
+// marked piece by piece, and each piece would parse the query again.
+var debugSearchCache = { search: null, query: null, byField: {} };
+
+// The RegExps that find what search marks in field. search is a query in the
+// syntax above, or what debugParseSearch returned for one. A negated term marks
+// nothing, nor does a query that doesn't parse or a regex this browser can't
+// compile.
+function debugSearchMatchers(search, field) {
+    if (!search) return [];
+    if (debugSearchCache.search !== search) {
+        var query = null;
+        try {
+            query = typeof search === 'string' ? window.debugParseSearch(search) : search;
+        } catch(e) {}
+        debugSearchCache = { search: search, query: query, byField: {} };
+    }
+    var cached = debugSearchCache.byField[field];
+    if (cached) return cached;
+    var matchers = [];
+    ((debugSearchCache.query && debugSearchCache.query.groups) || []).forEach(function(group) {
+        group.forEach(function(t) {
+            if (t.negated || t.kind === 'status' || (t.field && t.field !== field)) return;
+            try {
+                var source = t.kind === 'regex' ? t.value : t.value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                matchers.push(new RegExp(source, 'gi'));
+            } catch(e) {}
+        });
+    });
+    debugSearchCache.byField[field] = matchers;
+    return matchers;
+}
+
+// Where search finds something in text for field ('body' when left out), as
+// sorted [start, end) pairs that don't overlap.
+function debugMatchRanges(text, search, field) {
+    var matchers = debugSearchMatchers(search, field || 'body');
+    var ranges = [];
+    matchers.forEach(function(re) {
+        re.lastIndex = 0;
+        for (var match = re.exec(text); match; match = re.exec(text)) {
+            // A regex such as a* also matches nothing, which has nothing to mark.
+            if (!match[0].length) {
+                re.lastIndex++;
+                continue;
+            }
+            ranges.push([match.index, match.index + match[0].length]);
+        }
+    });
+    if (matchers.length < 2) return ranges;
+    ranges.sort(function(a, b) { return a[0] - b[0] || a[1] - b[1]; });
+    var merged = [];
+    ranges.forEach(function(r) {
+        var last = merged[merged.length - 1];
+        if (last && r[0] <= last[1]) last[1] = Math.max(last[1], r[1]);
+        else merged.push(r.slice());
+    });
+    return merged;
+}
+window.debugMatchRanges = debugMatchRanges;
+
+// text escaped, with a <mark> around each part of it that ranges cover. The
+// ranges are offsets in a longer text, in which this one starts at offset.
+function debugMarkRanges(text, ranges, offset) {
+    var out = '';
+    var at = 0;
+    ranges.forEach(function(r) {
+        var start = Math.max(r[0] - offset, at);
+        var end = Math.min(r[1] - offset, text.length);
+        if (end <= start) return;
+        out += escapeText(text.slice(at, start)) + '<mark>' + escapeText(text.slice(start, end)) + '</mark>';
+        at = end;
+    });
+    return out + escapeText(text.slice(at));
+
+    function escapeText(t) {
+        return t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
 }
+window.debugMarkRanges = debugMarkRanges;
+
+// text escaped, with what search finds in field ('body' when left out) marked.
+function debugHighlightPlain(text, search, field) {
+    text = String(text == null ? '' : text);
+    return debugMarkRanges(text, search ? debugMatchRanges(text, search, field) : [], 0);
+}
+window.debugHighlightPlain = debugHighlightPlain;
 
 // The body viewers below each take a captured body's text and return the HTML
 // of one element. They escape every character of the body, and only the
@@ -741,38 +991,12 @@ window.debugHighlightMarkup = function(src, options) {
         var matches = debugMatchRanges(tok.pieces.map(function(p) { return p.text; }).join(''), searchText);
         var offset = 0;
         return '<span class="g">' + tok.pieces.map(function(p) {
-            var marked = markSlice(p.text, offset, matches);
+            var marked = debugMarkRanges(p.text, matches, offset);
             offset += p.text.length;
             return p.cls ? '<span class="' + p.cls + '">' + marked + '</span>' : marked;
         }).join('') + '</span>';
     }
-    // The part of the matches that falls in text, which starts at offset.
-    function markSlice(text, offset, matches) {
-        var out = '';
-        var at = 0;
-        matches.forEach(function(match) {
-            var start = Math.max(match[0] - offset, at);
-            var end = Math.min(match[1] - offset, text.length);
-            if (end <= start) return;
-            out += debugHighlightPlain(text.slice(at, start), '')
-                + '<mark>' + debugHighlightPlain(text.slice(start, end), '') + '</mark>';
-            at = end;
-        });
-        return out + debugHighlightPlain(text.slice(at), '');
-    }
 };
-
-// Where searchText occurs in text, as [start, end) pairs, with the matching
-// highlightMatches uses: literal and case-insensitive.
-function debugMatchRanges(text, searchText) {
-    var matches = [];
-    if (!searchText) return matches;
-    var re = new RegExp(String(searchText).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
-    for (var match = re.exec(text); match; match = re.exec(text)) {
-        matches.push([match.index, match.index + match[0].length]);
-    }
-    return matches;
-}
 
 // Elements a body leaves open, such as an XML body's <br>s, nest deeper with
 // each one. Past this depth an element takes no children, so what follows it

@@ -11,7 +11,7 @@ the protocol a stable public contract independent of the library's Kotlin API.
   A future incompatible revision becomes `/api/v2/`, and the old major stays
   alive for at least one major release.
 - The **minor** protocol version is reported at runtime in
-  `GET /api/v1/_meta` as `_meta.protocolVersion` (currently `1.6`).
+  `GET /api/v1/_meta` as `_meta.protocolVersion` (currently `1.7`).
 
 ## Contents
 
@@ -114,6 +114,19 @@ client got them.
   capture also reports `protocol`, from the `X-Android-Selected-Protocol`
   header that the platform adds, and leaves the platform's four `X-Android-*`
   headers out of `responseHeaders`.
+
+- **1.7** - The `search` parameter of `GET network/transactions` takes a
+  query. Terms separated by spaces must all match, `a | b` or `a OR b`
+  matches either, `-term` or `NOT term` leaves out, a `"quoted phrase"` keeps
+  its spaces, and `/pattern/` or `regex:pattern` is a regular expression in
+  Java's syntax. `url:`, `method:`, `status:`, `header:`, and `body:` limit a
+  term to one field. Without a field, a term also looks at the request and
+  response headers, each as the line `Name: value` as stored after redaction.
+  Plain text without the syntax finds what it found before, and the headers
+  too. A query that can't run, or a search that takes longer than 5 s, gets a
+  `400` with `field: search`. The `search` of
+  `GET network/websockets/{id}/events` takes the same syntax without the
+  fields.
 
 ## Status
 

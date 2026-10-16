@@ -117,6 +117,45 @@ class NetworkDebugTabTest {
     }
 
     @Test
+    fun `search takes the query syntax and finds the redacted headers`() {
+        val tab = tab()
+        val store = tab.captureSink as NetworkTrafficStore
+        val id =
+            store.beginRequest(
+                "https://example.com/v1/featured.json",
+                "GET",
+                Headers.of("Authorization" to "Bearer secret", "Accept" to "application/json"),
+                null,
+                null,
+            )
+        store.completeRequest(id, CapturedResponse.Builder(404, 5).headers(Headers.of("Cache-Control" to "no-cache")).build())
+        tab.capture("https://example.com/v1/popular.json")
+        val urls = { query: String ->
+            tab.handle(get("transactions", "search" to query))!!.json().getJSONArray("items").objects().map { it.getString("url") }
+        }
+
+        assertEquals(listOf("https://example.com/v1/popular.json", "https://example.com/v1/featured.json"), urls("featured | popular"))
+        assertEquals(listOf("https://example.com/v1/featured.json"), urls("cache-control status:4xx"))
+        assertEquals(listOf("https://example.com/v1/popular.json"), urls("/v\\d/ -featured"))
+        // The header is stored redacted, so the secret isn't there to find.
+        assertEquals(listOf("https://example.com/v1/featured.json"), urls("header:\"authorization: [redacted]\""))
+        assertEquals(emptyList<String>(), urls("secret"))
+    }
+
+    @Test
+    fun `a search that can't run is a 400 on the search field`() {
+        val tab = tab()
+        tab.capture("https://example.com/a")
+        for (query in listOf("/feat(/", "status:ok")) {
+            val res = tab.handle(get("transactions", "search" to query))!!
+            assertEquals(query, 400, res.status)
+            assertEquals("search", res.json().getString("field"))
+        }
+    }
+
+    private fun org.json.JSONArray.objects(): List<JSONObject> = (0 until length()).map { getJSONObject(it) }
+
+    @Test
     fun `a cursor from another tab instance gets a reset`() {
         // Models an app restart: the new tab's sequence reaches the value of the
         // client's old cursor with a different list.

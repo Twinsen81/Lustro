@@ -177,9 +177,9 @@ class NetworkTrafficStoreTest {
             MediaType.TEXT,
         )
 
-        assertEquals(1, store.getTransactions(search = "users").size)
-        assertEquals(1, store.getTransactions(search = "POST").size)
-        assertEquals(1, store.getTransactions(search = "needle").size)
+        assertEquals(1, store.getTransactions(search = SearchQuery.parse("users")).size)
+        assertEquals(1, store.getTransactions(search = SearchQuery.parse("POST")).size)
+        assertEquals(1, store.getTransactions(search = SearchQuery.parse("needle")).size)
         assertEquals(2, store.getTransactions(search = null).size)
     }
 
@@ -189,22 +189,22 @@ class NetworkTrafficStoreTest {
         store.beginRequest("https://example.com/Users", "get", Headers.EMPTY, captured("Ärger ÜBER"), MediaType.TEXT)
 
         for (query in listOf("users", "USERS", "GET", "ärger", "über", "r üb")) {
-            assertEquals(query, 1, store.getTransactions(search = query).size)
+            assertEquals(query, 1, store.getTransactions(search = SearchQuery.parse(query)).size)
         }
-        assertEquals(0, store.getTransactions(search = "userz").size)
+        assertEquals(0, store.getTransactions(search = SearchQuery.parse("userz")).size)
     }
 
     @Test
     fun `search re-checks a transaction once its response arrives`() {
         val store = store()
         val id = store.beginRequest("https://example.com/a", "GET", Headers.EMPTY, null, null)
-        assertEquals(0, store.getTransactions(search = "needle").size)
+        assertEquals(0, store.getTransactions(search = SearchQuery.parse("needle")).size)
 
         store.respond(id, 200, Headers.EMPTY, captured("a Needle"), 5)
 
-        assertEquals(1, store.getTransactions(search = "needle").size)
-        assertEquals(0, store.getTransactions(search = "haystack").size)
-        assertEquals(1, store.getTransactions(search = "needle").size)
+        assertEquals(1, store.getTransactions(search = SearchQuery.parse("needle")).size)
+        assertEquals(0, store.getTransactions(search = SearchQuery.parse("haystack")).size)
+        assertEquals(1, store.getTransactions(search = SearchQuery.parse("needle")).size)
     }
 
     @Test

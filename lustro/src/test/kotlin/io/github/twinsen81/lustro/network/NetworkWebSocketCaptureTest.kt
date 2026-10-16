@@ -226,7 +226,12 @@ class NetworkWebSocketCaptureTest {
         assertEquals(listOf("message received text order paid"), last.getJSONArray("items").objects().map { it.summary() })
         assertEquals("unchanged", tab.events(id, "cursor" to last.getString("cursor")).getString("status"))
 
-        for ((name, value) in listOf("limit" to "0", "limit" to "many", "direction" to "up")) {
+        // The query syntax applies, and a field prefix is text, since a message has no fields.
+        val either = tab.events(id, "search" to "shipped | /^order\\sp/", "direction" to "sent")
+        assertEquals(listOf("message sent text Order SHIPPED", "message sent text order paid"), either.getJSONArray("items").objects().map { it.summary() })
+        assertEquals(0, tab.events(id, "search" to "url:order").getJSONArray("items").length())
+
+        for ((name, value) in listOf("limit" to "0", "limit" to "many", "direction" to "up", "search" to "/(/")) {
             val error = tab.handle(get("websockets/$id/events", name to value))!!
             assertEquals(400, error.status)
             assertEquals(name, JSONObject(error.body.toString(Charsets.UTF_8)).getString("field"))

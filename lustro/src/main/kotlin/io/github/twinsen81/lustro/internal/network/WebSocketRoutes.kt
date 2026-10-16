@@ -63,11 +63,31 @@ internal class WebSocketRoutes(
                 else -> given.toIntOrNull()?.takeIf { it >= 1 }
                     ?: return DebugResponse.error("limit must be a whole number, 1 or more", field = "limit")
             }
-        val needle = request.queryParam("search")?.takeIf { it.isNotBlank() }?.foldCase()
+        // A message has only its text, so a field prefix such as url: is text too.
+        val search =
+            try {
+                request.queryParam("search")?.takeIf { it.isNotBlank() }?.let { SearchQuery.parse(it, fields = false) }
+            } catch (e: SearchQueryException) {
+                return DebugResponse.error(e.message.orEmpty(), field = "search")
+            }
+        val budget = SearchBudget(SearchBudget.DEFAULT_TIMEOUT_MS)
         val matches = { event: WebSocketEvent ->
             (direction == null || event.outgoing == (direction == SENT)) &&
-                (needle == null || event.text?.containsFolded(needle) == true)
+                (search == null || search.isEmpty || search.matchesText(event.text, budget))
         }
+        return try {
+            eventsEnvelope(log, matches, limit, request)
+        } catch (e: SearchTimeoutException) {
+            DebugResponse.error(e.message.orEmpty(), field = "search")
+        }
+    }
+
+    private fun eventsEnvelope(
+        log: WebSocketEventLog,
+        matches: (WebSocketEvent) -> Boolean,
+        limit: Int,
+        request: DebugRequest,
+    ): DebugResponse {
         val events = log.events
         return DebugResponse.streamEnvelope(
             total = log.stored,

@@ -24,6 +24,9 @@ import io.github.twinsen81.lustro.internal.network.NetworkSendRequestImpl
 import io.github.twinsen81.lustro.internal.network.NetworkTrafficStore
 import io.github.twinsen81.lustro.internal.network.NetworkTransaction
 import io.github.twinsen81.lustro.internal.network.SafeCaptureFilter
+import io.github.twinsen81.lustro.internal.network.SearchQuery
+import io.github.twinsen81.lustro.internal.network.SearchQueryException
+import io.github.twinsen81.lustro.internal.network.SearchTimeoutException
 import io.github.twinsen81.lustro.internal.network.WebSocketCapture
 import io.github.twinsen81.lustro.internal.network.WebSocketRoutes
 import io.github.twinsen81.lustro.internal.network.WebSocketTrafficStore
@@ -203,7 +206,8 @@ public class NetworkDebugTab private constructor(
                     </div>
                 </div>
                 <div class="net-search net-http-only">
-                    <label class="dc-field" for="search-input"><span class="dc-field__prefix" aria-hidden="true">&gt;</span><input type="text" id="search-input" name="search" aria-label="Search network traffic" class="dc-input" placeholder="filter url, method, body…" data-action="onSearchInput" title="Search across URL, method, request body, and response body (server-side, 300ms debounce). Matches are highlighted in body views. Shortcut: Ctrl/Cmd+K to focus." /></label>
+                    <label class="dc-field" for="search-input"><span class="dc-field__prefix" aria-hidden="true">&gt;</span><input type="text" id="search-input" name="search" aria-label="Search network traffic" aria-describedby="search-input-error" class="dc-input" placeholder="featured | popular" autocomplete="off" spellcheck="false" data-action="onSearchInput" title="Search the URL, the method, the headers, and the bodies, on the device, 300 ms after you stop typing. Words separated by spaces must all match; a | b matches either; -word leaves out; &quot;a phrase&quot; matches as typed; /regex/ is a regular expression; url:, method:, status:, header:, and body: search one field. The ? button explains more. Matches are marked in the detail. Ctrl/Cmd+K focuses the field, and Escape clears it." /><button type="button" class="dc-btn dc-btn--icon net-search-clear" data-action="clearSearch" data-target="search-input" hidden aria-label="Clear the search" title="Clear the search. Escape in the field does the same.">×</button><button type="button" class="dc-btn dc-btn--icon net-search-help" data-action="showSearchHelp" aria-label="How to write a search" title="How to write a search: or, and, not, phrases, regular expressions, and fields.">?</button></label>
+                    <div class="net-search-error" id="search-input-error" role="alert" hidden></div>
                 </div>
                 <div class="net-category-bar net-http-only" id="category-filters"></div>
                 <div class="net-filter-bar net-http-only" id="status-filters"></div>
@@ -287,6 +291,31 @@ public class NetworkDebugTab private constructor(
                 </div>
             </div>
         </div>
+        <div id="search-help-modal" class="dc-modal-scrim" hidden>
+            <div class="dc-modal dc-modal--wide" role="dialog" aria-labelledby="search-help-title">
+                <div class="dc-modal__head">
+                    <span class="dc-modal__title" id="search-help-title">How to write a search</span>
+                    <button class="dc-modal__close" data-action="closeSearchHelp" title="Close.">×</button>
+                </div>
+                <div class="dc-modal__body">
+                    <table class="dc-kv net-search-examples">
+                        <tr><th class="dc-kv__key">featured | popular</th><td class="dc-kv__value">Either word. featured OR popular is the same.</td></tr>
+                        <tr><th class="dc-kv__key">lists json</th><td class="dc-kv__value">Both words.</td></tr>
+                        <tr><th class="dc-kv__key">podcasts -analytics</th><td class="dc-kv__value">This, but not that. NOT analytics is the same as -analytics.</td></tr>
+                        <tr><th class="dc-kv__key">-analytics</th><td class="dc-kv__value">Not this.</td></tr>
+                        <tr><th class="dc-kv__key">&quot;podcast list&quot;</th><td class="dc-kv__value">The exact phrase, with its spaces.</td></tr>
+                        <tr><th class="dc-kv__key">/featured-\d+\.json/</th><td class="dc-kv__value">A regular expression. regex:featured-\d+ is the same.</td></tr>
+                        <tr><th class="dc-kv__key">url:feed</th><td class="dc-kv__value">One field: url:, method:, status:, header:, or body:. method:post is the whole method, and status:4xx is a class of status codes.</td></tr>
+                    </table>
+                    <p class="net-filter-note">Case is ignored. | binds closer than a space, so a b | c means a, and b or c. Without a field, a search looks at the URL, the method, the headers, and the bodies, but not at the status. A header is the line Name: value as it is stored, so a redacted value is found as [REDACTED].</p>
+                    <p class="net-filter-note">A path such as /api/v1/ is text. In a regular expression, write a slash as \/. Text that would be an operator, such as -1 or status:ok, is text in quotes: &quot;-1&quot;. The search runs on the device, with Java's regular expressions.</p>
+                    <p class="net-filter-note">The search of a WebSocket's messages takes the same syntax without the fields: url:x is text there.</p>
+                </div>
+                <div class="dc-modal__foot">
+                    <button class="dc-btn dc-btn--primary" data-action="closeSearchHelp" title="Close.">Close</button>
+                </div>
+            </div>
+        </div>
         """.trimIndent()
 
     // The static OpenAPI lives at assets/lustro/network.openapi.json; the tab
@@ -318,21 +347,30 @@ public class NetworkDebugTab private constructor(
     }
 
     private fun handleTransactions(request: DebugRequest): DebugResponse {
-        val search = request.queryParam("search")?.takeIf { it.isNotBlank() }
-        return DebugResponse.cursorEnvelope(
-            // A handshake's webSocketId depends on which connections are listed, so
-            // a change to that set is a change to this list. Both counts only grow.
-            currentSequence = store.getSequence() + webSocketStore.getMembershipSequence(),
-            clientCursor = request.queryParam("cursor"),
-            state = stateJson(),
-            epoch = store.epoch,
-        ) {
-            val transactions = store.getTransactions(search = search)
-            val webSockets = webSocketStore.transactionLinks()
-            transactions.forEachIndexed { index, tx ->
-                if (index > 0) append(",")
-                appendTransaction(tx, brief = true, webSocketId = webSockets[tx.id])
+        val search =
+            try {
+                request.queryParam("search")?.takeIf { it.isNotBlank() }?.let { SearchQuery.parse(it) }
+            } catch (e: SearchQueryException) {
+                return DebugResponse.error(e.message.orEmpty(), field = "search")
             }
+        return try {
+            DebugResponse.cursorEnvelope(
+                // A handshake's webSocketId depends on which connections are listed, so
+                // a change to that set is a change to this list. Both counts only grow.
+                currentSequence = store.getSequence() + webSocketStore.getMembershipSequence(),
+                clientCursor = request.queryParam("cursor"),
+                state = stateJson(),
+                epoch = store.epoch,
+            ) {
+                val transactions = store.getTransactions(search = search)
+                val webSockets = webSocketStore.transactionLinks()
+                transactions.forEachIndexed { index, tx ->
+                    if (index > 0) append(",")
+                    appendTransaction(tx, brief = true, webSocketId = webSockets[tx.id])
+                }
+            }
+        } catch (e: SearchTimeoutException) {
+            DebugResponse.error(e.message.orEmpty(), field = "search")
         }
     }
 

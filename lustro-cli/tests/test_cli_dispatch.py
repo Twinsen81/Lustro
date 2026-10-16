@@ -335,3 +335,16 @@ def test_all_openapi_paths_are_covered():
         "/api/v1/network/send",
     }
     assert declared == covered, declared.symmetric_difference(covered)
+
+
+def test_a_search_that_starts_with_a_minus_is_the_value_of_search():
+    joined = cli._join_search_values(["net", "list", "--search", "-analytics", "--last", "5"])
+    assert joined == ["net", "list", "--search=-analytics", "--last", "5"]
+    args = cli.build_parser().parse_args(joined)
+    assert args.search == "-analytics"
+    assert args.last == 5
+
+
+def test_the_action_after_double_dash_is_left_alone():
+    argv = ["net", "wait", "--search", "a", "--", "tool", "--search", "-x"]
+    assert cli._join_search_values(argv) == argv

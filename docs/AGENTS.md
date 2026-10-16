@@ -50,8 +50,9 @@ or any start of an id that only one transaction has. When more than one id start
 print the matches and exit 2; when no id does, they exit 1. JSON output has the full id, which the
 wire routes in the curl examples need. The filters `--url`, `--method`, `--status` (a code such as
 `404`, or a class such as `5xx`), and `--errors` combine with each other and with `--search`, which
-the server runs over the URL, the method, and the bodies. Global flags, such as `--json` and
-`--port`, go before or after the command.
+the server runs over the URL, the method, the headers, and the bodies (see
+[Search syntax](#search-syntax)). Global flags, such as `--json` and `--port`, go before or after
+the command.
 
 `lustro open` forwards a local port to the app's port on the device. When another process holds
 local port 8080, `--local-port 0` lets adb choose a free local port, and `--local-port N` forwards
@@ -84,6 +85,32 @@ milliseconds. So give the command that makes the app send the request after `--`
 `net wait` runs it after its first poll. When the action is not a shell command, start
 `lustro net wait` in the background before the action.
 
+### Search syntax
+
+`--search` and the search field of the Network tab take the same query, and the app runs it:
+
+| Query | Matches |
+| --- | --- |
+| `featured \| popular`, `featured OR popular` | either word |
+| `lists json` | both words |
+| `podcasts -analytics`, `podcasts NOT analytics` | the first word, but not the second |
+| `"podcast list"` | the phrase, with its spaces |
+| `/featured-\d+\.json/`, `regex:featured-\d+` | a regular expression, in Java's syntax |
+| `url:feed`, `method:post`, `status:4xx`, `header:no-cache`, `body:token` | in that field only |
+
+Case is ignored, and `|` binds closer than a space: `a b | c` is a, and b or c. Without a field, a
+term looks at the URL, the final URL, the method, the request and response headers (each as the
+line `Name: value`), and the bodies, but not the status. `method:` names the whole method, and
+`status:` takes a code or a class. Headers and bodies are searched as stored, so a redacted value
+is found as `[REDACTED]`, not as the secret. Text that can't be syntax, such as `/api/v1/users` or
+`"id":42`, is a word; put any other text in quotes, as `"-1"` or `"status:ok"`. A regex ends at a
+slash followed by a space, `|`, or the end, so it can have spaces, and a slash in it is `\/`.
+
+A query that can't run, such as a regex that doesn't compile, makes the command print the reason
+and exit 2, and so does a search that takes longer than 5 s. `--url` is plain text, not a query;
+for a regex on the URL, use `--search 'url:/.../'`. `net ws events --search` takes the same syntax
+without the fields, since a message has only its text.
+
 `lustro net poll` prints transactions as they arrive. When a request that was in flight finishes
 or fails, it prints its row again, marked `[update]`; with `--json`, the later line for an id
 replaces the earlier one.
@@ -110,7 +137,7 @@ default:
 server received it. `[not sent]` marks a message that `send()` refused. A long text ends with a
 marker that names the command for the rest, such as
 `[... 299961 more bytes: lustro net ws payload 3d2a7f10 5]`, and `lustro net ws payload <id> <seq>
-[-o FILE]` prints or saves a payload as it is stored. `--sent`, `--received`, and `--search TEXT`
+[-o FILE]` prints or saves a payload as it is stored. `--sent`, `--received`, and `--search QUERY`
 select events on the server, `--last N` or `--all` sets how many, and `--follow` then prints each
 new event as it comes. `--json` prints JSON Lines, and `--fields seq,kind,preview` keeps only those
 keys.
@@ -231,7 +258,7 @@ below summarizes it. All routes are token-authenticated and use the shared error
 
 | Operation | Route | Notes |
 | --- | --- | --- |
-| Poll transactions | `GET transactions?cursor=&search=` | Cursor envelope. First poll (no/invalid cursor) → `reset` with the full list; cursor unchanged → `unchanged` (items omitted); after a change → `delta`. `search` filters case-insensitively over URL, method, and bodies. Carries a top-level `state` `{ paused, overwriteMode, throttleDelayMs, captureFilter }`. |
+| Poll transactions | `GET transactions?cursor=&search=` | Cursor envelope. First poll (no/invalid cursor) → `reset` with the full list; cursor unchanged → `unchanged` (items omitted); after a change → `delta`. `search` takes the [search syntax](#search-syntax) over the URL, the method, the headers, and the bodies; `400` with `field: search` when it can't run. Carries a top-level `state` `{ paused, overwriteMode, throttleDelayMs, captureFilter }`. |
 | Transaction detail | `GET transactions/{id}` | Full object (headers + bodies, with truncation flags). Enveloped `404` if missing. |
 | Transaction body | `GET transactions/{id}/body/{request\|response}` | One body as it is stored: the bytes of an image, or the redacted text as UTF-8. Not JSON. Enveloped `404` when no body was kept. See below. |
 | Export as HAR | `GET transactions/_/export?format=har&ids=` | A HAR 1.2 document of the transactions in `ids` (comma-separated), or of every one. See below. |
@@ -390,7 +417,7 @@ has `seq`, `at` (epoch milliseconds), `timestamp`, and `kind`, and only the othe
   `close()`. `closed`: `code`, `reason`. `cancel`: nothing more. `failure`: `error`, `statusCode`.
 
 `seq` orders the events and names one in the payload route; a number can be missing. `direction`
-and `search` (over the stored text, case-insensitive) leave events out of `items`. When
+and `search` (over the stored text, in the [search syntax](#search-syntax) without the fields) leave events out of `items`. When
 `previewComplete` is `false`, `GET websockets/{id}/events/{seq}/payload` returns the stored text;
 for a binary message it returns the bytes. A connection keeps its last 1000 events by default:
 `evictedEvents` on the connection counts the ones it no longer has, `dropped` in a `delta` counts

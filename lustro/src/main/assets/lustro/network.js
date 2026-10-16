@@ -31,9 +31,10 @@
     var selectMode = false;
     var selectedIds = {};         // transaction id -> true; only ids the filters show
     var lastCursor = null;        // opaque cursor token; omitted on the first poll
-    var searchText = '';
+    var searchText = '';          // the search the list shows: the last one the app accepted
     var searchTimer = null;
     var searchGen = 0;
+    var searchRequest = 0;
     var isPaused = false;
     var isOverwriteMode = false;
     var throttleDelayMs = 0;
@@ -341,17 +342,87 @@
     }
 
     window.onSearchInput = function(val) {
+        updateSearchClear('search-input');
         clearTimeout(searchTimer);
-        searchTimer = setTimeout(function() {
-            searchText = val;
-            // Search is part of the poll query; a changed query invalidates the
-            // cursor so the server returns a fresh (reset) list for the new query.
-            lastCursor = null;
-            searchGen++;
-            resetDisplayLimit();
-            fetchTransactions();
-            if (currentDetailTx && trafficView === 'http') renderDetail(currentDetailTx);
-        }, 300);
+        searchTimer = setTimeout(function() { applySearch(val); }, 300);
+    };
+
+    // The search runs on the device, which says what is wrong with a query that
+    // can't run. So a new query takes effect only once the app accepts it, and
+    // until then, or after an error, the list stays as the last query left it.
+    function applySearch(val) {
+        clearTimeout(searchTimer);
+        var request = ++searchRequest;
+        if (val === searchText) {
+            showSearchError('search-input', null);
+            return;
+        }
+        fetch(netUrl('transactions') + (val ? '?search=' + encodeURIComponent(val) : ''))
+            .then(readSearchAnswer)
+            .then(function(answer) {
+                if (request !== searchRequest) return;
+                showSearchError('search-input', answer.error);
+                if (answer.error) return;
+                searchText = val;
+                // The answer is a reset list with its own cursor; a poll that
+                // left with the old query is ignored when it comes back.
+                lastCursor = null;
+                searchGen++;
+                resetDisplayLimit();
+                handlePollData(answer.data);
+                if (currentDetailTx && trafficView === 'http') renderDetail(currentDetailTx);
+            })
+            .catch(function() {
+                // The app didn't answer, as when it is in the background: try again.
+                if (request === searchRequest) searchTimer = setTimeout(function() { applySearch(val); }, 1500);
+            });
+    }
+
+    // A search's response as { data }, or as { error } when the app says that the
+    // query can't run. Any other failure rejects, so the caller tries again.
+    function readSearchAnswer(r) {
+        return r.json().catch(function() { return null; }).then(function(data) {
+            if (r.ok) return { data: data };
+            if (data && data.field === 'search') return { error: data.message || 'The search can\'t run.' };
+            throw new Error('HTTP ' + r.status);
+        });
+    }
+
+    // The error goes under the field; the list keeps what the last valid query found.
+    function showSearchError(inputId, message) {
+        var el = document.getElementById(inputId + '-error');
+        var input = document.getElementById(inputId);
+        if (el) {
+            el.textContent = message || '';
+            el.hidden = !message;
+        }
+        var field = input && input.closest('.dc-field');
+        if (field) field.classList.toggle('net-search--invalid', !!message);
+    }
+
+    function updateSearchClear(inputId) {
+        var input = document.getElementById(inputId);
+        var button = document.querySelector('[data-action="clearSearch"][data-target="' + inputId + '"]');
+        if (input && button) button.hidden = !input.value;
+    }
+
+    window.clearSearch = function(inputId) {
+        var input = document.getElementById(inputId);
+        if (!input) return;
+        input.value = '';
+        updateSearchClear(inputId);
+        if (inputId === 'ws-search') applyWsSearch('');
+        else applySearch('');
+        input.focus();
+    };
+
+    var searchHelpModal = null;
+    window.showSearchHelp = function() {
+        if (!searchHelpModal) searchHelpModal = window.debugModal('search-help-modal');
+        searchHelpModal.show();
+    };
+    window.closeSearchHelp = function() {
+        if (searchHelpModal) searchHelpModal.hide();
     };
 
     function filterTransactions() {
@@ -745,7 +816,7 @@
         var statusLabel = tx.error ? 'Error' : (tx.statusCode || 'Pending');
         if (streaming) statusLabel += ' streaming';
         var html = '<div class="net-detail-header">';
-        html += '<div class="net-detail-method-url"><span class="net-detail-method ' + methodClass(tx) + '">' + debugEscapeHtml(tx.method || '') + '</span> ' + debugEscapeHtml(tx.url) + ' ' + copyBtn(tx.url || '') + '</div>';
+        html += '<div class="net-detail-method-url"><span class="net-detail-method ' + methodClass(tx) + '">' + debugEscapeHtml(tx.method || '') + '</span> ' + debugHighlightPlain(tx.url, searchText, 'url') + ' ' + copyBtn(tx.url || '') + '</div>';
         html += '<div class="net-detail-meta">';
         html += '<span class="' + sc + '">' + statusLabel + '</span>';
         html += '<span>' + (tx.durationMs != null ? tx.durationMs + 'ms' + (streaming ? ' streaming' : '') : '—') + '</span>';
@@ -820,7 +891,7 @@
         steps.forEach(function(step) {
             var cls = step.statusCode ? statusClass({ statusCode: step.statusCode, responseComplete: true }) : '';
             html += '<div class="net-redirect-step"><span class="net-redirect-code ' + cls + '">' + debugEscapeHtml(step.label) + '</span>'
-                + '<span class="net-redirect-url">' + debugEscapeHtml(step.url || '') + '</span>'
+                + '<span class="net-redirect-url">' + debugHighlightPlain(step.url || '', searchText, 'url') + '</span>'
                 + (step.final ? ' ' + copyBtn(step.url || '') : '') + '</div>';
         });
         return html + '</div>';
@@ -1120,15 +1191,22 @@
         return codings.join(', ');
     }
 
+    // Search sees a header as the line "Name: value", so a match is found in that
+    // line and marked in the name and the value.
     function formatHeaders(headers) {
         var keys = Object.keys(headers);
+        var matched = 0;
         var rows = keys.map(function(k) {
-            return '<tr class="net-header-row"><td class="net-header-key">' + debugEscapeHtml(k)
-                + '</td><td class="net-header-value">' + copyBtn(headers[k], 'net-copy-hover') + debugEscapeHtml(headers[k]) + '</td></tr>';
+            var value = String(headers[k]);
+            var ranges = searchText ? debugMatchRanges(k + ': ' + value, searchText, 'header') : [];
+            if (ranges.length) matched++;
+            return '<tr class="net-header-row"><td class="net-header-key">' + debugMarkRanges(k, ranges, 0)
+                + '</td><td class="net-header-value">' + copyBtn(headers[k], 'net-copy-hover') + debugMarkRanges(value, ranges, k.length + 2) + '</td></tr>';
         }).join('');
         return '<details class="net-headers-details"' + (headersOpen() ? ' open' : '') + '>'
             + '<summary title="Expand or collapse the headers. The choice is remembered in your browser.">'
-            + keys.length + ' header' + (keys.length === 1 ? '' : 's') + '</summary>'
+            + keys.length + ' header' + (keys.length === 1 ? '' : 's')
+            + (matched ? ', <mark>' + matched + ' match' + (matched === 1 ? 'es' : '') + ' the search</mark>' : '') + '</summary>'
             + '<table class="net-headers-table">' + rows + '</table>'
             + '</details>';
     }
@@ -1977,16 +2055,6 @@
         }
     }
 
-    function fetchTransactions() {
-        var gen = searchGen;
-        debugFetch(pollUrl())
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                if (gen === searchGen) handlePollData(data);
-            })
-            .catch(function() { /* next poll will retry */ });
-    }
-
     var pollSearchGen = searchGen;
     function startPolling() {
         debugPoll(function() {
@@ -2016,8 +2084,9 @@
     var wsEventsCursor = null;
     var wsMissed = 0;             // events evicted before this page got them
     var wsDirection = '';         // '', 'sent', or 'received'
-    var wsSearch = '';
+    var wsSearch = '';            // the search the log shows: the last one the app accepted
     var wsSearchTimer = null;
+    var wsSearchRequest = 0;
     var wsSelectedSeq = null;
     var wsJsonView = 'tree';
     var wsEventsTimer = null;
@@ -2156,6 +2225,8 @@
         wsSelectedId = id;
         wsMissed = 0;
         wsSearch = '';
+        clearTimeout(wsSearchTimer);
+        wsSearchRequest++;
         renderWsList();
         switchRightTab('detail');
         renderWsFrame();
@@ -2200,13 +2271,18 @@
             }).join('')
             + '</div>'
             + '<label class="dc-field net-ws-search" for="ws-search"><span class="dc-field__prefix" aria-hidden="true">&gt;</span>'
-            + '<input type="text" id="ws-search" name="wsSearch" aria-label="Search the messages" class="dc-input" placeholder="filter messages…" data-action="onWsSearchInput"'
-            + ' value="' + debugEscapeHtml(wsSearch) + '"'
-            + ' title="Show only the text messages that contain this text (server-side, 300ms debounce)."></label>'
+            + '<input type="text" id="ws-search" name="wsSearch" aria-label="Search the messages" aria-describedby="ws-search-error" class="dc-input" placeholder="ping | pong"'
+            + ' autocomplete="off" spellcheck="false" data-action="onWsSearchInput" value="' + debugEscapeHtml(wsSearch) + '"'
+            + ' title="Show only the text messages that match, on the device, 300 ms after you stop typing. The syntax is the request search\'s without the fields: a | b matches either, -word leaves out, &quot;a phrase&quot; matches as typed, and /regex/ is a regular expression. Escape clears the field.">'
+            + '<button type="button" class="dc-btn dc-btn--icon net-search-clear" data-action="clearSearch" data-target="ws-search"' + (wsSearch ? '' : ' hidden')
+            + ' aria-label="Clear the search" title="Clear the search. Escape in the field does the same.">×</button>'
+            + '<button type="button" class="dc-btn dc-btn--icon net-search-help" data-action="showSearchHelp" aria-label="How to write a search"'
+            + ' title="How to write a search: or, and, not, phrases, and regular expressions.">?</button></label>'
             + '<button class="dc-btn dc-btn--sm" data-action="copyWsMarkdown" title="Copy the connection and its last ' + WS_MARKDOWN_EVENTS
             + ' events as Markdown, for a bug report, a pull request, or a chat.">Markdown</button>'
             + '<button class="dc-btn dc-btn--sm" id="ws-har-btn" data-action="exportWsHar" title="Save the handshake request and the messages as a HAR file, which Chrome DevTools imports with the messages.">Export HAR</button>'
             + '</div>'
+            + '<div class="net-search-error" id="ws-search-error" role="alert" hidden></div>'
             + '<div id="ws-log-note" class="dc-comment net-ws-log-note"></div>'
             + '<div id="ws-gone-note" class="dc-comment net-ws-log-note" hidden>// The app no longer has this connection: it was cleared, or it passed the connection limit. These are the events this page got.</div>'
             + '<div class="net-ws-log" id="ws-log"><table class="dc-table"><tbody id="ws-events"></tbody></table></div>'
@@ -2312,9 +2388,7 @@
         var id = wsSelectedId;
         if (!id || trafficView !== 'ws') return;
         var request = ++wsEventsRequest;
-        var url = netUrl('websockets/' + encodeURIComponent(id) + '/events?limit=' + WS_MAX_ROWS)
-            + (wsEventsCursor != null ? '&cursor=' + encodeURIComponent(wsEventsCursor) : '')
-            + (wsSearch ? '&search=' + encodeURIComponent(wsSearch) : '');
+        var url = wsEventsUrl(id, wsEventsCursor, wsSearch);
         // Not debugFetch: a 404 here means that the app cleared or evicted the
         // connection, which must not show the console as disconnected. The poll
         // goes on, because a socket that is still open is listed again with its
@@ -2332,6 +2406,12 @@
             .then(function() {
                 if (request === wsEventsRequest) wsEventsTimer = setTimeout(pollWsEvents, WS_EVENTS_POLL_MS);
             });
+    }
+
+    function wsEventsUrl(id, cursor, search) {
+        return netUrl('websockets/' + encodeURIComponent(id) + '/events?limit=' + WS_MAX_ROWS)
+            + (cursor != null ? '&cursor=' + encodeURIComponent(cursor) : '')
+            + (search ? '&search=' + encodeURIComponent(search) : '');
     }
 
     function setWsGone(gone) {
@@ -2419,7 +2499,7 @@
 
     function wsEmptyRow() {
         return '<tr class="net-ws-info-row"><td class="dc-cell net-ws-empty" colspan="4">'
-            + (wsSearch ? 'No text message contains this text' : 'No events yet') + '</td></tr>';
+            + (wsSearch ? 'No text message matches the search' : 'No events yet') + '</td></tr>';
     }
 
     function wsEventRows(events) {
@@ -2482,20 +2562,49 @@
     };
 
     window.onWsSearchInput = function(val) {
+        updateSearchClear('ws-search');
         clearTimeout(wsSearchTimer);
-        wsSearchTimer = setTimeout(function() {
-            wsSearch = val;
-            // The search is part of the poll query, so the log is read again from its end.
-            wsEvents = [];
-            wsEventsCursor = null;
-            wsMissed = 0;
-            // The payload on screen marks the matches of the search before this one.
-            wsSelectedSeq = null;
-            var payload = document.getElementById('ws-payload');
-            if (payload) replacePart(payload, '<div class="net-empty-body">Select a message to see its payload</div>');
-            pollWsEvents();
-        }, 300);
+        wsSearchTimer = setTimeout(function() { applyWsSearch(val); }, 300);
     };
+
+    // As applySearch: the log changes only once the app accepts the query.
+    function applyWsSearch(val) {
+        clearTimeout(wsSearchTimer);
+        var id = wsSelectedId;
+        var request = ++wsSearchRequest;
+        if (!id || val === wsSearch) {
+            showSearchError('ws-search', null);
+            return;
+        }
+        fetch(wsEventsUrl(id, null, val))
+            .then(readSearchAnswer)
+            .then(function(answer) {
+                if (request !== wsSearchRequest || id !== wsSelectedId) return;
+                showSearchError('ws-search', answer.error);
+                if (answer.error) return;
+                wsSearch = val;
+                // The answer is the end of the log for the new query. A poll that
+                // left with the old one is ignored, and the next one goes on from here.
+                clearTimeout(wsEventsTimer);
+                wsEventsRequest++;
+                wsEvents = [];
+                wsEventsCursor = null;
+                wsMissed = 0;
+                // The payload on screen marks the matches of the search before this one.
+                wsSelectedSeq = null;
+                var payload = document.getElementById('ws-payload');
+                if (payload) replacePart(payload, '<div class="net-empty-body">Select a message to see its payload</div>');
+                applyWsEvents(answer.data);
+                if (!answer.data || answer.data.status === 'unchanged') renderWsEvents();
+                wsEventsTimer = setTimeout(pollWsEvents, WS_EVENTS_POLL_MS);
+            })
+            .catch(function() {
+                // The app didn't answer, or no longer has the connection: try again.
+                if (request === wsSearchRequest && id === wsSelectedId) {
+                    wsSearchTimer = setTimeout(function() { applyWsSearch(val); }, WS_EVENTS_POLL_MS);
+                }
+            });
+    }
 
     window.selectWsEvent = function(seq) {
         wsSelectedSeq = seq;
@@ -2543,13 +2652,24 @@
             });
     }
 
+    var wsParsedSearch = { text: null, query: null };
+    function wsSearchQuery() {
+        if (wsParsedSearch.text !== wsSearch) {
+            var query = null;
+            try { query = wsSearch ? debugParseSearch(wsSearch, { fields: false }) : null; } catch(e) {}
+            wsParsedSearch = { text: wsSearch, query: query };
+        }
+        return wsParsedSearch.query;
+    }
+
     // A text payload goes through the viewers that bodies use; a binary one is a hex dump.
     function showWsPayload(e, text) {
         var el = document.getElementById('ws-payload');
         if (!el) return;
         var binary = e.type === 'binary';
         var url = wsPayloadUrl(e);
-        var options = { searchText: wsSearch };
+        // A message has no fields, so a prefix such as url: is text, as on the device.
+        var options = { searchText: wsSearchQuery() };
         var tree = !binary && wsJsonView === 'tree' ? debugJsonTree(text, options) : null;
         var isJson = !binary && debugBodyKind(null, text, false) === 'json';
         var bar = '<div class="net-body-bar">';
@@ -2646,6 +2766,12 @@
             if (search) { search.focus(); search.select(); }
             return;
         }
+        // Escape in a search field clears it first; the next one closes the detail.
+        if (e.key === 'Escape' && !e.defaultPrevented && t && (t.id === 'search-input' || t.id === 'ws-search') && t.value) {
+            e.preventDefault();
+            window.clearSearch(t.id);
+            return;
+        }
         if (e.key === 'Escape' && !e.defaultPrevented && !document.querySelector('.dc-modal-scrim:not([hidden])')) {
             if (trafficView === 'ws') {
                 if (wsSelectedId) {
@@ -2729,6 +2855,9 @@
         switchWsJsonView: function(el) { window.switchWsJsonView(el.dataset.view); },
         copyWsMarkdown: function(el, ev) { window.copyWsMarkdown(ev); },
         exportWsHar: function() { window.exportWsHar(); },
+        clearSearch: function(el) { window.clearSearch(el.dataset.target); },
+        showSearchHelp: function() { window.showSearchHelp(); },
+        closeSearchHelp: function() { window.closeSearchHelp(); },
     };
 
     var delegationRoot = null;
