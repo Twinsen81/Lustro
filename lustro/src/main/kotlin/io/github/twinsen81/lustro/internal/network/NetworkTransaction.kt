@@ -53,6 +53,9 @@ internal data class NetworkTransaction(
     val finalUrl: String? = null,
     // The redirects and auth challenges the client followed up on, oldest first. Redacted.
     val priorResponses: List<PriorResponse> = emptyList(),
+    // How many earlier copies of this request overwrite mode removed for it: each
+    // one it replaced, and the ones those had replaced.
+    val replacedCount: Int = 0,
 ) {
     // Polls repeat the same search over a list that mostly hasn't changed, so
     // each snapshot remembers its last result. The store replaces a snapshot

@@ -42,6 +42,7 @@ internal fun StringBuilder.appendTransactionJson(
     append("\"mockRuleId\":${tx.mockRuleId.toJsonString()},")
     append("\"activeMockRuleId\":${rulesFor(tx, rules).answering(tx.url, tx.method)?.id.toJsonString()},")
     append("\"source\":\"${tx.source.wireName}\",")
+    append("\"replacedCount\":${tx.replacedCount},")
     append("\"requestContentType\":${tx.requestContentType.toJsonString()},")
     append("\"responseContentType\":${tx.responseContentType.toJsonString()},")
     append("\"requestBodyBytes\":${tx.requestBodyBytes ?: "null"},")

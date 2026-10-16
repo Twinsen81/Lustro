@@ -14,6 +14,21 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Added
 
+- **Overwrite mode keeps the selection, and shows which requests it replaced
+  (wire protocol 1.10).** With overwrite mode on, a request that the app sent
+  again removed the selected row, which had the same method and path: no row
+  was selected, and the detail still showed the removed request. Nothing
+  showed that the new row at the top was a repeat. Now the selection moves to
+  the request that replaced the selected one, and the detail shows it, on the
+  same Response or Request tab and at the same scroll position. The row that
+  the Mocks or Send pane put aside, and the request that Matching rules shows
+  the rules for, move to it too. The new row is highlighted for a moment and
+  has a badge such as **↻ 3**, with a tooltip such as "Replaced 3 earlier GET
+  /featured.json requests (overwrite mode)"; the detail shows the same badge.
+  With `prefers-reduced-motion`, the row has the badge and no highlight. Each
+  transaction has `replacedCount`: how many earlier copies of the request
+  overwrite mode removed for it, each counted with the copies it had
+  replaced.
 - **The Network tab says which mock rule answers a request (wire protocol
   1.9).** "Mock Rules" was a tab next to "Detail", so it looked like it was
   about the selected request, but it listed every rule. Only the "Mocked"

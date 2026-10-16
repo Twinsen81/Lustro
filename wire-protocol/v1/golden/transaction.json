@@ -15,6 +15,7 @@
   "mockRuleId": "orders-500",
   "activeMockRuleId": "orders-500",
   "source": "okhttp",
+  "replacedCount": 0,
   "requestContentType": null,
   "responseContentType": "application/json",
   "requestBodyBytes": 0,

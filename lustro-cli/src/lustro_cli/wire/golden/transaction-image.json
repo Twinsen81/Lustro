@@ -15,6 +15,7 @@
   "mockRuleId": null,
   "activeMockRuleId": null,
   "source": "okhttp",
+  "replacedCount": 0,
   "requestContentType": null,
   "responseContentType": "image/png",
   "requestBodyBytes": null,
