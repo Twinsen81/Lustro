@@ -1183,7 +1183,10 @@ window.debugFetch = async function(url, options) {
     }
 };
 
-window.debugPoll = function(endpointOrFn, intervalMs, callback) {
+// onRejected, when given, gets a response that isn't ok as (status, error
+// envelope or null), and returns true when it handled it: the poll then counts
+// the response as an answer from a connected app, not as a lost connection.
+window.debugPoll = function(endpointOrFn, intervalMs, callback, onRejected) {
     var consecutiveFailures = 0;
     var MAX_FAILURES = 3;
     var SLOW_INTERVAL = 5000;
@@ -1195,14 +1198,22 @@ window.debugPoll = function(endpointOrFn, intervalMs, callback) {
         try {
             var url = typeof endpointOrFn === 'function' ? endpointOrFn() : endpointOrFn;
             var resp = await fetch(url);
-            if (!resp.ok) throw new Error('HTTP ' + resp.status);
-            var data = await resp.json();
+            var handled = false;
+            if (!resp.ok) {
+                var envelope = null;
+                if (onRejected) {
+                    try { envelope = await resp.json(); } catch(e) {}
+                }
+                handled = !!onRejected && onRejected(resp.status, envelope) === true;
+                if (!handled) throw new Error('HTTP ' + resp.status);
+            }
+            var data = handled ? null : await resp.json();
             consecutiveFailures = 0;
             if (!isConnected) {
                 isConnected = true;
                 window.debugSetStatus('connected');
             }
-            callback(data);
+            if (!handled) callback(data);
         } catch(e) {
             consecutiveFailures++;
             if (consecutiveFailures >= MAX_FAILURES && isConnected) {

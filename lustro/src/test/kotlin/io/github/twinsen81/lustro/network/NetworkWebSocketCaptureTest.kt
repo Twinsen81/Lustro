@@ -239,6 +239,11 @@ class NetworkWebSocketCaptureTest {
         val badRegex = tab.handle(get("websockets/$id/events", "search" to "(", "regex" to "true"))!!
         assertEquals(400, badRegex.status)
         assertEquals("search", JSONObject(badRegex.body.toString(Charsets.UTF_8)).getString("field"))
+        tab.searchTimeoutMs = 0
+        val slow = tab.handle(get("websockets/$id/events", "search" to "order"))!!
+        assertEquals(400, slow.status)
+        assertEquals("search", JSONObject(slow.body.toString(Charsets.UTF_8)).getString("field"))
+        tab.searchTimeoutMs = 60_000
         assertEquals(404, tab.handle(get("websockets/unknown/events"))!!.status)
         assertEquals(404, tab.handle(get("websockets/unknown"))!!.status)
         assertNull(tab.handle(DebugRequest(path = "websockets", method = "POST")))

@@ -45,6 +45,9 @@
 .net-search-clear { font-size: 15px; }
 .net-search-help { font-family: var(--font-mono); font-size: 12px; font-weight: 600; }
 .net-search-regex { padding: 0 8px; }
+/* The field's label holds the prefix and the input only: a label can't hold
+   the buttons, which are controls of their own. */
+.net-search-label { display: flex; flex: 1; align-items: center; gap: 8px; min-width: 0; cursor: text; }
 .net-search-clear[hidden] { display: none; }
 .dc-field.net-search--invalid, .dc-field.net-search--invalid:focus-within { border-color: var(--danger); }
 .net-search-error { padding-top: 6px; color: var(--danger); font-size: 11.5px; line-height: 1.5; overflow-wrap: anywhere; }

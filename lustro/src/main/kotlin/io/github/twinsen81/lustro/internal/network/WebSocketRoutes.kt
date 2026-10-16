@@ -18,6 +18,7 @@ import io.github.twinsen81.lustro.internal.toDebugTimestamp
  */
 internal class WebSocketRoutes(
     private val store: WebSocketTrafficStore,
+    private val searchTimeoutMs: () -> Long,
     private val stateJson: () -> String,
 ) {
     fun handle(request: DebugRequest): DebugResponse? {
@@ -69,7 +70,7 @@ internal class WebSocketRoutes(
             } catch (e: SearchQueryException) {
                 return DebugResponse.error(e.message.orEmpty(), field = e.field)
             }
-        val budget = SearchBudget(SearchBudget.DEFAULT_TIMEOUT_MS)
+        val budget = SearchBudget(searchTimeoutMs())
         val matches = { event: WebSocketEvent ->
             (direction == null || event.outgoing == (direction == SENT)) &&
                 (search == null || search.matchesText(event.text, budget))

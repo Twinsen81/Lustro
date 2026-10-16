@@ -160,6 +160,18 @@ class NetworkDebugTabTest {
         assertEquals(200, tab.handle(get("transactions", "search" to "feat("))!!.status)
     }
 
+    @Test
+    fun `a search that passes its time is a 400 on the search field, and a poll without one still answers`() {
+        val tab = tab()
+        tab.capture("https://example.com/a")
+        tab.searchTimeoutMs = 0
+        val res = tab.handle(get("transactions", "search" to "example"))!!
+        assertEquals(400, res.status)
+        assertEquals("search", res.json().getString("field"))
+        assertTrue(res.json().getString("message"), res.json().getString("message").startsWith("The search took longer than 0 s"))
+        assertEquals(200, tab.handle(get("transactions"))!!.status)
+    }
+
     private fun org.json.JSONArray.objects(): List<JSONObject> = (0 until length()).map { getJSONObject(it) }
 
     @Test

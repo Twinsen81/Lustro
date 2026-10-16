@@ -24,6 +24,7 @@ import io.github.twinsen81.lustro.internal.network.NetworkSendRequestImpl
 import io.github.twinsen81.lustro.internal.network.NetworkTrafficStore
 import io.github.twinsen81.lustro.internal.network.NetworkTransaction
 import io.github.twinsen81.lustro.internal.network.SafeCaptureFilter
+import io.github.twinsen81.lustro.internal.network.SearchBudget
 import io.github.twinsen81.lustro.internal.network.SearchQuery
 import io.github.twinsen81.lustro.internal.network.SearchQueryException
 import io.github.twinsen81.lustro.internal.network.SearchTimeoutException
@@ -106,7 +107,11 @@ public class NetworkDebugTab private constructor(
             maxPayloadBytes = { this.maxBodyCaptureBytes },
         )
 
-    private val webSocketRoutes = WebSocketRoutes(webSocketStore) { stateJson() }
+    // How long a search may take. A test sets it to 0 to see a search stop.
+    @Volatile
+    internal var searchTimeoutMs: Long = SearchBudget.DEFAULT_TIMEOUT_MS
+
+    private val webSocketRoutes = WebSocketRoutes(webSocketStore, { searchTimeoutMs }) { stateJson() }
 
     // A factory that is already capturing is returned as it is, so wrapping
     // twice doesn't record every message twice.
@@ -206,7 +211,7 @@ public class NetworkDebugTab private constructor(
                     </div>
                 </div>
                 <div class="net-search net-http-only">
-                    <label class="dc-field" for="search-input"><span class="dc-field__prefix" aria-hidden="true">&gt;</span><input type="text" id="search-input" name="search" aria-label="Search network traffic" aria-describedby="search-input-error" class="dc-input" placeholder="filter url, method, headers, body…" autocomplete="off" spellcheck="false" data-action="onSearchInput" title="Search the URL, the method, the headers, and the bodies for this text, ignoring case, on the device, 300 ms after you stop typing. With REGEX on, the text is a regular expression. Matches are marked in the detail. Ctrl/Cmd+K focuses the field, and Escape clears it." /><button type="button" class="dc-btn dc-btn--icon net-search-clear" data-action="clearSearch" data-target="search-input" hidden aria-label="Clear the search" title="Clear the search. Escape in the field does the same.">×</button><button type="button" class="dc-btn dc-btn--sm net-search-regex" data-action="toggleSearchRegex" data-target="search-input" aria-pressed="false" title="Regular expression. On: the search is a Java regular expression that ignores case, such as featured|popular or v\d+/feed. Off: the text is found as typed. Remembered in your browser.">Regex</button><button type="button" class="dc-btn dc-btn--icon net-search-help" data-action="showSearchHelp" aria-label="Regex examples" title="Common regular expressions, with examples.">?</button></label>
+                    <div class="dc-field"><label class="net-search-label" for="search-input"><span class="dc-field__prefix" aria-hidden="true">&gt;</span><input type="text" id="search-input" name="search" aria-label="Search network traffic" aria-describedby="search-input-error" class="dc-input" placeholder="filter url, method, headers, body…" autocomplete="off" spellcheck="false" data-action="onSearchInput" title="Search the URL, the method, the headers, and the bodies for this text, ignoring case, on the device, 300 ms after you stop typing. With REGEX on, the text is a regular expression. Matches are marked in the detail. Ctrl/Cmd+K focuses the field, and Escape clears it." /></label><button type="button" class="dc-btn dc-btn--icon net-search-clear" data-action="clearSearch" data-target="search-input" hidden aria-label="Clear the search" title="Clear the search. Escape in the field does the same.">×</button><button type="button" class="dc-btn dc-btn--sm net-search-regex" data-action="toggleSearchRegex" data-target="search-input" aria-pressed="false" title="Regular expression. On: the search is a Java regular expression that ignores case, such as featured|popular or v\d+/feed. Off: the text is found as typed. Remembered in your browser.">Regex</button><button type="button" class="dc-btn dc-btn--icon net-search-help" data-action="showSearchHelp" aria-label="Regex examples" title="Common regular expressions, with examples.">?</button></div>
                     <div class="net-search-error" id="search-input-error" role="alert" hidden></div>
                 </div>
                 <div class="net-category-bar net-http-only" id="category-filters"></div>
@@ -364,7 +369,7 @@ public class NetworkDebugTab private constructor(
                 state = stateJson(),
                 epoch = store.epoch,
             ) {
-                val transactions = store.getTransactions(search = search)
+                val transactions = store.getTransactions(search = search, budget = SearchBudget(searchTimeoutMs))
                 val webSockets = webSocketStore.transactionLinks()
                 transactions.forEachIndexed { index, tx ->
                     if (index > 0) append(",")

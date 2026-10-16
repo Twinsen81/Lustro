@@ -64,3 +64,26 @@ test('the line-numbered view marks many matches in many lines in linear time', (
     // A match that spans lines is marked on each of them.
     assert.ok(win.debugLineNumbered('x\nab\ncd\ny', { searchText: /b\s+c/gi }).includes('a<mark>b</mark>\n</span><span class="dc-lines__line"><mark>c</mark>d'));
 });
+
+test('a poll lets its caller handle a rejected response, as a search that stopped, without losing the connection', async () => {
+    const statuses = [];
+    const rejected = [];
+    let answered = false;
+    const realStatus = win.debugSetStatus;
+    win.debugSetStatus = (state) => statuses.push(state);
+    win.fetch = async () => ({ ok: false, status: 400, json: async () => ({ error: 'bad_request', field: 'search', message: 'slow' }) });
+    try {
+        const poll = win.debugPoll('/x', 1000, () => { answered = true; }, (status, envelope) => {
+            rejected.push(status + ' ' + envelope.field);
+            return true;
+        });
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        poll.stop();
+    } finally {
+        win.debugSetStatus = realStatus;
+        delete win.fetch;
+    }
+    assert.deepStrictEqual(rejected, ['400 search']);
+    assert.strictEqual(answered, false);
+    assert.deepStrictEqual(statuses, ['connected']);
+});

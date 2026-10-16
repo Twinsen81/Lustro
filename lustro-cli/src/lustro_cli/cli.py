@@ -215,7 +215,7 @@ def _check_fields(
 
 def _search_params(args: argparse.Namespace) -> Dict[str, Optional[str]]:
     """The search and regex parameters of --search and --regex."""
-    if args.regex and args.search:
+    if args.regex:
         return {"search": args.search, "regex": "true"}
     return {"search": args.search}
 
@@ -1522,12 +1522,15 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _join_search_values(argv: List[str]) -> List[str]:
-    """Join --search and its value, so that argparse takes a query that starts
-    with a minus, such as ``-analytics``, as the value instead of an option."""
+    """Join --search and its value, so that argparse takes text that starts with
+    one minus, such as ``-1``, as the value instead of an option. A value that
+    starts with two, such as ``--json`` or ``--``, is left to argparse, which
+    says that --search has no value."""
     joined: List[str] = []
     i = 0
     while i < len(argv):
-        if argv[i] == "--search" and i + 1 < len(argv) and argv[i + 1].startswith("-"):
+        nxt = argv[i + 1] if i + 1 < len(argv) else ""
+        if argv[i] == "--search" and nxt.startswith("-") and not nxt.startswith("--"):
             joined.append("--search=" + argv[i + 1])
             i += 2
             continue
@@ -1543,6 +1546,8 @@ def _join_search_values(argv: List[str]) -> List[str]:
 def main(argv: Optional[List[str]] = None) -> int:
     parser = build_parser()
     args = parser.parse_args(_join_search_values(sys.argv[1:] if argv is None else list(argv)))
+    if getattr(args, "regex", False) and not getattr(args, "search", None):
+        parser.error("--regex makes --search TEXT a regular expression, so it needs --search")
     for name, default in GLOBAL_DEFAULTS.items():
         if not hasattr(args, name):
             setattr(args, name, default)

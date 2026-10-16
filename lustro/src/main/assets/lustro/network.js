@@ -2122,7 +2122,24 @@
             return pollUrl();
         }, 1500, function(data) {
             if (pollSearchGen === searchGen) handlePollData(data);
+        }, function(status, envelope) {
+            if (status !== 400 || !envelope || envelope.field !== 'search') return false;
+            if (pollSearchGen === searchGen) dropSearch(envelope.message);
+            return true;
         });
+    }
+
+    // A search the app accepted can stop being one it can run, as when a large
+    // body arrives for a slow regex. Each poll would run it again, so the list
+    // goes back to every request, and the error under the field says why.
+    function dropSearch(message) {
+        searchText = '';
+        searchTextRegex = false;
+        lastCursor = null;
+        searchGen++;
+        resetDisplayLimit();
+        showSearchError('search-input', (message || 'The search stopped.') + ' The list shows every request until you change the search.');
+        if (currentDetailTx && trafficView === 'http') renderDetail(currentDetailTx);
     }
 
     // ── WebSockets ──
@@ -2334,16 +2351,16 @@
                 return '<button class="dc-seg__item' + (d[0] === wsDirection ? ' dc-seg__item--active' : '') + '" data-action="setWsDirection" data-dir="' + d[0] + '">' + d[1] + '</button>';
             }).join('')
             + '</div>'
-            + '<label class="dc-field net-ws-search" for="ws-search"><span class="dc-field__prefix" aria-hidden="true">&gt;</span>'
+            + '<div class="dc-field net-ws-search"><label class="net-search-label" for="ws-search"><span class="dc-field__prefix" aria-hidden="true">&gt;</span>'
             + '<input type="text" id="ws-search" name="wsSearch" aria-label="Search the messages" aria-describedby="ws-search-error" class="dc-input" placeholder=""'
             + ' autocomplete="off" spellcheck="false" data-action="onWsSearchInput" value="' + debugEscapeHtml(wsSearch) + '"'
-            + ' title="Show only the text messages that contain this text, ignoring case, on the device, 300 ms after you stop typing. With REGEX on, the text is a regular expression. Escape clears the field.">'
+            + ' title="Show only the text messages that contain this text, ignoring case, on the device, 300 ms after you stop typing. With REGEX on, the text is a regular expression. Escape clears the field."></label>'
             + '<button type="button" class="dc-btn dc-btn--icon net-search-clear" data-action="clearSearch" data-target="ws-search"' + (wsSearch ? '' : ' hidden')
             + ' aria-label="Clear the search" title="Clear the search. Escape in the field does the same.">×</button>'
             + '<button type="button" class="dc-btn dc-btn--sm net-search-regex" data-action="toggleSearchRegex" data-target="ws-search" aria-pressed="false"'
             + ' title="Regular expression. On: the search is a Java regular expression that ignores case, such as ping|pong. Off: the text is found as typed. Remembered in your browser.">Regex</button>'
             + '<button type="button" class="dc-btn dc-btn--icon net-search-help" data-action="showSearchHelp" aria-label="Regex examples"'
-            + ' title="Common regular expressions, with examples.">?</button></label>'
+            + ' title="Common regular expressions, with examples.">?</button></div>'
             + '<button class="dc-btn dc-btn--sm" data-action="copyWsMarkdown" title="Copy the connection and its last ' + WS_MARKDOWN_EVENTS
             + ' events as Markdown, for a bug report, a pull request, or a chat.">Markdown</button>'
             + '<button class="dc-btn dc-btn--sm" id="ws-har-btn" data-action="exportWsHar" title="Save the handshake request and the messages as a HAR file, which Chrome DevTools imports with the messages.">Export HAR</button>'
@@ -2464,6 +2481,14 @@
             .then(function(r) {
                 if (request !== wsEventsRequest || id !== wsSelectedId) return null;
                 setWsGone(r.status === 404);
+                if (r.status === 400 && wsSearch) {
+                    return r.json().catch(function() { return null; }).then(function(envelope) {
+                        if (envelope && envelope.field === 'search' && request === wsEventsRequest && id === wsSelectedId) {
+                            dropWsSearch(envelope.message);
+                        }
+                        return null;
+                    });
+                }
                 return r.ok ? r.json() : null;
             })
             .then(function(data) {
@@ -2479,6 +2504,17 @@
         return netUrl('websockets/' + encodeURIComponent(id) + '/events?limit=' + WS_MAX_ROWS)
             + (cursor != null ? '&cursor=' + encodeURIComponent(cursor) : '')
             + searchParams(search, regex, '&');
+    }
+
+    // As dropSearch: the log goes back to every event, from its end.
+    function dropWsSearch(message) {
+        wsSearch = '';
+        wsSearchRegex = false;
+        wsEvents = [];
+        wsEventsCursor = null;
+        wsMissed = 0;
+        showSearchError('ws-search', (message || 'The search stopped.') + ' The log shows every event until you change the search.');
+        renderWsEvents();
     }
 
     function setWsGone(gone) {
