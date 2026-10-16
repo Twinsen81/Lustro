@@ -175,13 +175,17 @@ class DefaultRedactorTest {
         assertEquals("149000", redactor.redactHeaderValue("x-ratelimit-remaining-tokens", "149000"))
         assertEquals("40000", redactor.redactHeaderValue("anthropic-ratelimit-input-tokens-limit", "40000"))
 
+        // A count word counts as listed: `limited` is no count although `limit` is,
+        // and a limited-use token is a credential.
         val secrets =
-            """{"token":"a","tokens":["b"],"access_token":"c","refresh_tokens":["d"],"api_token":"e","device_tokens":["f"]}"""
+            """{"token":"a","tokens":["b"],"access_token":"c","refresh_tokens":["d"],"api_token":"e","device_tokens":["f"],""" +
+                """"limited_access_token":"g","limitedUseToken":"h","counting_tokens":"i"}"""
         val out = JSONObject(redactor.redactBody(secrets, MediaType.JSON))
         for (key in out.keys()) {
             assertEquals(key, "[REDACTED]", out.getString(key))
         }
         assertEquals("[REDACTED]", redactor.redactHeaderValue("X-Access-Tokens", "t"))
+        assertEquals("[REDACTED]", redactor.redactHeaderValue("X-Limited-Use-Token", "t"))
         // A count word exempts the token word alone, not another sensitive one.
         assertEquals("[REDACTED]", redactor.redactHeaderValue("X-Session-Token-Count", "t"))
     }

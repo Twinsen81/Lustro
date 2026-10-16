@@ -98,16 +98,20 @@ public object DefaultRedactor : Redactor {
     // as LLM APIs report usage and take a cap, and as rate-limit headers say
     // what is left: `prompt_tokens`, `max_tokens`, `totalTokenCount`,
     // `x-ratelimit-remaining-tokens`. A credential's name has none of them:
-    // `access_token`, `refresh_tokens`, `device_tokens`.
+    // `access_token`, `refresh_tokens`, `device_tokens`. Matched as listed, not
+    // through INFLECTIONS: a count word exempts `token`, a sensitive word, and
+    // `limited` is no count although `limit` is, as a limited-use token is a
+    // credential.
     private val COUNT_WORDS =
         setOf(
-            "count", "total", "max", "maximum", "min", "minimum", "limit", "remaining",
-            "used", "usage", "num", "number", "budget", "quota", "ratelimit", "per",
-            "prompt", "completion", "input", "output", "reasoning", "cached", "candidate",
-            "thought", "prediction", "estimated", "billed", "cost",
+            "count", "counts", "total", "totals", "max", "maximum", "min", "minimum",
+            "limit", "limits", "remaining", "used", "usage", "num", "number", "budget",
+            "quota", "ratelimit", "per", "prompt", "completion", "input", "output",
+            "reasoning", "cached", "candidates", "thoughts", "prediction", "estimated",
+            "billed", "cost",
         )
 
-    private val TOKEN_WORDS = setOf("token")
+    private val TOKEN_WORDS = setOf("token", "tokens")
 
     // Ordinary words that contain a sensitive fragment. A word that only has a
     // fragment as part of one of these doesn't make its name sensitive.
@@ -121,11 +125,12 @@ public object DefaultRedactor : Redactor {
             "insight",
         )
 
-    // The regular English inflections. The word sets above list a word once, and
-    // a lookup accepts its plural, past tense, and -ing form as well, so
-    // `assignment` covers `assignments`, `author` covers `authors` and
-    // `authored`, and `authority` covers `authorities`.
-    private val INFLECTIONS = listOf("s", "es", "ed", "ing")
+    // The regular English inflections, each with what replaces it. PUBLIC_NAMES
+    // and NON_SENSITIVE_WORDS list a word once, and a lookup accepts its plural,
+    // past tense, and -ing form as well, so `assignment` covers `assignments`,
+    // `author` covers `authors` and `authored`, and `authority` covers
+    // `authorities`.
+    private val INFLECTIONS = listOf("s" to "", "es" to "", "ies" to "y", "ed" to "", "ing" to "")
 
     private val SENSITIVE_KEY_FRAGMENTS =
         listOf(
@@ -290,12 +295,11 @@ public object DefaultRedactor : Redactor {
         val parts = nameParts(name)
         if (PUBLIC_NAMES.containsIgnoringInflection(parts.joinToString("").lowercase())) return false
         val words = parts.map { camelCaseWords(it) }
-        val counted = words.any { part -> part.any { COUNT_WORDS.containsIgnoringInflection(it) } }
+        val counted = words.any { part -> part.any { it in COUNT_WORDS } }
         return words.any { part ->
             val rest =
-                part.filterNot {
-                    NON_SENSITIVE_WORDS.containsIgnoringInflection(it) || (counted && TOKEN_WORDS.containsIgnoringInflection(it))
-                }.joinToString("")
+                part.filterNot { NON_SENSITIVE_WORDS.containsIgnoringInflection(it) || (counted && it in TOKEN_WORDS) }
+                    .joinToString("")
             SENSITIVE_KEY_FRAGMENTS.any { rest.contains(it) }
         }
     }
@@ -308,11 +312,9 @@ public object DefaultRedactor : Redactor {
      * none of them changes nothing, and no word in them has an inflection that
      * names a credential. `authorization` has no ending to strip and stays.
      */
-    private fun Set<String>.containsIgnoringInflection(word: String): Boolean {
-        if (word in this) return true
-        if (word.endsWith("ies") && word.dropLast(3) + "y" in this) return true
-        return INFLECTIONS.any { word.endsWith(it) && word.dropLast(it.length) in this }
-    }
+    private fun Set<String>.containsIgnoringInflection(word: String): Boolean =
+        word in this ||
+            INFLECTIONS.any { (suffix, base) -> word.endsWith(suffix) && word.dropLast(suffix.length) + base in this }
 
     // An ASCII name is matched without allocating a lowercase copy. Other names
     // still go through lowercase(), which can turn one char into several.
