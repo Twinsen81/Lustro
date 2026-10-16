@@ -450,11 +450,17 @@ internal class NetworkTrafficStore(
             emptyList()
         }
 
-    fun getTransactions(search: String? = null): List<NetworkTransaction> {
+    /**
+     * The transactions, newest first, or the ones [search] matches. Throws
+     * [SearchTimeoutException] when the search passes [budget].
+     */
+    fun getTransactions(
+        search: SearchQuery? = null,
+        budget: SearchBudget = SearchBudget(SearchBudget.DEFAULT_TIMEOUT_MS),
+    ): List<NetworkTransaction> {
         val transactions = insertionOrder.mapNotNull { transactionMap[it] }
-        if (search.isNullOrBlank()) return transactions
-        val needle = search.foldCase()
-        return transactions.filter { it.matchesSearch(needle) }
+        if (search == null) return transactions
+        return transactions.filter { it.matchesSearch(search, budget) }
     }
 
     fun getTransaction(id: String): NetworkTransaction? = transactionMap[id]

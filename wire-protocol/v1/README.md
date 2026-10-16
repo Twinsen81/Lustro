@@ -11,7 +11,7 @@ the protocol a stable public contract independent of the library's Kotlin API.
   A future incompatible revision becomes `/api/v2/`, and the old major stays
   alive for at least one major release.
 - The **minor** protocol version is reported at runtime in
-  `GET /api/v1/_meta` as `_meta.protocolVersion` (currently `1.7`).
+  `GET /api/v1/_meta` as `_meta.protocolVersion` (currently `1.8`).
 
 ## Contents
 
@@ -124,6 +124,17 @@ client got them.
   now names the transaction that the Lustro interceptor recorded for the
   request, when the sender's client carries the interceptor; it was always
   `null` before.
+
+- **1.8** - The `search` of `GET network/transactions` also looks at the
+  request and response headers, each as the line `Name: value` as stored
+  after redaction. The new parameter `regex=true` makes each word of
+  `search`, up to a space, a Java regular expression found ignoring case,
+  for the transactions and for `GET network/websockets/{id}/events`: every
+  word must be found, each in any field, and a word that starts with `-`
+  must be found in none. Without it, `search` is text, as before. A regex
+  that doesn't compile, or a search that takes longer than 5 s, gets a `400`
+  with `field: search`, and a `regex` other than `true` or `false` a `400`
+  with `field: regex`.
 
 ## Status
 

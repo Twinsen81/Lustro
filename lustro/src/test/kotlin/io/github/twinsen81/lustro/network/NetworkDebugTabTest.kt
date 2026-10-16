@@ -6,6 +6,7 @@ import io.github.twinsen81.lustro.Headers
 import io.github.twinsen81.lustro.MediaType
 import io.github.twinsen81.lustro.internal.network.CaptureSource
 import io.github.twinsen81.lustro.internal.network.NetworkTrafficStore
+import io.github.twinsen81.lustro.internal.network.SearchQuery
 import io.github.twinsen81.lustro.internal.toDebugTimestamp
 import java.util.concurrent.TimeUnit
 import okhttp3.OkHttpClient
@@ -114,6 +115,81 @@ class NetworkDebugTabTest {
         assertTrue(state.getBoolean("paused"))
         assertTrue(state.getBoolean("overwriteMode"))
         assertEquals(250, state.getInt("throttleDelayMs"))
+    }
+
+    @Test
+    fun `search finds the redacted headers, as text or as a regex`() {
+        val tab = tab()
+        val store = tab.captureSink as NetworkTrafficStore
+        val id =
+            store.beginRequest(
+                "https://example.com/v1/featured.json",
+                "GET",
+                Headers.of("Authorization" to "Bearer secret", "Accept" to "application/json"),
+                null,
+                null,
+            )
+        store.completeRequest(id, CapturedResponse.Builder(404, 5).headers(Headers.of("Cache-Control" to "no-cache")).build())
+        tab.capture("https://example.com/v1/popular.json")
+        fun urls(vararg query: Pair<String, String>): List<String> =
+            tab.handle(get("transactions", *query))!!.json().getJSONArray("items").objects().map { it.getString("url") }
+
+        assertEquals(listOf("https://example.com/v1/featured.json"), urls("search" to "cache-control: no"))
+        // Without regex=true, the text is found as typed.
+        assertEquals(emptyList<String>(), urls("search" to "featured|popular"))
+        assertEquals(
+            listOf("https://example.com/v1/popular.json", "https://example.com/v1/featured.json"),
+            urls("search" to "featured|popular", "regex" to "true"),
+        )
+        // Regex words must all match, each in any field, and a minus word in none.
+        assertEquals(listOf("https://example.com/v1/featured.json"), urls("search" to "v1 cache-control", "regex" to "true"))
+        assertEquals(listOf("https://example.com/v1/popular.json"), urls("search" to "v1 -cache-control", "regex" to "true"))
+        // The header is stored redacted, so the secret isn't there to find.
+        assertEquals(listOf("https://example.com/v1/featured.json"), urls("search" to "authorization: [redacted]"))
+        assertEquals(emptyList<String>(), urls("search" to "secret"))
+    }
+
+    @Test
+    fun `a search that can't run is a 400 on the parameter at fault`() {
+        val tab = tab()
+        tab.capture("https://example.com/a")
+        val regex = tab.handle(get("transactions", "search" to "feat(", "regex" to "true"))!!
+        assertEquals(400, regex.status)
+        assertEquals("search", regex.json().getString("field"))
+        val mode = tab.handle(get("transactions", "search" to "a", "regex" to "yes"))!!
+        assertEquals(400, mode.status)
+        assertEquals("regex", mode.json().getString("field"))
+        // As plain text, the same search is fine.
+        assertEquals(200, tab.handle(get("transactions", "search" to "feat("))!!.status)
+    }
+
+    @Test
+    fun `a search that passes its time is a 400 on the search field, and a poll without one still answers`() {
+        val tab = tab()
+        tab.capture("https://example.com/a")
+        tab.searchTimeoutMs = 0
+        val res = tab.handle(get("transactions", "search" to "example"))!!
+        assertEquals(400, res.status)
+        assertEquals("search", res.json().getString("field"))
+        assertTrue(res.json().getString("message"), res.json().getString("message").startsWith("The search took longer than 0 s"))
+        assertEquals(200, tab.handle(get("transactions"))!!.status)
+    }
+
+    private fun org.json.JSONArray.objects(): List<JSONObject> = (0 until length()).map { getJSONObject(it) }
+
+    @Test
+    fun `each example in the regex help compiles as the device's regex`() {
+        val html = tab().renderContent()
+        val examples =
+            Regex("""<th class="dc-kv__key">([^<]+)</th>""")
+                .findAll(html.substringAfter("net-search-examples").substringBefore("</table>"))
+                .map { it.groupValues[1].replace("&quot;", "\"") }
+                .toList()
+        assertTrue(examples.toString(), examples.size >= 5)
+        for (example in examples) {
+            // Throws when it doesn't compile.
+            SearchQuery.parse(example, regex = true)
+        }
     }
 
     @Test

@@ -14,6 +14,23 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Added
 
+- **Search the headers, and search with regular expressions (wire protocol
+  1.8).** The Network tab's search looked at the URL, the method, and the
+  bodies, so a header such as `Cache-Control` found nothing, and it took only
+  plain text. The search now also looks at the request and response headers,
+  each as the line `Name: value` as stored after redaction, so a redacted
+  value is found as `[REDACTED]`. A **Regex** button next to each search
+  field, the `regex=true` parameter, and the CLI's `--regex` make each word
+  of the text a Java regular expression, found ignoring case: all words must
+  match, each in any field, and `-word` leaves out, as in
+  `featured|popular -analytics`. A **?** button lists common ones with
+  examples. With Regex off, the text is found as typed, as before. A regex
+  that doesn't compile gets a `400` that says why, and a search stops after
+  5 s. The console shows the error under the field and keeps the last
+  results, and marks a regex's matches in the URL, the headers, and the
+  bodies. A **×** button and Escape clear the field, also in the WebSocket
+  view. The CLI exits 2 on a rejected search instead of polling again, and
+  `--search -1` is now the value of `--search`.
 - **The Send form sends through the app's named senders (wire protocol
   1.7).** The Network tab sent through one client and resolved a relative URL
   against one base URL, but an app often has several clients, with their own

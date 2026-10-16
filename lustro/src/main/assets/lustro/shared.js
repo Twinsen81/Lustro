@@ -525,9 +525,7 @@ window.debugSyntaxHighlightJson = function(jsonString, options) {
     }
 
     function escapeAndMark(text, searchText) {
-        var escaped = String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-        if (searchText) escaped = highlightMatches(escaped, searchText);
-        return escaped;
+        return debugHighlightPlain(String(text), searchText);
     }
 
     function repeat(s, n) {
@@ -535,29 +533,80 @@ window.debugSyntaxHighlightJson = function(jsonString, options) {
     }
 };
 
-function debugHighlightPlain(text, searchText) {
-    var escaped = String(text == null ? '' : text)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
-    if (searchText) escaped = highlightMatches(escaped, searchText);
-    return escaped;
+// What a viewer marks: options.searchText is a string, found as typed and
+// ignoring case, as the plain search finds it, or a RegExp or an array of them,
+// as the regex search finds each of its words. The last one is kept, because a
+// body is marked piece by piece.
+var debugSearchCache = { search: null, res: [] };
+function debugSearchRegExps(search) {
+    if (!search) return [];
+    if (debugSearchCache.search !== search) {
+        var res = [];
+        (Array.isArray(search) ? search : [search]).forEach(function(one) {
+            try {
+                res.push(typeof one === 'string'
+                    ? new RegExp(one.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi')
+                    : new RegExp(one.source, one.flags.indexOf('g') >= 0 ? one.flags : one.flags + 'g'));
+            } catch(e) {}
+        });
+        debugSearchCache = { search: search, res: res };
+    }
+    return debugSearchCache.res;
 }
-window.debugHighlightPlain = debugHighlightPlain;
 
-function highlightMatches(html, searchText) {
-    if (!searchText) return html;
-    var escapedQuery = String(searchText)
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-        .replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    if (!escapedQuery) return html;
-    try {
-        var re = new RegExp(escapedQuery, 'gi');
-        return html.replace(re, function(match) { return '<mark>' + match + '</mark>'; });
-    } catch(e) {
-        return html;
+// Where search is found in text, as [start, end) pairs in order that don't overlap.
+function debugMatchRanges(text, search) {
+    var res = debugSearchRegExps(search);
+    var ranges = [];
+    res.forEach(function(re) {
+        re.lastIndex = 0;
+        for (var match = re.exec(text); match; match = re.exec(text)) {
+            // A regex such as a* also matches nothing, which has nothing to mark.
+            if (!match[0].length) {
+                re.lastIndex++;
+                continue;
+            }
+            ranges.push([match.index, match.index + match[0].length]);
+        }
+    });
+    if (res.length < 2) return ranges;
+    ranges.sort(function(a, b) { return a[0] - b[0] || a[1] - b[1]; });
+    var merged = [];
+    ranges.forEach(function(r) {
+        var last = merged[merged.length - 1];
+        if (last && r[0] <= last[1]) last[1] = Math.max(last[1], r[1]);
+        else merged.push(r.slice());
+    });
+    return merged;
+}
+window.debugMatchRanges = debugMatchRanges;
+
+// text escaped, with a <mark> around each part of it that ranges cover. The
+// ranges are offsets in a longer text, in which this one starts at offset.
+function debugMarkRanges(text, ranges, offset) {
+    var out = '';
+    var at = 0;
+    ranges.forEach(function(r) {
+        var start = Math.max(r[0] - offset, at);
+        var end = Math.min(r[1] - offset, text.length);
+        if (end <= start) return;
+        out += escapeText(text.slice(at, start)) + '<mark>' + escapeText(text.slice(start, end)) + '</mark>';
+        at = end;
+    });
+    return out + escapeText(text.slice(at));
+
+    function escapeText(t) {
+        return t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
 }
+window.debugMarkRanges = debugMarkRanges;
+
+// text escaped, with what search finds in it marked.
+function debugHighlightPlain(text, search) {
+    text = String(text == null ? '' : text);
+    return debugMarkRanges(text, search ? debugMatchRanges(text, search) : [], 0);
+}
+window.debugHighlightPlain = debugHighlightPlain;
 
 // The body viewers below each take a captured body's text and return the HTML
 // of one element. They escape every character of the body, and only the
@@ -741,38 +790,12 @@ window.debugHighlightMarkup = function(src, options) {
         var matches = debugMatchRanges(tok.pieces.map(function(p) { return p.text; }).join(''), searchText);
         var offset = 0;
         return '<span class="g">' + tok.pieces.map(function(p) {
-            var marked = markSlice(p.text, offset, matches);
+            var marked = debugMarkRanges(p.text, matches, offset);
             offset += p.text.length;
             return p.cls ? '<span class="' + p.cls + '">' + marked + '</span>' : marked;
         }).join('') + '</span>';
     }
-    // The part of the matches that falls in text, which starts at offset.
-    function markSlice(text, offset, matches) {
-        var out = '';
-        var at = 0;
-        matches.forEach(function(match) {
-            var start = Math.max(match[0] - offset, at);
-            var end = Math.min(match[1] - offset, text.length);
-            if (end <= start) return;
-            out += debugHighlightPlain(text.slice(at, start), '')
-                + '<mark>' + debugHighlightPlain(text.slice(start, end), '') + '</mark>';
-            at = end;
-        });
-        return out + debugHighlightPlain(text.slice(at), '');
-    }
 };
-
-// Where searchText occurs in text, as [start, end) pairs, with the matching
-// highlightMatches uses: literal and case-insensitive.
-function debugMatchRanges(text, searchText) {
-    var matches = [];
-    if (!searchText) return matches;
-    var re = new RegExp(String(searchText).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
-    for (var match = re.exec(text); match; match = re.exec(text)) {
-        matches.push([match.index, match.index + match[0].length]);
-    }
-    return matches;
-}
 
 // Elements a body leaves open, such as an XML body's <br>s, nest deeper with
 // each one. Past this depth an element takes no children, so what follows it
@@ -980,13 +1003,34 @@ window.debugScanMarkup = debugScanMarkup;
 // rather than starting an empty one. Returns a <pre class="dc-code dc-lines">.
 window.debugLineNumbered = function(text, options) {
     var searchText = (options && options.searchText) || '';
-    var lines = String(text == null ? '' : text).split(/\r\n|\r|\n/);
+    text = String(text == null ? '' : text);
+    // The search runs over the whole text, as on the device, so ^ is the start of
+    // the text and a match can go on to the next line.
+    var ranges = searchText ? debugMatchRanges(text, searchText) : [];
+    var lines = [];
+    var starts = [];
+    var breakRe = /\r\n|\r|\n/g;
+    var at = 0;
+    for (var m = breakRe.exec(text); m; m = breakRe.exec(text)) {
+        lines.push(text.slice(at, m.index));
+        starts.push(at);
+        at = m.index + m[0].length;
+    }
+    lines.push(text.slice(at));
+    starts.push(at);
     var endsWithBreak = lines.length > 1 && lines[lines.length - 1] === '';
     if (endsWithBreak) lines.pop();
+    // The ranges and the lines are both in order, so each line takes only the
+    // ranges that reach into it, and a long body with many matches stays linear.
+    var next = 0;
     return '<pre class="dc-code dc-lines" style="--dc-lines-digits: ' + String(lines.length).length + '">'
         + lines.map(function(lineText, i) {
             var lineBreak = i < lines.length - 1 || endsWithBreak ? '\n' : '';
-            return '<span class="dc-lines__line">' + debugHighlightPlain(lineText, searchText) + lineBreak + '</span>';
+            var end = starts[i] + lineText.length;
+            while (next < ranges.length && ranges[next][1] <= starts[i]) next++;
+            var last = next;
+            while (last < ranges.length && ranges[last][0] < end) last++;
+            return '<span class="dc-lines__line">' + debugMarkRanges(lineText, ranges.slice(next, last), starts[i]) + lineBreak + '</span>';
         }).join('')
         + '</pre>';
 };
@@ -1151,7 +1195,10 @@ window.debugFetch = async function(url, options) {
     }
 };
 
-window.debugPoll = function(endpointOrFn, intervalMs, callback) {
+// onRejected, when given, gets a response that isn't ok as (status, error
+// envelope or null), and returns true when it handled it: the poll then counts
+// the response as an answer from a connected app, not as a lost connection.
+window.debugPoll = function(endpointOrFn, intervalMs, callback, onRejected) {
     var consecutiveFailures = 0;
     var MAX_FAILURES = 3;
     var SLOW_INTERVAL = 5000;
@@ -1163,14 +1210,22 @@ window.debugPoll = function(endpointOrFn, intervalMs, callback) {
         try {
             var url = typeof endpointOrFn === 'function' ? endpointOrFn() : endpointOrFn;
             var resp = await fetch(url);
-            if (!resp.ok) throw new Error('HTTP ' + resp.status);
-            var data = await resp.json();
+            var handled = false;
+            if (!resp.ok) {
+                var envelope = null;
+                if (onRejected) {
+                    try { envelope = await resp.json(); } catch(e) {}
+                }
+                handled = !!onRejected && onRejected(resp.status, envelope) === true;
+                if (!handled) throw new Error('HTTP ' + resp.status);
+            }
+            var data = handled ? null : await resp.json();
             consecutiveFailures = 0;
             if (!isConnected) {
                 isConnected = true;
                 window.debugSetStatus('connected');
             }
-            callback(data);
+            if (!handled) callback(data);
         } catch(e) {
             consecutiveFailures++;
             if (consecutiveFailures >= MAX_FAILURES && isConnected) {

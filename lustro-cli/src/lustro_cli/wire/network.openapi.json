@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Lustro Network debug tab",
-    "version": "1.7",
+    "version": "1.8",
     "description": "Capture, inspect, mock, throttle, and replay HTTP traffic, and inspect the messages of WebSocket connections. All routes are token-authenticated (Bearer header or HttpOnly cookie) and live under /api/v1/network. Errors use the shared error envelope."
   },
   "servers": [
@@ -16,13 +16,15 @@
         "description": "Short-polling. Send the last cursor back each call. status=reset returns the full current list; status=delta returns the current list after a change; status=unchanged omits items. Treat unknown statuses as reset. The cursor advances when the transaction list changes: a capture, a response or streaming progress, a failure, an eviction, or clear. Pause, overwrite mode, throttle, mock-rule changes, and the capture filter's counts don't advance it; state reports them on every response, unchanged ones included. A cursor from before an app restart gets a reset. A request the app's capture filter skips is never listed; mock rules and the throttle still apply to it, and state.captureFilter counts it.",
         "parameters": [
           { "name": "cursor", "in": "query", "required": false, "schema": { "type": "string" }, "description": "Opaque cursor from the previous response. Omit on first poll." },
-          { "name": "search", "in": "query", "required": false, "schema": { "type": "string" }, "description": "Case-insensitive filter over URL, method, and captured bodies." }
+          { "name": "search", "in": "query", "required": false, "schema": { "type": "string" }, "description": "Only the transactions in which this text is found, ignoring case: in the URL, the final URL, the method, a request or response header as the line Name: value, or a text body. Headers and bodies are searched as stored, after redaction. 400 with field search when the search takes longer than 5 s." },
+          { "name": "regex", "in": "query", "required": false, "schema": { "type": "string", "enum": ["true", "false"], "default": "false" }, "description": "true makes each word of search, up to a space, a Java regular expression found ignoring case: every word must be found, each in any field, and a word that starts with - must be found in none. A space in a regex is \\s. 400 with field search when a word doesn't compile, and with field regex for a value other than true or false." }
         ],
         "responses": {
           "200": {
             "description": "Cursor envelope.",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TransactionCursorEnvelope" } } }
           },
+          "400": { "$ref": "#/components/responses/Error" },
           "401": { "$ref": "#/components/responses/Error" },
           "403": { "$ref": "#/components/responses/Error" },
           "413": { "$ref": "#/components/responses/Error" },
@@ -136,7 +138,8 @@
           { "name": "cursor", "in": "query", "required": false, "schema": { "type": "string" }, "description": "Opaque cursor from the previous response. Omit on first poll." },
           { "name": "limit", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 1, "default": 100 }, "description": "The most events in one response. A limit above the size of the log returns the whole log. 400 when it is not a whole number of 1 or more." },
           { "name": "direction", "in": "query", "required": false, "schema": { "type": "string", "enum": ["sent", "received"] }, "description": "Only the events with this direction: messages, and close frames. 400 for any other value." },
-          { "name": "search", "in": "query", "required": false, "schema": { "type": "string" }, "description": "Only the text messages whose stored text contains this, ignoring case." }
+          { "name": "search", "in": "query", "required": false, "schema": { "type": "string" }, "description": "Only the text messages whose stored text contains this, ignoring case. 400 with field search when the search takes longer than 5 s." },
+          { "name": "regex", "in": "query", "required": false, "schema": { "type": "string", "enum": ["true", "false"], "default": "false" }, "description": "true makes each word of search, up to a space, a Java regular expression found ignoring case: every word must be found, each in any field, and a word that starts with - must be found in none. A space in a regex is \\s. 400 with field search when a word doesn't compile, and with field regex for a value other than true or false." }
         ],
         "responses": {
           "200": { "description": "Stream envelope.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WebSocketEventStreamEnvelope" } } } },

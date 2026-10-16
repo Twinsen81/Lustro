@@ -37,10 +37,27 @@
 .net-filter-description { margin: 0; color: var(--t1); font-size: 13px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
 .net-filter-counts { display: flex; gap: 40px; }
 .net-filter-count { color: var(--t1); font-family: var(--font-mono); font-size: 18px; }
-.net-search { display: flex; align-items: center; gap: 8px; padding: 13px 22px 0; }
+.net-search { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 13px 22px 0; }
 .net-search > .dc-field { flex: 1; min-width: 0; }
+.net-search > .net-search-error { flex-basis: 100%; }
 /* .dc-btn sets display, so [hidden] needs its own rule. */
 #new-request-btn[hidden] { display: none; }
+/* The clear, Regex, and help buttons in a search field: 24px hit targets that
+   don't make the field taller. .dc-btn sets display, so [hidden] needs its own rule. */
+.net-search-clear, .net-search-regex, .net-search-help { min-height: 24px; margin: -5px 0; }
+.net-search-clear, .net-search-help { min-width: 24px; padding: 0 4px; line-height: 1; }
+.net-search-clear { font-size: 15px; }
+.net-search-help { font-family: var(--font-mono); font-size: 12px; font-weight: 600; }
+.net-search-regex { padding: 0 8px; }
+/* The field's label holds the prefix and the input only: a label can't hold
+   the buttons, which are controls of their own. */
+.net-search-label { display: flex; flex: 1; align-items: center; gap: 8px; min-width: 0; cursor: text; }
+.net-search-clear[hidden] { display: none; }
+.dc-field.net-search--invalid, .dc-field.net-search--invalid:focus-within { border-color: var(--danger); }
+.net-search-error { color: var(--danger); font-size: 11.5px; line-height: 1.5; overflow-wrap: anywhere; }
+.net-search-error[hidden] { display: none; }
+.net-ws-detail .net-search-error { padding: 0 0 8px; }
+.net-search-examples .dc-kv__key { width: 42%; white-space: pre; }
 .net-category-bar {
     display: flex;
     gap: 6px;

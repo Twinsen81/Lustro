@@ -141,8 +141,11 @@ The output is small by default, because an agent reads all of it.
 - **Filters.** `net list`, `net poll`, and `net wait` take `--url TEXT` (the URL
   contains it, ignoring case), `--method`, `--status` (a code such as `404`, or a
   class such as `5xx`), and `--errors` (status 400 or higher, or a failed
-  request). They combine with each other and with `--search`, which the server
-  runs over the URL, the method, and the bodies.
+  request). They combine with each other and with `--search TEXT`, which the
+  app runs over the URL, the method, the headers, and the bodies, ignoring
+  case. `--regex` makes each word of the text a Java regular expression: all
+  words must match, each in any field, and `-word` leaves out. A regex that
+  doesn't compile exits 2 with the reason. `--url` is always plain text.
 - **JSON Lines.** With `--json`, these commands print one compact JSON object
   per transaction, so `head` and `jq` can cut the output. `--fields
   id,statusCode,url` keeps only those keys, and implies `--json`. Other
@@ -166,7 +169,8 @@ The output is small by default, because an agent reads all of it.
   ends with a marker such as
   `[... 299961 more bytes: lustro net ws payload 3d2a7f10 5]`, and
   `net ws payload` prints a payload as it is stored. `--sent`, `--received`,
-  and `--search TEXT` select events on the server. `--follow` then prints each
+  and `--search TEXT` (with `--regex`, a regular expression) select events on
+  the server. `--follow` then prints each
   new event as it comes, until Ctrl-C or until the app clears the connection.
   `--json` prints JSON Lines for both commands, and `--fields` keeps only the
   keys you name. A connection id can be its start, as for a transaction.

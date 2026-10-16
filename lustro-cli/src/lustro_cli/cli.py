@@ -213,6 +213,18 @@ def _check_fields(
         )
 
 
+def _search_params(args: argparse.Namespace) -> Dict[str, Optional[str]]:
+    """The search and regex parameters of --search and --regex."""
+    if args.regex:
+        return {"search": args.search, "regex": "true"}
+    return {"search": args.search}
+
+
+def _is_search_error(exc: LustroError) -> bool:
+    """Whether the app rejected the search: a query that can't run, or one that took too long. Polling again won't help."""
+    return exc.status == 400 and exc.field == "search"
+
+
 def _note_if_paused(data: Any, what: str = "new requests are not listed") -> None:
     state = data.get("state") if isinstance(data, dict) else None
     if isinstance(state, dict) and state.get("paused") is True:
@@ -621,7 +633,7 @@ def cmd_schema(args: argparse.Namespace) -> int:
 
 def cmd_net_list(args: argparse.Namespace) -> int:
     client = _build_client(args)
-    data = client.get(TRANSACTIONS, params={"search": args.search})
+    data = client.get(TRANSACTIONS, params=_search_params(args))
     _note_if_paused(data)
     items = _list_items(data)
     _check_fields(args, items)
@@ -698,10 +710,12 @@ def cmd_net_poll(args: argparse.Namespace) -> int:
     first = True
     try:
         while True:
-            params = {"cursor": poller.cursor, "search": args.search}
+            params = dict(_search_params(args), cursor=poller.cursor)
             try:
                 data = client.get(TRANSACTIONS, params=params)
             except LustroError as exc:
+                if _is_search_error(exc):
+                    raise
                 print("poll error: {}".format(exc), file=sys.stderr)
                 if args.once:
                     return 1
@@ -771,7 +785,7 @@ def cmd_net_wait(args: argparse.Namespace) -> int:
         # An app that doesn't answer, such as one stopped at a breakpoint, would
         # otherwise hold each request for the client's own timeout.
         client.timeout = time_left()
-        return client.get(TRANSACTIONS, params={"cursor": cursor, "search": args.search})
+        return client.get(TRANSACTIONS, params=dict(_search_params(args), cursor=cursor))
 
     poller = CursorState()
     data = poll(None)
@@ -797,6 +811,8 @@ def cmd_net_wait(args: argparse.Namespace) -> int:
         try:
             poller.apply(poll(poller.cursor))
         except LustroError as exc:
+            if _is_search_error(exc):
+                raise
             # The action can put the app in the background for a moment, so keep polling.
             if str(exc) != last_error:
                 print("poll error: {}".format(exc), file=sys.stderr)
@@ -988,7 +1004,7 @@ def cmd_net_ws_events(args: argparse.Namespace) -> int:
     path = WEBSOCKETS + "/" + connection_id + "/events"
     filters = {
         "direction": "sent" if args.sent else "received" if args.received else None,
-        "search": args.search,
+        **_search_params(args),
     }
     data = client.get(path, params=dict(filters, limit=ALL_EVENTS if args.all else args.last))
     items = _list_items(data)
@@ -1005,8 +1021,8 @@ def cmd_net_ws_events(args: argparse.Namespace) -> int:
             try:
                 data = client.get(path, params=dict(filters, cursor=cursor, limit=ALL_EVENTS))
             except LustroError as exc:
-                if exc.error == "not_found":
-                    # The app cleared or evicted the connection.
+                if exc.error == "not_found" or _is_search_error(exc):
+                    # The app cleared or evicted the connection, or rejected the search.
                     raise
                 print("poll error: {}".format(exc), file=sys.stderr)
                 continue
@@ -1219,7 +1235,16 @@ def _selection_options() -> argparse.ArgumentParser:
     parent = argparse.ArgumentParser(add_help=False)
     filters = parent.add_argument_group("filters (they combine)")
     filters.add_argument(
-        "--search", default=None, metavar="TEXT", help="the URL, the method, or a body contains TEXT (on the server)"
+        "--search",
+        default=None,
+        metavar="TEXT",
+        help="the URL, the method, a header, or a body contains TEXT, ignoring case (on the server)",
+    )
+    filters.add_argument(
+        "--regex",
+        action="store_true",
+        help="each word of --search TEXT is a Java regular expression, found ignoring case: all words must match, "
+        "each in any field, and -word leaves out",
     )
     filters.add_argument("--url", default=None, metavar="TEXT", help="the URL contains TEXT (ignores case)")
     filters.add_argument("--method", default=None, help="the HTTP method, such as POST")
@@ -1439,6 +1464,12 @@ def build_parser() -> argparse.ArgumentParser:
     w_events.add_argument(
         "--search", default=None, metavar="TEXT", help="only the text messages that contain TEXT (on the server)"
     )
+    w_events.add_argument(
+        "--regex",
+        action="store_true",
+        help="each word of --search TEXT is a Java regular expression, found ignoring case: all words must match, "
+        "and -word leaves out",
+    )
     w_events.add_argument("--follow", action="store_true", help="then print each new event as it comes, until Ctrl-C")
     w_events.add_argument(
         "--interval",
@@ -1519,9 +1550,33 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _join_search_values(argv: List[str]) -> List[str]:
+    """Join --search and its value, so that argparse takes text that starts with
+    one minus, such as ``-1``, as the value instead of an option. A value that
+    starts with two, such as ``--json`` or ``--``, is left to argparse, which
+    says that --search has no value."""
+    joined: List[str] = []
+    i = 0
+    while i < len(argv):
+        nxt = argv[i + 1] if i + 1 < len(argv) else ""
+        if argv[i] == "--search" and nxt.startswith("-") and not nxt.startswith("--"):
+            joined.append("--search=" + argv[i + 1])
+            i += 2
+            continue
+        if argv[i] == "--":
+            # What follows is net wait's action command, not ours to read.
+            joined.extend(argv[i:])
+            break
+        joined.append(argv[i])
+        i += 1
+    return joined
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     parser = build_parser()
-    args = parser.parse_args(argv)
+    args = parser.parse_args(_join_search_values(sys.argv[1:] if argv is None else list(argv)))
+    if getattr(args, "regex", False) and not getattr(args, "search", None):
+        parser.error("--regex makes --search TEXT a regular expression, so it needs --search")
     for name, default in GLOBAL_DEFAULTS.items():
         if not hasattr(args, name):
             setattr(args, name, default)
@@ -1539,7 +1594,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 2
     except LustroError as exc:
         print("error: {}".format(exc), file=sys.stderr)
-        return 1
+        # A search that the app rejects is a usage error, like a bad flag.
+        return 2 if _is_search_error(exc) else 1
     except BrokenPipeError:
         # The reader closed the pipe early, as `head` does. Send the rest of the
         # output to devnull, so that the flush at exit doesn't fail again.

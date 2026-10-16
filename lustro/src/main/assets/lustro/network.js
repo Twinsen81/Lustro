@@ -31,9 +31,12 @@
     var selectMode = false;
     var selectedIds = {};         // transaction id -> true; only ids the filters show
     var lastCursor = null;        // opaque cursor token; omitted on the first poll
-    var searchText = '';
+    var searchText = '';          // the search the list shows: the last one the app accepted
+    var searchTextRegex = false;  // whether searchText is a regex
     var searchTimer = null;
+    var searchRetryTimer = null;
     var searchGen = 0;
+    var searchRequest = 0;
     var isPaused = false;
     var isOverwriteMode = false;
     var throttleDelayMs = 0;
@@ -340,19 +343,152 @@
         return !!enabledMethods[methodKeyForTx(tx)];
     }
 
-    window.onSearchInput = function(val) {
-        clearTimeout(searchTimer);
-        searchTimer = setTimeout(function() {
-            searchText = val;
-            // Search is part of the poll query; a changed query invalidates the
-            // cursor so the server returns a fresh (reset) list for the new query.
-            lastCursor = null;
-            searchGen++;
-            resetDisplayLimit();
-            fetchTransactions();
-            if (currentDetailTx && trafficView === 'http') renderDetail(currentDetailTx);
-        }, 300);
+    // The REGEX button of each search field: on, the text is a regular
+    // expression; off, it is found as typed. Remembered in the browser.
+    var SEARCH_REGEX_KEYS = { 'search-input': 'debug-network-search-regex', 'ws-search': 'debug-network-ws-search-regex' };
+    var SEARCH_PLACEHOLDERS = {
+        'search-input': ['filter url, method, headers, body…', 'featured|popular -analytics'],
+        'ws-search': ['filter messages…', 'ping|pong -heartbeat'],
     };
+    function searchRegexOn(inputId) {
+        try { return localStorage.getItem(SEARCH_REGEX_KEYS[inputId]) === '1'; } catch(e) { return false; }
+    }
+    function showSearchRegex(inputId) {
+        var on = searchRegexOn(inputId);
+        var button = document.querySelector('[data-action="toggleSearchRegex"][data-target="' + inputId + '"]');
+        if (button) {
+            button.classList.toggle('dc-btn--active', on);
+            button.setAttribute('aria-pressed', on ? 'true' : 'false');
+        }
+        var input = document.getElementById(inputId);
+        if (input) input.placeholder = SEARCH_PLACEHOLDERS[inputId][on ? 1 : 0];
+    }
+    window.toggleSearchRegex = function(inputId) {
+        try { localStorage.setItem(SEARCH_REGEX_KEYS[inputId], searchRegexOn(inputId) ? '0' : '1'); } catch(e) {}
+        showSearchRegex(inputId);
+        var input = document.getElementById(inputId);
+        if (!input) return;
+        // The text now means something else: search with it at once.
+        if (inputId === 'ws-search') applyWsSearch(input.value);
+        else applySearch(input.value);
+        input.focus();
+    };
+
+    // What a viewer marks for a search: the text, or the regex of each word that
+    // doesn't start with a minus, split as the app splits them. The app runs Java
+    // regexes, and the u flag makes this browser reject the Java-only escapes,
+    // such as \A or \Q, that it would otherwise read as letters. A regex it can't
+    // compile marks nothing; the app decides whether a regex is valid.
+    var lastSearchMark = { text: null, res: null };
+    function searchMark(text, regex) {
+        if (!text || !regex) return text;
+        if (lastSearchMark.text !== text) {
+            var res = [];
+            // Java's \s, which the app splits on: no Unicode spaces.
+            text.split(/[ \t\n\x0B\f\r]+/).forEach(function(word) {
+                if (!word || (word.length > 1 && word[0] === '-')) return;
+                try { res.push(new RegExp(word, 'giu')); } catch(e) {}
+            });
+            lastSearchMark = { text: text, res: res };
+        }
+        return lastSearchMark.res;
+    }
+
+    var searchHelpModal = null;
+    window.showSearchHelp = function() {
+        if (!searchHelpModal) searchHelpModal = window.debugModal('search-help-modal');
+        searchHelpModal.show();
+    };
+    window.closeSearchHelp = function() {
+        if (searchHelpModal) searchHelpModal.hide();
+    };
+
+    window.onSearchInput = function(val) {
+        updateSearchClear('search-input');
+        // A query that is still on its way, or waiting to try again, is out of date.
+        searchRequest++;
+        clearTimeout(searchRetryTimer);
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(function() { applySearch(val); }, 300);
+    };
+
+    // The search runs on the device, which says what is wrong with a query that
+    // can't run. So a new query takes effect only once the app accepts it, and
+    // until then, or after an error, the list stays as the last query left it.
+    function applySearch(val) {
+        clearTimeout(searchTimer);
+        clearTimeout(searchRetryTimer);
+        var request = ++searchRequest;
+        var regex = searchRegexOn('search-input');
+        if (val === searchText && (!val || regex === searchTextRegex)) {
+            showSearchError('search-input', null);
+            return;
+        }
+        fetch(netUrl('transactions') + searchParams(val, regex, '?'))
+            .then(readSearchAnswer)
+            .then(function(answer) {
+                if (request !== searchRequest) return;
+                showSearchError('search-input', answer.error);
+                if (answer.error) return;
+                searchText = val;
+                searchTextRegex = regex;
+                // The answer is a reset list with its own cursor; a poll that
+                // left with the old query is ignored when it comes back.
+                lastCursor = null;
+                searchGen++;
+                resetDisplayLimit();
+                handlePollData(answer.data);
+                if (currentDetailTx && trafficView === 'http') renderDetail(currentDetailTx);
+            })
+            .catch(function() {
+                // The app didn't answer, as when it is in the background: try again.
+                if (request === searchRequest) searchRetryTimer = setTimeout(function() { applySearch(val); }, 1500);
+            });
+    }
+
+    function searchParams(text, regex, first) {
+        if (!text) return '';
+        return first + 'search=' + encodeURIComponent(text) + (regex ? '&regex=true' : '');
+    }
+
+    // A search's response as { data }, or as { error } when the app says that the
+    // query can't run. Any other failure rejects, so the caller tries again.
+    function readSearchAnswer(r) {
+        return r.json().catch(function() { return null; }).then(function(data) {
+            if (r.ok) return { data: data };
+            if (data && data.field === 'search') return { error: data.message || 'The search can\'t run.' };
+            throw new Error('HTTP ' + r.status);
+        });
+    }
+
+    // The error goes under the field; the list keeps what the last valid query found.
+    function showSearchError(inputId, message) {
+        var el = document.getElementById(inputId + '-error');
+        var input = document.getElementById(inputId);
+        if (el) {
+            el.textContent = message || '';
+            el.hidden = !message;
+        }
+        var field = input && input.closest('.dc-field');
+        if (field) field.classList.toggle('net-search--invalid', !!message);
+    }
+
+    function updateSearchClear(inputId) {
+        var input = document.getElementById(inputId);
+        var button = document.querySelector('[data-action="clearSearch"][data-target="' + inputId + '"]');
+        if (input && button) button.hidden = !input.value;
+    }
+
+    window.clearSearch = function(inputId) {
+        var input = document.getElementById(inputId);
+        if (!input) return;
+        input.value = '';
+        updateSearchClear(inputId);
+        if (inputId === 'ws-search') applyWsSearch('');
+        else applySearch('');
+        input.focus();
+    };
+
 
     function filterTransactions() {
         return allTransactions.filter(function(tx) {
@@ -745,7 +881,7 @@
         var statusLabel = tx.error ? 'Error' : (tx.statusCode || 'Pending');
         if (streaming) statusLabel += ' streaming';
         var html = '<div class="net-detail-header">';
-        html += '<div class="net-detail-method-url"><span class="net-detail-method ' + methodClass(tx) + '">' + debugEscapeHtml(tx.method || '') + '</span> ' + debugEscapeHtml(tx.url) + ' ' + copyBtn(tx.url || '') + '</div>';
+        html += '<div class="net-detail-method-url"><span class="net-detail-method ' + methodClass(tx) + '">' + debugEscapeHtml(tx.method || '') + '</span> ' + debugHighlightPlain(tx.url, searchMark(searchText, searchTextRegex)) + ' ' + copyBtn(tx.url || '') + '</div>';
         html += '<div class="net-detail-meta">';
         html += '<span class="' + sc + '">' + statusLabel + '</span>';
         html += '<span>' + (tx.durationMs != null ? tx.durationMs + 'ms' + (streaming ? ' streaming' : '') : '—') + '</span>';
@@ -820,7 +956,7 @@
         steps.forEach(function(step) {
             var cls = step.statusCode ? statusClass({ statusCode: step.statusCode, responseComplete: true }) : '';
             html += '<div class="net-redirect-step"><span class="net-redirect-code ' + cls + '">' + debugEscapeHtml(step.label) + '</span>'
-                + '<span class="net-redirect-url">' + debugEscapeHtml(step.url || '') + '</span>'
+                + '<span class="net-redirect-url">' + debugHighlightPlain(step.url || '', searchMark(searchText, searchTextRegex)) + '</span>'
                 + (step.final ? ' ' + copyBtn(step.url || '') : '') + '</div>';
         });
         return html + '</div>';
@@ -920,7 +1056,7 @@
         var truncated = !!tx[dir + 'BodyTruncated'];
         var kind = debugBodyKind(contentType, text, binary);
         var view = bodyViewFor(contentType, kind);
-        var options = { searchText: searchText };
+        var options = { searchText: searchMark(searchText, searchTextRegex) };
         var content = null;
         var notJson = false;
         if (kind === 'json') {
@@ -948,7 +1084,7 @@
             } else if (view === 'parts') {
                 content = debugMultipartTable(text, contentType, options) || debugLineNumbered(text, options);
             } else if (view === 'pretty') {
-                content = debugHighlightMarkup(text, { searchText: searchText, html: kind === 'html' });
+                content = debugHighlightMarkup(text, { searchText: options.searchText, html: kind === 'html' });
             } else {
                 content = debugLineNumbered(text, options);
             }
@@ -1120,15 +1256,22 @@
         return codings.join(', ');
     }
 
+    // Search sees a header as the line "Name: value", so a match is found in that
+    // line and marked in the name and the value.
     function formatHeaders(headers) {
         var keys = Object.keys(headers);
+        var matched = 0;
         var rows = keys.map(function(k) {
-            return '<tr class="net-header-row"><td class="net-header-key">' + debugEscapeHtml(k)
-                + '</td><td class="net-header-value">' + copyBtn(headers[k], 'net-copy-hover') + debugEscapeHtml(headers[k]) + '</td></tr>';
+            var value = String(headers[k]);
+            var ranges = searchText ? debugMatchRanges(k + ': ' + value, searchMark(searchText, searchTextRegex)) : [];
+            if (ranges.length) matched++;
+            return '<tr class="net-header-row"><td class="net-header-key">' + debugMarkRanges(k, ranges, 0)
+                + '</td><td class="net-header-value">' + copyBtn(headers[k], 'net-copy-hover') + debugMarkRanges(value, ranges, k.length + 2) + '</td></tr>';
         }).join('');
         return '<details class="net-headers-details"' + (headersOpen() ? ' open' : '') + '>'
             + '<summary title="Expand or collapse the headers. The choice is remembered in your browser.">'
-            + keys.length + ' header' + (keys.length === 1 ? '' : 's') + '</summary>'
+            + keys.length + ' header' + (keys.length === 1 ? '' : 's')
+            + (matched ? ', <mark>' + matched + ' match' + (matched === 1 ? 'es' : '') + ' the search</mark>' : '') + '</summary>'
             + '<table class="net-headers-table">' + rows + '</table>'
             + '</details>';
     }
@@ -2118,7 +2261,7 @@
         var url = netUrl('transactions');
         var params = [];
         if (lastCursor != null) params.push('cursor=' + encodeURIComponent(lastCursor));
-        if (searchText) params.push('search=' + encodeURIComponent(searchText));
+        if (searchText) params.push(searchParams(searchText, searchTextRegex, ''));
         if (params.length) url += '?' + params.join('&');
         return url;
     }
@@ -2177,16 +2320,6 @@
         }
     }
 
-    function fetchTransactions() {
-        var gen = searchGen;
-        debugFetch(pollUrl())
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                if (gen === searchGen) handlePollData(data);
-            })
-            .catch(function() { /* next poll will retry */ });
-    }
-
     var pollSearchGen = searchGen;
     function startPolling() {
         debugPoll(function() {
@@ -2194,7 +2327,24 @@
             return pollUrl();
         }, 1500, function(data) {
             if (pollSearchGen === searchGen) handlePollData(data);
+        }, function(status, envelope) {
+            if (status !== 400 || !envelope || envelope.field !== 'search') return false;
+            if (pollSearchGen === searchGen) dropSearch(envelope.message);
+            return true;
         });
+    }
+
+    // A search the app accepted can stop being one it can run, as when a large
+    // body arrives for a slow regex. Each poll would run it again, so the list
+    // goes back to every request, and the error under the field says why.
+    function dropSearch(message) {
+        searchText = '';
+        searchTextRegex = false;
+        lastCursor = null;
+        searchGen++;
+        resetDisplayLimit();
+        showSearchError('search-input', (message || 'The search stopped.') + ' The list shows every request until you change the search.');
+        if (currentDetailTx && trafficView === 'http') renderDetail(currentDetailTx);
     }
 
     // ── WebSockets ──
@@ -2216,8 +2366,11 @@
     var wsEventsCursor = null;
     var wsMissed = 0;             // events evicted before this page got them
     var wsDirection = '';         // '', 'sent', or 'received'
-    var wsSearch = '';
+    var wsSearch = '';            // the search the log shows: the last one the app accepted
+    var wsSearchRegex = false;    // whether wsSearch is a regex
     var wsSearchTimer = null;
+    var wsSearchRetryTimer = null;
+    var wsSearchRequest = 0;
     var wsSelectedSeq = null;
     var wsJsonView = 'tree';
     var wsEventsTimer = null;
@@ -2356,6 +2509,10 @@
         wsSelectedId = id;
         wsMissed = 0;
         wsSearch = '';
+        wsSearchRegex = false;
+        clearTimeout(wsSearchTimer);
+        clearTimeout(wsSearchRetryTimer);
+        wsSearchRequest++;
         renderWsList();
         switchRightTab('detail');
         renderWsFrame();
@@ -2399,20 +2556,28 @@
                 return '<button class="dc-seg__item' + (d[0] === wsDirection ? ' dc-seg__item--active' : '') + '" data-action="setWsDirection" data-dir="' + d[0] + '">' + d[1] + '</button>';
             }).join('')
             + '</div>'
-            + '<label class="dc-field net-ws-search" for="ws-search"><span class="dc-field__prefix" aria-hidden="true">&gt;</span>'
-            + '<input type="text" id="ws-search" name="wsSearch" aria-label="Search the messages" class="dc-input" placeholder="filter messages…" data-action="onWsSearchInput"'
-            + ' value="' + debugEscapeHtml(wsSearch) + '"'
-            + ' title="Show only the text messages that contain this text (server-side, 300ms debounce)."></label>'
+            + '<div class="dc-field net-ws-search"><label class="net-search-label" for="ws-search"><span class="dc-field__prefix" aria-hidden="true">&gt;</span>'
+            + '<input type="text" id="ws-search" name="wsSearch" aria-label="Search the messages" aria-describedby="ws-search-error" class="dc-input" placeholder=""'
+            + ' autocomplete="off" spellcheck="false" data-action="onWsSearchInput" value="' + debugEscapeHtml(wsSearch) + '"'
+            + ' title="Show only the text messages that contain this text, ignoring case, on the device, 300 ms after you stop typing. With REGEX on, each word is a regular expression: all must match, and -word leaves out. Escape clears the field."></label>'
+            + '<button type="button" class="dc-btn dc-btn--icon net-search-clear" data-action="clearSearch" data-target="ws-search"' + (wsSearch ? '' : ' hidden')
+            + ' aria-label="Clear the search" title="Clear the search. Escape in the field does the same.">×</button>'
+            + '<button type="button" class="dc-btn dc-btn--sm net-search-regex" data-action="toggleSearchRegex" data-target="ws-search" aria-pressed="false"'
+            + ' title="Regular expressions. On: each word is a Java regular expression that ignores case, all words must match, and -word leaves out, such as ping|pong -heartbeat. Off: the text is found as typed. Remembered in your browser.">Regex</button>'
+            + '<button type="button" class="dc-btn dc-btn--icon net-search-help" data-action="showSearchHelp" aria-label="Regex examples"'
+            + ' title="Common regular expressions, with examples.">?</button></div>'
             + '<button class="dc-btn dc-btn--sm" data-action="copyWsMarkdown" title="Copy the connection and its last ' + WS_MARKDOWN_EVENTS
             + ' events as Markdown, for a bug report, a pull request, or a chat.">Markdown</button>'
             + '<button class="dc-btn dc-btn--sm" id="ws-har-btn" data-action="exportWsHar" title="Save the handshake request and the messages as a HAR file, which Chrome DevTools imports with the messages.">Export HAR</button>'
             + '</div>'
+            + '<div class="net-search-error" id="ws-search-error" role="alert" hidden></div>'
             + '<div id="ws-log-note" class="dc-comment net-ws-log-note"></div>'
             + '<div id="ws-gone-note" class="dc-comment net-ws-log-note" hidden>// The app no longer has this connection: it was cleared, or it passed the connection limit. These are the events this page got.</div>'
             + '<div class="net-ws-log" id="ws-log"><table class="dc-table"><tbody id="ws-events"></tbody></table></div>'
             + '<div class="net-ws-payload" id="ws-payload"><div class="net-empty-body">Select a message to see its payload</div></div>'
             + '</div>';
         wsHeadShown = null;
+        showSearchRegex('ws-search');
         var c = findWebSocket(wsSelectedId);
         if (c) renderWsHead(c);
         renderWsHeaders();
@@ -2512,9 +2677,7 @@
         var id = wsSelectedId;
         if (!id || trafficView !== 'ws') return;
         var request = ++wsEventsRequest;
-        var url = netUrl('websockets/' + encodeURIComponent(id) + '/events?limit=' + WS_MAX_ROWS)
-            + (wsEventsCursor != null ? '&cursor=' + encodeURIComponent(wsEventsCursor) : '')
-            + (wsSearch ? '&search=' + encodeURIComponent(wsSearch) : '');
+        var url = wsEventsUrl(id, wsEventsCursor, wsSearch, wsSearchRegex);
         // Not debugFetch: a 404 here means that the app cleared or evicted the
         // connection, which must not show the console as disconnected. The poll
         // goes on, because a socket that is still open is listed again with its
@@ -2523,6 +2686,14 @@
             .then(function(r) {
                 if (request !== wsEventsRequest || id !== wsSelectedId) return null;
                 setWsGone(r.status === 404);
+                if (r.status === 400 && wsSearch) {
+                    return r.json().catch(function() { return null; }).then(function(envelope) {
+                        if (envelope && envelope.field === 'search' && request === wsEventsRequest && id === wsSelectedId) {
+                            dropWsSearch(envelope.message);
+                        }
+                        return null;
+                    });
+                }
                 return r.ok ? r.json() : null;
             })
             .then(function(data) {
@@ -2532,6 +2703,23 @@
             .then(function() {
                 if (request === wsEventsRequest) wsEventsTimer = setTimeout(pollWsEvents, WS_EVENTS_POLL_MS);
             });
+    }
+
+    function wsEventsUrl(id, cursor, search, regex) {
+        return netUrl('websockets/' + encodeURIComponent(id) + '/events?limit=' + WS_MAX_ROWS)
+            + (cursor != null ? '&cursor=' + encodeURIComponent(cursor) : '')
+            + searchParams(search, regex, '&');
+    }
+
+    // As dropSearch: the log goes back to every event, from its end.
+    function dropWsSearch(message) {
+        wsSearch = '';
+        wsSearchRegex = false;
+        wsEvents = [];
+        wsEventsCursor = null;
+        wsMissed = 0;
+        showSearchError('ws-search', (message || 'The search stopped.') + ' The log shows every event until you change the search.');
+        renderWsEvents();
     }
 
     function setWsGone(gone) {
@@ -2619,7 +2807,7 @@
 
     function wsEmptyRow() {
         return '<tr class="net-ws-info-row"><td class="dc-cell net-ws-empty" colspan="4">'
-            + (wsSearch ? 'No text message contains this text' : 'No events yet') + '</td></tr>';
+            + (wsSearch ? 'No text message matches the search' : 'No events yet') + '</td></tr>';
     }
 
     function wsEventRows(events) {
@@ -2682,20 +2870,54 @@
     };
 
     window.onWsSearchInput = function(val) {
+        updateSearchClear('ws-search');
+        wsSearchRequest++;
+        clearTimeout(wsSearchRetryTimer);
         clearTimeout(wsSearchTimer);
-        wsSearchTimer = setTimeout(function() {
-            wsSearch = val;
-            // The search is part of the poll query, so the log is read again from its end.
-            wsEvents = [];
-            wsEventsCursor = null;
-            wsMissed = 0;
-            // The payload on screen marks the matches of the search before this one.
-            wsSelectedSeq = null;
-            var payload = document.getElementById('ws-payload');
-            if (payload) replacePart(payload, '<div class="net-empty-body">Select a message to see its payload</div>');
-            pollWsEvents();
-        }, 300);
+        wsSearchTimer = setTimeout(function() { applyWsSearch(val); }, 300);
     };
+
+    // As applySearch: the log changes only once the app accepts the query.
+    function applyWsSearch(val) {
+        clearTimeout(wsSearchTimer);
+        clearTimeout(wsSearchRetryTimer);
+        var id = wsSelectedId;
+        var request = ++wsSearchRequest;
+        var regex = searchRegexOn('ws-search');
+        if (!id || (val === wsSearch && (!val || regex === wsSearchRegex))) {
+            showSearchError('ws-search', null);
+            return;
+        }
+        fetch(wsEventsUrl(id, null, val, regex))
+            .then(readSearchAnswer)
+            .then(function(answer) {
+                if (request !== wsSearchRequest || id !== wsSelectedId) return;
+                showSearchError('ws-search', answer.error);
+                if (answer.error) return;
+                wsSearch = val;
+                wsSearchRegex = regex;
+                // The answer is the end of the log for the new query. A poll that
+                // left with the old one is ignored, and the next one goes on from here.
+                clearTimeout(wsEventsTimer);
+                wsEventsRequest++;
+                wsEvents = [];
+                wsEventsCursor = null;
+                wsMissed = 0;
+                // The payload on screen marks the matches of the search before this one.
+                wsSelectedSeq = null;
+                var payload = document.getElementById('ws-payload');
+                if (payload) replacePart(payload, '<div class="net-empty-body">Select a message to see its payload</div>');
+                applyWsEvents(answer.data);
+                if (!answer.data || answer.data.status === 'unchanged') renderWsEvents();
+                wsEventsTimer = setTimeout(pollWsEvents, WS_EVENTS_POLL_MS);
+            })
+            .catch(function() {
+                // The app didn't answer, or no longer has the connection: try again.
+                if (request === wsSearchRequest && id === wsSelectedId) {
+                    wsSearchRetryTimer = setTimeout(function() { applyWsSearch(val); }, WS_EVENTS_POLL_MS);
+                }
+            });
+    }
 
     window.selectWsEvent = function(seq) {
         wsSelectedSeq = seq;
@@ -2749,7 +2971,7 @@
         if (!el) return;
         var binary = e.type === 'binary';
         var url = wsPayloadUrl(e);
-        var options = { searchText: wsSearch };
+        var options = { searchText: searchMark(wsSearch, wsSearchRegex) };
         var tree = !binary && wsJsonView === 'tree' ? debugJsonTree(text, options) : null;
         var isJson = !binary && debugBodyKind(null, text, false) === 'json';
         var bar = '<div class="net-body-bar">';
@@ -2844,6 +3066,12 @@
             e.preventDefault();
             var search = document.getElementById('search-input');
             if (search) { search.focus(); search.select(); }
+            return;
+        }
+        // Escape in a search field clears it first; the next one closes the detail.
+        if (e.key === 'Escape' && !e.defaultPrevented && t && (t.id === 'search-input' || t.id === 'ws-search') && t.value) {
+            e.preventDefault();
+            window.clearSearch(t.id);
             return;
         }
         if (composerOpen && e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
@@ -2942,6 +3170,10 @@
         switchWsJsonView: function(el) { window.switchWsJsonView(el.dataset.view); },
         copyWsMarkdown: function(el, ev) { window.copyWsMarkdown(ev); },
         exportWsHar: function() { window.exportWsHar(); },
+        clearSearch: function(el) { window.clearSearch(el.dataset.target); },
+        toggleSearchRegex: function(el) { window.toggleSearchRegex(el.dataset.target); },
+        showSearchHelp: function() { window.showSearchHelp(); },
+        closeSearchHelp: function() { window.closeSearchHelp(); },
     };
 
     var delegationRoot = null;
@@ -3002,6 +3234,7 @@
 
     function init() {
         setupDelegation();
+        showSearchRegex('search-input');
         buildCategoryFilters();
         buildStatusFilters();
         buildMethodFilters();

@@ -57,23 +57,15 @@ internal data class NetworkTransaction(
     // through copy() when it changes, and the copy starts without one.
     private val lastSearch = AtomicReference<SearchResult?>()
 
-    /**
-     * Whether the URL, the final URL, the method, or either body contains [needle] ignoring
-     * case. [needle] must already be folded with [foldCase].
-     */
-    fun matchesSearch(needle: String): Boolean {
-        lastSearch.get()?.let { if (it.needle == needle) return it.matched }
-        val matched =
-            url.containsFolded(needle) ||
-                finalUrl?.containsFolded(needle) == true ||
-                method.containsFolded(needle) ||
-                requestBody?.containsFolded(needle) == true ||
-                responseBody?.containsFolded(needle) == true
-        lastSearch.set(SearchResult(needle, matched))
+    /** Whether [query] matches. Throws [SearchTimeoutException] when it passes [budget]. */
+    fun matchesSearch(query: SearchQuery, budget: SearchBudget): Boolean {
+        lastSearch.get()?.let { if (it.text == query.text && it.regex == query.regex) return it.matched }
+        val matched = query.matches(this, budget)
+        lastSearch.set(SearchResult(query.text, query.regex, matched))
         return matched
     }
 
-    private class SearchResult(val needle: String, val matched: Boolean)
+    private class SearchResult(val text: String, val regex: Boolean, val matched: Boolean)
 }
 
 /** A response the client answered with another request, as [NetworkTransaction.priorResponses] lists it. */
@@ -91,7 +83,7 @@ internal enum class CaptureSource(val wireName: String) {
     APP("app"),
 }
 
-/** Lowercases each char on its own, the folding [NetworkTransaction.matchesSearch] expects. */
+/** Lowercases each char on its own, the folding [containsFolded] expects of its needle. */
 internal fun String.foldCase(): String = String(CharArray(length) { this[it].foldCase() })
 
 // Folds as it scans instead of lowercasing a copy of every body it searches.

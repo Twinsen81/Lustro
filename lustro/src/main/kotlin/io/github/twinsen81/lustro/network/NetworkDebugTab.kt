@@ -24,10 +24,13 @@ import io.github.twinsen81.lustro.internal.network.NetworkSendRequestImpl
 import io.github.twinsen81.lustro.internal.network.NetworkTrafficStore
 import io.github.twinsen81.lustro.internal.network.NetworkTransaction
 import io.github.twinsen81.lustro.internal.network.SafeCaptureFilter
+import io.github.twinsen81.lustro.internal.network.SEARCH_HELP_DIALOG
+import io.github.twinsen81.lustro.internal.network.SearchBudget
 import io.github.twinsen81.lustro.internal.network.SendCaptureTag
 import io.github.twinsen81.lustro.internal.network.WebSocketCapture
 import io.github.twinsen81.lustro.internal.network.WebSocketRoutes
 import io.github.twinsen81.lustro.internal.network.WebSocketTrafficStore
+import io.github.twinsen81.lustro.internal.network.respondWithSearch
 import io.github.twinsen81.lustro.internal.toDebugTimestamp
 import io.github.twinsen81.lustro.DebugTab
 import okhttp3.Interceptor
@@ -107,7 +110,11 @@ public class NetworkDebugTab private constructor(
             maxPayloadBytes = { this.maxBodyCaptureBytes },
         )
 
-    private val webSocketRoutes = WebSocketRoutes(webSocketStore) { stateJson() }
+    // How long a search may take. A test sets it to 0 to see a search stop.
+    @Volatile
+    internal var searchTimeoutMs: Long = SearchBudget.DEFAULT_TIMEOUT_MS
+
+    private val webSocketRoutes = WebSocketRoutes(webSocketStore, { searchTimeoutMs }) { stateJson() }
 
     // A factory that is already capturing is returned as it is, so wrapping
     // twice doesn't record every message twice.
@@ -207,8 +214,9 @@ public class NetworkDebugTab private constructor(
                     </div>
                 </div>
                 <div class="net-search net-http-only">
-                    <label class="dc-field" for="search-input"><span class="dc-field__prefix" aria-hidden="true">&gt;</span><input type="text" id="search-input" name="search" aria-label="Search network traffic" class="dc-input" placeholder="filter url, method, body…" data-action="onSearchInput" title="Search across URL, method, request body, and response body (server-side, 300ms debounce). Matches are highlighted in body views. Shortcut: Ctrl/Cmd+K to focus." /></label>
+                    <div class="dc-field"><label class="net-search-label" for="search-input"><span class="dc-field__prefix" aria-hidden="true">&gt;</span><input type="text" id="search-input" name="search" aria-label="Search network traffic" aria-describedby="search-input-error" class="dc-input" placeholder="filter url, method, headers, body…" autocomplete="off" spellcheck="false" data-action="onSearchInput" title="Search the URL, the method, the headers, and the bodies for this text, ignoring case, on the device, 300 ms after you stop typing. With REGEX on, each word is a regular expression: all must match, and -word leaves out. Matches are marked in the detail. Ctrl/Cmd+K focuses the field, and Escape clears it." /></label><button type="button" class="dc-btn dc-btn--icon net-search-clear" data-action="clearSearch" data-target="search-input" hidden aria-label="Clear the search" title="Clear the search. Escape in the field does the same.">×</button><button type="button" class="dc-btn dc-btn--sm net-search-regex" data-action="toggleSearchRegex" data-target="search-input" aria-pressed="false" title="Regular expressions. On: each word is a Java regular expression that ignores case, all words must match, each in any field, and -word leaves out, such as featured|popular -analytics. Off: the text is found as typed. Remembered in your browser.">Regex</button><button type="button" class="dc-btn dc-btn--icon net-search-help" data-action="showSearchHelp" aria-label="Regex examples" title="Common regular expressions, with examples.">?</button></div>
                     <button class="dc-btn" id="new-request-btn" data-action="openNewRequest" hidden title="Compose a request and send it through one of the OkHttp clients that the app gave to Lustro. The form opens in the right pane.">+ New request</button>
+                    <div class="net-search-error" id="search-input-error" role="alert" hidden></div>
                 </div>
                 <div class="net-category-bar net-http-only" id="category-filters"></div>
                 <div class="net-filter-bar net-http-only" id="status-filters"></div>
@@ -292,7 +300,7 @@ public class NetworkDebugTab private constructor(
                 </div>
             </div>
         </div>
-        """.trimIndent()
+        """.trimIndent() + "\n" + SEARCH_HELP_DIALOG
 
     // The static OpenAPI lives at assets/lustro/network.openapi.json; the tab
     // still works without a dynamic schema.
@@ -323,24 +331,24 @@ public class NetworkDebugTab private constructor(
         }
     }
 
-    private fun handleTransactions(request: DebugRequest): DebugResponse {
-        val search = request.queryParam("search")?.takeIf { it.isNotBlank() }
-        return DebugResponse.cursorEnvelope(
-            // A handshake's webSocketId depends on which connections are listed, so
-            // a change to that set is a change to this list. Both counts only grow.
-            currentSequence = store.getSequence() + webSocketStore.getMembershipSequence(),
-            clientCursor = request.queryParam("cursor"),
-            state = stateJson(),
-            epoch = store.epoch,
-        ) {
-            val transactions = store.getTransactions(search = search)
-            val webSockets = webSocketStore.transactionLinks()
-            transactions.forEachIndexed { index, tx ->
-                if (index > 0) append(",")
-                appendTransaction(tx, brief = true, webSocketId = webSockets[tx.id])
+    private fun handleTransactions(request: DebugRequest): DebugResponse =
+        respondWithSearch(request) { search ->
+            DebugResponse.cursorEnvelope(
+                // A handshake's webSocketId depends on which connections are listed, so
+                // a change to that set is a change to this list. Both counts only grow.
+                currentSequence = store.getSequence() + webSocketStore.getMembershipSequence(),
+                clientCursor = request.queryParam("cursor"),
+                state = stateJson(),
+                epoch = store.epoch,
+            ) {
+                val transactions = store.getTransactions(search = search, budget = SearchBudget(searchTimeoutMs))
+                val webSockets = webSocketStore.transactionLinks()
+                transactions.forEachIndexed { index, tx ->
+                    if (index > 0) append(",")
+                    appendTransaction(tx, brief = true, webSocketId = webSockets[tx.id])
+                }
             }
         }
-    }
 
     private fun stateJson(): String =
         buildString {

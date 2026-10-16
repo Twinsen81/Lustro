@@ -351,3 +351,31 @@ def test_all_openapi_paths_are_covered():
         "/api/v1/network/send",
     }
     assert declared == covered, declared.symmetric_difference(covered)
+
+
+def test_a_search_that_starts_with_a_minus_is_the_value_of_search():
+    joined = cli._join_search_values(["net", "list", "--search", "-analytics", "--last", "5"])
+    assert joined == ["net", "list", "--search=-analytics", "--last", "5"]
+    args = cli.build_parser().parse_args(joined)
+    assert args.search == "-analytics"
+    assert args.last == 5
+
+
+def test_a_value_that_starts_with_two_minuses_is_not_taken_as_the_search():
+    assert cli._join_search_values(["net", "list", "--search", "--json"]) == ["net", "list", "--search", "--json"]
+    with pytest.raises(SystemExit):
+        cli.build_parser().parse_args(["net", "list", "--search", "--json"])
+    argv = ["net", "wait", "--search", "--", "adb", "shell"]
+    assert cli._join_search_values(argv) == argv
+
+
+def test_regex_without_search_is_a_usage_error(capsys):
+    with pytest.raises(SystemExit) as exit_info:
+        cli.main(["net", "list", "--regex"])
+    assert exit_info.value.code == 2
+    assert "--regex makes --search TEXT a regular expression, so it needs --search" in capsys.readouterr().err
+
+
+def test_the_action_after_double_dash_is_left_alone():
+    argv = ["net", "wait", "--search", "a", "--", "tool", "--search", "-x"]
+    assert cli._join_search_values(argv) == argv

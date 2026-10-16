@@ -120,7 +120,8 @@ too. Semantic color is passed via the `--c` custom property where noted:
 - `.dc-json` (`.k/.s/.n/.b/.p` spans, as `debugSyntaxHighlightJson()` emits
   them) in a `.dc-code` well: `<pre class="dc-code dc-json">`.
 - Body viewers. Each function takes a body's text, escapes all of it, and
-  returns one element's HTML; `{ searchText }` marks the matches.
+  returns one element's HTML; `{ searchText }` marks the matches: a string,
+  found as typed and ignoring case, or a `RegExp`.
   `debugBodyKind(contentType, text, binary)` says which one suits a body.
   - `.dc-tree`: `debugJsonTree(text)` returns a
     `<pre class="dc-code dc-json dc-tree">`, or `null` when the text is not

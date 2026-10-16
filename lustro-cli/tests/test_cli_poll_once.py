@@ -92,3 +92,46 @@ def test_open_percent_encodes_token_fragment(monkeypatch, capsys):
 
     assert fragment == urllib.parse.quote(nasty_token, safe="")
     assert urllib.parse.unquote(fragment) == nasty_token
+
+
+class _SearchRejectingClient(LustroClient):
+    """A client whose every request gets the app's 400 for a regex that doesn't compile."""
+
+    def __init__(self):
+        super().__init__("http://127.0.0.1:8080", "tok")
+        self.params = []
+
+    def request(self, method, path, *, params=None, json_body=None):
+        self.params.append(params)
+        raise LustroError(
+            "bad_request",
+            "The regex is not valid: Unclosed group",
+            status=400,
+            field="search",
+        )
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["net", "poll", "--search", "feat(", "--regex"],
+        ["net", "wait", "--search", "feat(", "--regex", "--timeout", "1"],
+        ["net", "list", "--search", "feat(", "--regex"],
+    ],
+)
+def test_a_rejected_search_exits_2_without_polling_again(monkeypatch, capsys, argv):
+    client = _SearchRejectingClient()
+    monkeypatch.setattr(cli, "_build_client", lambda args: client)
+    rc = _run_with_watchdog(argv)
+    assert rc == 2
+    assert len(client.params) == 1
+    assert client.params[0]["search"] == "feat("
+    assert client.params[0]["regex"] == "true"
+    assert "The regex is not valid: Unclosed group (field: search)" in capsys.readouterr().err
+
+
+def test_search_is_plain_text_without_regex():
+    args = cli.build_parser().parse_args(["net", "list", "--search", "a|b"])
+    assert cli._search_params(args) == {"search": "a|b"}
+    args = cli.build_parser().parse_args(["net", "ws", "events", "x", "--search", "a|b", "--regex"])
+    assert cli._search_params(args) == {"search": "a|b", "regex": "true"}
