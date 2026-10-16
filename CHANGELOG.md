@@ -14,6 +14,12 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Added
 
+- **The throttle goes up to 1 minute.** The throttle select in the Network
+  tab's toolbar now also has 10s, 30s, and 1 min, to test timeout handling
+  and long loading states. A delay that the select has no option for, such
+  as 2500 ms set by a script through `POST throttle`, showed as an empty
+  choice. Now the select shows it as an option of its own, **2500ms**, while
+  it is in effect.
 - **Select requests with the rows' checkboxes, and see each view's count in
   its button.** **Select**, in the Network tab's toolbar, turned on a mode
   that added checkboxes to the rows, for Copy Markdown and Export HAR. It
@@ -402,6 +408,18 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Fixed
 
+- **Copy in the JSON Tree view copies the JSON as the tree shows it.** The
+  Copy button of a JSON body or WebSocket message copied the text as
+  captured in every view, so a compact body was pasted on one line while
+  the Tree view showed it indented. In the Tree view, Copy now copies the
+  indented JSON, with each key and value as captured: only whitespace is
+  added. In the Raw view, Copy still copies the text as captured.
+- **The corner under the resize handle of a text area is no longer white.**
+  Lustro styles the scrollbars, and Chromium then painted the corner where
+  they meet white, also in the dark theme. In a text area that scrolls, such
+  as the Body field of a mock rule or of a request in the Send form, a white
+  square showed behind the resize handle. The corner is now transparent in
+  both themes.
 - **The default redactor masked `assignments`, `assignees`, `designers`, and
   `authorities`.** An ordinary word that contains a sensitive fragment, such
   as `sig` in `assignment` or `auth` in `author`, kept its value only in the

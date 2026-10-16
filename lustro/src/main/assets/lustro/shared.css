@@ -274,6 +274,9 @@ mark { background: var(--search-highlight); color: inherit; border-radius: 2px; 
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb { background: rgba(128, 128, 128, 0.32); border-radius: 6px; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(128, 128, 128, 0.5); }
+/* With the scrollbar styled, Chromium paints the corner white in either theme,
+   also under the resize handle of a text area that scrolls. */
+::-webkit-scrollbar-corner { background: transparent; }
 
 @keyframes dc-menu-in  { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
 @keyframes dc-toast-in { from { opacity: 0; transform: translateY(8px);  } to { opacity: 1; transform: none; } }

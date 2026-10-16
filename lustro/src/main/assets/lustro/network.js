@@ -1251,9 +1251,14 @@
         return String(contentType || '').split(';')[0].trim().toLowerCase();
     }
 
-    // One direction's body: a bar with its views, then the view. Copy copies the
-    // body as captured in every view, because an inspector is opened to see the
-    // bytes, not a rendering of them.
+    // Copy copies what the view shows. The tree, unfolded, shows the JSON
+    // indented: the body as captured, with only whitespace added. The other
+    // views copy the body as captured.
+    function copyText(text, view) {
+        return view === 'tree' ? debugFormatJson(text, 2) : text;
+    }
+
+    // One direction's body: a bar with its views, then the view.
     function bodySection(tx, dir) {
         var text = tx[dir + 'Body'];
         var binary = !!tx[dir + 'BodyBinary'];
@@ -1281,7 +1286,7 @@
         }
 
         // A hex dump's text arrives later, and loadHexDumps gives it to the button.
-        var copy = binary && view !== 'raw' ? '' : copyBtn(binary ? null : text);
+        var copy = binary && view !== 'raw' ? '' : copyBtn(binary ? null : copyText(text, view));
         if (content == null) {
             if (binary && view === 'raw') {
                 content = '<pre class="dc-code net-hexdump" data-hex-src="' + debugEscapeHtml(bodyUrl(tx, dir)) + '">Loading the bytes…</pre>';
@@ -1328,6 +1333,7 @@
 
         return open + bar + '<div class="net-body-wrap">' + copy + content + '</div></div>';
     }
+    window.netBodySection = bodySection;
 
     function bodyUrl(tx, dir) {
         return netUrl('transactions/' + encodeURIComponent(tx.id) + '/body/' + dir);
@@ -2499,9 +2505,30 @@
             .catch(function(e) { debugToast('Failed to toggle overwrite mode: ' + e.message, 'error'); });
     };
 
+    // A delay that the select has no option for, such as one that a script set
+    // through the API, gets an option of its own while it is in effect, so the
+    // select never shows an empty choice.
     function updateThrottleSelect() {
         var sel = document.getElementById('throttle-select');
-        if (sel && sel.value !== String(throttleDelayMs)) sel.value = String(throttleDelayMs);
+        if (!sel) return;
+        var value = String(throttleDelayMs);
+        var extra = sel.querySelector('option[data-extra]');
+        if (extra && extra.value !== value) extra.remove();
+        if (!sel.querySelector('option[value="' + value + '"]')) {
+            var option = document.createElement('option');
+            option.value = value;
+            option.textContent = throttleLabel(throttleDelayMs);
+            option.dataset.extra = '';
+            var next = Array.prototype.find.call(sel.options, function(o) { return Number(o.value) > throttleDelayMs; });
+            sel.insertBefore(option, next || null);
+        }
+        sel.value = value;
+    }
+
+    function throttleLabel(ms) {
+        if (ms >= 60000 && ms % 60000 === 0) return ms / 60000 + ' min';
+        if (ms >= 1000 && ms % 1000 === 0) return ms / 1000 + 's';
+        return ms + 'ms';
     }
 
     window.setThrottle = function(value) {
@@ -2514,7 +2541,7 @@
           .then(function(data) {
               throttleDelayMs = (data && data.delayMs) || 0;
               updateThrottleSelect();
-              if (throttleDelayMs > 0) debugToast('Throttle: ' + throttleDelayMs + 'ms', 'info');
+              if (throttleDelayMs > 0) debugToast('Throttle: ' + throttleLabel(throttleDelayMs), 'info');
               else debugToast('Throttle off', 'info');
           })
           .catch(function(e) { debugToast('Failed to set throttle: ' + e.message, 'error'); });
@@ -3397,7 +3424,7 @@
         var dump = hexDumps[url];
         hexDumps = {};
         if (dump != null) hexDumps[url] = dump;
-        replacePart(el, bar + '<div class="net-body-wrap">' + copyBtn(binary ? null : text) + content + '</div>');
+        replacePart(el, bar + '<div class="net-body-wrap">' + copyBtn(binary ? null : copyText(text, tree ? 'tree' : 'raw')) + content + '</div>');
         loadHexDumps();
     }
 
