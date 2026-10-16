@@ -1584,15 +1584,22 @@
         return { url: trimBase(sender.baseUrl) + '/' + url.replace(/^\/+/, '') };
     }
 
-    // The sender whose base URL the captured URL starts with, the longest one
-    // first; otherwise one that takes absolute URLs, or the first.
+    // The part of url after base, or null when url is not under base: the next
+    // character must start a path or a query, so https://api.example.com is not
+    // the base of https://api.example.com.evil.
+    function pathUnderBase(url, base) {
+        var b = trimBase(base);
+        var next = url.charAt(b.length);
+        if (url.indexOf(b) !== 0 || !(next === '' || next === '/' || next === '?')) return null;
+        return url.substring(b.length) || '/';
+    }
+
+    // The sender whose base URL the captured URL is under, the longest one first;
+    // otherwise one that takes absolute URLs, or the first.
     function senderForUrl(url) {
         var best = null;
         senders.forEach(function(s) {
-            if (!s.baseUrl) return;
-            var base = trimBase(s.baseUrl);
-            var next = url.charAt(base.length);
-            if (url.indexOf(base) === 0 && (next === '' || next === '/' || next === '?') && (!best || base.length > trimBase(best.baseUrl).length)) best = s;
+            if (s.baseUrl && pathUnderBase(url, s.baseUrl) !== null && (!best || s.baseUrl.length > best.baseUrl.length)) best = s;
         });
         return best || senders.find(function(s) { return !s.baseUrl; }) || senders[0];
     }
@@ -1604,7 +1611,7 @@
     function draftFromTransaction(tx) {
         var url = tx.url || '';
         var sender = senderForUrl(url);
-        var base = sender.baseUrl ? trimBase(sender.baseUrl) : null;
+        var relative = sender.baseUrl ? pathUnderBase(url, sender.baseUrl) : null;
         var notes = [];
         var headers = [];
         var reqHeaders = tx.requestHeaders || {};
@@ -1628,7 +1635,7 @@
         return {
             sender: sender.name,
             method: method,
-            url: base && url.indexOf(base) === 0 ? (url.substring(base.length) || '/') : url,
+            url: relative !== null ? relative : url,
             headers: headers,
             body: body,
             from: method + ' ' + url + (tx.statusCode ? ' · ' + tx.statusCode : '') + (tx.timestamp ? ' · ' + tx.timestamp : ''),
@@ -1788,13 +1795,13 @@
         if (sendDraft) sendDraft.body = ta.value;
     };
 
-    function renderSendResult(data, failure) {
+    function renderSendResult(data, failure, headline) {
         var el = document.getElementById('sf-result');
         if (!el) return;
         var line = function(text) { return '<div class="net-send-result-line">' + text + '</div>'; };
         if (failure) {
             el.className = 'net-send-result error';
-            el.innerHTML = '<div class="net-send-result-status">Not sent</div>' + line(debugEscapeHtml(failure));
+            el.innerHTML = '<div class="net-send-result-status">' + debugEscapeHtml(headline || 'Not sent') + '</div>' + line(debugEscapeHtml(failure));
             return;
         }
         var where = data.url ? line('Sent to ' + debugEscapeHtml(data.url) + (data.sender ? ' through "' + debugEscapeHtml(data.sender) + '"' : '')) : '';
@@ -1836,8 +1843,10 @@
         }).then(function(r) { return r.json(); })
           .then(function(data) { renderSendResult(data || {}, null); })
           .catch(function(e) {
-              // A rejected send (an unknown sender, a timeout) answers with the error envelope.
-              var show = function(body) { renderSendResult(null, (body && body.message) || e.message); };
+              // A rejected send (an unknown sender, a timeout) answers with the error
+              // envelope. A 504 went out: the app cancels its call after the timeout.
+              var headline = e && e.status === 504 ? 'Timed out' : 'Not sent';
+              var show = function(body) { renderSendResult(null, (body && body.message) || e.message, headline); };
               if (e && e.response) e.response.json().then(show, function() { show(null); }); else show(null);
           })
           .then(function() {
