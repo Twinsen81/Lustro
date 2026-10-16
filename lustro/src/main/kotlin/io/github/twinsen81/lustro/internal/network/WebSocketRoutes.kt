@@ -63,17 +63,16 @@ internal class WebSocketRoutes(
                 else -> given.toIntOrNull()?.takeIf { it >= 1 }
                     ?: return DebugResponse.error("limit must be a whole number, 1 or more", field = "limit")
             }
-        // A message has only its text, so a field prefix such as url: is text too.
         val search =
             try {
-                request.queryParam("search")?.takeIf { it.isNotBlank() }?.let { SearchQuery.parse(it, fields = false) }
+                SearchQuery.fromParams(request.queryParam("search"), request.queryParam("regex"))
             } catch (e: SearchQueryException) {
-                return DebugResponse.error(e.message.orEmpty(), field = "search")
+                return DebugResponse.error(e.message.orEmpty(), field = e.field)
             }
         val budget = SearchBudget(SearchBudget.DEFAULT_TIMEOUT_MS)
         val matches = { event: WebSocketEvent ->
             (direction == null || event.outgoing == (direction == SENT)) &&
-                (search == null || search.isEmpty || search.matchesText(event.text, budget))
+                (search == null || search.matchesText(event.text, budget))
         }
         return try {
             eventsEnvelope(log, matches, limit, request)

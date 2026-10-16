@@ -117,7 +117,7 @@ class NetworkDebugTabTest {
     }
 
     @Test
-    fun `search takes the query syntax and finds the redacted headers`() {
+    fun `search finds the redacted headers, as text or as a regex`() {
         val tab = tab()
         val store = tab.captureSink as NetworkTrafficStore
         val id =
@@ -130,27 +130,33 @@ class NetworkDebugTabTest {
             )
         store.completeRequest(id, CapturedResponse.Builder(404, 5).headers(Headers.of("Cache-Control" to "no-cache")).build())
         tab.capture("https://example.com/v1/popular.json")
-        val urls = { query: String ->
-            tab.handle(get("transactions", "search" to query))!!.json().getJSONArray("items").objects().map { it.getString("url") }
-        }
+        fun urls(vararg query: Pair<String, String>): List<String> =
+            tab.handle(get("transactions", *query))!!.json().getJSONArray("items").objects().map { it.getString("url") }
 
-        assertEquals(listOf("https://example.com/v1/popular.json", "https://example.com/v1/featured.json"), urls("featured | popular"))
-        assertEquals(listOf("https://example.com/v1/featured.json"), urls("cache-control status:4xx"))
-        assertEquals(listOf("https://example.com/v1/popular.json"), urls("/v\\d/ -featured"))
+        assertEquals(listOf("https://example.com/v1/featured.json"), urls("search" to "cache-control: no"))
+        // Without regex=true, the text is found as typed.
+        assertEquals(emptyList<String>(), urls("search" to "featured|popular"))
+        assertEquals(
+            listOf("https://example.com/v1/popular.json", "https://example.com/v1/featured.json"),
+            urls("search" to "featured|popular", "regex" to "true"),
+        )
         // The header is stored redacted, so the secret isn't there to find.
-        assertEquals(listOf("https://example.com/v1/featured.json"), urls("header:\"authorization: [redacted]\""))
-        assertEquals(emptyList<String>(), urls("secret"))
+        assertEquals(listOf("https://example.com/v1/featured.json"), urls("search" to "authorization: [redacted]"))
+        assertEquals(emptyList<String>(), urls("search" to "secret"))
     }
 
     @Test
-    fun `a search that can't run is a 400 on the search field`() {
+    fun `a search that can't run is a 400 on the parameter at fault`() {
         val tab = tab()
         tab.capture("https://example.com/a")
-        for (query in listOf("/feat(/", "status:ok")) {
-            val res = tab.handle(get("transactions", "search" to query))!!
-            assertEquals(query, 400, res.status)
-            assertEquals("search", res.json().getString("field"))
-        }
+        val regex = tab.handle(get("transactions", "search" to "feat(", "regex" to "true"))!!
+        assertEquals(400, regex.status)
+        assertEquals("search", regex.json().getString("field"))
+        val mode = tab.handle(get("transactions", "search" to "a", "regex" to "yes"))!!
+        assertEquals(400, mode.status)
+        assertEquals("regex", mode.json().getString("field"))
+        // As plain text, the same search is fine.
+        assertEquals(200, tab.handle(get("transactions", "search" to "feat("))!!.status)
     }
 
     private fun org.json.JSONArray.objects(): List<JSONObject> = (0 until length()).map { getJSONObject(it) }

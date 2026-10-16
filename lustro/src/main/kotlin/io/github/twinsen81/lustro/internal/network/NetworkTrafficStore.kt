@@ -459,7 +459,7 @@ internal class NetworkTrafficStore(
         budget: SearchBudget = SearchBudget(SearchBudget.DEFAULT_TIMEOUT_MS),
     ): List<NetworkTransaction> {
         val transactions = insertionOrder.mapNotNull { transactionMap[it] }
-        if (search == null || search.isEmpty) return transactions
+        if (search == null) return transactions
         return transactions.filter { it.matchesSearch(search, budget) }
     }
 

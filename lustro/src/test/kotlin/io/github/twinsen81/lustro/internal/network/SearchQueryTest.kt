@@ -1,26 +1,19 @@
 package io.github.twinsen81.lustro.internal.network
 
-import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
 
-/**
- * The search syntax and what each kind of term matches. The parse cases are in
- * `search-queries.json`, which the console's JavaScript tests read too, so the
- * two parsers can't drift apart.
- */
+/** What the plain search and the regex search find in a transaction, and when a search can't run. */
 class SearchQueryTest {
-    private val fixture = JSONObject(javaClass.getResource("/search-queries.json")!!.readText())
-
     private val budget get() = SearchBudget(60_000)
 
     private fun tx(
         url: String = "https://example.com/v1/podcasts/featured.json",
         method: String = "GET",
-        statusCode: Int? = 200,
         requestHeaders: Map<String, String> = mapOf("User-Agent" to "PocketCasts/7.0"),
         responseHeaders: Map<String, String>? = mapOf("Cache-Control" to "no-cache", "Set-Cookie" to "[REDACTED]"),
         requestBody: String? = null,
@@ -32,7 +25,6 @@ class SearchQueryTest {
             startedAt = 0,
             method = method,
             url = url,
-            statusCode = statusCode,
             requestHeaders = requestHeaders,
             responseHeaders = responseHeaders,
             requestBody = requestBody,
@@ -40,157 +32,98 @@ class SearchQueryTest {
             finalUrl = finalUrl,
         )
 
-    private fun matches(query: String, tx: NetworkTransaction = tx()): Boolean = SearchQuery.parse(query).matches(tx, budget)
+    private fun matches(text: String, regex: Boolean = false, tx: NetworkTransaction = tx()): Boolean =
+        SearchQuery.parse(text, regex).matches(tx, budget)
 
     @Test
-    fun `parses each fixture query as the fixture says`() {
-        val cases = fixture.getJSONArray("parse")
-        for (i in 0 until cases.length()) {
-            val case = cases.getJSONObject(i)
-            val query = case.getString("query")
-            val parsed = SearchQuery.parse(query, fields = case.optBoolean("fields", true))
-            assertEquals(query, case.getString("terms"), parsed.describe())
-        }
-    }
-
-    @Test
-    fun `rejects each fixture error`() {
-        val errors = fixture.getJSONArray("errors")
-        for (i in 0 until errors.length()) {
-            assertParseError(errors.getString(i))
-        }
-    }
-
-    @Test
-    fun `a regex that doesn't compile is an error that says why`() {
-        for (query in listOf("/feat(/", "regex:[a", "url:/(/", "-regex:*")) {
-            val message = assertParseError(query)
-            assertTrue(message, message.startsWith("The regex /"))
-            assertTrue(message, message.contains(" is not valid: "))
-        }
-    }
-
-    @Test
-    fun `a status that isn't a code says how to search for the text`() {
-        assertEquals(
-            "status: takes a code such as 404 or a class such as 4xx, not \"ok\". " +
-                "To search for the text, put all of it in quotes: \"status:ok\"",
-            assertParseError("status:ok"),
-        )
-    }
-
-    @Test
-    fun `plain text finds what a substring search found`() {
+    fun `plain text is found as typed, ignoring case, with no syntax`() {
         assertTrue(matches("podcasts/featured"))
         assertTrue(matches("FEATURED.JSON"))
         assertTrue(matches("\"podcast_list\""))
         assertTrue(matches("get"))
         assertTrue(matches("ärger"))
         assertFalse(matches("popular"))
+        // Characters that mean something in a regex are text here.
+        assertFalse(matches("featured|popular"))
+        assertFalse(matches("v\\d"))
+        assertTrue(matches("/v1/"))
+        assertTrue(matches("featured.json", tx = tx(url = "https://example.com/featured.json")))
+        assertFalse(matches("featured.json", tx = tx(url = "https://example.com/featuredXjson")))
     }
 
     @Test
-    fun `spaces mean and, a bar or OR means or, and a minus means not`() {
-        assertTrue(matches("featured json"))
-        assertFalse(matches("featured popular"))
-        assertTrue(matches("popular | featured"))
-        assertTrue(matches("popular OR featured"))
-        assertFalse(matches("popular | trending"))
-        assertTrue(matches("podcasts -analytics"))
-        assertFalse(matches("podcasts -featured"))
-        assertTrue(matches("-analytics"))
-        assertFalse(matches("NOT featured"))
-        // The bar binds closer than the space.
-        assertTrue(matches("podcasts popular | featured"))
-        assertFalse(matches("analytics popular | featured"))
-    }
-
-    @Test
-    fun `a regex is found anywhere and ignores case`() {
-        assertTrue(matches("/featured\\.JSON$/"))
-        assertTrue(matches("regex:v\\d+/podcasts"))
-        assertFalse(matches("/v\\d{2}/"))
-        assertTrue(matches("/ärger/"))
-        assertTrue(matches("/ÄRGER/"))
+    fun `a regex is found anywhere in a field and ignores case`() {
+        assertTrue(matches("featured|popular", regex = true))
+        assertTrue(matches("v\\d+/podcasts", regex = true))
+        assertTrue(matches("\\.JSON$", regex = true))
+        assertFalse(matches("v\\d{2}/", regex = true))
+        assertTrue(matches("ÄRGER", regex = true))
+        assertTrue(matches("^get$", regex = true))
     }
 
     @Test
     fun `search finds the headers by name, by value, and as the line Name colon value`() {
-        assertTrue(matches("cache-control"))
-        assertTrue(matches("no-cache"))
-        assertTrue(matches("\"Cache-Control: no-cache\""))
-        assertTrue(matches("pocketcasts/7"))
+        for (regex in listOf(false, true)) {
+            assertTrue(matches("cache-control", regex))
+            assertTrue(matches("no-cache", regex))
+            assertTrue(matches("pocketcasts/7", regex))
+            assertFalse(matches("max-age", regex))
+        }
+        assertTrue(matches("Cache-Control: no-cache"))
+        assertTrue(matches("^set-cookie: \\[redacted]$", regex = true))
         // The redacted value is what is stored, so it is what search finds.
         assertTrue(matches("[REDACTED]"))
-        assertTrue(matches("header:/^set-cookie:\\s\\[redacted]$/"))
-        assertFalse(matches("max-age"))
-        assertTrue(matches("cache-control", tx(responseHeaders = null, requestHeaders = mapOf("Cache-Control" to "x"))))
+        assertTrue(matches("cache-control", tx = tx(responseHeaders = null, requestHeaders = mapOf("Cache-Control" to "x"))))
     }
 
     @Test
-    fun `a field prefix looks at that field only`() {
-        val tx =
-            tx(
-                url = "https://example.com/start",
-                finalUrl = "https://cdn.example.com/feed",
-                requestBody = "query=start",
-                responseBody = "the feed",
-            )
-        assertTrue(matches("url:cdn.example", tx))
-        assertTrue(matches("url:start", tx))
-        assertFalse(matches("url:query", tx))
-        assertTrue(matches("body:query", tx))
-        assertFalse(matches("body:cdn", tx))
-        assertTrue(matches("header:no-cache", tx))
-        assertFalse(matches("header:feed", tx))
-        assertTrue(matches("-body:cdn", tx))
-        assertFalse(matches("-url:feed", tx))
+    fun `search finds the final URL and both bodies`() {
+        val tx = tx(url = "https://example.com/start", finalUrl = "https://cdn.example.com/feed", requestBody = "query=start", responseBody = null)
+        assertTrue(matches("cdn.example", tx = tx))
+        assertTrue(matches("query=", tx = tx))
+        assertTrue(matches("^query", regex = true, tx = tx))
     }
 
     @Test
-    fun `method and status name the whole value, and x in a status is any digit`() {
-        val post = tx(method = "POST", statusCode = 404)
-        assertTrue(matches("method:post", post))
-        assertFalse(matches("method:pos", post))
-        assertTrue(matches("method:/^p/", post))
-        assertTrue(matches("status:404", post))
-        assertTrue(matches("status:4xx", post))
-        assertTrue(matches("status:40X", post))
-        assertFalse(matches("status:5xx", post))
-        assertTrue(matches("status:2xx | status:4xx", post))
-        assertTrue(matches("-status:2xx", post))
-        // Plain text doesn't look at the status.
-        assertFalse(matches("404", post))
+    fun `a regex that doesn't compile is an error on the search field that says why`() {
+        for (text in listOf("feat(", "[a", "*")) {
+            try {
+                SearchQuery.parse(text, regex = true)
+                fail("compiled: $text")
+            } catch (e: SearchQueryException) {
+                assertTrue(e.message!!, e.message!!.startsWith("The regex is not valid: "))
+                assertEquals("search", e.field)
+            }
+        }
+        // As plain text, the same characters are just text.
+        assertFalse(matches("feat("))
     }
 
     @Test
-    fun `a transaction without a status matches no status term, and every negated one`() {
-        val pending = tx(statusCode = null)
-        assertFalse(matches("status:2xx", pending))
-        assertFalse(matches("status:/./", pending))
-        assertTrue(matches("-status:2xx", pending))
-    }
-
-    @Test
-    fun `a query of operators alone matches everything`() {
-        for (query in listOf("|", "OR", "NOT", "AND |")) {
-            val parsed = SearchQuery.parse(query)
-            assertTrue(query, parsed.isEmpty)
+    fun `the parameters choose the search, and a blank one leaves nothing out`() {
+        assertNull(SearchQuery.fromParams(null, null))
+        assertNull(SearchQuery.fromParams("  ", "true"))
+        assertFalse(SearchQuery.fromParams("a|b", null)!!.regex)
+        assertFalse(SearchQuery.fromParams("a|b", "false")!!.regex)
+        assertTrue(SearchQuery.fromParams("a|b", "true")!!.regex)
+        try {
+            SearchQuery.fromParams("a", "yes")
+            fail("accepted regex=yes")
+        } catch (e: SearchQueryException) {
+            assertEquals("regex", e.field)
         }
     }
 
     @Test
-    fun `a message search treats a field prefix as text, and an entry without text never matches`() {
-        val query = SearchQuery.parse("status:ok", fields = false)
-        assertTrue(query.matchesText("{\"status:ok\"}", budget))
-        assertFalse(query.matchesText("status: ok", budget))
-        assertFalse(SearchQuery.parse("-ping", fields = false).matchesText(null, budget))
-        assertTrue(SearchQuery.parse("-ping", fields = false).matchesText("pong", budget))
+    fun `a message search looks at the text, and an entry without text never matches`() {
+        assertTrue(SearchQuery.parse("PING").matchesText("{\"type\":\"ping\"}", budget))
+        assertTrue(SearchQuery.parse("^\\{.*ping", regex = true).matchesText("{\"type\":\"ping\"}", budget))
+        assertFalse(SearchQuery.parse("ping").matchesText(null, budget))
     }
 
     @Test
     fun `a search stops when it passes its budget, or its thread is interrupted`() {
-        val query = SearchQuery.parse("/featured/")
+        val query = SearchQuery.parse("featured", regex = true)
         try {
             query.matches(tx(), SearchBudget(0))
             fail("no timeout")
@@ -208,21 +141,12 @@ class SearchQueryTest {
     }
 
     @Test
-    fun `a transaction remembers its result for the last query`() {
+    fun `a transaction remembers its result for the last search, text and mode`() {
         val tx = tx()
-        val query = SearchQuery.parse("featured")
-        assertTrue(tx.matchesSearch(query, budget))
+        assertFalse(tx.matchesSearch(SearchQuery.parse("featured|popular"), budget))
+        // The same text as a regex is another search, so it is matched again.
+        assertTrue(tx.matchesSearch(SearchQuery.parse("featured|popular", regex = true), budget))
         // A budget that has passed would throw if the cached result weren't used.
-        assertTrue(tx.matchesSearch(SearchQuery.parse("featured"), SearchBudget(0)))
-        assertFalse(tx.matchesSearch(SearchQuery.parse("popular"), budget))
+        assertTrue(tx.matchesSearch(SearchQuery.parse("featured|popular", regex = true), SearchBudget(0)))
     }
-
-    private fun assertParseError(query: String): String =
-        try {
-            SearchQuery.parse(query)
-            fail("parsed: $query")
-            ""
-        } catch (e: SearchQueryException) {
-            e.message!!
-        }
 }

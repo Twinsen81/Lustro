@@ -59,13 +59,13 @@ internal data class NetworkTransaction(
 
     /** Whether [query] matches. Throws [SearchTimeoutException] when it passes [budget]. */
     fun matchesSearch(query: SearchQuery, budget: SearchBudget): Boolean {
-        lastSearch.get()?.let { if (it.query == query.text) return it.matched }
+        lastSearch.get()?.let { if (it.text == query.text && it.regex == query.regex) return it.matched }
         val matched = query.matches(this, budget)
-        lastSearch.set(SearchResult(query.text, matched))
+        lastSearch.set(SearchResult(query.text, query.regex, matched))
         return matched
     }
 
-    private class SearchResult(val query: String, val matched: Boolean)
+    private class SearchResult(val text: String, val regex: Boolean, val matched: Boolean)
 }
 
 /** A response the client answered with another request, as [NetworkTransaction.priorResponses] lists it. */

@@ -61,9 +61,7 @@ Those tests cover the code worth pinning rather than the file as a whole: the
 body viewers (`debugScanJsonSource` and the JSON formatting, highlighting, and
 tree on top of it, the XML and HTML printer, the line-numbered text, the form
 table, and the hex dump), the HTML escaping that decides whether a captured
-body renders as text or as markup, and the search syntax that marks matches.
-`lustro/src/test/resources/search-queries.json` holds the parse cases that the
-JavaScript and the Kotlin tests both run, so the two parsers stay the same. DOM wiring, resizers, toasts, modals, and one-line helpers are
+body renders as text or as markup, and how a search's matches are marked. DOM wiring, resizers, toasts, modals, and one-line helpers are
 deliberately left untested. Please keep it that way when adding to them, and
 keep the suite dependency-free.
 

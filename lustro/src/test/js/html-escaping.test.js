@@ -96,8 +96,7 @@ test('the search query is escaped as text and as a pattern', async (t) => {
         assert.strictEqual(debugHighlightPlain('[a] b', '[a]'), '<mark>[a]</mark> b');
         assert.strictEqual(debugHighlightPlain('a^b', '^'), 'a<mark>^</mark>b');
         assert.strictEqual(debugHighlightPlain('a$b', '$'), 'a<mark>$</mark>b');
-        // A bare | means or in the search syntax; quoted, it is text.
-        assert.strictEqual(debugHighlightPlain('a|b', '"|"'), 'a<mark>|</mark>b');
+        assert.strictEqual(debugHighlightPlain('a|b', '|'), 'a<mark>|</mark>b');
         assert.strictEqual(debugHighlightPlain('a?b', '?'), 'a<mark>?</mark>b');
         assert.strictEqual(debugHighlightPlain('a{2}b', '{2}'), 'a<mark>{2}</mark>b');
     });

@@ -115,18 +115,14 @@ client got them.
   header that the platform adds, and leaves the platform's four `X-Android-*`
   headers out of `responseHeaders`.
 
-- **1.7** - The `search` parameter of `GET network/transactions` takes a
-  query. Terms separated by spaces must all match, `a | b` or `a OR b`
-  matches either, `-term` or `NOT term` leaves out, a `"quoted phrase"` keeps
-  its spaces, and `/pattern/` or `regex:pattern` is a regular expression in
-  Java's syntax. `url:`, `method:`, `status:`, `header:`, and `body:` limit a
-  term to one field. Without a field, a term also looks at the request and
-  response headers, each as the line `Name: value` as stored after redaction.
-  Plain text without the syntax finds what it found before, and the headers
-  too. A query that can't run, or a search that takes longer than 5 s, gets a
-  `400` with `field: search`. The `search` of
-  `GET network/websockets/{id}/events` takes the same syntax without the
-  fields.
+- **1.7** - The `search` of `GET network/transactions` also looks at the
+  request and response headers, each as the line `Name: value` as stored
+  after redaction. The new parameter `regex=true` makes `search` a Java
+  regular expression, found ignoring case, for the transactions and for
+  `GET network/websockets/{id}/events`. Without it, `search` is text, as
+  before. A regex that doesn't compile, or a search that takes longer than
+  5 s, gets a `400` with `field: search`, and a `regex` other than `true` or
+  `false` a `400` with `field: regex`.
 
 ## Status
 

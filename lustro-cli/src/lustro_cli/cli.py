@@ -213,6 +213,13 @@ def _check_fields(
         )
 
 
+def _search_params(args: argparse.Namespace) -> Dict[str, Optional[str]]:
+    """The search and regex parameters of --search and --regex."""
+    if args.regex and args.search:
+        return {"search": args.search, "regex": "true"}
+    return {"search": args.search}
+
+
 def _is_search_error(exc: LustroError) -> bool:
     """Whether the app rejected the search: a query that can't run, or one that took too long. Polling again won't help."""
     return exc.status == 400 and exc.field == "search"
@@ -626,7 +633,7 @@ def cmd_schema(args: argparse.Namespace) -> int:
 
 def cmd_net_list(args: argparse.Namespace) -> int:
     client = _build_client(args)
-    data = client.get(TRANSACTIONS, params={"search": args.search})
+    data = client.get(TRANSACTIONS, params=_search_params(args))
     _note_if_paused(data)
     items = _list_items(data)
     _check_fields(args, items)
@@ -703,7 +710,7 @@ def cmd_net_poll(args: argparse.Namespace) -> int:
     first = True
     try:
         while True:
-            params = {"cursor": poller.cursor, "search": args.search}
+            params = dict(_search_params(args), cursor=poller.cursor)
             try:
                 data = client.get(TRANSACTIONS, params=params)
             except LustroError as exc:
@@ -778,7 +785,7 @@ def cmd_net_wait(args: argparse.Namespace) -> int:
         # An app that doesn't answer, such as one stopped at a breakpoint, would
         # otherwise hold each request for the client's own timeout.
         client.timeout = time_left()
-        return client.get(TRANSACTIONS, params={"cursor": cursor, "search": args.search})
+        return client.get(TRANSACTIONS, params=dict(_search_params(args), cursor=cursor))
 
     poller = CursorState()
     data = poll(None)
@@ -997,7 +1004,7 @@ def cmd_net_ws_events(args: argparse.Namespace) -> int:
     path = WEBSOCKETS + "/" + connection_id + "/events"
     filters = {
         "direction": "sent" if args.sent else "received" if args.received else None,
-        "search": args.search,
+        **_search_params(args),
     }
     data = client.get(path, params=dict(filters, limit=ALL_EVENTS if args.all else args.last))
     items = _list_items(data)
@@ -1211,17 +1218,13 @@ def _selection_options() -> argparse.ArgumentParser:
     filters.add_argument(
         "--search",
         default=None,
-        metavar="QUERY",
-        help="the server's search over the URL, the method, the headers, and the bodies: words that must all match, "
-        "'a | b' for either, -word to leave out, \"a phrase\", /regex/, and the fields url:, method:, status:, "
-        "header:, and body:",
+        metavar="TEXT",
+        help="the URL, the method, a header, or a body contains TEXT, ignoring case (on the server)",
     )
     filters.add_argument(
-        "--url",
-        default=None,
-        metavar="TEXT",
-        help="the URL contains TEXT, as plain text that ignores case; for a regex, use --search 'url:/.../'",
+        "--regex", action="store_true", help="--search TEXT is a Java regular expression, found ignoring case"
     )
+    filters.add_argument("--url", default=None, metavar="TEXT", help="the URL contains TEXT (ignores case)")
     filters.add_argument("--method", default=None, help="the HTTP method, such as POST")
     filters.add_argument(
         "--status",
@@ -1437,10 +1440,10 @@ def build_parser() -> argparse.ArgumentParser:
     event_direction.add_argument("--sent", action="store_true", help="only what the app sent")
     event_direction.add_argument("--received", action="store_true", help="only what the app received")
     w_events.add_argument(
-        "--search",
-        default=None,
-        metavar="QUERY",
-        help="only the text messages that match QUERY: the syntax of net list --search, without the fields (on the server)",
+        "--search", default=None, metavar="TEXT", help="only the text messages that contain TEXT (on the server)"
+    )
+    w_events.add_argument(
+        "--regex", action="store_true", help="--search TEXT is a Java regular expression, found ignoring case"
     )
     w_events.add_argument("--follow", action="store_true", help="then print each new event as it comes, until Ctrl-C")
     w_events.add_argument(
