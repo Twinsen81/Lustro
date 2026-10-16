@@ -207,6 +207,9 @@ public class NetworkDebugTab private constructor(
                         <option value="1000">1s</option>
                         <option value="3000">3s</option>
                         <option value="5000">5s</option>
+                        <option value="10000">10s</option>
+                        <option value="30000">30s</option>
+                        <option value="60000">1 min</option>
                     </select>
                     <button class="dc-btn dc-btn--ghost-danger" data-action="clearTraffic" title="Clear the captured requests and WebSocket connections. Mock rules and settings are preserved. Keyboard shortcut: C (when not typing in an input).">Clear</button>
                     </div>
