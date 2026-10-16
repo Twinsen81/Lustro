@@ -304,6 +304,17 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Fixed
 
+- **The default redactor masked `assignments`, `assignees`, `designers`, and
+  `authorities`.** An ordinary word that contains a sensitive fragment, such
+  as `sig` in `assignment` or `auth` in `author`, kept its value only in the
+  forms the allowlist spelled out, so the `assignments` object of an
+  experiment-assignment response showed as `[REDACTED]`, as did `assignees`,
+  `designers`, and `authorities`. A listed word now covers its regular
+  inflections, the plural, the past tense, and the `-ing` form, so each form
+  needs no entry of its own, and so does a public name: `public_keys` and
+  `primary_keys` are kept like `public_key`. A credential is masked as
+  before: `authorization`, `signatures`, `signing_key`, `assignments_token`,
+  and `limitedUseToken` still are.
 - **A mock rule's place in the list now decides which rule answers.** The
   rules were kept in a hash map, so when two enabled rules matched a request,
   which one answered depended on the hashes of their ids: a rule for

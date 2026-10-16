@@ -134,8 +134,32 @@ class DefaultRedactorTest {
     @Test
     fun `public names that have a sensitive word keep their value`() {
         assertEquals("4f1c", redactor.redactHeaderValue("Idempotency-Key", "4f1c"))
-        val body = """{"vapid_key":"BCk-QqERU0q","publicKey":"MFkw","idempotency_key":"4f1c"}"""
+        val body =
+            """{"vapid_key":"BCk-QqERU0q","publicKey":"MFkw","idempotency_key":"4f1c",""" +
+                """"public_keys":["MFkw"],"primaryKeys":["id"]}"""
         assertEquals(body, redactor.redactBody(body, MediaType.JSON))
+    }
+
+    // One entry per word: its plural, past tense, and -ing form are matched from it.
+    @Test
+    fun `an ordinary word keeps its value in its plural and other inflected forms`() {
+        val body =
+            """{"variations":{},"assignments":{"explat_test":"treatment"},"ttl":7200,"assignees":["bo"],""" +
+                """"designers":["ana"],"authorities":["a.test:443"],"authors":[],"authored":true,"authoring":false,""" +
+                """"designs":1,"designed":2,"designing":3,"signals":[],"keyboards":[],"insights":[],"authorships":[]}"""
+        assertEquals(body, redactor.redactBody(body, MediaType.JSON))
+        assertEquals("https://a.test/?assignments=x", redactor.redactUrl("https://a.test/?assignments=x"))
+        assertEquals("v", redactor.redactHeaderValue("X-Assignments", "v"))
+
+        // An inflection of a sensitive word is still sensitive, and so is a
+        // sensitive word next to an ordinary word's inflection.
+        val secrets =
+            """{"signatures":"a","sessions":"b","signing_key":"c","assignments_token":"d","designers_key":"e",""" +
+                """"presigned":"f","authorization":"g"}"""
+        val out = JSONObject(redactor.redactBody(secrets, MediaType.JSON))
+        for (key in out.keys()) {
+            assertEquals(key, "[REDACTED]", out.getString(key))
+        }
     }
 
     @Test
@@ -145,18 +169,23 @@ class DefaultRedactorTest {
         val usage =
             """{"usage":{"prompt_tokens":12,"completion_tokens":34,"total_tokens":46,"input_tokens":1,""" +
                 """"output_tokens":2,"cache_read_input_tokens":3,"completion_tokens_details":{"reasoning_tokens":5},""" +
-                """"promptTokenCount":4,"totalTokenCount":9},"max_tokens":1024,"maxOutputTokens":256,"token_limit":8}"""
+                """"promptTokenCount":4,"totalTokenCount":9,"candidatesTokenCount":5,"thoughtsTokenCount":6},""" +
+                """"max_tokens":1024,"maxOutputTokens":256,"token_limit":8,"token_limits":[8],"token_counts":[1]}"""
         assertEquals(usage, redactor.redactBody(usage, MediaType.JSON))
         assertEquals("149000", redactor.redactHeaderValue("x-ratelimit-remaining-tokens", "149000"))
         assertEquals("40000", redactor.redactHeaderValue("anthropic-ratelimit-input-tokens-limit", "40000"))
 
+        // A count word counts as listed: `limited` is no count although `limit` is,
+        // and a limited-use token is a credential.
         val secrets =
-            """{"token":"a","tokens":["b"],"access_token":"c","refresh_tokens":["d"],"api_token":"e","device_tokens":["f"]}"""
+            """{"token":"a","tokens":["b"],"access_token":"c","refresh_tokens":["d"],"api_token":"e","device_tokens":["f"],""" +
+                """"limited_access_token":"g","limitedUseToken":"h","counting_tokens":"i"}"""
         val out = JSONObject(redactor.redactBody(secrets, MediaType.JSON))
         for (key in out.keys()) {
             assertEquals(key, "[REDACTED]", out.getString(key))
         }
         assertEquals("[REDACTED]", redactor.redactHeaderValue("X-Access-Tokens", "t"))
+        assertEquals("[REDACTED]", redactor.redactHeaderValue("X-Limited-Use-Token", "t"))
         // A count word exempts the token word alone, not another sensitive one.
         assertEquals("[REDACTED]", redactor.redactHeaderValue("X-Session-Token-Count", "t"))
     }
