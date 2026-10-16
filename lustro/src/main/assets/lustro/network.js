@@ -530,7 +530,7 @@
             var pathOnly = extractPath(tx.url).split('?')[0];
             var shortUrl = pathOnly.length > 100 ? pathOnly.substring(0, 100) + '…' : pathOnly;
             var sel = tx.id === selectedTxId ? ' dc-row--selected' : '';
-            var mockedBadge = tx.isMocked ? ' <span class="dc-badge" style="--c: var(--ai)">Mocked</span>' : '';
+            var mockedBadge = tx.isMocked ? ' <span class="dc-badge" style="--c: var(--ai)">Mocked</span>' : armedMockTag(tx);
             var streamingBadge = streaming ? ' <span class="dc-badge">Streaming</span>' : '';
             var redirectBadge = tx.finalUrl
                 ? ' <span class="dc-badge" title="' + debugEscapeHtml('The response came from ' + tx.finalUrl) + '">Redirected</span>'
@@ -753,13 +753,15 @@
             || previous.responseBodyBytes !== next.responseBodyBytes
             || previous.responseComplete !== next.responseComplete
             || previous.error !== next.error
-            || previous.isMocked !== next.isMocked;
+            || previous.isMocked !== next.isMocked
+            || previous.mockRuleId !== next.mockRuleId
+            || previous.activeMockRuleId !== next.activeMockRuleId;
     }
 
     window.selectTransaction = function(id) {
         selectedTxId = id;
         renderList();
-        switchRightTab('detail');
+        showRightPane('detail');
         loadTransactionDetail(id);
     };
 
@@ -848,17 +850,83 @@
         copyNetworkText(text, ev);
     };
 
+    var PLATFORM_MOCK_NOTE = 'Mock rules answer OkHttp requests only, and this request came through platform HttpURLConnection.';
+    var APP_MOCK_NOTE = " The app's own adapter reported this request, so a rule answers it only if the adapter asks for it.";
+
     // No mock rule can answer a platform request, so a rule made from one would
-    // never match it.
-    window.netMockThisButton = mockThisButton;
-    function mockThisButton(tx) {
+    // never match it, and no rule matches one.
+    window.netMockButtonsState = mockButtonsState;
+    function mockButtonsState(tx) {
         if (tx.source === 'platform') {
-            return '<button class="dc-btn" disabled title="' + debugEscapeHtml(SOURCES.platform.title) + '">Mock This Request</button>'
-                + ' <span class="net-mock-note">Mock rules answer OkHttp requests only, and this request came through platform HttpURLConnection.</span>';
+            return {
+                disabled: true,
+                mockThisTitle: PLATFORM_MOCK_NOTE,
+                rulesTitle: PLATFORM_MOCK_NOTE,
+                ruleCount: 0,
+            };
         }
-        var title = 'Switch to Mock Rules and pre-fill a new rule that intercepts this request. Edit the status/body before saving to control the response on the next match.';
-        if (tx.source === 'app') title += " The app's own adapter reported this request, so the rule answers it only if the adapter asks for it.";
-        return '<button class="dc-btn" data-action="mockThis" title="' + debugEscapeHtml(title) + '">Mock This Request</button>';
+        var adapter = tx.source === 'app' ? APP_MOCK_NOTE : '';
+        return {
+            disabled: false,
+            mockThisTitle: 'Open the mock rules with a new rule filled in from this request: its URL, method, status, and body. Edit the status or the body before you save to set the response of the next request like this one.' + adapter,
+            rulesTitle: 'Show the mock rules whose URL pattern and method match this request, enabled or not. The first enabled one answers the next request like this one.' + adapter,
+            ruleCount: (tx.matchingMockRuleIds || []).length,
+        };
+    }
+
+    function findRule(id) {
+        if (!id) return null;
+        for (var i = 0; i < loadedRules.length; i++) if (loadedRules[i].id === id) return loadedRules[i];
+        return null;
+    }
+
+    function ruleLabel(rule) {
+        return rule.name || ((rule.method ? rule.method + ' ' : '') + rule.urlPattern);
+    }
+
+    // A dashed MOCK on a row that a rule would answer if the app made it again,
+    // such as one captured before the rule existed.
+    function armedMockTag(tx) {
+        if (!tx.activeMockRuleId) return '';
+        var rule = findRule(tx.activeMockRuleId);
+        var title = 'Mock rule active' + (rule ? ': ' + ruleLabel(rule) : '') + '. The next request like this one gets the mocked response.'
+            + (tx.source === 'app' ? APP_MOCK_NOTE : '');
+        return ' <span class="dc-tag dc-tag--mock net-mock-armed" title="' + debugEscapeHtml(title) + '">Mock</span>';
+    }
+
+    // What the detail says about the rules for this request: which rule answered
+    // it, and which one answers the next request like it. The app matches the
+    // rules, so this says what the interceptor does.
+    window.netMockRuleLine = mockRuleLine;
+    function mockRuleLine(tx, rules) {
+        var byId = function(id) { return (rules || []).find(function(r) { return r.id === id; }) || null; };
+        var link = function(rule) {
+            return '<button type="button" class="net-mock-rule-link" data-action="openRequestRules" title="Show the mock rules for this request.">'
+                + debugEscapeHtml(ruleLabel(rule)) + '</button>';
+        };
+        var active = tx.activeMockRuleId ? byId(tx.activeMockRuleId) : null;
+        var activeKnown = !!tx.activeMockRuleId;
+        var adapter = tx.source === 'app' ? ", if the app's adapter asks for mock rules" : '';
+        var parts = [];
+        if (tx.isMocked) {
+            var answered = tx.mockRuleId ? byId(tx.mockRuleId) : null;
+            if (answered) parts.push('Mocked by rule ' + link(answered) + '.');
+            // rules is null until they are loaded, and then an unknown id is not a deleted rule yet.
+            else if (tx.mockRuleId && rules) parts.push('Mocked by a rule that was deleted.');
+            else parts.push('Mocked by a rule.');
+            if (activeKnown && tx.activeMockRuleId === tx.mockRuleId) {
+                // The rule can have been edited since, so it answers with what it says now.
+                parts.push('The rule is still active, so it also answers the next request like this one' + adapter + '.');
+            } else if (activeKnown) {
+                parts.push('Now rule ' + (active ? link(active) : 'another rule') + ' answers the next request like this one' + adapter + '.');
+            } else if (tx.activeMockRuleId === null) {
+                parts.push('No enabled rule matches it now, so the next request like this one goes to the server.');
+            }
+        } else if (activeKnown) {
+            parts.push('Mock rule active: ' + (active ? link(active) : 'a rule') + '. The next request like this one gets the mocked response' + adapter + '.');
+        }
+        if (!parts.length) return '';
+        return '<div class="net-mock-line' + (activeKnown ? ' net-mock-line--active' : '') + '">' + parts.join(' ') + '</div>';
     }
 
     function renderDetail(tx) {
@@ -895,6 +963,7 @@
         (tx.categories || []).forEach(function(c) { html += '<span class="dc-tag" data-cat="' + debugEscapeHtml(c) + '">' + debugEscapeHtml(c) + '</span>'; });
         if (tx.isMocked) html += '<span class="dc-badge" style="--c: var(--ai)">Mocked</span>';
         html += '</div>';
+        html += '<div id="detail-mock-line">' + mockRuleLine(tx, rulesLoaded ? loadedRules : null) + '</div>';
         if (tx.error) html += '<div class="net-error-line">' + debugEscapeHtml(tx.error) + '</div>';
         html += redirectsHtml(tx);
         html += '</div>';
@@ -923,17 +992,27 @@
         html += bodySection(tx, 'request');
         html += '</div>';
 
-        html += '<div style="margin-top:16px">';
-        html += mockThisButton(tx);
         if (tx.webSocketId) {
-            html += ' <button class="dc-btn" data-action="openWebSocket" data-ws-id="' + debugEscapeHtml(tx.webSocketId)
-                + '" title="This request is the handshake of a WebSocket. Show the socket and its messages.">WebSocket messages</button>';
+            html += '<div style="margin-top:16px"><button class="dc-btn" data-action="openWebSocket" data-ws-id="' + debugEscapeHtml(tx.webSocketId)
+                + '" title="This request is the handshake of a WebSocket. Show the socket and its messages.">WebSocket messages</button></div>';
         }
-        html += '</div>';
 
         el.innerHTML = html;
         refold(folded);
         loadHexDumps();
+        // The rules filtered to this request follow what it matches now.
+        if (rightPane === 'rules' && rulesFilterTxId === tx.id && (!previous
+            || String(previous.matchingMockRuleIds) !== String(tx.matchingMockRuleIds)
+            || previous.activeMockRuleId !== tx.activeMockRuleId)) {
+            renderRules(loadedRules);
+        }
+    }
+
+    // After the rules change, the names in the detail and on the rows.
+    function renderRuleNames() {
+        renderList();
+        var line = document.getElementById('detail-mock-line');
+        if (line && currentDetailTx) line.innerHTML = mockRuleLine(currentDetailTx, loadedRules);
     }
 
     // The way from the requested URL to the one the response came from: each
@@ -1391,17 +1470,29 @@
         copyNetworkText(window.netTransactionsMarkdown([currentDetailTx]), ev);
     };
 
-    // The actions act on the selected request, so they show only with its detail:
-    // a refresh of the detail behind Mock Rules or the Send form leaves them hidden.
+    // The bar's actions act on the selected request, so the bar shows only with
+    // its detail: a refresh of the detail behind the rules or the Send form
+    // leaves it hidden.
     function showDetailActions(show) {
-        var detail = document.getElementById('detail-content');
-        var visible = show && !!detail && detail.classList.contains('active');
-        ['copy-curl-btn', 'copy-md-btn', 'copy-all-btn'].forEach(function(id) {
-            var btn = document.getElementById(id);
-            if (btn) btn.style.display = visible ? '' : 'none';
-        });
+        var visible = show && !!currentDetailTx && rightPane === 'detail' && trafficView === 'http';
+        var bar = document.getElementById('detail-bar');
+        if (bar) bar.hidden = !visible;
+        if (!visible) return;
         var resend = document.getElementById('resend-btn');
-        if (resend) resend.style.display = visible && senders.length ? '' : 'none';
+        if (resend) resend.hidden = !senders.length;
+        var state = mockButtonsState(currentDetailTx);
+        var mockBtn = document.getElementById('mock-this-btn');
+        if (mockBtn) {
+            mockBtn.disabled = state.disabled;
+            mockBtn.title = state.mockThisTitle;
+        }
+        var rulesBtn = document.getElementById('request-rules-btn');
+        if (rulesBtn) {
+            rulesBtn.disabled = state.disabled;
+            rulesBtn.title = state.rulesTitle;
+        }
+        var count = document.getElementById('request-rules-count');
+        if (count) count.textContent = state.ruleCount ? ' (' + state.ruleCount + ')' : '';
     }
 
     // Transaction details as one Markdown document, oldest first as given: for
@@ -1510,22 +1601,95 @@
         return new Array(n + 1).join('`');
     }
 
-    // 'send' is the Send form: it has no tab of its own, because it is not about
-    // the selected request, so neither tab is active while it is open.
-    window.switchRightTab = function(tab) {
-        document.getElementById('detail-content').classList.toggle('active', tab === 'detail');
-        document.getElementById('rules-content').classList.toggle('active', tab === 'rules');
-        document.getElementById('send-content').classList.toggle('active', tab === 'send');
-        document.getElementById('tab-btn-detail').classList.toggle('dc-tab--active', tab === 'detail');
-        document.getElementById('tab-btn-rules').classList.toggle('dc-tab--active', tab === 'rules');
-        if (tab !== 'send') {
-            composerOpen = false;
-            // Another choice of the pane: the row to go back to no longer applies.
-            selectionBeforeComposer = null;
-        }
+    // What the right pane shows: 'detail', the selected request; 'rules', the
+    // mock rules; or 'send', the Send form. The rules and the form open in place
+    // of the detail, each with its own close button, and a click on a row shows
+    // the detail again.
+    var rightPane = 'detail';
+    // The row that "+ New request" or "Mocks" deselected, because what they open
+    // is not about it; closing the pane selects it again.
+    var selectionBeforePane = null;
+
+    function showRightPane(pane) {
+        rightPane = pane;
+        ['detail', 'rules', 'send'].forEach(function(p) {
+            var el = document.getElementById(p + '-content');
+            if (el) el.classList.toggle('active', p === pane);
+        });
+        // The detail again: the row to go back to no longer applies.
+        if (pane === 'detail') selectionBeforePane = null;
         showDetailActions(!!currentDetailTx);
-        if (tab === 'rules') loadRules();
+    }
+
+    // Deselects the row for a pane that is about all traffic, and remembers it.
+    function deselectForPane() {
+        if (!selectedTxId) return;
+        selectionBeforePane = selectedTxId;
+        selectedTxId = null;
+        renderList();
+    }
+
+    window.closeRightPane = function() {
+        var restore = selectionBeforePane;
+        selectionBeforePane = null;
+        if (restore && findTransactionById(allTransactions, restore)) {
+            window.selectTransaction(restore);
+        } else {
+            showRightPane('detail');
+            if (selectedTxId && currentDetailTx && currentDetailTx.id === selectedTxId) renderDetail(currentDetailTx); else showEmptyDetail();
+        }
     };
+
+    // ── Mock rules ──
+    // "Mocks", next to the search field, opens all of them; "Matching rules", in
+    // the detail's bar, only the ones that match the selected request, as the app
+    // matched them (matchingMockRuleIds). "Mock this request" opens those with a
+    // new rule filled in from the request.
+    // The request the list is filtered to, or null for all rules.
+    var rulesFilterTxId = null;
+
+    function openRulesPane(filterTxId) {
+        rulesFilterTxId = filterTxId;
+        showRightPane('rules');
+        renderRules(loadedRules);
+        loadRules();
+    }
+
+    window.openMockRules = function() {
+        deselectForPane();
+        openRulesPane(null);
+    };
+
+    window.openRequestRules = function() {
+        if (!currentDetailTx || currentDetailTx.id !== selectedTxId || currentDetailTx.source === 'platform') return;
+        openRulesPane(currentDetailTx.id);
+    };
+
+    window.showAllRules = function() {
+        rulesFilterTxId = null;
+        renderRules(loadedRules);
+    };
+
+    // The rule ids the list is filtered to, or null for all of them.
+    function rulesFilterIds() {
+        if (!rulesFilterTxId) return null;
+        var tx = currentDetailTx && currentDetailTx.id === rulesFilterTxId ? currentDetailTx : null;
+        return tx ? (tx.matchingMockRuleIds || []) : null;
+    }
+
+    function renderRulesScope(shownCount) {
+        var el = document.getElementById('rules-scope');
+        if (!el) return;
+        var tx = rulesFilterIds() ? currentDetailTx : null;
+        if (!tx) {
+            el.innerHTML = '<span class="dc-comment">// for all OkHttp traffic</span>';
+            return;
+        }
+        var what = (tx.method || '') + ' ' + extractPath(tx.url || '').split('?')[0];
+        el.innerHTML = '<span class="net-pane-sub-what" title="' + debugEscapeHtml((tx.method || '') + ' ' + (tx.url || '')) + '">for ' + debugEscapeHtml(what) + '</span>'
+            + ' <span class="dc-comment">· ' + shownCount + ' of ' + loadedRules.length + '</span>'
+            + ' <button type="button" class="net-format-btn" data-action="showAllRules" title="Show every mock rule, not only the ones that match this request.">Show all</button>';
+    }
 
     // The app owns the rules: the list route is the only source, and the app's
     // MockRuleStorage is what makes them outlive a restart. The browser keeps no
@@ -1540,15 +1704,51 @@
     // nothing reads it any more.
     try { localStorage.removeItem('debug-network-mock-rules'); } catch(e) {}
 
+    // Loaded when the pane opens, after each change made here, and when the poll
+    // says that the rules changed, so the detail and the rows can name them.
+    var loadedRules = [];
+    var rulesLoaded = false;
+    var rulesLoadSeq = 0;
+    var editingRuleId = null;
+    // state.mockRules.revision of the last poll.
+    var rulesRevision = null;
+
     function loadRules() {
-        debugFetch(netUrl('rules'))
+        var seq = ++rulesLoadSeq;
+        return debugFetch(netUrl('rules'))
             .then(function(r) { return r.json(); })
-            .then(function(data) { renderRules(rulesFromResponse(data)); })
-            .catch(function(e) { debugToast('Failed to load rules: ' + e.message, 'error'); });
+            .then(function(data) {
+                if (seq !== rulesLoadSeq) return;
+                rulesLoaded = true;
+                renderRules(rulesFromResponse(data));
+                renderRuleNames();
+            })
+            .catch(function(e) {
+                if (rightPane === 'rules') debugToast('Failed to load rules: ' + e.message, 'error');
+            });
     }
 
-    var loadedRules = [];
-    var editingRuleId = null;
+    // After a change made here: the rules, and what the selected request matches now.
+    function reloadAfterRuleChange() {
+        loadRules();
+        if (selectedTxId && trafficView === 'http') loadTransactionDetail(selectedTxId);
+    }
+
+    function updateMocksButton(mockRules) {
+        var count = document.getElementById('mocks-count');
+        if (!count || !mockRules) return;
+        count.textContent = mockRules.enabled ? ' ' + mockRules.enabled : '';
+        var btn = document.getElementById('mocks-btn');
+        if (btn) btn.classList.toggle('net-mocks-btn--on', !!mockRules.enabled);
+        if (mockRules.revision !== rulesRevision) {
+            var first = rulesRevision === null;
+            rulesRevision = mockRules.revision;
+            loadRules();
+            // What the selected request matches is in its detail. The list's own
+            // fields come with the next list, as the rules are part of its cursor.
+            if (!first && selectedTxId && trafficView === 'http') scheduleSelectedDetailRefresh();
+        }
+    }
 
     // Tint a mock rule's status code badge: green below 300, amber 3xx, red from 400.
     function ruleStatusStyle(code) {
@@ -1563,17 +1763,26 @@
         loadedRules = rules || [];
         var listEl = document.getElementById('rules-list');
         if (!listEl) return;
-        if (loadedRules.length === 0) {
-            listEl.innerHTML = '<div class="net-rules-empty">No mock rules defined.</div>';
+        var filterIds = rulesFilterIds();
+        var shown = filterIds ? loadedRules.filter(function(r) { return filterIds.indexOf(r.id) >= 0; }) : loadedRules;
+        var answeringId = filterIds ? currentDetailTx.activeMockRuleId : null;
+        renderRulesScope(shown.length);
+        if (shown.length === 0) {
+            listEl.innerHTML = filterIds
+                ? '<div class="net-rules-empty">No rule matches this request.</div>'
+                : '<div class="net-rules-empty">No mock rules defined.</div>';
         } else {
             // The list route returns the rules in the order they are tried.
-            var orderNote = loadedRules.length > 1
+            var orderNote = shown.length > 1
                 ? '<div class="dc-comment net-rules-order" title="The first rule whose pattern and method match a request answers it. A new rule goes on top; editing one keeps its place.">// Tried from the top: the first match answers</div>'
                 : '';
-            listEl.innerHTML = orderNote + loadedRules.map(function(r) {
+            listEl.innerHTML = orderNote + shown.map(function(r) {
                 var disabled = r.enabled ? '' : ' disabled';
                 var checked = r.enabled ? ' checked' : '';
                 var editing = r.id === editingRuleId ? ' editing' : '';
+                var answers = answeringId && r.id === answeringId
+                    ? '<span class="dc-badge" style="--c: var(--ai)" title="The first enabled rule that matches this request, so the next request like it gets this response.">Answers it</span>'
+                    : '';
                 var bodyPreview = '';
                 if (r.responseBody) {
                     bodyPreview = '<pre class="net-rule-body dc-code dc-json">' + window.debugSyntaxHighlightJson(r.responseBody) + '</pre>';
@@ -1582,6 +1791,7 @@
                     + '<div class="net-rule-header">'
                     + '<label class="net-toggle" title="Enable or disable this rule. Disabled rules stay in the list but do not match traffic."><input id="rule-toggle-' + debugEscapeHtml(r.id) + '" name="ruleEnabled" type="checkbox" aria-label="Enable mock rule ' + debugEscapeHtml(r.name || r.urlPattern) + '"' + checked + ' data-action="toggleRule" data-rule-id="' + debugEscapeHtml(r.id) + '"><span class="net-toggle-slider"></span></label>'
                     + '<span class="net-rule-name" title="' + debugEscapeHtml(r.name || r.urlPattern) + '">' + debugEscapeHtml(r.name || r.urlPattern) + '</span>'
+                    + answers
                     + '<span class="dc-badge"' + ruleStatusStyle(r.statusCode) + ' title="HTTP status returned to the app when this rule matches.">' + debugEscapeHtml(r.statusCode) + '</span>'
                     + '<button class="dc-btn dc-btn--icon" data-action="editRule" data-rule-id="' + debugEscapeHtml(r.id) + '" title="Edit this rule (loads it into the form below).">✎</button>'
                     + '<button class="dc-btn dc-btn--icon dc-btn--danger" data-action="deleteRule" data-rule-id="' + debugEscapeHtml(r.id) + '" title="Delete this rule permanently.">✕</button>'
@@ -1600,7 +1810,7 @@
     }
 
     // Response headers a new rule gets from the form without showing a field
-    // for them: the Content-Type of the response Mock This Request copies.
+    // for them: the Content-Type of the response Mock this request copies.
     var pendingRuleHeaders = null;
 
     function renderRuleForm(prefill) {
@@ -1689,9 +1899,6 @@
     // The form's values, kept while the form is closed, so a row looked at in
     // between doesn't cost what was typed. "Edit and resend" replaces them.
     var sendDraft = null;
-    var composerOpen = false;
-    // The row a new request deselected; closing the form selects it again.
-    var selectionBeforeComposer = null;
 
     function loadSenders() {
         debugFetch(netUrl('senders'))
@@ -1704,7 +1911,7 @@
         senders = list;
         var btn = document.getElementById('new-request-btn');
         if (btn) btn.hidden = senders.length === 0;
-        if (!senders.length && composerOpen) window.closeComposer();
+        if (!senders.length && rightPane === 'send') window.closeRightPane();
         showDetailActions(!!currentDetailTx);
     }
 
@@ -1788,8 +1995,7 @@
 
     function openComposer(draft) {
         sendDraft = draft;
-        switchRightTab('send');
-        composerOpen = true;
+        showRightPane('send');
         renderSendForm();
         var url = document.getElementById('sf-url');
         if (url && !draft.from) url.focus();
@@ -1798,33 +2004,18 @@
     window.openNewRequest = function() {
         if (!senders.length) return;
         // A new request is not about any captured row, so none stays selected.
-        if (selectedTxId) {
-            selectionBeforeComposer = selectedTxId;
-            selectedTxId = null;
-            renderList();
-        }
+        deselectForPane();
         openComposer(sendDraft && !sendDraft.from ? sendDraft : blankDraft());
     };
 
     window.editAndResend = function() {
         if (!currentDetailTx || !senders.length) return;
-        selectionBeforeComposer = null;
+        selectionBeforePane = null;
         openComposer(draftFromTransaction(currentDetailTx));
     };
 
-    window.closeComposer = function() {
-        var restore = selectionBeforeComposer;
-        selectionBeforeComposer = null;
-        if (restore && findTransactionById(allTransactions, restore)) {
-            window.selectTransaction(restore);
-        } else {
-            switchRightTab('detail');
-            if (selectedTxId && currentDetailTx && currentDetailTx.id === selectedTxId) renderDetail(currentDetailTx); else showEmptyDetail();
-        }
-    };
-
     window.showSentTransaction = function(id) {
-        selectionBeforeComposer = null;
+        selectionBeforePane = null;
         window.selectTransaction(id);
     };
 
@@ -1846,7 +2037,7 @@
         container.innerHTML = '<div class="net-composer">'
             + '<div class="net-composer-head"><h4>' + (d.from ? 'Edit and resend' : 'New request') + '</h4>'
             + (d.from ? '<span class="net-composer-from" title="' + debugEscapeHtml(d.from) + '">' + debugEscapeHtml(d.from) + '</span>' : '')
-            + '<button class="dc-btn dc-btn--icon" data-action="closeComposer" aria-label="Close the Send form" title="Close the form and show the detail again. What you entered stays for the next New request.">✕</button></div>'
+            + '<button class="dc-btn dc-btn--icon" data-action="closeRightPane" aria-label="Close the Send form" title="Close the form and show the detail again. What you entered stays for the next New request.">✕</button></div>'
             + notes
             + '<div class="net-form-row"><label class="dc-label" for="sf-sender" title="The OkHttp client to send through, under the name the app registered it with.">Sender</label>'
             + '<div class="net-form-field"><select class="dc-input--block" id="sf-sender" name="sender" data-action="setSendSender" title="Which interceptors run (auth, logging, capture) depends on how the app built the client of this sender.">' + senderOptions + '</select>'
@@ -2043,7 +2234,7 @@
             debugToast(wasEdit ? 'Rule updated' : 'Rule added', 'success');
             editingRuleId = null;
             renderRuleForm();
-            loadRules();
+            reloadAfterRuleChange();
         }).catch(reportRuleSaveFailure);
     };
 
@@ -2065,7 +2256,7 @@
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({id: id}),
-        }).then(function() { loadRules(); })
+        }).then(reloadAfterRuleChange)
           .catch(function(e) { debugToast('Failed to toggle rule: ' + e.message, 'error'); });
     };
 
@@ -2076,30 +2267,29 @@
             body: JSON.stringify({id: id}),
         }).then(function() {
             debugToast('Rule deleted', 'info');
-            loadRules();
+            reloadAfterRuleChange();
         }).catch(function(e) { debugToast('Failed to delete rule: ' + e.message, 'error'); });
     };
 
+    // The rules for the selected request, with a new one filled in from it. The
+    // row stays selected.
     window.mockThis = function() {
-        if (!selectedTxId) return;
-        var tx = allTransactions.find(function(t) { return t.id === selectedTxId; });
-        if (!tx) return;
-        debugFetch(netUrl('transactions/' + encodeURIComponent(selectedTxId)))
-            .then(function(r) { return r.json(); })
-            .then(function(detail) {
-                detail = detail || {};
-                switchRightTab('rules');
-                var url = tx.url || '';
-                var contentType = headerValue(detail.responseHeaders, 'content-type');
-                renderRuleForm({
-                    name: (tx.method || '') + ' ' + (url.length > 60 ? url.substring(0, 60) + '…' : url),
-                    urlPattern: exactUrlPattern(url),
-                    method: tx.method,
-                    statusCode: detail.statusCode || 200,
-                    responseHeaders: contentType ? { 'Content-Type': contentType } : null,
-                    responseBody: detail.responseBody || '',
-                });
-            });
+        var tx = currentDetailTx;
+        if (!tx || tx.id !== selectedTxId || tx.source === 'platform') return;
+        var url = tx.url || '';
+        var contentType = headerValue(tx.responseHeaders, 'content-type');
+        editingRuleId = null;
+        openRulesPane(tx.id);
+        renderRuleForm({
+            name: (tx.method || '') + ' ' + (url.length > 60 ? url.substring(0, 60) + '…' : url),
+            urlPattern: exactUrlPattern(url),
+            method: tx.method,
+            statusCode: tx.statusCode || 200,
+            responseHeaders: contentType ? { 'Content-Type': contentType } : null,
+            responseBody: tx.responseBody || '',
+        });
+        var formEl = document.getElementById('rule-form-container');
+        if (formEl && formEl.scrollIntoView) formEl.scrollIntoView({ block: 'nearest' });
     };
 
     // A pattern for this URL and no other: a sub-resource such as /items/1/comments
@@ -2299,6 +2489,7 @@
             updateThrottleSelect();
         }
         updateCaptureFilter(state.captureFilter);
+        updateMocksButton(state.mockRules);
 
         if (status === 'unchanged') {
             // No items; nothing to render. (Defensive: if items happen to be
@@ -2410,7 +2601,7 @@
         document.querySelectorAll('.net-view-seg .dc-seg__item').forEach(function(b) {
             b.classList.toggle('dc-seg__item--active', b.dataset.view === trafficView);
         });
-        switchRightTab('detail');
+        showRightPane('detail');
         if (trafficView === 'ws') {
             updateTrafficCount();
             renderWsList();
@@ -2514,7 +2705,7 @@
         clearTimeout(wsSearchRetryTimer);
         wsSearchRequest++;
         renderWsList();
-        switchRightTab('detail');
+        showRightPane('detail');
         renderWsFrame();
         loadWsDetail();
         pollWsEvents();
@@ -3074,14 +3265,14 @@
             window.clearSearch(t.id);
             return;
         }
-        if (composerOpen && e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+        if (rightPane === 'send' && e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
             e.preventDefault();
             window.submitSendRequest();
             return;
         }
         if (e.key === 'Escape' && !e.defaultPrevented && !document.querySelector('.dc-modal-scrim:not([hidden])')) {
-            if (composerOpen) {
-                window.closeComposer();
+            if (rightPane !== 'detail') {
+                window.closeRightPane();
                 return;
             }
             if (trafficView === 'ws') {
@@ -3129,8 +3320,10 @@
         selectTransaction: function(el) { window.selectTransaction(el.dataset.txId); },
         switchDir: function(el) { window.switchDir(el.dataset.dir); },
         switchBodyView: function(el) { window.switchBodyView(el.dataset.dir, el.dataset.view); },
-        switchRightTab: function(el) { window.switchRightTab(el.dataset.tab); },
         mockThis: function() { window.mockThis(); },
+        openMockRules: function() { window.openMockRules(); },
+        openRequestRules: function() { window.openRequestRules(); },
+        showAllRules: function() { window.showAllRules(); },
         editRule: function(el) { window.editRule(el.dataset.ruleId); },
         deleteRule: function(el) { window.deleteRule(el.dataset.ruleId); },
         cancelEditRule: function() { window.cancelEditRule(); },
@@ -3142,7 +3335,7 @@
         removeSendHeader: function(el) { window.removeSendHeader(parseInt(el.dataset.index, 10)); },
         openNewRequest: function() { window.openNewRequest(); },
         editAndResend: function() { window.editAndResend(); },
-        closeComposer: function() { window.closeComposer(); },
+        closeRightPane: function() { window.closeRightPane(); },
         showSentTransaction: function(el) { window.showSentTransaction(el.dataset.txId); },
         togglePause: function() { window.togglePause(); },
         toggleOverwriteMode: function() { window.toggleOverwriteMode(); },

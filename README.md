@@ -431,9 +431,11 @@ HAR from `GET /api/v1/network/transactions/_/export` or `lustro net export --har
 
 ## Mock rules
 
-The Network tab's **Mock Rules** panel short-circuits matching requests with a synthetic
-response: the interceptor answers from the rule and the request never leaves the device. Rules
-answer OkHttp calls only: [platform `HttpURLConnection` capture](#platform-httpurlconnection-capture)
+A mock rule short-circuits matching requests with a synthetic response: the interceptor answers
+from the rule and the request never leaves the device. In the Network tab, **Mocks**, next to the
+search field, opens the rules and the rule form in the right pane, and shows how many rules are
+enabled. The rules apply to all traffic, not to the selected request. Rules answer OkHttp calls
+only: [platform `HttpURLConnection` capture](#platform-httpurlconnection-capture)
 records traffic, and a rule never matches it.
 `urlPattern` is looked for anywhere in the request URL: as a substring, or as a regular expression
 when prefixed with `regex:`. So `regex:/api/v1/statuses$` matches
@@ -446,14 +448,24 @@ whose pattern and method match a request answers it. A new rule goes on top, so 
 last wins when two match; editing a rule keeps its place, and `POST rules/_/sync` sets the list in
 the order posted.
 
-**Mock This Request**, in a transaction's detail, fills in a rule for that request: a `regex:`
-pattern that matches its URL and no other, so a rule for `/items/1` doesn't also answer
+**Mock this request**, in the bar above a transaction's detail, opens the rules with a new rule
+filled in for that request: a `regex:` pattern that matches its URL and no other, so a rule for `/items/1` doesn't also answer
 `/items/1/comments`, its method, its status, its `Content-Type`, and its body. A query value that
 Lustro redacted matches any value, because the app sends the real one. The body is the stored one,
 so a redacted value in it is `[REDACTED]`: the form says when that is so, and you replace those
 values before you save. The button is disabled for a request that
 [platform `HttpURLConnection` capture](#platform-httpurlconnection-capture) recorded,
 because no rule answers one.
+
+**The detail says which rule answers the request.** When an enabled rule matches the selected
+request, the detail says "Mock rule active" with the rule's name, also for a request captured
+before the rule existed, and its row in the list has a dashed **MOCK** tag. A request that a rule
+answered says "Mocked by rule" with that rule, and whether it still answers the next request like
+it. **Matching rules**, next to **Mock this request**, shows only the rules whose pattern and method
+match that request, enabled or not, and marks the one that answers it. The app matches the rules
+as the interceptor does, against the URL as captured, which is redacted, and the console updates
+when a rule is added, changed, enabled, or disabled. Agents read the same from each transaction's
+`activeMockRuleId`, `mockRuleId`, and `matchingMockRuleIds`.
 
 **Rules live in the app, not in the browser.** They are kept in memory unless you pass a
 `MockRuleStorage` to `NetworkDebugTab.create(...)`, so without one they are gone when the process
@@ -494,7 +506,7 @@ platform detail (a process-global URL stream handler):
   working.
 - **Capture only**: mock rules and the throttle apply to OkHttp calls alone. A platform request
   is never answered by a rule and never held by the throttle. The detail of a platform request
-  says **HttpURLConnection**, and its **Mock This Request** button is disabled.
+  says **HttpURLConnection**, and its **Mock this request** button is disabled.
 - **Process-wide**: it installs a global handler once, affecting all `HttpURLConnection` traffic
   in the process. A [capture filter](#okhttp-capture-setup) leaves out the traffic you don't
   need, such as an analytics SDK's.
@@ -543,7 +555,8 @@ try {
   complete when the body ends.
 - **Mock rules and the throttle are your adapter's.** `sink.findMockRule(url, method)` returns
   the rule that matches, and counts a hit on it. To answer the request from the rule, report the
-  response with `.mocked(true)`. Nothing holds the request for the throttle.
+  response with `.mockedBy(rule)`, so the Network tab can say which rule answered it. Nothing holds
+  the request for the throttle.
 - **No call throws.** The capture filter runs on your thread. Redaction and storing run on a
   background thread, except during a burst of large bodies, when a call captures on your thread
   until the background thread catches up, as OkHttp capture does.

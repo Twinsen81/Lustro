@@ -11,7 +11,7 @@ the protocol a stable public contract independent of the library's Kotlin API.
   A future incompatible revision becomes `/api/v2/`, and the old major stays
   alive for at least one major release.
 - The **minor** protocol version is reported at runtime in
-  `GET /api/v1/_meta` as `_meta.protocolVersion` (currently `1.8`).
+  `GET /api/v1/_meta` as `_meta.protocolVersion` (currently `1.9`).
 
 ## Contents
 
@@ -135,6 +135,16 @@ client got them.
   that doesn't compile, or a search that takes longer than 5 s, gets a `400`
   with `field: search`, and a `regex` other than `true` or `false` a `400`
   with `field: regex`.
+
+- **1.9** - Each Network transaction carries `mockRuleId`, the mock rule
+  that answered it, as recorded then, and `activeMockRuleId`, the rule that
+  answers the next request with that method and URL, which the app works out
+  when it lists the transaction, so it follows the rules as they change. The
+  detail also carries `matchingMockRuleIds`, every rule whose pattern and
+  method match, enabled or not, in the order they are tried. A change to the
+  rules now advances the transactions cursor; a hit on a rule doesn't.
+  `state` gains `mockRules`, with the number of `enabled` rules and a
+  `revision` that changes with the rules.
 
 ## Status
 

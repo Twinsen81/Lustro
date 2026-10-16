@@ -678,6 +678,10 @@ def cmd_net_state(args: argparse.Namespace) -> int:
         )
     else:
         print("capture filter: none")
+    # From protocol 1.9.
+    mock_rules = state.get("mockRules")
+    if isinstance(mock_rules, dict):
+        print("mock rules: enabled={}".format(mock_rules.get("enabled")))
     return 0
 
 

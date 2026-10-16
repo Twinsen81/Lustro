@@ -328,9 +328,10 @@ class LustroNetworkInterceptorTest {
         assertEquals("rule-1", hitId)
         assertEquals(201, result.code)
         assertEquals("""{"mocked":true}""", result.body!!.string())
-        // The mock completion is reported as mocked.
+        // The mock completion is reported as mocked, by that rule.
         assertEquals(1, sink.completions.size)
         assertTrue(sink.completions.single().isMocked)
+        assertEquals("rule-1", sink.completions.single().mockRuleId)
         assertEquals(201, sink.completions.single().statusCode)
         // The mock response's HTTP/1.1 was never negotiated.
         assertNull(sink.completions.single().protocol)
@@ -611,6 +612,7 @@ class LustroNetworkInterceptorTest {
         assertEquals(1, requestBody.writes)
         val tx = store.getTransactions().single()
         assertTrue(tx.isMocked)
+        assertEquals("rule-1", tx.mockRuleId)
         assertEquals("should fail", tx.requestBody)
     }
 

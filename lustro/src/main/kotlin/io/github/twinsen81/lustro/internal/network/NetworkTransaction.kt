@@ -44,6 +44,8 @@ internal data class NetworkTransaction(
     val responseBodyBytes: Long? = null,
     val responseComplete: Boolean = false,
     val isMocked: Boolean = false,
+    // The rule that produced the mocked response, when the adapter said which.
+    val mockRuleId: String? = null,
     // Which adapter captured the request, and so whether a mock rule can answer it.
     val source: CaptureSource = CaptureSource.OKHTTP,
     val error: String? = null,

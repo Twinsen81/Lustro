@@ -108,7 +108,7 @@ public class MainActivity : Activity() {
                         "OkHttpClient — or, under Platform HTTP, the java.net stack. " +
                         "Open the debug console (debug build) and watch the Network " +
                         "tab. Flip the Overwrite toggle while a periodic sync runs to " +
-                        "collapse repeats into one row, or use the Mock Rules panel to " +
+                        "collapse repeats into one row, or use Mocks to " +
                         "inject error responses."
                 setPadding(0, 0, 0, PADDING)
             },

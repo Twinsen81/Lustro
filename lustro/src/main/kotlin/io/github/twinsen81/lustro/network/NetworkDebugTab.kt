@@ -22,7 +22,6 @@ import io.github.twinsen81.lustro.internal.network.MockRuleParseResult
 import io.github.twinsen81.lustro.internal.network.NetworkCaptureProvider
 import io.github.twinsen81.lustro.internal.network.NetworkSendRequestImpl
 import io.github.twinsen81.lustro.internal.network.NetworkTrafficStore
-import io.github.twinsen81.lustro.internal.network.NetworkTransaction
 import io.github.twinsen81.lustro.internal.network.SafeCaptureFilter
 import io.github.twinsen81.lustro.internal.network.SEARCH_HELP_DIALOG
 import io.github.twinsen81.lustro.internal.network.SearchBudget
@@ -30,8 +29,8 @@ import io.github.twinsen81.lustro.internal.network.SendCaptureTag
 import io.github.twinsen81.lustro.internal.network.WebSocketCapture
 import io.github.twinsen81.lustro.internal.network.WebSocketRoutes
 import io.github.twinsen81.lustro.internal.network.WebSocketTrafficStore
+import io.github.twinsen81.lustro.internal.network.appendTransactionJson
 import io.github.twinsen81.lustro.internal.network.respondWithSearch
-import io.github.twinsen81.lustro.internal.toDebugTimestamp
 import io.github.twinsen81.lustro.DebugTab
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
@@ -44,7 +43,8 @@ import org.json.JSONObject
  * and managing mock rules.
  *
  * Two-panel layout: the list of transactions or of WebSocket connections on the
- * left, detail/mock rules/the Send form on the right. Created through the
+ * left; on the right, the detail of the selected one, or the mock rules, or the
+ * Send form, each in place of the detail. Created through the
  * [companion factory][Companion.create]; the
  * sink/interceptor wiring is internal. Adapted to the `/api/v1/network` wire
  * contract (cursor envelope, synchronous send) and the SPI
@@ -216,6 +216,7 @@ public class NetworkDebugTab private constructor(
                 <div class="net-search net-http-only">
                     <div class="dc-field"><label class="net-search-label" for="search-input"><span class="dc-field__prefix" aria-hidden="true">&gt;</span><input type="text" id="search-input" name="search" aria-label="Search network traffic" aria-describedby="search-input-error" class="dc-input" placeholder="filter url, method, headers, body…" autocomplete="off" spellcheck="false" data-action="onSearchInput" title="Search the URL, the method, the headers, and the bodies for this text, ignoring case, on the device, 300 ms after you stop typing. With REGEX on, each word is a regular expression: all must match, and -word leaves out. Matches are marked in the detail. Ctrl/Cmd+K focuses the field, and Escape clears it." /></label><button type="button" class="dc-btn dc-btn--icon net-search-clear" data-action="clearSearch" data-target="search-input" hidden aria-label="Clear the search" title="Clear the search. Escape in the field does the same.">×</button><button type="button" class="dc-btn dc-btn--sm net-search-regex" data-action="toggleSearchRegex" data-target="search-input" aria-pressed="false" title="Regular expressions. On: each word is a Java regular expression that ignores case, all words must match, each in any field, and -word leaves out, such as featured|popular -analytics. Off: the text is found as typed. Remembered in your browser.">Regex</button><button type="button" class="dc-btn dc-btn--icon net-search-help" data-action="showSearchHelp" aria-label="Regex examples" title="Common regular expressions, with examples.">?</button></div>
                     <button class="dc-btn" id="new-request-btn" data-action="openNewRequest" hidden title="Compose a request and send it through one of the OkHttp clients that the app gave to Lustro. The form opens in the right pane.">+ New request</button>
+                    <button class="dc-btn" id="mocks-btn" data-action="openMockRules" title="Mock rules: a request that a rule matches gets the rule's response and never leaves the device. The rules apply to all OkHttp traffic, not only to the selected request, and the number is how many are enabled. The list and the form open in the right pane.">Mocks<span id="mocks-count" class="net-mocks-count"></span></button>
                     <div class="net-search-error" id="search-input-error" role="alert" hidden></div>
                 </div>
                 <div class="net-category-bar net-http-only" id="category-filters"></div>
@@ -255,15 +256,13 @@ public class NetworkDebugTab private constructor(
             </div>
             <div class="dc-divider"></div>
             <div class="dc-pane net-detail-pane">
-                <div class="dc-tabs">
-                    <button class="dc-tab dc-tab--active" id="tab-btn-detail" data-action="switchRightTab" data-tab="detail" title="Inspect the selected transaction: headers, body, status, timing, byte sizes.">Detail</button>
-                    <button class="dc-tab" id="tab-btn-rules" data-action="switchRightTab" data-tab="rules" title="Manage mock rules: a matching request gets the rule's response and never leaves the device. Rules are tried from the top, so the first match answers, and a new rule goes on top. Rules live in the app and survive a restart when it gives Lustro a rule storage.">Mock Rules</button>
-                    <div class="net-tab-actions">
-                        <button class="dc-btn dc-btn--sm" id="resend-btn" data-action="editAndResend" style="display:none" title="Open this request in the Send form: method, URL, headers, and body. Change what you need and send it again. The captured request stays as it is.">Edit and resend</button>
-                        <button class="dc-btn dc-btn--sm" id="copy-curl-btn" data-action="copyCurl" style="display:none" title="Copy a cURL command that reproduces the selected request (paste into a terminal to re-run).">cURL</button>
-                        <button class="dc-btn dc-btn--sm" id="copy-md-btn" data-action="copyMarkdown" style="display:none" title="Copy the request and response as Markdown, for a bug report, a pull request, or a chat. Headers and bodies go in code blocks.">Markdown</button>
-                        <button class="dc-btn dc-btn--sm" id="copy-all-btn" data-action="copyAllDetail" style="display:none" title="Copy the full request and response (status, headers, bodies) as plain text for sharing or pasting into a bug report.">Copy</button>
-                    </div>
+                <div class="net-detail-bar" id="detail-bar" role="toolbar" aria-label="Actions for the selected request" hidden>
+                    <button class="dc-btn dc-btn--sm" id="resend-btn" data-action="editAndResend" hidden title="Open this request in the Send form: method, URL, headers, and body. Change what you need and send it again. The captured request stays as it is.">Edit and resend</button>
+                    <button class="dc-btn dc-btn--sm" id="mock-this-btn" data-action="mockThis">Mock this request</button>
+                    <button class="dc-btn dc-btn--sm" id="request-rules-btn" data-action="openRequestRules">Matching rules<span id="request-rules-count"></span></button>
+                    <button class="dc-btn dc-btn--sm net-detail-bar-copy" id="copy-curl-btn" data-action="copyCurl" title="Copy a cURL command that reproduces the selected request (paste into a terminal to re-run).">cURL</button>
+                    <button class="dc-btn dc-btn--sm" id="copy-md-btn" data-action="copyMarkdown" title="Copy the request and response as Markdown, for a bug report, a pull request, or a chat. Headers and bodies go in code blocks.">Markdown</button>
+                    <button class="dc-btn dc-btn--sm" id="copy-all-btn" data-action="copyAllDetail" title="Copy the full request and response (status, headers, bodies) as plain text for sharing or pasting into a bug report.">Copy</button>
                 </div>
                 <div id="detail-content" class="dc-tabpanel net-tab-content active">
                     <div class="net-empty-state">
@@ -272,6 +271,11 @@ public class NetworkDebugTab private constructor(
                     </div>
                 </div>
                 <div id="rules-content" class="dc-tabpanel net-tab-content">
+                    <div class="net-pane-head">
+                        <h4 title="A request that a rule matches gets the rule's response and never leaves the device. Rules are tried from the top, so the first match answers, and a new rule goes on top. Rules live in the app and survive a restart when it gives Lustro a rule storage.">Mock rules</h4>
+                        <span class="net-pane-sub" id="rules-scope"></span>
+                        <button class="dc-btn dc-btn--icon" data-action="closeRightPane" aria-label="Close the mock rules" title="Close the rules and show the detail again. Escape does the same.">✕</button>
+                    </div>
                     <div id="rules-list"></div>
                     <div id="rule-form-container"></div>
                 </div>
@@ -334,18 +338,21 @@ public class NetworkDebugTab private constructor(
     private fun handleTransactions(request: DebugRequest): DebugResponse =
         respondWithSearch(request) { search ->
             DebugResponse.cursorEnvelope(
-                // A handshake's webSocketId depends on which connections are listed, so
-                // a change to that set is a change to this list. Both counts only grow.
-                currentSequence = store.getSequence() + webSocketStore.getMembershipSequence(),
+                // A handshake's webSocketId depends on which connections are listed, and
+                // each transaction's activeMockRuleId on the rules, so a change to either
+                // is a change to this list. Every count only grows.
+                currentSequence = store.getSequence() + webSocketStore.getMembershipSequence() + store.getRulesRevision(),
                 clientCursor = request.queryParam("cursor"),
                 state = stateJson(),
                 epoch = store.epoch,
             ) {
                 val transactions = store.getTransactions(search = search, budget = SearchBudget(searchTimeoutMs))
                 val webSockets = webSocketStore.transactionLinks()
+                // One snapshot, so every row is matched against the same rules.
+                val rules = store.getMockRules()
                 transactions.forEachIndexed { index, tx ->
                     if (index > 0) append(",")
-                    appendTransaction(tx, brief = true, webSocketId = webSockets[tx.id])
+                    appendTransactionJson(tx, brief = true, webSocketId = webSockets[tx.id], rules = rules)
                 }
             }
         }
@@ -356,6 +363,8 @@ public class NetworkDebugTab private constructor(
             append("\"paused\":").append(store.isPaused()).append(",")
             append("\"overwriteMode\":").append(store.isOverwriteMode()).append(",")
             append("\"throttleDelayMs\":").append(store.getThrottleDelayMs()).append(",")
+            append("\"mockRules\":{\"enabled\":").append(store.getMockRules().count { it.enabled })
+            append(",\"revision\":").append(store.getRulesRevision()).append("},")
             append("\"captureFilter\":")
             if (captureFilter.isSet) {
                 append("{\"description\":\"").append(captureFilter.description.escapeForJson()).append("\",")
@@ -380,7 +389,9 @@ public class NetworkDebugTab private constructor(
 
     private fun handleTransactionDetail(txId: String): DebugResponse {
         val tx = store.getTransaction(txId) ?: return DebugResponse.notFound("Transaction not found")
-        return DebugResponse.json { appendTransaction(tx, brief = false, webSocketId = webSocketStore.transactionLinks()[tx.id]) }
+        return DebugResponse.json {
+            appendTransactionJson(tx, brief = false, webSocketId = webSocketStore.transactionLinks()[tx.id], rules = store.getMockRules())
+        }
     }
 
     /**
@@ -700,72 +711,11 @@ public class NetworkDebugTab private constructor(
         }
     }
 
-    private fun StringBuilder.appendTransaction(tx: NetworkTransaction, brief: Boolean, webSocketId: String?) {
-        append("{")
-        append("\"id\":\"${tx.id.escapeForJson()}\",")
-        append("\"timestamp\":\"${tx.startedAt.toDebugTimestamp()}\",")
-        append("\"startedAt\":${tx.startedAt},")
-        append("\"completedAt\":${tx.completedAt ?: "null"},")
-        append("\"method\":\"${tx.method.escapeForJson()}\",")
-        append("\"url\":\"${tx.url.escapeForJson()}\",")
-        append("\"finalUrl\":${tx.finalUrl.toJsonString()},")
-        append("\"protocol\":${tx.protocol.toJsonString()},")
-        append("\"statusCode\":${tx.statusCode ?: "null"},")
-        append("\"durationMs\":${tx.durationMs ?: "null"},")
-        append("\"throttledMs\":${tx.throttledMs ?: "null"},")
-        append("\"categories\":[")
-        tx.categories.forEachIndexed { i, cat ->
-            if (i > 0) append(",")
-            append("\"${cat.escapeForJson()}\"")
-        }
-        append("],")
-        append("\"isMocked\":${tx.isMocked},")
-        append("\"source\":\"${tx.source.wireName}\",")
-        append("\"requestContentType\":${tx.requestContentType.toJsonString()},")
-        append("\"responseContentType\":${tx.responseContentType.toJsonString()},")
-        append("\"requestBodyBytes\":${tx.requestBodyBytes ?: "null"},")
-        append("\"responseBodyBytes\":${tx.responseBodyBytes ?: "null"},")
-        append("\"responseComplete\":${tx.responseComplete},")
-        // Set on the handshake of a socket from Lustro.webSocketFactory: its messages are under websockets/{id}.
-        append("\"webSocketId\":${webSocketId.toJsonString()},")
-        append("\"error\":${tx.error.toJsonString()}")
-        if (!brief) {
-            append(",")
-            append("\"requestHeaders\":${headersToJson(tx.requestHeaders)},")
-            append("\"requestBody\":${tx.requestBody.toJsonString()},")
-            append("\"requestBodyTruncated\":${tx.requestBodyTruncated},")
-            append("\"requestBodyBinary\":${tx.requestBinaryBody != null},")
-            append("\"responseHeaders\":${tx.responseHeaders?.let { headersToJson(it) } ?: "null"},")
-            append("\"responseBody\":${tx.responseBody.toJsonString()},")
-            append("\"responseBodyTruncated\":${tx.responseBodyTruncated},")
-            append("\"responseBodyBinary\":${tx.responseBinaryBody != null},")
-            append("\"priorResponses\":[")
-            tx.priorResponses.forEachIndexed { i, prior ->
-                if (i > 0) append(",")
-                append("{\"url\":\"${prior.url.escapeForJson()}\",\"statusCode\":${prior.statusCode}}")
-            }
-            append("]")
-        }
-        append("}")
-    }
-
-    private fun String?.toJsonString(): String = this?.let { "\"${it.escapeForJson()}\"" } ?: "null"
-
     // responseHeaders go out with the rule (the browser form doesn't show them,
     // but agents and the CLI round-trip the whole rule through this route).
     private fun StringBuilder.appendMockRule(rule: MockRuleImpl) {
         MockRuleCodec.appendJson(this, rule, includeHitCount = true)
     }
-
-    private fun headersToJson(headers: Map<String, String>): String =
-        buildString {
-            append("{")
-            headers.entries.forEachIndexed { index, (key, value) ->
-                if (index > 0) append(",")
-                append("\"${key.escapeForJson()}\":\"${value.escapeForJson()}\"")
-            }
-            append("}")
-        }
 
     private fun ok(): DebugResponse = DebugResponse.json { append("{\"status\":\"ok\"}") }
 

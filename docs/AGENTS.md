@@ -287,6 +287,18 @@ persisted). Rules answer OkHttp calls only; a platform `HttpURLConnection` reque
 no rule matches it, so a rule for one keeps `hitCount` at 0. A transaction's `source` says which
 adapter captured it (see "Capture source" below).
 
+**Which rule answers a request.** Don't match the rules yourself: the app does, as the interceptor
+does, and puts the result in each transaction. `activeMockRuleId`, in the list and the detail, is
+the rule that answers the next request with that method and URL, or `null`; it follows the rules as
+they change, so it is set on a request captured before its rule existed. The detail's
+`matchingMockRuleIds` lists every rule whose pattern and method match, enabled or not, in the order
+they are tried. `mockRuleId` is the rule that answered a mocked transaction, recorded when it did;
+that rule can have changed or been deleted since. The rules are matched against the URL as
+captured, which is redacted, so a pattern that names a redacted value doesn't match there. A
+platform transaction has no matching rule. `state.mockRules` has `enabled`, the number of enabled
+rules, and `revision`, which changes with every change to the rules but a hit: fetch `GET rules`
+again when it does. These fields arrived in protocol 1.9.
+
 **Rules are validated on the way in.** A `regex:` pattern must compile and must not be empty,
 `statusCode` must be within 100–599, `responseHeaders` must
 be header names and values OkHttp accepts, and a `Content-Type` among them must parse as a media
@@ -313,9 +325,10 @@ are rejected. **Send is only available when the app registered a sender**: if no
 is empty, `POST send` returns an enveloped `404`, and the console has no Send form. Senders,
 `sender`, the send result's `sender` and `url`, and a set `transactionId` arrived in protocol 1.7.
 
-**What advances the cursor.** Only changes to the captured list advance the transactions cursor: a
-new request, its response or streaming progress, a failure, an eviction, or `clear`. Pause,
-overwrite mode, throttle, mock-rule changes, and the capture filter's counts don't. Every poll
+**What advances the cursor.** Changes to the captured list advance the transactions cursor: a
+new request, its response or streaming progress, a failure, an eviction, or `clear`. So does a
+change to the mock rules, because each transaction says which rule answers it; a hit on a rule
+doesn't. Pause, overwrite mode, throttle, and the capture filter's counts don't. Every poll
 response carries the current `state`, `unchanged` ones included, and `GET rules` returns the
 rules with their hit counts.
 

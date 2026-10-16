@@ -69,7 +69,7 @@ discovery), `--json` (JSON output). They go before or after the command:
 | `lustro meta` | `GET /api/v1/_meta` |
 | `lustro schema [tabId]` | `GET /api/v1/_schema` or `/api/v1/<tab>/_schema` |
 | `lustro net list` | `GET network/transactions` (one poll): the newest 50 transactions, newest first |
-| `lustro net state` | the capture state from `GET network/transactions`: pause, overwrite mode, throttle, capture filter |
+| `lustro net state` | the capture state from `GET network/transactions`: pause, overwrite mode, throttle, capture filter, and the number of enabled mock rules |
 | `lustro net poll` | cursor loop; prints new transactions, and prints one again when it finishes |
 | `lustro net wait [-- COMMAND]` | cursor loop; runs `COMMAND`, prints the first matching request that finishes, and exits |
 | `lustro net get <id>` | `GET network/transactions/<id>`, with each body cut at 2 KB |

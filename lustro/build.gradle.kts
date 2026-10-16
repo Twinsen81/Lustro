@@ -247,7 +247,7 @@ abstract class GenerateVersionsTask : DefaultTask() {
 val generateLustroVersions =
     tasks.register<GenerateVersionsTask>("generateLustroVersions") {
         libraryVersion.set(project.version.toString())
-        protocolVersion.set("1.8")
+        protocolVersion.set("1.9")
         outputDir.set(layout.buildDirectory.dir("generated/source/lustroVersions/kotlin"))
     }
 

@@ -495,6 +495,108 @@ class NetworkDebugTabTest {
         assertEquals("broad", tab.captureSink.findMockRule("https://a.test/api/users/42", "GET")?.id)
     }
 
+    private fun JSONObject.stringOrNull(name: String): String? = if (isNull(name)) null else getString(name)
+
+    private fun org.json.JSONArray.strings(): List<String> = (0 until length()).map { getString(it) }
+
+    private fun NetworkDebugTab.byUrlAndMethod(cursor: String? = null): Map<String, JSONObject> {
+        val query = listOfNotNull(cursor?.let { "cursor" to it }).toTypedArray()
+        val items = handle(get("transactions", *query))!!.json().getJSONArray("items")
+        return (0 until items.length()).map { items.getJSONObject(it) }.associateBy { it.getString("method") + " " + it.getString("url") }
+    }
+
+    @Test
+    fun `each transaction says which rule answers the next request like it, as the interceptor matches`() {
+        val tab = tab()
+        val store = tab.captureSink as NetworkTrafficStore
+        val url = "https://a.test/api/featured.json"
+        // Captured before any rule exists.
+        store.beginRequest(url, "GET", Headers.EMPTY, null, null)
+        store.beginRequest(url, "POST", Headers.EMPTY, null, null)
+        store.sinkFor(CaptureSource.PLATFORM).beginRequest(url, "GET", Headers.EMPTY, null, null)
+        tab.createAppCaptureSink { true }.beginRequest("https://a.test/api/featured.json?app", "GET", Headers.EMPTY, null, null)
+        assertTrue(store.awaitCaptures())
+        val first = tab.handle(get("transactions"))!!.json()
+        assertTrue(first.getJSONArray("items").objects().all { it.isNull("activeMockRuleId") && it.isNull("mockRuleId") })
+        assertEquals(0, first.getJSONObject("state").getJSONObject("mockRules").getInt("enabled"))
+
+        tab.handle(post("rules", """{"id":"get","urlPattern":"/featured.json","method":"GET"}"""))
+        val delta = tab.handle(get("transactions", "cursor" to first.getString("cursor")))!!.json()
+        assertEquals("delta", delta.getString("status"))
+        val state = delta.getJSONObject("state").getJSONObject("mockRules")
+        assertEquals(1, state.getInt("enabled"))
+        assertTrue(state.getLong("revision") > first.getJSONObject("state").getJSONObject("mockRules").getLong("revision"))
+        val rows = delta.getJSONArray("items").objects()
+        val okhttp = rows.single { it.getString("source") == "okhttp" && it.getString("method") == "GET" }
+        assertEquals("get", okhttp.stringOrNull("activeMockRuleId"))
+        // Another method, and a request that no rule can answer.
+        assertNull(rows.single { it.getString("method") == "POST" }.stringOrNull("activeMockRuleId"))
+        assertNull(rows.single { it.getString("source") == "platform" }.stringOrNull("activeMockRuleId"))
+        assertEquals("get", rows.single { it.getString("source") == "app" }.stringOrNull("activeMockRuleId"))
+
+        // A disabled rule matches, and the first enabled one answers.
+        tab.handle(post("rules", """{"id":"off","urlPattern":"regex:featured\\.json$","enabled":false}"""))
+        val detail = tab.handle(get("transactions/${okhttp.getString("id")}"))!!.json()
+        assertEquals(listOf("off", "get"), detail.getJSONArray("matchingMockRuleIds").strings())
+        assertEquals("get", detail.stringOrNull("activeMockRuleId"))
+        val platform = rows.single { it.getString("source") == "platform" }.getString("id")
+        assertEquals(0, tab.handle(get("transactions/$platform"))!!.json().getJSONArray("matchingMockRuleIds").length())
+
+        tab.handle(post("rules/toggle", """{"id":"off"}"""))
+        assertEquals("off", tab.byUrlAndMethod()["GET $url"]!!.stringOrNull("activeMockRuleId"))
+        tab.handle(post("rules/toggle", """{"id":"off"}"""))
+        tab.handle(post("rules/toggle", """{"id":"get"}"""))
+        assertNull(tab.byUrlAndMethod()["GET $url"]!!.stringOrNull("activeMockRuleId"))
+        tab.handle(post("rules/delete", """{"id":"get"}"""))
+        assertEquals(listOf("off"), tab.handle(get("transactions/${okhttp.getString("id")}"))!!.json().getJSONArray("matchingMockRuleIds").strings())
+    }
+
+    @Test
+    fun `a hit on a rule leaves the list's cursor alone`() {
+        val tab = tab()
+        tab.handle(post("rules", """{"id":"r","urlPattern":"/x"}"""))
+        val first = tab.handle(get("transactions"))!!.json()
+
+        assertEquals("r", tab.createAppCaptureSink { true }.findMockRule("https://a.test/x", "GET")?.id)
+
+        val second = tab.handle(get("transactions", "cursor" to first.getString("cursor")))!!.json()
+        assertEquals("unchanged", second.getString("status"))
+        assertEquals(1, tab.handle(get("rules"))!!.json().getJSONArray("items").getJSONObject(0).getInt("hitCount"))
+    }
+
+    @Test
+    fun `a mocked transaction names the rule that answered it`() {
+        val tab = tab()
+        tab.handle(post("rules", """{"id":"featured","urlPattern":"/featured.json","statusCode":203,"responseBody":"{}"}"""))
+        // Mocked, so nothing is sent: the port is never connected to.
+        val client = OkHttpClient.Builder().addInterceptor(tab.createInterceptor { true }).build()
+        client.newCall(okhttp3.Request.Builder().url("http://127.0.0.1:9/featured.json").build()).execute().use { assertEquals(203, it.code) }
+        // An app's adapter says which rule it served.
+        val sink = tab.createAppCaptureSink { true }
+        val rule = sink.findMockRule("https://a.test/app/featured.json", "GET")!!
+        val id = sink.beginRequest("https://a.test/app/featured.json", "GET", Headers.EMPTY, null, null)
+        sink.completeRequest(id, CapturedResponse.Builder(rule.statusCode, 1).mockedBy(rule).build())
+        assertTrue((tab.captureSink as NetworkTrafficStore).awaitCaptures())
+
+        val rows = tab.byUrlAndMethod()
+        for (url in listOf("http://127.0.0.1:9/featured.json", "https://a.test/app/featured.json")) {
+            val row = rows.getValue("GET $url")
+            assertTrue(row.getBoolean("isMocked"))
+            assertEquals("featured", row.stringOrNull("mockRuleId"))
+            assertEquals("featured", tab.handle(get("transactions/${row.getString("id")}"))!!.json().stringOrNull("mockRuleId"))
+        }
+    }
+
+    @Test
+    fun `mocked false clears the rule`() {
+        val rule = io.github.twinsen81.lustro.internal.network.MockRuleImpl(id = "r", name = "r", urlPattern = "/x")
+        assertEquals("r", CapturedResponse.Builder(200, 1).mockedBy(rule).build().mockRuleId)
+        val cleared = CapturedResponse.Builder(200, 1).mockedBy(rule).mocked(false).build()
+        assertFalse(cleared.isMocked)
+        assertNull(cleared.mockRuleId)
+        assertNull(CapturedResponse.Builder(200, 1).mocked(true).build().mockRuleId)
+    }
+
     private fun NetworkDebugTab.ruleIds(): List<String> {
         val items = handle(get("rules"))!!.json().getJSONArray("items")
         return (0 until items.length()).map { items.getJSONObject(it).getString("id") }
@@ -641,14 +743,26 @@ class NetworkDebugTabTest {
         assertEquals(10, tab.order)
     }
 
+    // Each row says which rule answers the next request like it.
     @Test
-    fun `rule changes leave the transactions cursor alone`() {
+    fun `each rule change advances the transactions cursor`() {
         val tab = tab()
-        val firstCursor = tab.handle(get("transactions"))!!.json().getString("cursor")
+        var cursor = tab.handle(get("transactions"))!!.json().getString("cursor")
+        fun assertChanged() {
+            val poll = tab.handle(get("transactions", "cursor" to cursor))!!.json()
+            assertEquals("delta", poll.getString("status"))
+            cursor = poll.getString("cursor")
+        }
         val id = tab.handle(post("rules", """{"urlPattern":"/api"}"""))!!.json().getString("id")
+        assertChanged()
+        tab.handle(post("rules", """{"id":"$id","urlPattern":"/api/v2"}"""))
+        assertChanged()
         tab.handle(post("rules/toggle", """{"id":"$id"}"""))
+        assertChanged()
+        tab.handle(post("rules/_/sync", """[{"id":"$id","urlPattern":"/api"}]"""))
+        assertChanged()
         tab.handle(post("rules/delete", """{"id":"$id"}"""))
-        val poll = tab.handle(get("transactions", "cursor" to firstCursor))!!.json()
-        assertEquals("unchanged", poll.getString("status"))
+        assertChanged()
+        assertEquals("unchanged", tab.handle(get("transactions", "cursor" to cursor))!!.json().getString("status"))
     }
 }

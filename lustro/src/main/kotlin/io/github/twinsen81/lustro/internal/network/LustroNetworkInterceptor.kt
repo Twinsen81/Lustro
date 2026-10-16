@@ -139,7 +139,7 @@ internal class LustroNetworkInterceptor(
                                 byteSize = mockBodyBytes.size.toLong(),
                             ),
                         )
-                        .mocked(true)
+                        .mockedBy(mockRule)
                         .build(),
                 )
             }

@@ -32,7 +32,6 @@
 .net-filter-flag:hover { color: var(--lvl-w); background: color-mix(in srgb, var(--lvl-w) 28%, transparent); }
 .net-filter-flag[hidden] { display: none; }
 .net-filter-note { margin: 0; color: var(--t2); font-size: 12px; line-height: 1.5; }
-.net-mock-note { color: var(--t3); font-size: 12px; }
 .net-filter-field { display: flex; flex-direction: column; gap: 6px; }
 .net-filter-description { margin: 0; color: var(--t1); font-size: 13px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
 .net-filter-counts { display: flex; gap: 40px; }
@@ -42,6 +41,8 @@
 .net-search > .net-search-error { flex-basis: 100%; }
 /* .dc-btn sets display, so [hidden] needs its own rule. */
 #new-request-btn[hidden] { display: none; }
+/* Mocks: the number of enabled rules, in the accent color while any is. */
+.net-mocks-count { color: var(--ai); }
 /* The clear, Regex, and help buttons in a search field: 24px hit targets that
    don't make the field taller. .dc-btn sets display, so [hidden] needs its own rule. */
 .net-search-clear, .net-search-regex, .net-search-help { min-height: 24px; margin: -5px 0; }
@@ -246,14 +247,22 @@
 .net-m-delete { color: var(--method-delete); }
 .net-m-other  { color: var(--method-head); }
 
-/* ── Right pane: .dc-tabs strip; cURL / Copy sit at its right end ── */
-.net-tab-actions {
-    margin-left: auto;
+/* ── Right pane: the selected request's actions, above its detail. The copy
+   actions sit at the right end. Hidden while the rules or the Send form are
+   open, because they are not about that request. ── */
+.net-detail-bar {
+    flex: none;
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 6px;
-    padding-bottom: 7px;
+    min-height: 46px;
+    padding: 8px 12px;
+    background: var(--tabbar);
+    border-bottom: 1px solid var(--border);
 }
+.net-detail-bar[hidden], .net-detail-bar .dc-btn[hidden] { display: none; }
+.net-detail-bar-copy { margin-left: auto; }
 
 .net-tab-content {
     display: none;
@@ -502,8 +511,10 @@
 
 /* ── Send form: in the right pane, in place of the detail ── */
 .net-composer { display: flex; flex-direction: column; }
-.net-composer-head { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
-.net-composer-head h4 {
+/* The head of a pane that opens in place of the detail: its title, what it is
+   about, and a close button. */
+.net-composer-head, .net-pane-head { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+.net-composer-head h4, .net-pane-head h4 {
     flex: none;
     margin: 0;
     font-size: 12.5px;
@@ -512,8 +523,32 @@
     text-transform: uppercase;
     color: var(--t1);
 }
-.net-composer-from { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px; color: var(--t3); }
-.net-composer-head .dc-btn--icon { margin-left: auto; }
+.net-composer-from, .net-pane-sub { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px; color: var(--t3); }
+.net-composer-head .dc-btn--icon, .net-pane-head .dc-btn--icon { margin-left: auto; }
+.net-pane-sub .net-format-btn { margin-left: 4px; }
+
+/* "Mock rule active" or "Mocked by rule", under the detail's meta line. */
+.net-mock-line {
+    margin-top: 9px;
+    padding-left: 9px;
+    border-left: 2px solid var(--ai-border);
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--t2);
+}
+.net-mock-line--active { border-left-color: var(--ai); }
+.net-mock-rule-link {
+    padding: 0;
+    background: none;
+    border: none;
+    color: var(--ai);
+    font: inherit;
+    text-decoration: underline dotted;
+    text-underline-offset: 3px;
+    cursor: pointer;
+    overflow-wrap: anywhere;
+}
+.net-mock-rule-link:hover { text-decoration-style: solid; }
 .net-send-note { margin: 0 0 12px; font-size: 12px; line-height: 1.5; color: var(--t4); }
 .net-form-field { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
 .net-form-field .net-send-header-row { margin-bottom: 0; }
@@ -738,6 +773,6 @@
 .net-ws-payload { flex: 0 1 auto; max-height: 46%; overflow: auto; margin-top: 12px; }
 
 /* Mock rule form: a value the form shows but doesn't edit, and a warning about
-   the body Mock This Request copied. */
+   the body Mock this request copied. */
 .net-form-fixed { flex: 1; color: var(--t2); font-family: var(--font-mono); font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .net-form-warning { color: var(--lvl-w); font-size: 12px; line-height: 1.5; margin: 0 0 10px; }

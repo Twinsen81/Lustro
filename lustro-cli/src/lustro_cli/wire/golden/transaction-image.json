@@ -12,6 +12,8 @@
   "throttledMs": null,
   "categories": ["media"],
   "isMocked": false,
+  "mockRuleId": null,
+  "activeMockRuleId": null,
   "source": "okhttp",
   "requestContentType": null,
   "responseContentType": "image/png",
@@ -33,6 +35,7 @@
   "responseBody": null,
   "responseBodyTruncated": false,
   "responseBodyBinary": true,
+  "matchingMockRuleIds": [],
   "priorResponses": [
     { "url": "https://cdn.example.com/avatars/77e2.png", "statusCode": 302 }
   ]

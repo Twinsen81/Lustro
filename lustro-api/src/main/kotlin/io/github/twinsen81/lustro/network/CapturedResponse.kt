@@ -31,6 +31,12 @@ public class CapturedResponse private constructor(builder: Builder) {
     public val isMocked: Boolean = builder.isMocked
 
     /**
+     * The [id][MockRule.id] of the mock rule that produced the response, or
+     * `null` when it isn't mocked or the adapter didn't say which rule.
+     */
+    public val mockRuleId: String? = builder.mockRuleId
+
+    /**
      * `true` for a finished response. `false` for an in-flight progressive
      * update: an event stream reports one when its headers arrive and on each
      * read, then a complete response at EOF or close.
@@ -72,6 +78,7 @@ public class CapturedResponse private constructor(builder: Builder) {
         internal var headers: Headers = Headers.EMPTY
         internal var body: CapturedBody? = null
         internal var isMocked: Boolean = false
+        internal var mockRuleId: String? = null
         internal var isComplete: Boolean = true
         internal var protocol: String? = null
         internal var finalUrl: String? = null
@@ -83,8 +90,27 @@ public class CapturedResponse private constructor(builder: Builder) {
         /** Sets [CapturedResponse.body]. */
         public fun body(value: CapturedBody?): Builder = apply { body = value }
 
-        /** Sets [CapturedResponse.isMocked]. */
-        public fun mocked(value: Boolean): Builder = apply { isMocked = value }
+        /**
+         * Sets [CapturedResponse.isMocked]. `false` also clears
+         * [CapturedResponse.mockRuleId].
+         */
+        public fun mocked(value: Boolean): Builder =
+            apply {
+                isMocked = value
+                if (!value) mockRuleId = null
+            }
+
+        /**
+         * Marks the response as one that [rule] produced, as returned by
+         * [NetworkCaptureSink.findMockRule]: sets [CapturedResponse.isMocked]
+         * and [CapturedResponse.mockRuleId], so the Network tab can say which
+         * rule answered the request.
+         */
+        public fun mockedBy(rule: MockRule): Builder =
+            apply {
+                isMocked = true
+                mockRuleId = rule.id
+            }
 
         /** Sets [CapturedResponse.isComplete]. */
         public fun complete(value: Boolean): Builder = apply { isComplete = value }

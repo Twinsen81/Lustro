@@ -14,6 +14,32 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Added
 
+- **The Network tab says which mock rule answers a request (wire protocol
+  1.9).** "Mock Rules" was a tab next to "Detail", so it looked like it was
+  about the selected request, but it listed every rule. Only the "Mocked"
+  badge showed that a rule applied, and only after a rule had answered: when
+  you made a rule with Mock This Request, the request and every other one it
+  matched showed nothing until the app sent the request again. The button
+  was also at the bottom of the detail, below a body that can be long. Now
+  **Mocks**, next to "+ New request", opens the rules and the rule form in
+  the right pane, with the number of enabled rules. The tab strip is a bar
+  with the selected request's actions: Edit and resend, **Mock this
+  request**, **Matching rules**, cURL, Markdown, and Copy. Mock this request
+  opens the rules for that request with a new rule filled in, and keeps the
+  row selected. When an enabled rule matches the selected request, the
+  detail says "Mock rule active" with the rule's name, also for a request
+  captured before the rule existed, and the row has a dashed **MOCK** tag. A
+  mocked request says "Mocked by rule" with the rule, and whether it still
+  answers. Matching rules shows only the rules whose pattern and method match
+  the request, enabled or not. The app matches the rules as the interceptor
+  does, so the console never shows a rule that would not answer the request.
+  Each transaction has `activeMockRuleId` and `mockRuleId`, the detail has
+  `matchingMockRuleIds`, and `state.mockRules` has the number of enabled
+  rules and a `revision`. A change to the rules now advances the
+  transactions cursor. An adapter that reports through
+  `Lustro.networkCaptureSink()` can say which rule answered with
+  `CapturedResponse.Builder.mockedBy(rule)`, and `lustro net state` shows the
+  number of enabled rules.
 - **Search the headers, and search with regular expressions (wire protocol
   1.8).** The Network tab's search looked at the URL, the method, and the
   bodies, so a header such as `Cache-Control` found nothing, and it took only
