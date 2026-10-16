@@ -33,6 +33,7 @@
     var lastCursor = null;        // opaque cursor token; omitted on the first poll
     var searchText = '';          // the search the list shows: the last one the app accepted
     var searchTimer = null;
+    var searchRetryTimer = null;
     var searchGen = 0;
     var searchRequest = 0;
     var isPaused = false;
@@ -343,6 +344,9 @@
 
     window.onSearchInput = function(val) {
         updateSearchClear('search-input');
+        // A query that is still on its way, or waiting to try again, is out of date.
+        searchRequest++;
+        clearTimeout(searchRetryTimer);
         clearTimeout(searchTimer);
         searchTimer = setTimeout(function() { applySearch(val); }, 300);
     };
@@ -352,6 +356,7 @@
     // until then, or after an error, the list stays as the last query left it.
     function applySearch(val) {
         clearTimeout(searchTimer);
+        clearTimeout(searchRetryTimer);
         var request = ++searchRequest;
         if (val === searchText) {
             showSearchError('search-input', null);
@@ -374,7 +379,7 @@
             })
             .catch(function() {
                 // The app didn't answer, as when it is in the background: try again.
-                if (request === searchRequest) searchTimer = setTimeout(function() { applySearch(val); }, 1500);
+                if (request === searchRequest) searchRetryTimer = setTimeout(function() { applySearch(val); }, 1500);
             });
     }
 
@@ -2086,6 +2091,7 @@
     var wsDirection = '';         // '', 'sent', or 'received'
     var wsSearch = '';            // the search the log shows: the last one the app accepted
     var wsSearchTimer = null;
+    var wsSearchRetryTimer = null;
     var wsSearchRequest = 0;
     var wsSelectedSeq = null;
     var wsJsonView = 'tree';
@@ -2226,6 +2232,7 @@
         wsMissed = 0;
         wsSearch = '';
         clearTimeout(wsSearchTimer);
+        clearTimeout(wsSearchRetryTimer);
         wsSearchRequest++;
         renderWsList();
         switchRightTab('detail');
@@ -2563,6 +2570,8 @@
 
     window.onWsSearchInput = function(val) {
         updateSearchClear('ws-search');
+        wsSearchRequest++;
+        clearTimeout(wsSearchRetryTimer);
         clearTimeout(wsSearchTimer);
         wsSearchTimer = setTimeout(function() { applyWsSearch(val); }, 300);
     };
@@ -2570,6 +2579,7 @@
     // As applySearch: the log changes only once the app accepts the query.
     function applyWsSearch(val) {
         clearTimeout(wsSearchTimer);
+        clearTimeout(wsSearchRetryTimer);
         var id = wsSelectedId;
         var request = ++wsSearchRequest;
         if (!id || val === wsSearch) {
@@ -2601,7 +2611,7 @@
             .catch(function() {
                 // The app didn't answer, or no longer has the connection: try again.
                 if (request === wsSearchRequest && id === wsSelectedId) {
-                    wsSearchTimer = setTimeout(function() { applyWsSearch(val); }, WS_EVENTS_POLL_MS);
+                    wsSearchRetryTimer = setTimeout(function() { applyWsSearch(val); }, WS_EVENTS_POLL_MS);
                 }
             });
     }

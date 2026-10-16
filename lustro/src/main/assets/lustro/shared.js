@@ -1204,13 +1204,27 @@ window.debugScanMarkup = debugScanMarkup;
 // rather than starting an empty one. Returns a <pre class="dc-code dc-lines">.
 window.debugLineNumbered = function(text, options) {
     var searchText = (options && options.searchText) || '';
-    var lines = String(text == null ? '' : text).split(/\r\n|\r|\n/);
+    text = String(text == null ? '' : text);
+    // The search runs over the whole text, as on the device, so ^ is the start of
+    // the text and a match can go on to the next line.
+    var ranges = searchText ? debugMatchRanges(text, searchText) : [];
+    var lines = [];
+    var starts = [];
+    var breakRe = /\r\n|\r|\n/g;
+    var at = 0;
+    for (var m = breakRe.exec(text); m; m = breakRe.exec(text)) {
+        lines.push(text.slice(at, m.index));
+        starts.push(at);
+        at = m.index + m[0].length;
+    }
+    lines.push(text.slice(at));
+    starts.push(at);
     var endsWithBreak = lines.length > 1 && lines[lines.length - 1] === '';
     if (endsWithBreak) lines.pop();
     return '<pre class="dc-code dc-lines" style="--dc-lines-digits: ' + String(lines.length).length + '">'
         + lines.map(function(lineText, i) {
             var lineBreak = i < lines.length - 1 || endsWithBreak ? '\n' : '';
-            return '<span class="dc-lines__line">' + debugHighlightPlain(lineText, searchText) + lineBreak + '</span>';
+            return '<span class="dc-lines__line">' + debugMarkRanges(lineText, ranges, starts[i]) + lineBreak + '</span>';
         }).join('')
         + '</pre>';
 };

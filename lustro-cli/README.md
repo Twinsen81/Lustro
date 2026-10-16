@@ -144,7 +144,7 @@ The output is small by default, because an agent reads all of it.
   app runs over the URL, the method, the headers, and the bodies. The query
   takes `a | b` for either, `-word` to leave out, `"a phrase"`, `/regex/`, and
   the fields `url:`, `method:`, `status:`, `header:`, and `body:`; see
-  [Search syntax](../docs/AGENTS.md#search-syntax). A query that the app
+  [Search syntax](https://github.com/Twinsen81/Lustro/blob/main/docs/AGENTS.md#search-syntax). A query that the app
   rejects, such as a regex that doesn't compile, exits 2 with the reason.
   `--url` stays plain text.
 - **JSON Lines.** With `--json`, these commands print one compact JSON object

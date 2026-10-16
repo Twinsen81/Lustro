@@ -90,3 +90,18 @@ test('ranges are reported in order for a caller that marks across pieces', () =>
     assert.strictEqual(JSON.stringify(win.debugMatchRanges('xabxcd', 'cd | ab')), '[[1,3],[4,6]]');
     assert.strictEqual(win.debugMarkRanges('cdef', [[1, 3], [4, 6]], 2), '<mark>c</mark>d<mark>ef</mark>');
 });
+
+test('the line-numbered view marks matches in the whole text, as the device finds them', () => {
+    const lines = (text, search) => win.debugLineNumbered(text, { searchText: search })
+        .match(/<span class="dc-lines__line">.*?<\/span>/gs);
+    // ^ is the start of the text, not of each line.
+    assert.deepStrictEqual(lines('foo\nfoo', '/^foo/'), [
+        '<span class="dc-lines__line"><mark>foo</mark>\n</span>',
+        '<span class="dc-lines__line">foo</span>',
+    ]);
+    // A match that goes on to the next line is marked on both.
+    assert.deepStrictEqual(lines('a\r\nb c', '/a\\s+b/'), [
+        '<span class="dc-lines__line"><mark>a</mark>\n</span>',
+        '<span class="dc-lines__line"><mark>b</mark> c</span>',
+    ]);
+});
