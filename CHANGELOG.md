@@ -14,6 +14,24 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Added
 
+- **Select requests with the rows' checkboxes, and see each view's count in
+  its button.** **Select**, in the Network tab's toolbar, turned on a mode
+  that added checkboxes to the rows, for Copy Markdown and Export HAR. It
+  sat between the HTTP / WebSockets switch and Pause, Overwrite, the
+  throttle, and Clear, which change how Lustro captures traffic, and it
+  looked like one of them. Now each row has a checkbox at its left, which
+  shows on hover, and on every row once one is selected. The checkbox in the
+  column header selects every request the filters show, and a shift-click
+  selects the rows from the last checkbox clicked. While requests are
+  selected, a bar above the list says how many, with **Copy Markdown**,
+  **Export HAR**, and **Clear selection**. A filter or search change still
+  keeps only the selected requests that it shows, and the bar now says how
+  many it deselected. The request count was to the right of the WebSockets
+  button, so "11 requests" looked like 11 WebSockets, and the WebSockets
+  view showed its own count in the same place. Now each button has its
+  view's count, such as **HTTP (5/11)** while the filters show 5 of 11
+  requests, and **WebSockets (2)**. The tooltips say what each number
+  counts, and how many connections are open.
 - **Overwrite mode keeps the selection, and shows which requests it replaced
   (wire protocol 1.10).** With overwrite mode on, a request that the app sent
   again removed the selected row, which had the same method and path: no row

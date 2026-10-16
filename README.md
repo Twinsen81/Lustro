@@ -270,11 +270,11 @@ NetworkDebugTab.create(
 )
 ```
 
-The description is required, because a teammate who doesn't know about your filter needs it.
-Once the filter skips a request, the Network tab shows a ⚠ next to the request count, with the
-number skipped in its tooltip, and a click on it shows the description, how many requests the
-filter skipped, and how many it failed on. The counts start again when you clear the list. The
-poll `state` reports the same as `captureFilter`, for the CLI and agents.
+The description is required, because a teammate who doesn't know about your filter needs it. Once
+the filter skips a request, the Network tab shows a ⚠ next to the HTTP and WebSockets buttons, with
+the number skipped in its tooltip, and a click on it shows the description, how many requests the
+filter skipped, and how many it failed on. The counts start again when you clear the list. The poll
+`state` reports the same as `captureFilter`, for the CLI and agents.
 
 The filter decides capture only: mock rules and the throttle still apply to a request it skips,
 as they do while capture is paused. It applies to platform `HttpURLConnection` capture too. It
@@ -421,13 +421,16 @@ per-request timeout answers `504` has its call cancelled right after.
 
 ## Export
 
-The Network tab's **Select** button adds a checkbox to each row. **Export HAR** saves the selected
-requests as a HAR 1.2 file, which browser devtools and most HTTP tools import, and
-**Copy Markdown** copies them as one Markdown document for a bug report, a pull request, or a
-chat. The detail's **Markdown** button copies one request. A filter change keeps only the selected
-requests that it still shows, so an export has the rows on screen. Both formats have the redacted
-values that the tab shows, and say when the capture cut a body short. Agents and scripts get the
-HAR from `GET /api/v1/network/transactions/_/export` or `lustro net export --har FILE`.
+Each row of the Network tab has a checkbox at its left, which shows on hover, and on every row once
+one is selected. The checkbox in the column header selects every request the filters show, and a
+shift-click selects the rows from the last checkbox you clicked. While requests are selected, a bar
+above the list has **Export HAR**, which saves them as a HAR 1.2 file that browser devtools and
+most HTTP tools import, **Copy Markdown**, which copies them as one Markdown document for a bug
+report, a pull request, or a chat, and **Clear selection**. The detail's **Markdown** button copies
+one request. A filter or search change keeps only the selected requests that it still shows, so an
+export has the rows on screen, and the bar says how many it deselected. Both formats have the
+redacted values that the tab shows, and say when the capture cut a body short. Agents and scripts
+get the HAR from `GET /api/v1/network/transactions/_/export` or `lustro net export --har FILE`.
 
 ## Mock rules
 

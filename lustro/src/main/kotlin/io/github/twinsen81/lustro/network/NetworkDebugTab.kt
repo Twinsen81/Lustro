@@ -194,13 +194,11 @@ public class NetworkDebugTab private constructor(
                 <div class="dc-toolbar net-list-head">
                     <h3 class="dc-mono-label net-list-title">Network Traffic</h3>
                     <div class="dc-seg dc-seg--sm net-view-seg" role="group" aria-label="Kind of traffic">
-                        <button class="dc-seg__item dc-seg__item--active" data-action="switchTrafficView" data-view="http" title="HTTP requests and responses.">HTTP</button>
-                        <button class="dc-seg__item" data-action="switchTrafficView" data-view="ws" title="WebSocket connections and the messages of each one. A socket is listed when the app creates it with the factory from Lustro.webSocketFactory.">WebSockets<span id="ws-count" class="net-ws-count"></span></button>
+                        <button class="dc-seg__item dc-seg__item--active" id="http-view-btn" data-action="switchTrafficView" data-view="http" title="HTTP requests and responses.">HTTP<span id="tx-count" class="net-view-count"> (0)</span></button>
+                        <button class="dc-seg__item" id="ws-view-btn" data-action="switchTrafficView" data-view="ws" title="WebSocket connections and the messages of each one. A socket is listed when the app creates it with the factory from Lustro.webSocketFactory.">WebSockets<span id="ws-count" class="net-view-count"> (0)</span></button>
                     </div>
-                    <span id="tx-count" class="net-tx-count">0 requests</span>
                     <button class="dc-btn dc-btn--icon net-filter-flag" id="capture-filter-btn" data-action="showCaptureFilter" hidden aria-label="Requests skipped by the app filters">⚠</button>
                     <div class="net-list-actions">
-                    <button class="dc-btn net-http-only" id="select-btn" data-action="toggleSelectMode" title="Select requests to export as a HAR file or copy as Markdown. A filter change keeps only the selected requests it still shows.">Select</button>
                     <button class="dc-btn" id="pause-btn" data-action="togglePause" title="Pause traffic capture. The interceptor still runs but new requests and WebSocket messages are not recorded. Click again to resume.">⏸ Pause</button>
                     <button class="dc-btn net-http-only" id="overwrite-btn" data-action="toggleOverwriteMode" title="Overwrite mode: when a new request arrives, any earlier completed transaction with the same method + URL path is removed from the list. In-flight requests are never evicted.">Overwrite: off</button>
                     <select class="dc-btn net-http-only" id="throttle-select" name="throttleDelayMs" aria-label="Global throttle" data-action="setThrottle" title="Global throttle: sleep this long before every OkHttp request, mocked or real. A platform HttpURLConnection request, or one that the app's own adapter reports, is not held. Useful for testing loading spinners and timeout handling.">
@@ -222,10 +220,12 @@ public class NetworkDebugTab private constructor(
                 <div class="net-category-bar net-http-only" id="category-filters"></div>
                 <div class="net-filter-bar net-http-only" id="status-filters"></div>
                 <div class="net-filter-bar net-http-only" id="method-filters"></div>
-                <div class="net-select-bar net-http-only" id="select-bar" hidden>
+                <div class="net-select-bar net-http-only" id="select-bar" role="toolbar" aria-label="Actions for the selected requests" hidden>
                     <span id="select-count" class="net-select-count">0 selected</span>
+                    <span id="select-note" class="net-select-note" hidden title="A filter or search change keeps only the selected requests that it still shows, so an export has the rows on screen."></span>
                     <button class="dc-btn dc-btn--sm" id="copy-selection-md-btn" data-action="copySelectionMarkdown" disabled title="Copy the selected requests and their responses as one Markdown document, for a bug report, a pull request, or a chat.">Copy Markdown</button>
                     <button class="dc-btn dc-btn--sm dc-btn--primary" id="export-har-btn" data-action="exportSelectionHar" disabled title="Save the selected requests as a HAR file, which browser devtools and HTTP tools import. Headers and bodies are redacted, as shown here.">Export HAR</button>
+                    <button class="dc-btn dc-btn--sm" id="clear-selection-btn" data-action="clearTxSelection" title="Deselect every request.">Clear selection</button>
                 </div>
                 <div style="flex:1;overflow-y:auto">
                     <table class="dc-table net-ws-only" id="ws-table">
@@ -242,7 +242,7 @@ public class NetworkDebugTab private constructor(
                     <table class="dc-table net-http-only">
                         <thead class="dc-thead">
                             <tr>
-                                <th class="dc-th net-select-col" id="select-col" style="display:none" data-action="toggleSelectAll" title="Select every request the filters show, or none."><input type="checkbox" id="select-all" class="net-check" aria-label="Select every request the filters show"></th>
+                                <th class="dc-th net-select-col" id="select-col" data-action="toggleSelectAll" title="Select every request the filters show, or none. Selected requests can be copied as Markdown or exported as a HAR file."><input type="checkbox" id="select-all" class="net-check" aria-label="Select every request the filters show"></th>
                                 <th class="dc-th" style="width:74px">Method</th>
                                 <th class="dc-th">URL</th>
                                 <th class="dc-th" style="width:60px">Status</th>

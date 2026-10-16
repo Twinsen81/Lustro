@@ -28,8 +28,9 @@
 
     var allTransactions = [];
     var selectedTxId = null;
-    var selectMode = false;
     var selectedIds = {};         // transaction id -> true; only ids the filters show
+    var selectionAnchorId = null; // the row whose checkbox was clicked last: a shift-click selects from it
+    var selectionHidden = 0;      // selected rows that the filters or a search deselected since the user last changed the selection
     var lastCursor = null;        // opaque cursor token; omitted on the first poll
     var searchText = '';          // the search the list shows: the last one the app accepted
     var searchTextRegex = false;  // whether searchText is a regex
@@ -518,24 +519,17 @@
         });
     }
 
-    function renderList() {
+    // searchChanged: allTransactions is the first list of a new search.
+    function renderList(searchChanged) {
         var filtered = filterTransactions();
         var tbody = document.getElementById('tx-list');
-        var countEl = document.getElementById('tx-count');
         if (!tbody) return;
-        // The selection follows the filters: what they hide is no longer selected,
-        // so an export has exactly the selected rows on screen.
-        var kept = {};
-        filtered.forEach(function(tx) { if (selectedIds[tx.id]) kept[tx.id] = true; });
-        selectedIds = kept;
+        var kept = keptSelection(selectedIds, filtered, allTransactions, searchChanged === true);
+        selectedIds = kept.ids;
+        selectionHidden += kept.hidden;
         updateSelectionControls(filtered);
         var visible = filtered.slice(0, displayLimit);
-        var label = filtered.length + (filtered.length !== allTransactions.length
-            ? '/' + allTransactions.length : '') + ' requests';
-        if (visible.length < filtered.length) {
-            label += ' (showing ' + visible.length + ')';
-        }
-        if (countEl && trafficView === 'http') countEl.textContent = label;
+        updateHttpCount(filtered.length, visible.length);
 
         tbody.innerHTML = visible.map(function(tx) {
             var sc = statusClass(tx);
@@ -562,11 +556,10 @@
                 ? ' <span class="dc-badge net-ws-link" style="--c: var(--accent-2)" data-action="openWebSocket" data-ws-id="' + debugEscapeHtml(tx.webSocketId)
                     + '" title="The handshake of a WebSocket. Click to see its messages.">WS</span>'
                 : '';
-            var check = selectMode
-                ? '<td class="dc-cell net-cell-select" data-action="toggleTxSelection" data-tx-id="' + debugEscapeHtml(tx.id) + '">'
-                    + '<input type="checkbox" class="net-check" aria-label="Select ' + debugEscapeHtml((tx.method || '') + ' ' + pathOnly) + '"'
-                    + (selectedIds[tx.id] ? ' checked' : '') + '></td>'
-                : '';
+            var check = '<td class="dc-cell net-cell-select" data-action="toggleTxSelection" data-tx-id="' + debugEscapeHtml(tx.id) + '"'
+                + ' title="Select this request, to copy it as Markdown or export it as a HAR file. Shift-click selects the rows from the last one you clicked.">'
+                + '<input type="checkbox" class="net-check" aria-label="Select ' + debugEscapeHtml((tx.method || '') + ' ' + pathOnly) + '"'
+                + (selectedIds[tx.id] ? ' checked' : '') + '></td>';
             return '<tr ' + rowAttrs + ' data-action="selectTransaction" data-tx-id="' + debugEscapeHtml(tx.id) + '">'
                 + check
                 + '<td class="dc-cell net-cell-method ' + methodClass(tx) + '">' + debugEscapeHtml(tx.method || '') + '</td>'
@@ -622,10 +615,61 @@
         return age < REPLACED_FLASH_MS ? age : null;
     }
 
+    // The selection follows the filters: what they hide is no longer selected,
+    // so an export has exactly the selected rows on screen. hidden counts those
+    // rows, for the bar to say so. A row that left the list, as Clear or the
+    // capture limit removes it, is not hidden; after a new search, one that the
+    // search doesn't find is.
+    window.netKeptSelection = keptSelection;
+    function keptSelection(selected, shown, listed, searchChanged) {
+        var shownIds = idSet(shown);
+        var listedIds = idSet(listed);
+        var ids = {};
+        var hidden = 0;
+        Object.keys(selected).forEach(function(id) {
+            if (shownIds[id]) ids[id] = true;
+            else if (searchChanged || listedIds[id]) hidden++;
+        });
+        return { ids: ids, hidden: hidden };
+    }
+
+    // The ids of the rows from the anchor to id, both included, in list order;
+    // only id when the anchor is not in the rows.
+    window.netSelectionRange = selectionRange;
+    function selectionRange(rows, anchorId, id) {
+        var from = -1;
+        var to = -1;
+        rows.forEach(function(tx, i) {
+            if (tx.id === anchorId) from = i;
+            if (tx.id === id) to = i;
+        });
+        if (from < 0 || to < 0) return [id];
+        return rows.slice(Math.min(from, to), Math.max(from, to) + 1).map(function(tx) { return tx.id; });
+    }
+
+    window.netSelectionNote = selectionNote;
+    function selectionNote(hidden) {
+        return hidden === 1
+            ? 'Deselected 1 request that the filters hide.'
+            : 'Deselected ' + hidden + ' requests that the filters hide.';
+    }
+
+    // The bar shows while rows are selected, and while it says that the filters
+    // deselected some, also when they deselected all.
     function updateSelectionControls(filtered) {
         var count = Object.keys(selectedIds).length;
         var countEl = document.getElementById('select-count');
-        if (countEl) countEl.textContent = count + ' of ' + filtered.length + ' selected';
+        if (countEl) countEl.textContent = count + ' selected';
+        var note = document.getElementById('select-note');
+        if (note) {
+            note.hidden = selectionHidden === 0;
+            note.textContent = selectionHidden ? selectionNote(selectionHidden) : '';
+        }
+        var bar = document.getElementById('select-bar');
+        if (bar) bar.hidden = count === 0 && selectionHidden === 0;
+        // A row's checkbox shows on hover, and on every row once one is selected.
+        var root = document.getElementById('net-root');
+        if (root) root.classList.toggle('net-has-selection', count > 0);
         ['copy-selection-md-btn', 'export-har-btn'].forEach(function(id) {
             var btn = document.getElementById(id);
             if (btn) btn.disabled = count === 0;
@@ -637,21 +681,17 @@
         }
     }
 
-    window.toggleSelectMode = function() {
-        selectMode = !selectMode;
-        selectedIds = {};
-        var btn = document.getElementById('select-btn');
-        if (btn) btn.classList.toggle('dc-btn--active', selectMode);
-        var bar = document.getElementById('select-bar');
-        if (bar) bar.hidden = !selectMode;
-        var col = document.getElementById('select-col');
-        if (col) col.style.display = selectMode ? '' : 'none';
-        renderList();
-    };
-
-    window.toggleTxSelection = function(id) {
-        if (selectedIds[id]) delete selectedIds[id];
-        else selectedIds[id] = true;
+    // range: a shift-click, which gives every row from the anchor the state
+    // that the clicked row gets.
+    window.toggleTxSelection = function(id, range) {
+        var select = !selectedIds[id];
+        var ids = range ? selectionRange(filterTransactions(), selectionAnchorId, id) : [id];
+        ids.forEach(function(rowId) {
+            if (select) selectedIds[rowId] = true;
+            else delete selectedIds[rowId];
+        });
+        selectionAnchorId = id;
+        selectionHidden = 0;
         renderList();
     };
 
@@ -662,8 +702,47 @@
         var all = filtered.length > 0 && filtered.every(function(tx) { return selectedIds[tx.id]; });
         selectedIds = {};
         if (!all) filtered.forEach(function(tx) { selectedIds[tx.id] = true; });
+        selectionAnchorId = null;
+        selectionHidden = 0;
         renderList();
     };
+
+    window.clearTxSelection = function() {
+        selectedIds = {};
+        selectionAnchorId = null;
+        selectionHidden = 0;
+        renderList();
+    };
+
+    // Each view's button has its own count, so both counts show in both views,
+    // each next to the view it counts. The tooltip says what the count is.
+    function updateHttpCount(shown, drawn) {
+        var countEl = document.getElementById('tx-count');
+        if (countEl) countEl.textContent = httpCountLabel(shown, allTransactions.length);
+        setCountTitle(document.getElementById('http-view-btn'),
+            httpCountTitle(shown, allTransactions.length, drawn, !!searchText));
+    }
+
+    window.netHttpCountLabel = httpCountLabel;
+    function httpCountLabel(shown, total) {
+        return ' (' + (shown !== total ? shown + '/' + total : total) + ')';
+    }
+
+    window.netHttpCountTitle = httpCountTitle;
+    function httpCountTitle(shown, total, drawn, searching) {
+        var text = total + (total === 1 ? ' request' : ' requests')
+            + (searching ? (total === 1 ? ' matches' : ' match') + ' the search.' : ' captured.');
+        if (shown !== total) text += ' The filters show ' + shown + ' of them.';
+        if (drawn < shown) text += ' The list draws the first ' + drawn + ', and "Load more" at its end draws more.';
+        return text;
+    }
+
+    // The button's own tooltip from the page, then what its count is.
+    function setCountTitle(btn, text) {
+        if (!btn) return;
+        if (btn.dataset.baseTitle == null) btn.dataset.baseTitle = btn.title;
+        btn.title = btn.dataset.baseTitle + ' ' + text;
+    }
 
     // An export reads oldest first. The list is newest first by when each capture
     // was stored, which is not always when its request started, so sort by that.
@@ -2481,6 +2560,8 @@
         debugFetch(netUrl('clear'), {method: 'POST'}).then(function() {
             allTransactions = [];
             selectedTxId = null;
+            selectionAnchorId = null;
+            selectionHidden = 0;
             replacedAt = {};
             lastCursor = null;
             // Clearing restarts the filter's counts on the server as well.
@@ -2512,7 +2593,8 @@
     function applyTransactionList(items) {
         var list = items || [];
         // A list for another search has other rows, not new ones.
-        if (listSearchGen === searchGen) noteReplacements(list);
+        var searchChanged = listSearchGen !== searchGen;
+        if (!searchChanged) noteReplacements(list);
         listSearchGen = searchGen;
         rememberTracked(list);
         var previousSelected = selectedTxId ? findTransactionById(allTransactions, selectedTxId) : null;
@@ -2523,7 +2605,7 @@
             buildCategoryFilters();
             updateCategoryPills();
         }
-        renderList();
+        renderList(searchChanged);
         if (refreshSelected) scheduleSelectedDetailRefresh();
     }
 
@@ -2708,13 +2790,16 @@
         showDetailActions(false);
     }
 
-    function updateTrafficCount() {
-        var badge = document.getElementById('ws-count');
-        if (badge) badge.textContent = wsConnections.length ? ' ' + wsConnections.length : '';
-        if (trafficView !== 'ws') return;
-        var countEl = document.getElementById('tx-count');
-        var open = wsConnections.filter(function(c) { return c.state === 'open'; }).length;
-        if (countEl) countEl.textContent = wsConnections.length + ' connection' + (wsConnections.length === 1 ? '' : 's') + ', ' + open + ' open';
+    function updateWsCount() {
+        var countEl = document.getElementById('ws-count');
+        if (countEl) countEl.textContent = ' (' + wsConnections.length + ')';
+        setCountTitle(document.getElementById('ws-view-btn'), wsCountTitle(wsConnections));
+    }
+
+    window.netWsCountTitle = wsCountTitle;
+    function wsCountTitle(connections) {
+        var open = connections.filter(function(c) { return c.state === 'open'; }).length;
+        return connections.length + (connections.length === 1 ? ' connection' : ' connections') + ', ' + open + ' open.';
     }
 
     window.switchTrafficView = function(view) {
@@ -2730,7 +2815,7 @@
         });
         showRightPane('detail');
         if (trafficView === 'ws') {
-            updateTrafficCount();
+            updateWsCount();
             renderWsList();
             if (wsSelectedId) { renderWsFrame(); pollWsEvents(); } else showEmptyDetail();
         } else {
@@ -2756,7 +2841,7 @@
         wsCursor = null;
         deselectWebSocket();
         renderWsList();
-        updateTrafficCount();
+        updateWsCount();
     }
 
     function wsStateLabel(c) {
@@ -2797,7 +2882,7 @@
         var previous = wsSelectedId ? findWebSocket(wsSelectedId) : null;
         wsConnections = items || [];
         renderWsList();
-        updateTrafficCount();
+        updateWsCount();
         if (trafficView !== 'ws' || !wsSelectedId) return;
         var next = findWebSocket(wsSelectedId);
         if (!next) return;
@@ -3471,9 +3556,9 @@
         closeCaptureFilter: function() { window.closeCaptureFilter(); },
         copyCurl: function(el, ev) { window.copyCurl(ev); },
         copyMarkdown: function(el, ev) { window.copyMarkdown(ev); },
-        toggleSelectMode: function() { window.toggleSelectMode(); },
-        toggleTxSelection: function(el) { window.toggleTxSelection(el.dataset.txId); },
+        toggleTxSelection: function(el, ev) { window.toggleTxSelection(el.dataset.txId, ev.shiftKey); },
         toggleSelectAll: function() { window.toggleSelectAll(); },
+        clearTxSelection: function() { window.clearTxSelection(); },
         copySelectionMarkdown: function(el, ev) { window.copySelectionMarkdown(ev); },
         exportSelectionHar: function() { window.exportSelectionHar(); },
         copyAllDetail: function(el, ev) { window.copyAllDetail(ev); },
@@ -3545,6 +3630,10 @@
         delegationRoot.addEventListener('click', onDelegatedClick);
         delegationRoot.addEventListener('input', onDelegatedInput);
         delegationRoot.addEventListener('change', onDelegatedChange);
+        // A shift-click on a row's checkbox selects rows, not the text between them.
+        delegationRoot.addEventListener('mousedown', function(ev) {
+            if (ev.shiftKey && ev.target.closest && ev.target.closest('.net-cell-select')) ev.preventDefault();
+        });
         // capture: <details> toggle events and image load and error events do
         // not bubble.
         delegationRoot.addEventListener('toggle', onHeadersToggle, true);
