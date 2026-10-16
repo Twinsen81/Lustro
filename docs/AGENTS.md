@@ -272,7 +272,7 @@ below summarizes it. All routes are token-authenticated and use the shared error
 | Delete rule | `POST rules/delete` | Body `{ id }`. |
 | Toggle rule | `POST rules/toggle` | Body `{ id }`; flips `enabled`. |
 | Pause capture | `POST pause` | Toggles capture-only pause. While paused, mocks and throttle **still apply**; only recording into the list stops, for requests and for WebSocket messages. Returns `{ status: "ok", paused }`. |
-| Overwrite mode | `POST overwrite-mode` | Toggles overwrite mode (a new request evicts earlier **completed** transactions with the same method + URL path; in-flight ones are never evicted). Returns `{ status: "ok", overwriteMode }`. |
+| Overwrite mode | `POST overwrite-mode` | Toggles overwrite mode (a new request evicts earlier **completed** transactions with the same method + URL path; in-flight ones are never evicted). The new transaction's `replacedCount` says how many copies it evicted, with the ones those had evicted (protocol 1.10). Returns `{ status: "ok", overwriteMode }`. |
 | Throttle | `POST throttle` | Body `{ delayMs }` (≥ 0); a global pre-request sleep applied to mocked and real OkHttp requests alike; platform `HttpURLConnection` requests are not held. A throttled transaction is listed while it waits and records the wait in `throttledMs`. Returns `{ status: "ok", delayMs }`. |
 | List senders | `GET senders` | `{ items: [{ name, baseUrl }] }`: the OkHttp clients the app registered for `send`, in order; the first is the default. Empty when there are none. |
 | Send request | `POST send` | **Synchronous** send through one of the senders. See below. |

@@ -278,13 +278,15 @@ internal class NetworkTrafficStore(
         )
     }
 
-    fun recordRequest(transaction: NetworkTransaction) {
+    fun recordRequest(captured: NetworkTransaction) {
+        var transaction = captured
         if (overwriteMode.get()) {
             // A capture taken on the calling thread is stored while an earlier one is
             // still waiting for the capture thread. Overwrite mode keeps the request
             // that started last, so this one is stale and isn't stored at all.
             if (supersededSamePath(transaction)) return
-            evictPriorCompletedSamePath(transaction)
+            val replaced = evictPriorCompletedSamePath(transaction)
+            if (replaced > 0) transaction = transaction.copy(replacedCount = replaced)
         }
         transactionMap[transaction.id] = transaction
         insertionOrder.addFirst(transaction.id)
@@ -304,7 +306,12 @@ internal class NetworkTrafficStore(
         }
     }
 
-    private fun evictPriorCompletedSamePath(incoming: NetworkTransaction) {
+    /**
+     * Removes the completed requests with [incoming]'s method and path that
+     * started before it. Returns how many copies of the request that removes:
+     * each one, and the ones it had replaced.
+     */
+    private fun evictPriorCompletedSamePath(incoming: NetworkTransaction): Int {
         val identity = identityKey(incoming.method, incoming.url)
         // Snapshot the matching entries first so we don't mutate the map while
         // iterating it. We evict every completed match, not just the first — when
@@ -320,6 +327,7 @@ internal class NetworkTrafficStore(
                         existing.startOrder < incoming.startOrder &&
                         identityKey(existing.method, existing.url) == identity
                 }
+        var replaced = 0
         for (victim in victims) {
             // Atomic key+value remove guards against a concurrent updateWithResponse
             // mutating this entry between our filter and the remove call. We only
@@ -327,8 +335,10 @@ internal class NetworkTrafficStore(
             if (transactionMap.remove(victim.id, victim)) {
                 insertionOrder.remove(victim.id)
                 capturedBytes.addAndGet(-transactionBytes(victim))
+                replaced += victim.replacedCount + 1
             }
         }
+        return replaced
     }
 
     /**

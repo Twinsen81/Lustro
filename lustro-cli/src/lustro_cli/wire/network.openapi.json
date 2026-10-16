@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Lustro Network debug tab",
-    "version": "1.9",
+    "version": "1.10",
     "description": "Capture, inspect, mock, throttle, and replay HTTP traffic, and inspect the messages of WebSocket connections. All routes are token-authenticated (Bearer header or HttpOnly cookie) and live under /api/v1/network. Errors use the shared error envelope."
   },
   "servers": [
@@ -420,6 +420,7 @@
           "isMocked": { "type": "boolean" },
           "mockRuleId": { "type": ["string", "null"], "description": "The id of the mock rule that produced the response, as recorded when the request was answered: the rule can have changed or been deleted since. null when the response isn't mocked, and when an app's adapter reported it with mocked(true) instead of mockedBy(rule). Since protocol 1.9." },
           "activeMockRuleId": { "type": ["string", "null"], "description": "The id of the mock rule that answers the next request with this method and URL: the first enabled rule that matches, as the interceptor tries them. It is worked out when the transaction is listed, so it follows the rules as they change, also for a request captured before the rule existed, and a change to the rules advances the list's cursor. The rules are matched against the URL as captured, which is redacted, so a pattern that names a redacted value doesn't match here. null when no enabled rule matches, and for a platform transaction, which no rule answers; for an app transaction, the rule answers only if the app's adapter asks for it. Since protocol 1.9." },
+          "replacedCount": { "type": "integer", "minimum": 0, "description": "How many earlier copies of this request overwrite mode removed when the app sent it: the completed transactions with the same method and URL path that started before it, each counted with the copies it had replaced in turn. 0 when it replaced none, as when overwrite mode is off. Since protocol 1.10." },
           "source": { "type": "string", "enum": ["okhttp", "platform", "app"], "description": "The adapter that captured the request. okhttp: Lustro's OkHttp interceptor, where mock rules and the throttle apply. platform: platform HttpURLConnection capture, which only records, so no mock rule answers the request and the throttle doesn't hold it. app: the app's own adapter, through Lustro.networkCaptureSink(), where a mock rule applies only if the adapter asks for it, and the throttle doesn't. Since protocol 1.6; treat a value you don't know as one that no mock rule or throttle reaches." },
           "requestContentType": { "type": ["string", "null"], "description": "The request's media type as captured, e.g. application/json; charset=utf-8. null when the request declares none." },
           "responseContentType": { "type": ["string", "null"], "description": "The response's Content-Type as captured, e.g. application/json; charset=utf-8. null before a response, and when the header is missing or isn't a media type." },

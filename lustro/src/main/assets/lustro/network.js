@@ -49,6 +49,15 @@
     var lastDetailRefreshAt = 0;
     var detailRefreshTimer = null;
     var detailRequestSeq = 0;
+    var listSearchGen = null;     // the searchGen of the list in allTransactions; null before the first list
+    // When each row that replaced earlier copies of its request (overwrite mode)
+    // came into the list, by id, while its highlight lasts. As long as the
+    // net-replaced-flash animation in network.css.
+    var replacedAt = {};
+    var REPLACED_FLASH_MS = 1600;
+    // The request the selection moved to from the one the detail shows, when
+    // overwrite mode replaced it. Its detail continues the one on screen.
+    var detailContinuesTo = null;
 
     function loadFilters() {
         try {
@@ -530,6 +539,14 @@
             var pathOnly = extractPath(tx.url).split('?')[0];
             var shortUrl = pathOnly.length > 100 ? pathOnly.substring(0, 100) + '…' : pathOnly;
             var sel = tx.id === selectedTxId ? ' dc-row--selected' : '';
+            var flashAge = replacedFlashAge(tx);
+            // The list is drawn again on every change, so the highlight goes on from where it was.
+            var rowAttrs = flashAge == null
+                ? 'class="dc-row' + sel + '"'
+                : 'class="dc-row' + sel + ' net-row--replaced" style="animation-delay:-' + flashAge + 'ms"';
+            var urlText = tx.replacedCount > 0
+                ? '<span class="net-url-line"><span class="net-url-text">' + debugEscapeHtml(shortUrl) + '</span>' + replacedBadge(tx) + '</span>'
+                : debugEscapeHtml(shortUrl);
             var mockedBadge = tx.isMocked ? ' <span class="dc-badge" style="--c: var(--ai)">Mocked</span>' : armedMockTag(tx);
             var streamingBadge = streaming ? ' <span class="dc-badge">Streaming</span>' : '';
             var redirectBadge = tx.finalUrl
@@ -544,10 +561,10 @@
                     + '<input type="checkbox" class="net-check" aria-label="Select ' + debugEscapeHtml((tx.method || '') + ' ' + pathOnly) + '"'
                     + (selectedIds[tx.id] ? ' checked' : '') + '></td>'
                 : '';
-            return '<tr class="dc-row' + sel + '" data-action="selectTransaction" data-tx-id="' + debugEscapeHtml(tx.id) + '">'
+            return '<tr ' + rowAttrs + ' data-action="selectTransaction" data-tx-id="' + debugEscapeHtml(tx.id) + '">'
                 + check
                 + '<td class="dc-cell net-cell-method ' + methodClass(tx) + '">' + debugEscapeHtml(tx.method || '') + '</td>'
-                + '<td class="dc-cell net-cell-url" title="' + debugEscapeHtml(pathOnly) + '">' + debugEscapeHtml(shortUrl) + '</td>'
+                + '<td class="dc-cell net-cell-url" title="' + debugEscapeHtml(pathOnly) + '">' + urlText + '</td>'
                 + '<td class="dc-cell net-cell-status ' + sc + '">' + statusText + mockedBadge + redirectBadge + streamingBadge + socketBadge + '</td>'
                 + '<td class="dc-cell net-cell-time">' + dur + '</td>'
                 + '<td class="dc-cell net-cell-cat">' + ((tx.categories || []).map(function(c) {
@@ -579,6 +596,24 @@
 
     function resetDisplayLimit() {
         displayLimit = DISPLAY_LIMIT_INITIAL;
+    }
+
+    // How many earlier copies of the request overwrite mode removed for this one,
+    // with the ones those had replaced.
+    window.netReplacedBadge = replacedBadge;
+    function replacedBadge(tx) {
+        var count = tx.replacedCount || 0;
+        if (count <= 0) return '';
+        var title = 'Replaced ' + count + ' earlier ' + (tx.method || '') + ' ' + extractPath(tx.url || '').split('?')[0]
+            + ' request' + (count === 1 ? '' : 's') + ' (overwrite mode)';
+        return '<span class="dc-badge net-replaced-badge" title="' + debugEscapeHtml(title) + '" aria-label="' + debugEscapeHtml(title) + '">↻ ' + count + '</span>';
+    }
+
+    function replacedFlashAge(tx) {
+        var at = replacedAt[tx.id];
+        if (at == null) return null;
+        var age = Date.now() - at;
+        return age < REPLACED_FLASH_MS ? age : null;
     }
 
     function updateSelectionControls(filtered) {
@@ -760,6 +795,7 @@
 
     window.selectTransaction = function(id) {
         selectedTxId = id;
+        detailContinuesTo = null;
         renderList();
         showRightPane('detail');
         loadTransactionDetail(id);
@@ -933,7 +969,11 @@
         // A search or a refresh renders the bodies again; keep what was folded in
         // each one that is the same, such as a request's while its response streams.
         var previous = currentDetailTx;
-        var folded = previous && previous.id === tx.id ? foldedNodes() : {};
+        // The copy that replaced the request on screen continues its detail: it
+        // keeps the folds and the scroll position, as a refresh of the same one does.
+        var continued = !!previous && (previous.id === tx.id || detailContinuesTo === tx.id);
+        if (detailContinuesTo === tx.id) detailContinuesTo = null;
+        var folded = continued ? foldedNodes() : {};
         ['request', 'response'].forEach(function(dir) {
             if (previous && previous[dir + 'Body'] !== tx[dir + 'Body']) delete folded[dir];
         });
@@ -962,6 +1002,7 @@
         html += bodyMeta('↓', 'Response', tx.responseBodyBytes, tx.responseContentType);
         (tx.categories || []).forEach(function(c) { html += '<span class="dc-tag" data-cat="' + debugEscapeHtml(c) + '">' + debugEscapeHtml(c) + '</span>'; });
         if (tx.isMocked) html += '<span class="dc-badge" style="--c: var(--ai)">Mocked</span>';
+        html += replacedBadge(tx);
         html += '</div>';
         html += '<div id="detail-mock-line">' + mockRuleLine(tx, rulesLoaded ? loadedRules : null) + '</div>';
         if (tx.error) html += '<div class="net-error-line">' + debugEscapeHtml(tx.error) + '</div>';
@@ -997,11 +1038,13 @@
                 + '" title="This request is the handshake of a WebSocket. Show the socket and its messages.">WebSocket messages</button></div>';
         }
 
+        var scrollTop = el.scrollTop;
         el.innerHTML = html;
         refold(folded);
+        if (continued) el.scrollTop = scrollTop;
         loadHexDumps();
         // The rules filtered to this request follow what it matches now.
-        if (rightPane === 'rules' && rulesFilterTxId === tx.id && (!previous
+        if (rightPane === 'rules' && rulesFilterTxId === tx.id && (!previous || previous.id !== tx.id
             || String(previous.matchingMockRuleIds) !== String(tx.matchingMockRuleIds)
             || previous.activeMockRuleId !== tx.activeMockRuleId)) {
             renderRules(loadedRules);
@@ -2429,6 +2472,7 @@
         debugFetch(netUrl('clear'), {method: 'POST'}).then(function() {
             allTransactions = [];
             selectedTxId = null;
+            replacedAt = {};
             lastCursor = null;
             // Clearing restarts the filter's counts on the server as well.
             if (captureFilter) updateCaptureFilter(Object.assign({}, captureFilter, { skipped: 0, failed: 0 }));
@@ -2458,6 +2502,9 @@
 
     function applyTransactionList(items) {
         var list = items || [];
+        // A list for another search has other rows, not new ones.
+        if (listSearchGen === searchGen) noteReplacements(list);
+        listSearchGen = searchGen;
         var previousSelected = selectedTxId ? findTransactionById(allTransactions, selectedTxId) : null;
         var nextSelected = selectedTxId ? findTransactionById(list, selectedTxId) : null;
         var refreshSelected = selectedBriefChanged(previousSelected, nextSelected) || isStreaming(nextSelected);
@@ -2468,6 +2515,68 @@
         }
         renderList();
         if (refreshSelected) scheduleSelectedDetailRefresh();
+    }
+
+    // Overwrite mode removes the earlier copies of a request when the app sends
+    // it again, so the selected row, the row a pane put aside, and the request
+    // the rules are filtered to can leave the list. Each moves to the copy that
+    // replaced it, and a row that replaced copies is highlighted for a moment.
+    function noteReplacements(list) {
+        var previousIds = idSet(allTransactions);
+        var ids = idSet(list);
+        var follow = function(id) {
+            if (!id || ids[id]) return id;
+            var next = replacementFor(lastKnownTransaction(id), list, previousIds);
+            return next ? next.id : id;
+        };
+        var selected = follow(selectedTxId);
+        if (selected !== selectedTxId) {
+            selectedTxId = selected;
+            detailContinuesTo = selected;
+        }
+        selectionBeforePane = follow(selectionBeforePane);
+        rulesFilterTxId = follow(rulesFilterTxId);
+
+        var now = Date.now();
+        Object.keys(replacedAt).forEach(function(id) {
+            if (now - replacedAt[id] >= REPLACED_FLASH_MS) delete replacedAt[id];
+        });
+        list.forEach(function(tx) {
+            if (tx.replacedCount > 0 && !previousIds[tx.id]) replacedAt[tx.id] = now;
+        });
+    }
+
+    // The request that took the place of [gone]: a new row with the same method
+    // and path, compared as overwrite mode compares them, that replaced earlier
+    // copies and started no earlier. The list is newest first, so the newest.
+    // A row is new when it isn't in previousIds. A poll can see a copy removed
+    // before the one that replaced it is listed, so this also finds it a poll later.
+    window.netReplacementFor = replacementFor;
+    function replacementFor(gone, list, previousIds) {
+        if (!gone) return null;
+        var key = overwriteKey(gone);
+        for (var i = 0; i < list.length; i++) {
+            var tx = list[i];
+            if (tx.replacedCount > 0 && !previousIds[tx.id] && overwriteKey(tx) === key
+                && !(tx.startedAt < gone.startedAt)) return tx;
+        }
+        return null;
+    }
+
+    function overwriteKey(tx) {
+        return String(tx.method || '').toUpperCase() + ' ' + extractPath(tx.url || '').split('?')[0];
+    }
+
+    // A request that overwrite mode removed is no longer in the list, but the detail can still show it.
+    function lastKnownTransaction(id) {
+        return findTransactionById(allTransactions, id)
+            || (currentDetailTx && currentDetailTx.id === id ? currentDetailTx : null);
+    }
+
+    function idSet(list) {
+        var ids = {};
+        list.forEach(function(tx) { ids[tx.id] = true; });
+        return ids;
     }
 
     function handlePollData(data) {

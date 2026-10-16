@@ -263,6 +263,26 @@ class NetworkDebugTabTest {
         }
     }
 
+    @Test
+    fun `list and detail say how many copies of a request overwrite mode replaced`() {
+        val tab = tab()
+        val store = tab.captureSink as NetworkTrafficStore
+        tab.handle(post("overwrite-mode", "{}"))
+        val first = store.beginRequest("https://example.com/v1/featured.json", "GET", Headers.EMPTY, null, null)
+        store.completeRequest(first, CapturedResponse.Builder(200, 5).build())
+        assertTrue(store.awaitCaptures())
+        assertEquals(0, tab.handle(get("transactions"))!!.json().getJSONArray("items").getJSONObject(0).getInt("replacedCount"))
+
+        val second = store.beginRequest("https://example.com/v1/featured.json", "GET", Headers.EMPTY, null, null)
+        assertTrue(store.awaitCaptures())
+
+        val items = tab.handle(get("transactions"))!!.json().getJSONArray("items")
+        assertEquals(1, items.length())
+        assertEquals(second.value, items.getJSONObject(0).getString("id"))
+        assertEquals(1, items.getJSONObject(0).getInt("replacedCount"))
+        assertEquals(1, tab.handle(get("transactions/${second.value}"))!!.json().getInt("replacedCount"))
+    }
+
     private fun assertNullField(json: JSONObject, name: String) {
         assertTrue("missing $name", json.has(name))
         assertTrue("$name is not null", json.isNull(name))

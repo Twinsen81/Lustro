@@ -11,7 +11,7 @@ the protocol a stable public contract independent of the library's Kotlin API.
   A future incompatible revision becomes `/api/v2/`, and the old major stays
   alive for at least one major release.
 - The **minor** protocol version is reported at runtime in
-  `GET /api/v1/_meta` as `_meta.protocolVersion` (currently `1.9`).
+  `GET /api/v1/_meta` as `_meta.protocolVersion` (currently `1.10`).
 
 ## Contents
 
@@ -145,6 +145,11 @@ client got them.
   rules now advances the transactions cursor; a hit on a rule doesn't.
   `state` gains `mockRules`, with the number of `enabled` rules and a
   `revision` that changes with the rules.
+
+- **1.10** - Each Network transaction carries `replacedCount`: how many
+  earlier copies of the request overwrite mode removed when the app sent it,
+  each counted with the copies it had replaced in turn. It is `0` when the
+  transaction replaced none.
 
 ## Status
 

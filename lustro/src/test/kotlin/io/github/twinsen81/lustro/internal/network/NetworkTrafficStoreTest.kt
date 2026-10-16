@@ -551,6 +551,43 @@ class NetworkTrafficStoreTest {
         store.respond(id, 200, Headers.EMPTY, null, 5)
         store.beginRequest("https://example.com/b", "GET", Headers.EMPTY, null, null)
         assertEquals(2, store.getTransactions().size)
+        assertEquals(listOf(0, 0), store.getTransactions().map { it.replacedCount })
+    }
+
+    @Test
+    fun `a request that overwrite mode replaces earlier copies with counts them and the ones they replaced`() {
+        val store = store()
+        store.setOverwriteMode(true)
+        val first = store.beginRequest("https://example.com/feed?page=1", "GET", Headers.EMPTY, null, null)
+        store.respond(first, 200, Headers.EMPTY, null, 5)
+        assertEquals(0, store.getTransaction(first.value)?.replacedCount)
+
+        val second = store.beginRequest("https://example.com/feed?page=2", "GET", Headers.EMPTY, null, null)
+        assertEquals(1, store.getTransaction(second.value)?.replacedCount)
+        store.respond(second, 200, Headers.EMPTY, null, 5)
+        // The response keeps the count.
+        assertEquals(1, store.getTransaction(second.value)?.replacedCount)
+
+        val third = store.beginRequest("https://example.com/feed", "GET", Headers.EMPTY, null, null)
+        assertEquals(listOf(third.value), store.getTransactions().map { it.id })
+        assertEquals(2, store.getTransaction(third.value)?.replacedCount)
+    }
+
+    @Test
+    fun `overwrite mode turned on after copies piled up counts each copy it removes`() {
+        val store = store()
+        repeat(3) {
+            val id = store.beginRequest("https://example.com/feed", "GET", Headers.EMPTY, null, null)
+            store.respond(id, 200, Headers.EMPTY, null, 5)
+        }
+        // An in-flight copy stays, so it isn't counted.
+        store.beginRequest("https://example.com/feed", "GET", Headers.EMPTY, null, null)
+        store.setOverwriteMode(true)
+
+        val next = store.beginRequest("https://example.com/feed", "GET", Headers.EMPTY, null, null)
+
+        assertEquals(2, store.getTransactions().size)
+        assertEquals(3, store.getTransaction(next.value)?.replacedCount)
     }
 
 

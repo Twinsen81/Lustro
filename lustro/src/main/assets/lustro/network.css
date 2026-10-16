@@ -239,6 +239,21 @@
 .net-cell-cat { white-space: normal; } /* several categories wrap onto more lines */
 .net-cell-cat .dc-tag { margin-right: 3px; }
 
+/* A row that replaced earlier copies of its request in overwrite mode: a
+   highlight that fades, and a badge with the count after the path, which
+   stays in view when a long path is cut. REPLACED_FLASH_MS in network.js is
+   the animation's duration. */
+.net-url-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.net-url-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.net-replaced-badge { flex: none; --c: var(--accent); }
+.net-row--replaced { animation: net-replaced-flash 1.6s ease-out; }
+@keyframes net-replaced-flash {
+    from { background: color-mix(in srgb, var(--accent) 30%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .net-row--replaced { animation: none; }
+}
+
 /* HTTP method coloring (list cells + detail header). */
 .net-m-get    { color: var(--method-get); }
 .net-m-post   { color: var(--method-post); }
