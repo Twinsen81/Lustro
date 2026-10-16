@@ -25,9 +25,10 @@ import org.json.JSONTokener
  *   `client_secret`, `session`, `credential`, `bearer`, `signature`, `sig`).
  *   A name is split into words, at separators and camelCase humps, and the
  *   token must be in a word that isn't an ordinary one that happens to contain
- *   it: `author_name`, `design`, and `keywords` are kept, while `authorization`,
- *   `accessToken`, and `presigned_url` are masked. Names that hold no secret
- *   although they have a sensitive word are kept too, in any spelling:
+ *   it, in any of its forms: `author_name`, `authors`, `design`, `assignments`,
+ *   and `keywords` are kept, while `authorization`, `accessToken`, and
+ *   `presigned_url` are masked. Names that hold no secret although they have a
+ *   sensitive word are kept too, in any spelling:
  *   `Idempotency-Key`, `public_key`, and `vapid_key`; a token count or limit,
  *   where `token` or `tokens` sits next to a word such as `max`, `total`,
  *   `count`, `remaining`, `prompt`, or `input`, as in `prompt_tokens`,
@@ -85,7 +86,7 @@ public object DefaultRedactor : Redactor {
     // names a request, a VAPID or other public key is published, a primary or
     // partition key names a column, and a session count is a number. Compared
     // with the name's words joined, so `Idempotency-Key`, `idempotency_key`, and
-    // `idempotencyKey` all match.
+    // `idempotencyKey` all match, and so does the plural `public_keys`.
     private val PUBLIC_NAMES =
         setOf(
             "idempotencykey", "publickey", "vapidkey",
@@ -100,26 +101,31 @@ public object DefaultRedactor : Redactor {
     // `access_token`, `refresh_tokens`, `device_tokens`.
     private val COUNT_WORDS =
         setOf(
-            "count", "counts", "total", "totals", "max", "maximum", "min", "minimum",
-            "limit", "limits", "remaining", "used", "usage", "num", "number", "budget",
-            "quota", "ratelimit", "per", "prompt", "completion", "input", "output",
-            "reasoning", "cached", "candidates", "thoughts", "prediction", "estimated",
-            "billed", "cost",
+            "count", "total", "max", "maximum", "min", "minimum", "limit", "remaining",
+            "used", "usage", "num", "number", "budget", "quota", "ratelimit", "per",
+            "prompt", "completion", "input", "output", "reasoning", "cached", "candidate",
+            "thought", "prediction", "estimated", "billed", "cost",
         )
 
-    private val TOKEN_WORDS = setOf("token", "tokens")
+    private val TOKEN_WORDS = setOf("token")
 
     // Ordinary words that contain a sensitive fragment. A word that only has a
     // fragment as part of one of these doesn't make its name sensitive.
     private val NON_SENSITIVE_WORDS =
         setOf(
-            "author", "authors", "authored", "authorship",
-            "design", "designs", "designed", "designer",
-            "signup", "signal", "signals",
-            "assign", "assigned", "assignee", "assignment",
-            "keyboard", "keyword", "keywords",
-            "authority", "insight", "insights",
+            "author", "authorship", "authority",
+            "design", "designer",
+            "signup", "signal",
+            "assign", "assignee", "assignment",
+            "keyboard", "keyword",
+            "insight",
         )
+
+    // The regular English inflections. The word sets above list a word once, and
+    // a lookup accepts its plural, past tense, and -ing form as well, so
+    // `assignment` covers `assignments`, `author` covers `authors` and
+    // `authored`, and `authority` covers `authorities`.
+    private val INFLECTIONS = listOf("s", "es", "ed", "ing")
 
     private val SENSITIVE_KEY_FRAGMENTS =
         listOf(
@@ -282,13 +288,30 @@ public object DefaultRedactor : Redactor {
     private fun isSensitiveKey(name: String): Boolean {
         if (!hasSensitiveFragment(name)) return false
         val parts = nameParts(name)
-        if (parts.joinToString("").lowercase() in PUBLIC_NAMES) return false
+        if (PUBLIC_NAMES.containsIgnoringInflection(parts.joinToString("").lowercase())) return false
         val words = parts.map { camelCaseWords(it) }
-        val counted = words.any { part -> part.any { it in COUNT_WORDS } }
+        val counted = words.any { part -> part.any { COUNT_WORDS.containsIgnoringInflection(it) } }
         return words.any { part ->
-            val rest = part.filterNot { it in NON_SENSITIVE_WORDS || (counted && it in TOKEN_WORDS) }.joinToString("")
+            val rest =
+                part.filterNot {
+                    NON_SENSITIVE_WORDS.containsIgnoringInflection(it) || (counted && TOKEN_WORDS.containsIgnoringInflection(it))
+                }.joinToString("")
             SENSITIVE_KEY_FRAGMENTS.any { rest.contains(it) }
         }
+    }
+
+    /**
+     * Whether [word], or the base form it is an inflection of, is in this set.
+     * The base form is a guess from the word's ending alone (`authored` tries
+     * `author`, `authorities` tries `authority`), and a wrong guess is safe: the
+     * sets hold the words that mark a name as not secret, so a stem that is in
+     * none of them changes nothing, and no word in them has an inflection that
+     * names a credential. `authorization` has no ending to strip and stays.
+     */
+    private fun Set<String>.containsIgnoringInflection(word: String): Boolean {
+        if (word in this) return true
+        if (word.endsWith("ies") && word.dropLast(3) + "y" in this) return true
+        return INFLECTIONS.any { word.endsWith(it) && word.dropLast(it.length) in this }
     }
 
     // An ASCII name is matched without allocating a lowercase copy. Other names
