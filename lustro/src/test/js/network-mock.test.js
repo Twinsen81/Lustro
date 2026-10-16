@@ -81,10 +81,11 @@ test('The detail says which rule answered the request and which one answers the 
         assert.match(text(line), /^Mock rule active: GET regex:\/feed\$\./);
     });
 
-    await t.test('the rule that answered, while it still answers', () => {
+    await t.test('the rule that answered, while it still answers, with what it says now', () => {
+        // An edit keeps the rule's id, so the line can't promise the response this request got.
         const line = network.netMockRuleLine({ isMocked: true, mockRuleId: 'r1', activeMockRuleId: 'r1' }, rules);
         assert.strictEqual(text(line),
-            'Mocked by rule GET featured.json. The rule is still active, so the next request like this one gets the same response.');
+            'Mocked by rule GET featured.json. The rule is still active, so it also answers the next request like this one.');
     });
 
     await t.test('the rule that answered, after another one took its place', () => {

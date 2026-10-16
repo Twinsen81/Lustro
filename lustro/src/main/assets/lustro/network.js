@@ -915,7 +915,8 @@
             else if (tx.mockRuleId && rules) parts.push('Mocked by a rule that was deleted.');
             else parts.push('Mocked by a rule.');
             if (activeKnown && tx.activeMockRuleId === tx.mockRuleId) {
-                parts.push('The rule is still active, so the next request like this one gets the same response' + adapter + '.');
+                // The rule can have been edited since, so it answers with what it says now.
+                parts.push('The rule is still active, so it also answers the next request like this one' + adapter + '.');
             } else if (activeKnown) {
                 parts.push('Now rule ' + (active ? link(active) : 'another rule') + ' answers the next request like this one' + adapter + '.');
             } else if (tx.activeMockRuleId === null) {
