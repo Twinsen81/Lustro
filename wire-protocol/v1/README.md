@@ -11,7 +11,7 @@ the protocol a stable public contract independent of the library's Kotlin API.
   A future incompatible revision becomes `/api/v2/`, and the old major stays
   alive for at least one major release.
 - The **minor** protocol version is reported at runtime in
-  `GET /api/v1/_meta` as `_meta.protocolVersion` (currently `1.6`).
+  `GET /api/v1/_meta` as `_meta.protocolVersion` (currently `1.7`).
 
 ## Contents
 
@@ -114,6 +114,16 @@ client got them.
   capture also reports `protocol`, from the `X-Android-Selected-Protocol`
   header that the platform adds, and leaves the platform's four `X-Android-*`
   headers out of `responseHeaders`.
+
+- **1.7** - The app can register several senders, each an OkHttp client
+  with a name and an optional base URL. The new route `GET network/senders`
+  lists them in order, and `POST network/send` takes `sender`, the name of
+  one; without it, the first one sends. A relative `url` is appended to the
+  base URL of that sender, and is rejected when it has none. The send result
+  gains `sender` and `url`, where the request went, and its `transactionId`
+  now names the transaction that the Lustro interceptor recorded for the
+  request, when the sender's client carries the interceptor; it was always
+  `null` before.
 
 ## Status
 

@@ -21,6 +21,7 @@ with no source checkout required.
 | `transaction.json` | `GET network/transactions/{id}` detail | OpenAPI `Transaction` |
 | `transaction-image.json` | `GET network/transactions/{id}` detail of an image response | OpenAPI `Transaction` |
 | `rules-list.json` | `GET network/rules` | OpenAPI `listMockRules` 200 (`items: [MockRule]`) |
+| `senders-list.json` | `GET network/senders` | OpenAPI `listSenders` 200 |
 | `send-result.json` | `POST network/send` synchronous result | OpenAPI `sendRequest` 200 |
 | `export-har.json` | `GET network/transactions/_/export` HAR document | OpenAPI `HarDocument` |
 | `export-har-websocket.json` | `GET network/transactions/_/export` of a WebSocket's handshake | OpenAPI `HarDocument` |
@@ -41,8 +42,11 @@ with no source checkout required.
 - **Redaction.** Captured values are redacted at capture time; the
   `transaction.json` `Authorization` request header shows `<redacted>` to model
   this — clients must never assume bodies/headers are raw.
-- **Send result.** `transactionId` may be `null` when the runtime cannot
-  correlate the dispatched request to a captured transaction.
+- **Send result.** `transactionId` names the transaction that the Lustro
+  interceptor recorded for the request. It is `null` when the sender's client
+  has no Lustro interceptor, or the request wasn't captured. `url` is where the
+  request went, after the relative `/me` was appended to the base URL of the
+  `API` sender in `senders-list.json`.
 - **Times.** `startedAt` and `completedAt` are epoch milliseconds, and
   `timestamp` is `startedAt` as the device's local time; the fixtures model a
   device in UTC. The mocked `tx_77e2c014` has no `protocol`, because a mock

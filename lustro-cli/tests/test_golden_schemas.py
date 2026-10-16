@@ -95,6 +95,14 @@ def test_send_result_matches_inline_schema():
     validator.validate(wire.load_golden("send-result.json"))
 
 
+def test_senders_list_matches_inline_schema():
+    openapi = wire.load_openapi()
+    validator = _inline_response_schema(
+        openapi, "/api/v1/network/senders", "get", "200"
+    )
+    validator.validate(wire.load_golden("senders-list.json"))
+
+
 def test_rules_list_matches_inline_schema():
     openapi = wire.load_openapi()
     validator = _inline_response_schema(

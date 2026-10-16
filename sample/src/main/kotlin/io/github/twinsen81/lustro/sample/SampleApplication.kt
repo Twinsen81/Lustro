@@ -44,16 +44,14 @@ public class SampleApplication : Application() {
     override fun onCreate() {
         super.onCreate()
 
-        // Build the client first so it can be handed to the bootstrap as the
-        // "Send Request" sender, then add the bootstrap's interceptor. We use a
-        // builder so the bootstrap-provided interceptor is added LAST (after any
-        // app interceptors), per the documented ordering: the capture sees the
-        // final application request.
-        val builder = OkHttpClient.Builder()
-        val client = builder.build()
-        val interceptor = LustroBootstrap.start(this, client)
+        // The client carries the bootstrap's interceptor, so it is built after
+        // the bootstrap; the console's Send form gets it through the lambda,
+        // which runs only when a request is sent. The interceptor is added LAST
+        // (after any app interceptors), per the documented ordering: the capture
+        // sees the final application request.
+        val interceptor = LustroBootstrap.start(this) { httpClient }
 
-        httpClient = builder.addInterceptor(interceptor).build()
+        httpClient = OkHttpClient.Builder().addInterceptor(interceptor).build()
         webSockets = LustroBootstrap.webSocketFactory(httpClient)
     }
 }

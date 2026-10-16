@@ -248,7 +248,8 @@ below summarizes it. All routes are token-authenticated and use the shared error
 | Pause capture | `POST pause` | Toggles capture-only pause. While paused, mocks and throttle **still apply**; only recording into the list stops, for requests and for WebSocket messages. Returns `{ status: "ok", paused }`. |
 | Overwrite mode | `POST overwrite-mode` | Toggles overwrite mode (a new request evicts earlier **completed** transactions with the same method + URL path; in-flight ones are never evicted). Returns `{ status: "ok", overwriteMode }`. |
 | Throttle | `POST throttle` | Body `{ delayMs }` (≥ 0); a global pre-request sleep applied to mocked and real OkHttp requests alike; platform `HttpURLConnection` requests are not held. A throttled transaction is listed while it waits and records the wait in `throttledMs`. Returns `{ status: "ok", delayMs }`. |
-| Send request | `POST send` | **Synchronous** dispatch through the configured `NetworkSender`. See below. |
+| List senders | `GET senders` | `{ items: [{ name, baseUrl }] }`: the OkHttp clients the app registered for `send`, in order; the first is the default. Empty when there are none. |
+| Send request | `POST send` | **Synchronous** send through one of the senders. See below. |
 
 **Mock rule semantics.** `urlPattern` is looked for anywhere in the URL: a substring, or a regular
 expression when prefixed with `regex:` (found, not matched against the whole URL, so anchor it with
@@ -269,16 +270,22 @@ fails any of these gets an enveloped `400` whose `field` names what to fix (`url
 and the whole batch is rejected. `POST rules` replaces a rule with the same `id` wholesale, so send
 `enabled` and `responseHeaders` when editing one or they fall back to `true` and empty.
 
-**Send request semantics.** Body `{ url, method?="GET", headers?, body? }`. Blocks until the
-sender returns, within the per-request timeout. Relative URLs resolve against the app server base
-the developer configured (rejected if unset). The response is `{ transactionId?, statusCode?,
-ok, error? }`; `transactionId` is currently **always `null`** because the send path does not
-correlate its call with a capture. The response body is never returned, and the
-sender reads at most `maxBodyCaptureBytes` of it, so large or endless responses are safe to send.
-A send that outlives the per-request timeout gets the enveloped `504`, and its call is cancelled.
-Requests to the debug server's **own** bind host:port are rejected. **Send is only available when
-a `NetworkSender` is configured** — if not, the route returns an enveloped `404` and the panel is
-hidden.
+**Send request semantics.** Body `{ url, sender?, method?="GET", headers?, body? }`. `sender` is
+a name from `GET senders`; without it, the first sender sends, and an unknown name is a `400` with
+`field: "sender"`. Each sender is one of the app's OkHttp clients, so pick the one whose
+interceptors (auth, for one) and host fit the request. An absolute `url` is sent as given; a
+relative one is appended to the sender's `baseUrl`, path and all, and is a `400` with
+`field: "url"` when the sender has none. Blocks until the sender returns, within the per-request
+timeout. The response is `{ transactionId, sender, url, statusCode, ok, error? }`: `url` is where
+the request went, and `ok` is `true` whenever a response came back, a `401` included, so read
+`statusCode`. `transactionId` names the transaction the Lustro interceptor recorded for the
+request, and is `null` when the sender's client has no interceptor or the request wasn't captured.
+The response body is never returned, and the sender reads at most `maxBodyCaptureBytes` of it, so
+large or endless responses are safe to send. A send that outlives the per-request timeout gets the
+enveloped `504`, and its call is cancelled. Requests to the debug server's **own** bind host:port
+are rejected. **Send is only available when the app registered a sender**: if not, `GET senders`
+is empty, `POST send` returns an enveloped `404`, and the console has no Send form. Senders,
+`sender`, the send result's `sender` and `url`, and a set `transactionId` arrived in protocol 1.7.
 
 **What advances the cursor.** Only changes to the captured list advance the transactions cursor: a
 new request, its response or streaming progress, a failure, an eviction, or `clear`. Pause,
@@ -459,19 +466,20 @@ paused, check `skipped` and read `description`.
 To test how the app handles a refused connection, add a mock rule for the handshake: its URL has
 `https` for `wss`, and any status but `101` makes OkHttp fail the socket.
 
-**Replay a request**
+**Send a request**
 
 ```bash
+lustro senders                                    # the app's senders, the default first
+lustro send --url /v1/orders --sender "API (signed in)"
 curl -s -X POST "$BASE/api/v1/network/send" \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"url":"https://api.example.com/v1/orders","method":"GET"}'
+  -d '{"url":"/v1/orders","sender":"API (signed in)","method":"GET"}'
 ```
 
-A replay is captured, as its own transaction, only when the client the developer passed as
-`senderClient` carries `lustro.networkInterceptor()`. In the README's quick-start wiring it does
-not: the sender client is built before the interceptor exists, so a replay runs but never reaches
-the traffic list. When it is captured, find it by polling `GET transactions`; the send response's
-`transactionId` does not point at it.
+Check `url` in the result before you trust the status: a `401` or a `404` often means that the
+request went through a sender with the wrong auth or the wrong base URL. A sent request is captured,
+as its own transaction, only when the sender's client carries `lustro.networkInterceptor()`; then
+`transactionId` names it, and `GET transactions/{id}` has the response.
 
 **Atomically sync a rule set** (declarative — the resulting set equals exactly what you post):
 

@@ -88,7 +88,8 @@ discovery), `--json` (JSON output). They go before or after the command:
 | `lustro mock delete <id>` | `POST network/rules/delete` |
 | `lustro mock toggle <id>` | `POST network/rules/toggle` |
 | `lustro mock sync <file.json>` | `POST network/rules/_/sync` (atomic) |
-| `lustro send --url …` | `POST network/send` (synchronous) |
+| `lustro senders` | `GET network/senders`: the clients that `send` can use, the default first |
+| `lustro send --url … [--sender NAME]` | `POST network/send` (synchronous), through the first sender or the one named |
 
 > **Live use of `lustro open`** requires a running app: the server only listens
 > while the app is foregrounded, and discovery reads the `LustroToken` log line
