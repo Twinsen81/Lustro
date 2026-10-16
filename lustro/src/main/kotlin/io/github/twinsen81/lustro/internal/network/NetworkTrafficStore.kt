@@ -40,7 +40,9 @@ import okio.utf8Size
  *   [Redactor] reads text only.
  * - The polling cursor pairs the transaction list's change [sequence] with
  *   this store's random [epoch]. Only list changes advance the sequence:
- *   control state goes out with every poll, and rules have their own route.
+ *   control state goes out with every poll. A change to the rules advances
+ *   [getRulesRevision] instead, which the list's cursor adds in, because each
+ *   transaction says which rule would answer it.
  *
  * Uses ConcurrentHashMap for O(1) lookups/updates and a ConcurrentLinkedDeque
  * for reverse-chronological ordering. Updates via computeIfPresent preserve
@@ -87,6 +89,9 @@ internal class NetworkTrafficStore(
     // prefs-backed storage reads a file there.
     @Volatile
     private var rulesLoaded = storage == null
+
+    // Changed by every change to the rules but a hit count.
+    private val rulesRevision = AtomicLong(0)
     private val sequence = AtomicLong(0)
     private val paused = AtomicBoolean(false)
     private val overwriteMode = AtomicBoolean(false)
@@ -177,8 +182,7 @@ internal class NetworkTrafficStore(
             ): TransactionId = this@NetworkTrafficStore.beginRequest(url, method, headers, requestBody, contentType, source)
         }
 
-    override fun findMockRule(url: String, method: String): MockRule? =
-        rules().firstOrNull { it.matches(url, method) }
+    override fun findMockRule(url: String, method: String): MockRule? = rules().answering(url, method)
 
     @Suppress("RestrictedApi") // id.value is @RestrictTo(LIBRARY_GROUP); same-group call (see beginRequest).
     override fun completeRequest(id: TransactionId, response: CapturedResponse) {
@@ -268,6 +272,7 @@ internal class NetworkTrafficStore(
             completedAt = completedAt,
             protocol = response.protocol,
             isMocked = response.isMocked,
+            mockRuleId = response.mockRuleId,
             finalUrl = response.finalUrl?.let { redactor.redactUrl(it) },
             priorResponses = response.priorResponses.map { PriorResponse(redactor.redactUrl(it.url), it.statusCode) },
         )
@@ -358,6 +363,7 @@ internal class NetworkTrafficStore(
         completedAt: Long? = null,
         protocol: String? = null,
         isMocked: Boolean = false,
+        mockRuleId: String? = null,
         responseBinaryBody: ByteArray? = null,
         finalUrl: String? = null,
         priorResponses: List<PriorResponse> = emptyList(),
@@ -379,6 +385,7 @@ internal class NetworkTrafficStore(
                         completedAt = completedAt,
                         protocol = protocol,
                         isMocked = isMocked,
+                        mockRuleId = mockRuleId,
                         finalUrl = finalUrl,
                         priorResponses = priorResponses,
                     )
@@ -492,6 +499,16 @@ internal class NetworkTrafficStore(
     /** The rules in the order they are tried. */
     fun getMockRules(): List<MockRuleImpl> = rules()
 
+    /**
+     * Changes when a rule is added, edited, deleted, enabled, or disabled, and
+     * on a sync. A hit leaves it as it is.
+     */
+    fun getRulesRevision(): Long {
+        // The rules the first load brings are not a change after this read.
+        if (!rulesLoaded) loadRules()
+        return rulesRevision.get()
+    }
+
     fun incrementHitCount(ruleId: String) {
         synchronized(rulesLock) {
             mockRules = rules().map { if (it.id == ruleId) it.copy(hitCount = it.hitCount + 1) else it }
@@ -507,6 +524,7 @@ internal class NetworkTrafficStore(
         synchronized(rulesLock) {
             val updated = change(rules())
             mockRules = updated
+            rulesRevision.incrementAndGet()
             storage?.save(updated)
         }
     }

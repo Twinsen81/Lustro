@@ -189,6 +189,7 @@ public final class io/github/twinsen81/lustro/network/CapturedResponse {
 	public final fun getDurationMs ()J
 	public final fun getFinalUrl ()Ljava/lang/String;
 	public final fun getHeaders ()Lio/github/twinsen81/lustro/Headers;
+	public final fun getMockRuleId ()Ljava/lang/String;
 	public final fun getPriorResponses ()Ljava/util/List;
 	public final fun getProtocol ()Ljava/lang/String;
 	public final fun getStatusCode ()I
@@ -204,6 +205,7 @@ public final class io/github/twinsen81/lustro/network/CapturedResponse$Builder {
 	public final fun finalUrl (Ljava/lang/String;)Lio/github/twinsen81/lustro/network/CapturedResponse$Builder;
 	public final fun headers (Lio/github/twinsen81/lustro/Headers;)Lio/github/twinsen81/lustro/network/CapturedResponse$Builder;
 	public final fun mocked (Z)Lio/github/twinsen81/lustro/network/CapturedResponse$Builder;
+	public final fun mockedBy (Lio/github/twinsen81/lustro/network/MockRule;)Lio/github/twinsen81/lustro/network/CapturedResponse$Builder;
 	public final fun priorResponses (Ljava/util/List;)Lio/github/twinsen81/lustro/network/CapturedResponse$Builder;
 	public final fun protocol (Ljava/lang/String;)Lio/github/twinsen81/lustro/network/CapturedResponse$Builder;
 }

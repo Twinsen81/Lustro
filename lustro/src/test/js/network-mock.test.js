@@ -1,7 +1,8 @@
 'use strict';
 
 // The two commands that turn a captured request into something to run again:
-// the mock rule pattern Mock This Request fills in, and Copy as cURL.
+// the mock rule pattern Mock this request fills in, and Copy as cURL; and what
+// the detail says about the mock rules for a request.
 
 const test = require('node:test');
 const assert = require('node:assert');
@@ -15,7 +16,7 @@ const regexOf = (pattern) => {
     return new RegExp(pattern.slice('regex:'.length));
 };
 
-test('Mock This Request fills in a pattern for that URL and no other', async (t) => {
+test('Mock this request fills in a pattern for that URL and no other', async (t) => {
     await t.test('a sub-resource of the URL does not match', () => {
         const re = regexOf(network.netExactUrlPattern('https://mastodon.social/api/v1/statuses/1173887'));
         assert.ok(re.test('https://mastodon.social/api/v1/statuses/1173887'));
@@ -38,26 +39,84 @@ test('Mock This Request fills in a pattern for that URL and no other', async (t)
     });
 });
 
-test('Mock This Request is disabled for a request that no rule can answer', async (t) => {
+test('Mock this request and Matching rules are disabled for a request that no rule can answer', async (t) => {
     await t.test('an OkHttp request, or one from before the source was sent, can be mocked', () => {
         for (const source of ['okhttp', undefined]) {
-            const button = network.netMockThisButton({ source });
-            assert.match(button, /data-action="mockThis"/);
-            assert.doesNotMatch(button, /disabled/);
+            const state = network.netMockButtonsState({ source, matchingMockRuleIds: ['r1', 'r2'] });
+            assert.strictEqual(state.disabled, false);
+            assert.strictEqual(state.ruleCount, 2);
         }
     });
 
     await t.test('a platform HttpURLConnection request cannot', () => {
-        const button = network.netMockThisButton({ source: 'platform' });
-        assert.doesNotMatch(button, /data-action/);
-        assert.match(button, /<button class="dc-btn" disabled /);
-        assert.match(button, /Mock rules answer OkHttp requests only/);
+        const state = network.netMockButtonsState({ source: 'platform', matchingMockRuleIds: [] });
+        assert.strictEqual(state.disabled, true);
+        assert.match(state.mockThisTitle, /Mock rules answer OkHttp requests only/);
+        assert.match(state.rulesTitle, /Mock rules answer OkHttp requests only/);
     });
 
     await t.test("the app's own adapter can, if it asks for the rule", () => {
-        const button = network.netMockThisButton({ source: 'app' });
-        assert.match(button, /data-action="mockThis"/);
-        assert.match(button, /only if the adapter asks for it/);
+        const state = network.netMockButtonsState({ source: 'app' });
+        assert.strictEqual(state.disabled, false);
+        assert.match(state.mockThisTitle, /only if the adapter asks for it/);
+        assert.strictEqual(state.ruleCount, 0);
+    });
+});
+
+test('The detail says which rule answered the request and which one answers the next', async (t) => {
+    const rules = [
+        { id: 'r1', name: 'GET featured.json', urlPattern: '/featured.json', enabled: true },
+        { id: 'r2', name: '', method: 'GET', urlPattern: 'regex:/feed$', enabled: true },
+    ];
+    const text = (html) => html.replace(/<[^>]+>/g, '');
+
+    await t.test('a rule that matches a request captured before it existed', () => {
+        const line = network.netMockRuleLine({ isMocked: false, mockRuleId: null, activeMockRuleId: 'r1' }, rules);
+        assert.strictEqual(text(line), 'Mock rule active: GET featured.json. The next request like this one gets the mocked response.');
+        assert.match(line, /data-action="openRequestRules"/);
+    });
+
+    await t.test('a rule without a name is named by its method and pattern', () => {
+        const line = network.netMockRuleLine({ isMocked: false, activeMockRuleId: 'r2' }, rules);
+        assert.match(text(line), /^Mock rule active: GET regex:\/feed\$\./);
+    });
+
+    await t.test('the rule that answered, while it still answers', () => {
+        const line = network.netMockRuleLine({ isMocked: true, mockRuleId: 'r1', activeMockRuleId: 'r1' }, rules);
+        assert.strictEqual(text(line),
+            'Mocked by rule GET featured.json. The rule is still active, so the next request like this one gets the same response.');
+    });
+
+    await t.test('the rule that answered, after another one took its place', () => {
+        const line = network.netMockRuleLine({ isMocked: true, mockRuleId: 'r1', activeMockRuleId: 'r2' }, rules);
+        assert.strictEqual(text(line), 'Mocked by rule GET featured.json. Now rule GET regex:/feed$ answers the next request like this one.');
+    });
+
+    await t.test('the rule that answered, after it was disabled', () => {
+        const line = network.netMockRuleLine({ isMocked: true, mockRuleId: 'r1', activeMockRuleId: null }, rules);
+        assert.strictEqual(text(line),
+            'Mocked by rule GET featured.json. No enabled rule matches it now, so the next request like this one goes to the server.');
+    });
+
+    await t.test('a rule that was deleted, once the rules are loaded', () => {
+        const tx = { isMocked: true, mockRuleId: 'gone', activeMockRuleId: null };
+        assert.match(text(network.netMockRuleLine(tx, rules)), /^Mocked by a rule that was deleted\./);
+        assert.match(text(network.netMockRuleLine(tx, null)), /^Mocked by a rule\./);
+    });
+
+    await t.test("an app adapter's request gets the rule only if the adapter asks for it", () => {
+        const line = network.netMockRuleLine({ isMocked: false, activeMockRuleId: 'r1', source: 'app' }, rules);
+        assert.match(text(line), /gets the mocked response, if the app's adapter asks for mock rules\.$/);
+    });
+
+    await t.test('nothing when no rule answered it and none matches', () => {
+        assert.strictEqual(network.netMockRuleLine({ isMocked: false, mockRuleId: null, activeMockRuleId: null }, rules), '');
+    });
+
+    await t.test("a rule's name is escaped", () => {
+        const line = network.netMockRuleLine({ isMocked: false, activeMockRuleId: 'x' }, [{ id: 'x', name: '<img src=x>', urlPattern: 'a' }]);
+        assert.doesNotMatch(line, /<img/);
+        assert.match(line, /&lt;img src=x&gt;/);
     });
 });
 

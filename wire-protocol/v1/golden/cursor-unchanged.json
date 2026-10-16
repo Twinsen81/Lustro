@@ -5,6 +5,7 @@
     "paused": false,
     "overwriteMode": false,
     "throttleDelayMs": 250,
+    "mockRules": { "enabled": 1, "revision": 4 },
     "captureFilter": {
       "description": "Analytics calls, and requests marked X-No-Capture",
       "skipped": 12,

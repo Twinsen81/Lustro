@@ -104,6 +104,26 @@ def test_net_state_says_when_no_capture_filter_is_set(rec, capsys):
     ]
 
 
+def test_net_state_counts_the_enabled_mock_rules(rec, capsys):
+    rec.response = {
+        "cursor": "c:1",
+        "status": "unchanged",
+        "state": {
+            "paused": False,
+            "overwriteMode": False,
+            "throttleDelayMs": 0,
+            "mockRules": {"enabled": 2, "revision": 7},
+            "captureFilter": None,
+        },
+    }
+    assert run(["net", "state"]) == 0
+    assert capsys.readouterr().out.splitlines() == [
+        "paused=false overwriteMode=false throttleDelayMs=0",
+        "capture filter: none",
+        "mock rules: enabled=2",
+    ]
+
+
 def test_net_state_json_prints_the_state_object(rec, capsys):
     state = {"paused": False, "overwriteMode": True, "throttleDelayMs": 0, "captureFilter": None}
     rec.response = {"cursor": "c:1", "status": "reset", "items": [{"id": "tx_1"}], "state": state}

@@ -5,6 +5,7 @@
     "paused": false,
     "overwriteMode": false,
     "throttleDelayMs": 0,
+    "mockRules": { "enabled": 1, "revision": 4 },
     "captureFilter": null
   },
   "items": [

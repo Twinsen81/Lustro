@@ -95,7 +95,7 @@ def server():
 def test_meta(server):
     client = LustroClient(server, TOKEN)
     meta = client.get("/api/v1/_meta")
-    assert meta["protocolVersion"] == "1.8"
+    assert meta["protocolVersion"] == "1.9"
     assert meta["tabs"][0]["id"] == "network"
 
 
@@ -107,7 +107,7 @@ def test_requests_ignore_a_proxy_from_the_environment(server, monkeypatch):
     monkeypatch.delenv("no_proxy", raising=False)
     monkeypatch.delenv("NO_PROXY", raising=False)
     client = LustroClient(server, TOKEN)
-    assert client.get("/api/v1/_meta")["protocolVersion"] == "1.8"
+    assert client.get("/api/v1/_meta")["protocolVersion"] == "1.9"
 
 
 def test_transactions_cursor(server):
@@ -174,7 +174,7 @@ def test_a_401_retries_once_with_a_fresh_token(server):
         return TOKEN
 
     client = LustroClient(server, "stale-token", refresh_token=refresh)
-    assert client.get("/api/v1/_meta")["protocolVersion"] == "1.8"
+    assert client.get("/api/v1/_meta")["protocolVersion"] == "1.9"
     assert client.token == TOKEN
     # The client asks once: a later 401 is an error.
     assert asked == [True]

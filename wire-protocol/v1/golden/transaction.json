@@ -12,6 +12,8 @@
   "throttledMs": 1000,
   "categories": ["api"],
   "isMocked": true,
+  "mockRuleId": "orders-500",
+  "activeMockRuleId": "orders-500",
   "source": "okhttp",
   "requestContentType": null,
   "responseContentType": "application/json",
@@ -33,5 +35,6 @@
   "responseBody": "{\"error\":\"boom\"}",
   "responseBodyTruncated": false,
   "responseBodyBinary": false,
+  "matchingMockRuleIds": ["orders-500"],
   "priorResponses": []
 }

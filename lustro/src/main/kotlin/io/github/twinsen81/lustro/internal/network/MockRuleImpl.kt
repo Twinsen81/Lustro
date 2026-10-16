@@ -36,8 +36,10 @@ internal data class MockRuleImpl(
         }
     }
 
-    fun matches(url: String, requestMethod: String): Boolean {
-        if (!enabled) return false
+    fun matches(url: String, requestMethod: String): Boolean = enabled && matchesWhenEnabled(url, requestMethod)
+
+    /** Whether this rule would answer the request if it were enabled: its method and its pattern match. */
+    fun matchesWhenEnabled(url: String, requestMethod: String): Boolean {
         if (method != null && !method.equals(requestMethod, ignoreCase = true)) return false
         return if (urlPattern.startsWith(REGEX_PREFIX)) {
             compiledRegex?.containsMatchIn(url) ?: false
@@ -50,3 +52,11 @@ internal data class MockRuleImpl(
         const val REGEX_PREFIX: String = "regex:"
     }
 }
+
+/**
+ * The rule that answers a request to [url] with [method]: the first enabled one
+ * that matches, as the rules are tried from the top. The interceptor and the
+ * Network tab's "Mock rule active" both ask this, so they never disagree.
+ */
+internal fun List<MockRuleImpl>.answering(url: String, method: String): MockRuleImpl? =
+    firstOrNull { it.matches(url, method) }
