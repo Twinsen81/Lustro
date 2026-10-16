@@ -6,6 +6,7 @@ import io.github.twinsen81.lustro.ExperimentalPlatformCapture
 import io.github.twinsen81.lustro.Lustro
 import io.github.twinsen81.lustro.LustroStatus
 import io.github.twinsen81.lustro.network.NetworkDebugTab
+import io.github.twinsen81.lustro.network.OkHttpSender
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.WebSocket
@@ -40,13 +41,12 @@ public object LustroBootstrap {
      * unchanged, so there is no release overhead and no debug server.
      */
     @OptIn(ExperimentalPlatformCapture::class)
-    public fun start(app: Application, appOkHttpClient: OkHttpClient): Interceptor {
+    public fun start(app: Application, appOkHttpClient: () -> OkHttpClient): Interceptor {
         val instance =
             Lustro.builder(app)
                 .config(
                     DebugConfig.builder()
                         .serverPort(8080)
-                        .appServerBaseUrl("https://httpbingo.org")
                         .build(),
                 )
                 .addTab(
@@ -54,7 +54,11 @@ public object LustroBootstrap {
                     // overload is compile-tested against the no-op facade (the
                     // cross-variant parity gate). Inert here: nothing is captured.
                     NetworkDebugTab.create(
-                        senderClient = appOkHttpClient,
+                        senders =
+                            listOf(
+                                OkHttpSender.create("httpbingo.org", baseUrl = "https://httpbingo.org", client = appOkHttpClient),
+                                OkHttpSender.create("Any host", client = appOkHttpClient),
+                            ),
                         capturePlatformHttp = true,
                     ),
                 )

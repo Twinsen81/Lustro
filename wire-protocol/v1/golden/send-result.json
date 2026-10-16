@@ -1,5 +1,7 @@
 {
-  "transactionId": null,
+  "transactionId": "tx_5c1f9a02",
+  "sender": "API",
+  "url": "https://api.example.com/v1/me",
   "statusCode": 200,
   "ok": true
 }

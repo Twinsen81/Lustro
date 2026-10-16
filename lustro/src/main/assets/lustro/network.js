@@ -1248,11 +1248,17 @@
         copyNetworkText(window.netTransactionsMarkdown([currentDetailTx]), ev);
     };
 
+    // The actions act on the selected request, so they show only with its detail:
+    // a refresh of the detail behind Mock Rules or the Send form leaves them hidden.
     function showDetailActions(show) {
+        var detail = document.getElementById('detail-content');
+        var visible = show && !!detail && detail.classList.contains('active');
         ['copy-curl-btn', 'copy-md-btn', 'copy-all-btn'].forEach(function(id) {
             var btn = document.getElementById(id);
-            if (btn) btn.style.display = show ? '' : 'none';
+            if (btn) btn.style.display = visible ? '' : 'none';
         });
+        var resend = document.getElementById('resend-btn');
+        if (resend) resend.style.display = visible && senders.length ? '' : 'none';
     }
 
     // Transaction details as one Markdown document, oldest first as given: for
@@ -1361,16 +1367,21 @@
         return new Array(n + 1).join('`');
     }
 
+    // 'send' is the Send form: it has no tab of its own, because it is not about
+    // the selected request, so neither tab is active while it is open.
     window.switchRightTab = function(tab) {
         document.getElementById('detail-content').classList.toggle('active', tab === 'detail');
         document.getElementById('rules-content').classList.toggle('active', tab === 'rules');
         document.getElementById('send-content').classList.toggle('active', tab === 'send');
         document.getElementById('tab-btn-detail').classList.toggle('dc-tab--active', tab === 'detail');
         document.getElementById('tab-btn-rules').classList.toggle('dc-tab--active', tab === 'rules');
-        document.getElementById('tab-btn-send').classList.toggle('dc-tab--active', tab === 'send');
-        showDetailActions(tab === 'detail' && !!currentDetailTx);
+        if (tab !== 'send') {
+            composerOpen = false;
+            // Another choice of the pane: the row to go back to no longer applies.
+            selectionBeforeComposer = null;
+        }
+        showDetailActions(!!currentDetailTx);
         if (tab === 'rules') loadRules();
-        if (tab === 'send') ensureSendForm();
     };
 
     // The app owns the rules: the list route is the only source, and the app's
@@ -1515,41 +1526,214 @@
         renderRules(loadedRules);
     };
 
-    var sendHeaders = [
-        { key: 'Content-Type', value: 'application/json' },
-    ];
+    // ── Send form ──
+    // It opens in the right pane, in place of the detail: "+ New request" opens an
+    // empty one, "Edit and resend" one filled from the selected request. The app
+    // registers the senders (GET senders); without one there is no Send at all.
+    var senders = [];
+    var SEND_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'];
+    // OkHttp or the connection sets these, not the app. Sent again by hand they
+    // fight OkHttp: an explicit Accept-Encoding turns off its gzip decoding.
+    var TRANSPORT_HEADERS = ['host', 'content-length', 'connection', 'accept-encoding', 'transfer-encoding', 'keep-alive', 'te', 'upgrade', 'proxy-connection'];
+    var STATUS_TEXT = {
+        200: 'OK', 201: 'Created', 202: 'Accepted', 204: 'No Content', 301: 'Moved Permanently', 302: 'Found',
+        304: 'Not Modified', 307: 'Temporary Redirect', 308: 'Permanent Redirect', 400: 'Bad Request',
+        401: 'Unauthorized', 403: 'Forbidden', 404: 'Not Found', 405: 'Method Not Allowed', 409: 'Conflict',
+        410: 'Gone', 415: 'Unsupported Media Type', 422: 'Unprocessable Content', 429: 'Too Many Requests',
+        500: 'Internal Server Error', 502: 'Bad Gateway', 503: 'Service Unavailable', 504: 'Gateway Timeout',
+    };
 
-    function ensureSendForm() {
-        var container = document.getElementById('send-form-container');
-        if (container && !container.innerHTML) renderSendForm();
+    // The form's values, kept while the form is closed, so a row looked at in
+    // between doesn't cost what was typed. "Edit and resend" replaces them.
+    var sendDraft = null;
+    var composerOpen = false;
+    // The row a new request deselected; closing the form selects it again.
+    var selectionBeforeComposer = null;
+
+    function loadSenders() {
+        debugFetch(netUrl('senders'))
+            .then(function(r) { return r.json(); })
+            .then(function(data) { setSenders(data && Array.isArray(data.items) ? data.items : []); })
+            .catch(function() { setSenders([]); });
     }
+
+    function setSenders(list) {
+        senders = list;
+        var btn = document.getElementById('new-request-btn');
+        if (btn) btn.hidden = senders.length === 0;
+        if (!senders.length && composerOpen) window.closeComposer();
+        showDetailActions(!!currentDetailTx);
+    }
+
+    function senderByName(name) {
+        return senders.find(function(s) { return s.name === name; }) || senders[0];
+    }
+
+    function trimBase(base) {
+        return base.replace(/\/+$/, '');
+    }
+
+    // The same rule as the server: an absolute URL is used as entered, and a
+    // relative one is appended to the sender's base URL, path and all.
+    function resolveSendUrl(url, sender) {
+        if (!url) return { error: false, text: 'Enter a path such as /items, or an absolute URL.' };
+        if (/^https?:\/\//i.test(url)) return { url: url, absolute: true };
+        if (!sender || !sender.baseUrl) {
+            return { error: true, text: 'The sender "' + (sender ? sender.name : '') + '" has no base URL. Enter an absolute URL, or choose a sender with a base URL.' };
+        }
+        return { url: trimBase(sender.baseUrl) + '/' + url.replace(/^\/+/, '') };
+    }
+
+    // The sender whose base URL the captured URL starts with, the longest one
+    // first; otherwise one that takes absolute URLs, or the first.
+    function senderForUrl(url) {
+        var best = null;
+        senders.forEach(function(s) {
+            if (!s.baseUrl) return;
+            var base = trimBase(s.baseUrl);
+            var next = url.charAt(base.length);
+            if (url.indexOf(base) === 0 && (next === '' || next === '/' || next === '?') && (!best || base.length > trimBase(best.baseUrl).length)) best = s;
+        });
+        return best || senders.find(function(s) { return !s.baseUrl; }) || senders[0];
+    }
+
+    function blankDraft() {
+        return { sender: senders[0].name, method: 'GET', url: '', headers: [], body: '', from: null, notes: [] };
+    }
+
+    function draftFromTransaction(tx) {
+        var url = tx.url || '';
+        var sender = senderForUrl(url);
+        var base = sender.baseUrl ? trimBase(sender.baseUrl) : null;
+        var notes = [];
+        var headers = [];
+        var reqHeaders = tx.requestHeaders || {};
+        Object.keys(reqHeaders).forEach(function(k) {
+            if (TRANSPORT_HEADERS.indexOf(k.toLowerCase()) < 0) headers.push({ key: k, value: String(reqHeaders[k]) });
+        });
+        var body = '';
+        if (tx.requestBodyBinary) {
+            notes.push({ warn: true, text: 'The captured body is binary, and the form has no place for it: the request goes without a body.' });
+        } else if (tx.requestBody) {
+            body = tx.requestBody;
+            if (tx.requestBodyTruncated) notes.push({ warn: true, text: 'The capture cut the body short. The form has only the captured part.' });
+        }
+        if (body && tx.requestContentType && !headers.some(function(h) { return h.key.toLowerCase() === 'content-type'; })) {
+            headers.unshift({ key: 'Content-Type', value: tx.requestContentType });
+        }
+        var redacted = [url, body].concat(headers.map(function(h) { return h.value; }))
+            .some(function(v) { return String(v).indexOf('[REDACTED]') >= 0; });
+        if (redacted) notes.push({ warn: true, text: 'Lustro redacted values of the captured request. Replace each [REDACTED] before you send, or the server gets that text.' });
+        var method = (tx.method || 'GET').toUpperCase();
+        return {
+            sender: sender.name,
+            method: method,
+            url: base && url.indexOf(base) === 0 ? (url.substring(base.length) || '/') : url,
+            headers: headers,
+            body: body,
+            from: method + ' ' + url + (tx.statusCode ? ' · ' + tx.statusCode : '') + (tx.timestamp ? ' · ' + tx.timestamp : ''),
+            notes: notes,
+        };
+    }
+
+    function openComposer(draft) {
+        sendDraft = draft;
+        switchRightTab('send');
+        composerOpen = true;
+        renderSendForm();
+        var url = document.getElementById('sf-url');
+        if (url && !draft.from) url.focus();
+    }
+
+    window.openNewRequest = function() {
+        if (!senders.length) return;
+        // A new request is not about any captured row, so none stays selected.
+        if (selectedTxId) {
+            selectionBeforeComposer = selectedTxId;
+            selectedTxId = null;
+            renderList();
+        }
+        openComposer(sendDraft && !sendDraft.from ? sendDraft : blankDraft());
+    };
+
+    window.editAndResend = function() {
+        if (!currentDetailTx || !senders.length) return;
+        selectionBeforeComposer = null;
+        openComposer(draftFromTransaction(currentDetailTx));
+    };
+
+    window.closeComposer = function() {
+        var restore = selectionBeforeComposer;
+        selectionBeforeComposer = null;
+        if (restore && findTransactionById(allTransactions, restore)) {
+            window.selectTransaction(restore);
+        } else {
+            switchRightTab('detail');
+            if (selectedTxId && currentDetailTx && currentDetailTx.id === selectedTxId) renderDetail(currentDetailTx); else showEmptyDetail();
+        }
+    };
+
+    window.showSentTransaction = function(id) {
+        selectionBeforeComposer = null;
+        window.selectTransaction(id);
+    };
 
     function renderSendForm() {
         var container = document.getElementById('send-form-container');
-        if (!container) return;
-        var methodOptions = ['GET','POST','PUT','PATCH','DELETE','HEAD']
-            .map(function(m) { return '<option value="' + m + '">' + m + '</option>'; }).join('');
-        container.innerHTML = '<div class="net-rule-form">'
-            + '<h4>Send a request through the app\'s OkHttp client</h4>'
-            + '<div class="net-form-row"><label class="dc-label" for="sf-method" title="HTTP method for the dispatched request.">Method</label>'
-            + '<select class="dc-input--block" id="sf-method" name="method" style="max-width:120px;flex:0 0 120px" title="HTTP method.">' + methodOptions + '</select></div>'
-            + '<div class="net-form-row"><label class="dc-label" for="sf-url" title="Where to send the request.">URL</label>'
-            + '<input class="dc-input--block" id="sf-url" name="url" placeholder="/api/v1/entries or https://example.com/path" title="Absolute URL or a relative path. Relative paths are resolved against the app\'s configured server base URL."></div>'
-            + '<div class="net-form-row"><label class="dc-label" id="sf-headers-label" title="Custom request headers (the app\'s OkHttp interceptors still add Auth/UA/etc.).">Headers</label><div id="sf-headers" role="group" aria-labelledby="sf-headers-label" style="flex:1"></div></div>'
+        if (!container || !sendDraft) return;
+        var d = sendDraft;
+        var methods = SEND_METHODS.indexOf(d.method) >= 0 ? SEND_METHODS : SEND_METHODS.concat([d.method]);
+        var senderOptions = senders.map(function(s) {
+            return '<option value="' + debugEscapeHtml(s.name) + '"' + (s.name === d.sender ? ' selected' : '') + '>'
+                + debugEscapeHtml(s.name) + ' · ' + debugEscapeHtml(s.baseUrl || 'absolute URLs only') + '</option>';
+        }).join('');
+        var methodOptions = methods.map(function(m) {
+            return '<option value="' + debugEscapeHtml(m) + '"' + (m === d.method ? ' selected' : '') + '>' + debugEscapeHtml(m) + '</option>';
+        }).join('');
+        var notes = (d.from ? [{ warn: false, text: '// Copied from the captured request. Sending it adds a new row, and the captured one stays.' }] : [])
+            .concat(d.notes || [])
+            .map(function(n) { return '<div class="net-send-note' + (n.warn ? ' net-form-warning' : '') + '">' + debugEscapeHtml(n.text) + '</div>'; }).join('');
+        container.innerHTML = '<div class="net-composer">'
+            + '<div class="net-composer-head"><h4>' + (d.from ? 'Edit and resend' : 'New request') + '</h4>'
+            + (d.from ? '<span class="net-composer-from" title="' + debugEscapeHtml(d.from) + '">' + debugEscapeHtml(d.from) + '</span>' : '')
+            + '<button class="dc-btn dc-btn--icon" data-action="closeComposer" aria-label="Close the Send form" title="Close the form and show the detail again. What you entered stays for the next New request.">✕</button></div>'
+            + notes
+            + '<div class="net-form-row"><label class="dc-label" for="sf-sender" title="The OkHttp client to send through, under the name the app registered it with.">Sender</label>'
+            + '<div class="net-form-field"><select class="dc-input--block" id="sf-sender" name="sender" data-action="setSendSender" title="Which interceptors run (auth, logging, capture) depends on how the app built the client of this sender.">' + senderOptions + '</select>'
+            + '<span class="dc-comment net-send-hint">// the app\'s client: how the app built it decides auth and capture</span></div></div>'
+            + '<div class="net-form-row"><label class="dc-label" for="sf-url" title="Method, and an absolute URL or a path that the sender\'s base URL takes.">Request</label>'
+            + '<div class="net-form-field"><div class="net-send-line">'
+            + '<select class="dc-input--block net-send-method ' + methodClass({ method: d.method }) + '" id="sf-method" name="method" aria-label="Method" data-action="setSendMethod" title="HTTP method.">' + methodOptions + '</select>'
+            + '<input class="dc-input--block" id="sf-url" name="url" placeholder="/items or https://example.com/items" value="' + debugEscapeHtml(d.url) + '" data-action="updateSendField" data-field="url" title="An absolute URL is sent as entered. A path is appended to the base URL of the sender."></div>'
+            + '<span class="net-send-resolved" id="sf-resolved" aria-live="polite"></span></div></div>'
+            + '<div class="net-form-row"><span class="dc-label" id="sf-headers-label" title="Headers the form sends. The interceptors of the sender\'s client can add more, or change these.">Headers</span><div id="sf-headers" class="net-form-field" role="group" aria-labelledby="sf-headers-label"></div></div>'
             + '<div class="net-form-row"><label class="dc-label" for="sf-body" title="Body sent with the request.">Body <button type="button" class="net-format-btn" data-action="formatSendBody" title="Pretty-print the body as JSON (no-op if not valid JSON).">Format</button></label>'
-            + '<textarea class="dc-textarea" id="sf-body" name="body" placeholder="Request body (omit for GET/HEAD)" title="Body sent with the request. Omit for GET/HEAD. Content-Type defaults to application/json unless overridden via Headers."></textarea></div>'
+            + '<textarea class="dc-textarea" id="sf-body" name="body" placeholder="Request body (sent for POST, PUT, PATCH, and DELETE)" data-action="updateSendField" data-field="body" title="Sent for POST, PUT, PATCH, and DELETE. Content-Type is application/json unless a header sets it.">' + debugEscapeHtml(d.body) + '</textarea></div>'
             + '<div class="net-form-actions">'
-            + '<button class="dc-btn dc-btn--primary" id="sf-send-btn" data-action="submitSendRequest" title="Dispatch through the app\'s authorized OkHttpClient. Goes through every real interceptor (auth, logging, debug capture). Self-requests to the debug server are rejected. The request is sent synchronously and the result is shown below.">Send</button>'
+            + '<button class="dc-btn dc-btn--primary" id="sf-send-btn" data-action="submitSendRequest" title="Send through the OkHttp client of the chosen sender. Which interceptors run (auth, logging, capture) depends on how the app built that client. Requests to this debug server are rejected.">Send</button>'
+            + '<span class="dc-comment net-send-hint">// Ctrl/Cmd+Enter</span>'
             + '</div>'
             + '<div id="sf-result"></div>'
             + '</div>';
         renderSendHeaders();
+        renderResolvedUrl();
+    }
+
+    function renderResolvedUrl() {
+        var el = document.getElementById('sf-resolved');
+        if (!el || !sendDraft) return;
+        var r = resolveSendUrl(sendDraft.url.trim(), senderByName(sendDraft.sender));
+        el.classList.toggle('net-send-resolved--error', !!r.error);
+        el.innerHTML = r.url
+            ? '→ will send to <span class="net-send-resolved-url">' + debugEscapeHtml(r.url) + '</span>'
+                + (r.absolute ? ' <span class="dc-comment">(absolute URL: the base URL is not used)</span>' : '')
+            : debugEscapeHtml(r.text);
     }
 
     function renderSendHeaders() {
         var container = document.getElementById('sf-headers');
-        if (!container) return;
-        container.innerHTML = sendHeaders.map(function(h, i) {
+        if (!container || !sendDraft) return;
+        container.innerHTML = sendDraft.headers.map(function(h, i) {
             var keyId = 'sf-header-key-' + i;
             var valueId = 'sf-header-value-' + i;
             return '<div class="net-send-header-row">'
@@ -1558,18 +1742,35 @@
                 + '<button type="button" class="dc-btn dc-btn--icon dc-btn--danger" data-action="removeSendHeader" data-index="' + i + '" aria-label="Remove header row" title="Remove this header row.">✕</button>'
                 + '</div>';
         }).join('')
-            + '<button type="button" class="net-format-btn" data-action="addSendHeader" style="margin-top:6px" title="Add another header row.">+ Add header</button>';
+            + '<button type="button" class="net-format-btn net-add-header" data-action="addSendHeader" title="Add another header row.">+ Add header</button>';
     }
 
     window.updateSendHeader = function(i, field, value) {
-        if (sendHeaders[i]) sendHeaders[i][field] = value;
+        if (sendDraft && sendDraft.headers[i]) sendDraft.headers[i][field] = value;
+    };
+    window.updateSendField = function(field, value) {
+        if (!sendDraft) return;
+        sendDraft[field] = value;
+        if (field === 'url') renderResolvedUrl();
+    };
+    window.setSendSender = function(name) {
+        if (!sendDraft) return;
+        sendDraft.sender = name;
+        renderResolvedUrl();
+    };
+    window.setSendMethod = function(el) {
+        if (!sendDraft) return;
+        sendDraft.method = el.value;
+        el.className = 'dc-input--block net-send-method ' + methodClass({ method: el.value });
     };
     window.addSendHeader = function() {
-        sendHeaders.push({ key: '', value: '' });
+        if (!sendDraft) return;
+        sendDraft.headers.push({ key: '', value: '' });
         renderSendHeaders();
     };
     window.removeSendHeader = function(i) {
-        sendHeaders.splice(i, 1);
+        if (!sendDraft) return;
+        sendDraft.headers.splice(i, 1);
         renderSendHeaders();
     };
 
@@ -1584,74 +1785,64 @@
             return;
         }
         ta.value = pieces.map(function(piece) { return piece.text; }).join('');
+        if (sendDraft) sendDraft.body = ta.value;
     };
 
-    function renderSendResult(data, networkError) {
+    function renderSendResult(data, failure) {
         var el = document.getElementById('sf-result');
         if (!el) return;
-        if (networkError) {
+        var line = function(text) { return '<div class="net-send-result-line">' + text + '</div>'; };
+        if (failure) {
             el.className = 'net-send-result error';
-            el.innerHTML = '<div class="net-send-result-status">Failed to send</div>'
-                + '<div class="net-send-result-line">' + debugEscapeHtml(networkError) + '</div>';
+            el.innerHTML = '<div class="net-send-result-status">Not sent</div>' + line(debugEscapeHtml(failure));
             return;
         }
-        var ok = !!(data && data.ok);
-        var statusCode = data && data.statusCode != null ? data.statusCode : null;
-        var lines = [];
-        if (statusCode != null) lines.push('Status code: ' + statusCode);
-        if (data && data.transactionId) {
-            lines.push('Captured as transaction ' + data.transactionId + ' — open it in the traffic list.');
+        var where = data.url ? line('Sent to ' + debugEscapeHtml(data.url) + (data.sender ? ' through "' + debugEscapeHtml(data.sender) + '"' : '')) : '';
+        if (!data.ok) {
+            // The call itself failed: no response, so no status.
+            el.className = 'net-send-result error';
+            el.innerHTML = '<div class="net-send-result-status">No response</div>' + line(debugEscapeHtml(data.error || 'The send failed')) + where;
+            return;
         }
-        if (data && data.error) lines.push('Error: ' + data.error);
-        el.className = 'net-send-result ' + (ok ? 'ok' : 'error');
-        var headline = ok
-            ? ('OK' + (statusCode != null ? ' (' + statusCode + ')' : ''))
-            : (statusCode != null ? 'Failed (' + statusCode + ')' : 'Failed');
-        el.innerHTML = '<div class="net-send-result-status">' + debugEscapeHtml(headline) + '</div>'
-            + lines.map(function(l) { return '<div class="net-send-result-line">' + debugEscapeHtml(l) + '</div>'; }).join('');
+        var code = data.statusCode;
+        el.className = 'net-send-result ' + (code < 300 ? 'ok' : (code < 400 ? 'redirect' : 'error'));
+        var captured = data.transactionId
+            ? line('<button type="button" class="net-format-btn" data-action="showSentTransaction" data-tx-id="' + debugEscapeHtml(data.transactionId) + '" title="Close the form and show the captured request and its response.">Show the response →</button>')
+            : line('Not in the list: the client of this sender has no Lustro interceptor, or capture is paused or filtered.');
+        el.innerHTML = '<div class="net-send-result-status">HTTP ' + debugEscapeHtml(String(code)) + (STATUS_TEXT[code] ? ' ' + STATUS_TEXT[code] : '') + '</div>'
+            + where + captured;
     }
 
     window.submitSendRequest = function() {
-        var urlEl = document.getElementById('sf-url');
-        var url = urlEl ? urlEl.value.trim() : '';
-        if (!url) { debugToast('URL is required', 'warning'); return; }
-        var method = document.getElementById('sf-method').value;
-        var bodyText = document.getElementById('sf-body').value;
+        if (!sendDraft) return;
+        var d = sendDraft;
+        var url = d.url.trim();
+        var resolved = resolveSendUrl(url, senderByName(d.sender));
+        if (!resolved.url) { renderSendResult(null, resolved.text); return; }
         var headers = {};
-        sendHeaders.forEach(function(h) {
+        d.headers.forEach(function(h) {
             if (h.key.trim()) headers[h.key.trim()] = h.value;
         });
         var btn = document.getElementById('sf-send-btn');
         if (btn) btn.disabled = true;
         var resultEl = document.getElementById('sf-result');
         if (resultEl) { resultEl.className = ''; resultEl.innerHTML = '<div class="net-rule-hits">Sending…</div>'; }
-        // Send is now SYNCHRONOUS: the server blocks for the NetworkSender result
-        // and replies { transactionId, statusCode, ok, error? }. Show that result
-        // directly in the panel instead of relying on the traffic list alone.
+        // SYNCHRONOUS: the server blocks for the sender's result and replies
+        // { transactionId, sender, url, statusCode, ok, error? }.
         debugFetch(netUrl('send'), {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-                method: method,
-                url: url,
-                headers: headers,
-                body: bodyText,
-            }),
+            body: JSON.stringify({ sender: d.sender, method: d.method, url: url, headers: headers, body: d.body }),
         }).then(function(r) { return r.json(); })
-          .then(function(data) {
-              renderSendResult(data, null);
-              if (data && data.ok) {
-                  debugToast('Request sent' + (data.statusCode != null ? ' (' + data.statusCode + ')' : ''), 'success');
-              } else {
-                  debugToast((data && data.error) || 'Send failed', 'error');
-              }
-          })
+          .then(function(data) { renderSendResult(data || {}, null); })
           .catch(function(e) {
-              renderSendResult(null, e.message);
-              debugToast('Failed to send: ' + e.message, 'error');
+              // A rejected send (an unknown sender, a timeout) answers with the error envelope.
+              var show = function(body) { renderSendResult(null, (body && body.message) || e.message); };
+              if (e && e.response) e.response.json().then(show, function() { show(null); }); else show(null);
           })
           .then(function() {
-              if (btn) btn.disabled = false;
+              var b = document.getElementById('sf-send-btn');
+              if (b) b.disabled = false;
           });
     };
 
@@ -2646,7 +2837,16 @@
             if (search) { search.focus(); search.select(); }
             return;
         }
+        if (composerOpen && e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+            e.preventDefault();
+            window.submitSendRequest();
+            return;
+        }
         if (e.key === 'Escape' && !e.defaultPrevented && !document.querySelector('.dc-modal-scrim:not([hidden])')) {
+            if (composerOpen) {
+                window.closeComposer();
+                return;
+            }
             if (trafficView === 'ws') {
                 if (wsSelectedId) {
                     deselectWebSocket();
@@ -2703,6 +2903,10 @@
         submitSendRequest: function() { window.submitSendRequest(); },
         addSendHeader: function() { window.addSendHeader(); },
         removeSendHeader: function(el) { window.removeSendHeader(parseInt(el.dataset.index, 10)); },
+        openNewRequest: function() { window.openNewRequest(); },
+        editAndResend: function() { window.editAndResend(); },
+        closeComposer: function() { window.closeComposer(); },
+        showSentTransaction: function(el) { window.showSentTransaction(el.dataset.txId); },
         togglePause: function() { window.togglePause(); },
         toggleOverwriteMode: function() { window.toggleOverwriteMode(); },
         clearTraffic: function() { window.clearTraffic(); },
@@ -2753,6 +2957,8 @@
             window.onWsSearchInput(el.value);
         } else if (action === 'updateSendHeader') {
             window.updateSendHeader(parseInt(el.dataset.index, 10), el.dataset.field, el.value);
+        } else if (action === 'updateSendField') {
+            window.updateSendField(el.dataset.field, el.value);
         }
     }
 
@@ -2764,6 +2970,10 @@
             window.setThrottle(el.value);
         } else if (action === 'toggleRule') {
             window.toggleRule(el.dataset.ruleId);
+        } else if (action === 'setSendSender') {
+            window.setSendSender(el.value);
+        } else if (action === 'setSendMethod') {
+            window.setSendMethod(el);
         }
     }
 
@@ -2787,6 +2997,7 @@
         buildStatusFilters();
         buildMethodFilters();
         debugInitResizers();
+        loadSenders();
         startPolling();
         startWsPolling();
     }

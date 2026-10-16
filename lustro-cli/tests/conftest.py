@@ -30,6 +30,7 @@ GOLDEN_OPENAPI_COMPONENTS = {
     "transaction.json": "Transaction",
     "transaction-image.json": "Transaction",
     "send-result.json": None,  # validated against the inline sendRequest 200 schema
+    "senders-list.json": None,  # validated against the inline listSenders 200 schema
     "rules-list.json": None,  # validated against the inline listMockRules 200 schema
     "error-envelope.json": "ErrorEnvelope",
     "export-har.json": "HarDocument",

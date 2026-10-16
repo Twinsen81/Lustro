@@ -37,7 +37,10 @@
 .net-filter-description { margin: 0; color: var(--t1); font-size: 13px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
 .net-filter-counts { display: flex; gap: 40px; }
 .net-filter-count { color: var(--t1); font-family: var(--font-mono); font-size: 18px; }
-.net-search { padding: 13px 22px 0; }
+.net-search { display: flex; align-items: center; gap: 8px; padding: 13px 22px 0; }
+.net-search > .dc-field { flex: 1; min-width: 0; }
+/* .dc-btn sets display, so [hidden] needs its own rule. */
+#new-request-btn[hidden] { display: none; }
 .net-category-bar {
     display: flex;
     gap: 6px;
@@ -477,6 +480,36 @@
 .net-send-result.ok .net-send-result-status { color: var(--live); }
 .net-send-result.error .net-send-result-status { color: var(--danger); }
 .net-send-result .net-send-result-line { margin-top: 4px; color: var(--t3); }
+.net-send-result.redirect { border-color: color-mix(in srgb, var(--lvl-w) 45%, transparent); }
+.net-send-result.redirect .net-send-result-status { color: var(--lvl-w); }
+
+/* ── Send form: in the right pane, in place of the detail ── */
+.net-composer { display: flex; flex-direction: column; }
+.net-composer-head { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+.net-composer-head h4 {
+    flex: none;
+    margin: 0;
+    font-size: 12.5px;
+    font-weight: 600;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: var(--t1);
+}
+.net-composer-from { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px; color: var(--t3); }
+.net-composer-head .dc-btn--icon { margin-left: auto; }
+.net-send-note { margin: 0 0 12px; font-size: 12px; line-height: 1.5; color: var(--t4); }
+.net-form-field { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.net-form-field .net-send-header-row { margin-bottom: 0; }
+.net-send-line { display: flex; gap: 7px; }
+.net-send-method { flex: 0 0 112px; font-weight: 600; }
+.net-send-resolved { font-size: 11.5px; line-height: 1.5; color: var(--t3); word-break: break-all; }
+.net-send-resolved-url { color: var(--accent-2); }
+.net-send-resolved--error { color: var(--danger); }
+.net-send-hint { font-size: 11.5px; line-height: 1.5; }
+.net-form-actions .net-send-hint { margin-left: auto; align-self: center; }
+.net-add-header { align-self: flex-start; }
+.net-add-header,
+.net-send-result-line .net-format-btn { margin-left: 0; }
 
 .net-rule-header {
     display: flex;

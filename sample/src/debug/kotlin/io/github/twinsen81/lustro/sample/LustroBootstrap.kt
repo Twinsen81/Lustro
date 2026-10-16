@@ -7,6 +7,7 @@ import io.github.twinsen81.lustro.ExperimentalPlatformCapture
 import io.github.twinsen81.lustro.Lustro
 import io.github.twinsen81.lustro.LustroStatus
 import io.github.twinsen81.lustro.network.NetworkDebugTab
+import io.github.twinsen81.lustro.network.OkHttpSender
 import io.github.twinsen81.lustro.network.SharedPreferencesMockRuleStorage
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
@@ -45,14 +46,14 @@ public object LustroBootstrap {
      *
      * @param app the application, used for [Lustro.builder] and for the
      *   [SharedPreferencesMockRuleStorage] that persists mock rules.
-     * @param appOkHttpClient the app's OkHttp client, wired into the Network tab
-     *   as the "Send Request" sender. The capturing interceptor is installed on a
-     *   separate client built afterwards (see [SampleApplication]), so Send-Request
-     *   replays report their inline outcome but do not appear as new rows in the
-     *   traffic list.
+     * @param appOkHttpClient returns the app's OkHttp client, which the Network
+     *   tab's Send form sends through. The client is built after this call,
+     *   because it carries the interceptor this call returns (see
+     *   [SampleApplication]); Lustro asks for it only when a request is sent, so
+     *   the requests sent from the console are captured like the app's own.
      */
     @OptIn(ExperimentalPlatformCapture::class)
-    public fun start(app: Application, appOkHttpClient: OkHttpClient): Interceptor {
+    public fun start(app: Application, appOkHttpClient: () -> OkHttpClient): Interceptor {
         interceptor?.let { return it }
 
         val prefs = app.getSharedPreferences("lustro_sample_mocks", Context.MODE_PRIVATE)
@@ -62,9 +63,6 @@ public object LustroBootstrap {
                 .config(
                     DebugConfig.builder()
                         .serverPort(8080)
-                        // Relative "Send Request" URLs resolve against this base,
-                        // so the demo can replay e.g. `/get` against the fixture host.
-                        .appServerBaseUrl("https://httpbingo.org")
                         .build(),
                 )
                 .addTab(
@@ -79,8 +77,15 @@ public object LustroBootstrap {
                     // substring; mock rules persist across restarts via prefs. The
                     // capture filter leaves analytics calls and marked requests out
                     // of the list, on both paths.
+                    // Two senders over the same client: one resolves a relative
+                    // URL such as `/get` against the fixture host, the other takes
+                    // absolute URLs only.
                     NetworkDebugTab.create(
-                        senderClient = appOkHttpClient,
+                        senders =
+                            listOf(
+                                OkHttpSender.create("httpbingo.org", baseUrl = "https://httpbingo.org", client = appOkHttpClient),
+                                OkHttpSender.create("Any host", client = appOkHttpClient),
+                            ),
                         capturePlatformHttp = true,
                         classifier = SampleNetworkClassifier(),
                         mockRuleStorage = SharedPreferencesMockRuleStorage(prefs),

@@ -24,6 +24,7 @@ import io.github.twinsen81.lustro.internal.network.NetworkSendRequestImpl
 import io.github.twinsen81.lustro.internal.network.NetworkTrafficStore
 import io.github.twinsen81.lustro.internal.network.NetworkTransaction
 import io.github.twinsen81.lustro.internal.network.SafeCaptureFilter
+import io.github.twinsen81.lustro.internal.network.SendCaptureTag
 import io.github.twinsen81.lustro.internal.network.WebSocketCapture
 import io.github.twinsen81.lustro.internal.network.WebSocketRoutes
 import io.github.twinsen81.lustro.internal.network.WebSocketTrafficStore
@@ -40,7 +41,7 @@ import org.json.JSONObject
  * and managing mock rules.
  *
  * Two-panel layout: the list of transactions or of WebSocket connections on the
- * left, detail/mock rules/send on the right. Created through the
+ * left, detail/mock rules/the Send form on the right. Created through the
  * [companion factory][Companion.create]; the
  * sink/interceptor wiring is internal. Adapted to the `/api/v1/network` wire
  * contract (cursor envelope, synchronous send) and the SPI
@@ -49,7 +50,9 @@ import org.json.JSONObject
 public class NetworkDebugTab private constructor(
     private val store: NetworkTrafficStore,
     private val captureFilter: SafeCaptureFilter,
-    private val senderClient: OkHttpClient?,
+    private val senders: List<OkHttpSender>,
+    // The senderClient form: its one sender takes DebugConfig.appServerBaseUrl.
+    private val sendersUseConfigBaseUrl: Boolean,
     private val capturePlatformHttp: Boolean,
     maxBodyCaptureBytes: Long,
     redactor: Redactor,
@@ -76,8 +79,9 @@ public class NetworkDebugTab private constructor(
     @Volatile
     private var maxBodyCaptureBytes: Long = maxBodyCaptureBytes
 
-    // Base for resolving relative "Send Request" URLs; null = relative URLs are
-    // rejected. Pushed in via applyConfig from DebugConfig.appServerBaseUrl.
+    // Base for resolving the relative URLs of the senderClient sender; null =
+    // relative URLs are rejected. Pushed in via applyConfig from
+    // DebugConfig.appServerBaseUrl.
     @Volatile
     private var appServerBaseUrl: String? = null
 
@@ -204,6 +208,7 @@ public class NetworkDebugTab private constructor(
                 </div>
                 <div class="net-search net-http-only">
                     <label class="dc-field" for="search-input"><span class="dc-field__prefix" aria-hidden="true">&gt;</span><input type="text" id="search-input" name="search" aria-label="Search network traffic" class="dc-input" placeholder="filter url, method, body…" data-action="onSearchInput" title="Search across URL, method, request body, and response body (server-side, 300ms debounce). Matches are highlighted in body views. Shortcut: Ctrl/Cmd+K to focus." /></label>
+                    <button class="dc-btn" id="new-request-btn" data-action="openNewRequest" hidden title="Compose a request and send it through one of the OkHttp clients that the app gave to Lustro. The form opens in the right pane.">+ New request</button>
                 </div>
                 <div class="net-category-bar net-http-only" id="category-filters"></div>
                 <div class="net-filter-bar net-http-only" id="status-filters"></div>
@@ -245,8 +250,8 @@ public class NetworkDebugTab private constructor(
                 <div class="dc-tabs">
                     <button class="dc-tab dc-tab--active" id="tab-btn-detail" data-action="switchRightTab" data-tab="detail" title="Inspect the selected transaction: headers, body, status, timing, byte sizes.">Detail</button>
                     <button class="dc-tab" id="tab-btn-rules" data-action="switchRightTab" data-tab="rules" title="Manage mock rules: a matching request gets the rule's response and never leaves the device. Rules are tried from the top, so the first match answers, and a new rule goes on top. Rules live in the app and survive a restart when it gives Lustro a rule storage.">Mock Rules</button>
-                    <button class="dc-tab" id="tab-btn-send" data-action="switchRightTab" data-tab="send" title="Dispatch an arbitrary request through the app's OkHttpClient. The result appears in the traffic list only when that client carries the Lustro interceptor. Self-requests to the debug server are rejected.">Send Request</button>
                     <div class="net-tab-actions">
+                        <button class="dc-btn dc-btn--sm" id="resend-btn" data-action="editAndResend" style="display:none" title="Open this request in the Send form: method, URL, headers, and body. Change what you need and send it again. The captured request stays as it is.">Edit and resend</button>
                         <button class="dc-btn dc-btn--sm" id="copy-curl-btn" data-action="copyCurl" style="display:none" title="Copy a cURL command that reproduces the selected request (paste into a terminal to re-run).">cURL</button>
                         <button class="dc-btn dc-btn--sm" id="copy-md-btn" data-action="copyMarkdown" style="display:none" title="Copy the request and response as Markdown, for a bug report, a pull request, or a chat. Headers and bodies go in code blocks.">Markdown</button>
                         <button class="dc-btn dc-btn--sm" id="copy-all-btn" data-action="copyAllDetail" style="display:none" title="Copy the full request and response (status, headers, bodies) as plain text for sharing or pasting into a bug report.">Copy</button>
@@ -312,7 +317,8 @@ public class NetworkDebugTab private constructor(
             path == "pause" && method == "POST" -> handleTogglePause()
             path == "overwrite-mode" && method == "POST" -> handleToggleOverwriteMode()
             path == "throttle" && method == "POST" -> handleSetThrottle(body)
-            path == "send" && method == "POST" && senderClient != null -> handleSendRequest(body)
+            path == "senders" && method == "GET" -> handleSenders()
+            path == "send" && method == "POST" && senders.isNotEmpty() -> handleSendRequest(body)
             else -> null
         }
     }
@@ -554,8 +560,24 @@ public class NetworkDebugTab private constructor(
             DebugResponse.error("Invalid JSON: ${e.message}")
         }
 
+    private fun baseUrlOf(sender: OkHttpSender): String? =
+        sender.baseUrl ?: appServerBaseUrl.takeIf { sendersUseConfigBaseUrl }
+
+    private fun handleSenders(): DebugResponse =
+        DebugResponse.json {
+            append("{\"items\":[")
+            senders.forEachIndexed { index, sender ->
+                if (index > 0) append(",")
+                append("{\"name\":\"").append(sender.name.escapeForJson()).append("\",\"baseUrl\":")
+                val base = baseUrlOf(sender)
+                if (base == null) append("null") else append("\"").append(base.escapeForJson()).append("\"")
+                append("}")
+            }
+            append("]}")
+        }
+
     private fun handleSendRequest(body: String?): DebugResponse {
-        val client = senderClient ?: return DebugResponse.notFound("Send is not configured")
+        if (senders.isEmpty()) return DebugResponse.notFound("Send is not configured")
         return try {
             val json = JSONObject(body ?: "{}")
             val rawUrl = json.optString("url").trim()
@@ -563,17 +585,29 @@ public class NetworkDebugTab private constructor(
             if (rawUrl.isBlank()) {
                 return DebugResponse.error("url is required", field = "url")
             }
-            // Resolve relative URLs against the configured app server base URL
-            // by trimming any trailing slash and appending the relative path.
+            val senderName = if (json.isNull("sender")) null else json.optString("sender")
+            val sender =
+                if (senderName == null) {
+                    senders.first()
+                } else {
+                    senders.firstOrNull { it.name == senderName }
+                        ?: return DebugResponse.error(
+                            "No sender is named \"$senderName\"",
+                            field = "sender",
+                            hint = "GET senders lists the names",
+                        )
+                }
             val resolvedUrl =
-                if (rawUrl.startsWith("http://") || rawUrl.startsWith("https://")) {
+                if (ABSOLUTE_URL.containsMatchIn(rawUrl)) {
                     rawUrl
                 } else {
-                    val base = appServerBaseUrl
+                    val base = baseUrlOf(sender)
                         ?: return DebugResponse.error(
-                            "url must be absolute (no app server base configured for relative URLs)",
+                            "url must be absolute: the sender \"${sender.name}\" has no base URL",
                             field = "url",
                         )
+                    // Appended, not resolved as RFC 3986 does: a base with a path,
+                    // such as https://api.example.com/v1, keeps it.
                     base.trimEnd('/') + "/" + rawUrl.trimStart('/')
                 }
             if (isSelfRequest(resolvedUrl)) {
@@ -606,18 +640,31 @@ public class NetworkDebugTab private constructor(
                     body = requestBody,
                     contentType = contentType ?: MediaType.JSON,
                 )
+            val captureTag = SendCaptureTag()
             // SYNCHRONOUS: block for the sender result. The runtime calls handle()
-            // off the main thread, so blocking here is safe.
-            val result = newSender(client).send(sendRequest)
+            // off the main thread, so blocking here is safe. Only the status and
+            // outcome are reported, so the response read is capped at the capture
+            // cap. The call timeout runs a moment past the per-request timeout:
+            // the server still answers 504 first, then OkHttp cancels the call so a
+            // slow or stalled response cannot keep the worker thread and socket busy.
+            val result =
+                sender.send(
+                    sendRequest,
+                    maxResponseBodyBytes = maxBodyCaptureBytes,
+                    callTimeoutMs = requestTimeoutMs + SEND_CANCEL_GRACE_MS,
+                    captureTag = captureTag,
+                )
             DebugResponse.json {
                 append("{")
-                // transactionId is null: the synchronous send path does not correlate
-                // the dispatched call to a captured transaction. The replay is recorded
-                // as its own row only when the configured sender client carries the
-                // Lustro interceptor; either way the outcome is surfaced inline below.
-                append("\"transactionId\":null,")
-                append("\"statusCode\":").append(result.statusCode).append(",")
-                append("\"ok\":").append(result.isSuccess)
+                append("\"transactionId\":")
+                // Set when the sender's client carries the Lustro interceptor and
+                // the request was captured.
+                val transactionId = captureTag.transactionId
+                if (transactionId == null) append("null") else append("\"").append(transactionId.value.escapeForJson()).append("\"")
+                append(",\"sender\":\"").append(sender.name.escapeForJson()).append("\"")
+                append(",\"url\":\"").append(resolvedUrl.escapeForJson()).append("\"")
+                append(",\"statusCode\":").append(result.statusCode)
+                append(",\"ok\":").append(result.isSuccess)
                 if (!result.isSuccess) {
                     append(",\"error\":\"").append((result.errorMessage ?: "send failed").escapeForJson()).append("\"")
                 }
@@ -627,18 +674,6 @@ public class NetworkDebugTab private constructor(
             DebugResponse.error("Failed to send: ${e.message}")
         }
     }
-
-    // Built per send so it observes the current config. Only the status and
-    // outcome are reported, so the response read is capped at the capture cap.
-    // The call timeout runs a moment past the per-request timeout: the server
-    // still answers 504 first, then OkHttp cancels the call so a slow or stalled
-    // response cannot keep the worker thread and socket busy.
-    private fun newSender(client: OkHttpClient): OkHttpSender =
-        OkHttpSender(
-            client = client,
-            maxResponseBodyBytes = maxBodyCaptureBytes,
-            callTimeoutMs = requestTimeoutMs + SEND_CANCEL_GRACE_MS,
-        )
 
     private fun isSelfRequest(rawUrl: String): Boolean {
         // Compare against the server's ACTUAL bind host:port (not all loopback): a
@@ -741,8 +776,11 @@ public class NetworkDebugTab private constructor(
          * [overload][create] that takes `capturePlatformHttp`, which is gated by
          * [ExperimentalPlatformCapture].
          *
-         * @param senderClient when non-null, wrapped in an [OkHttpSender] to power
-         *   the "Send Request" panel; when `null`, the Send route is hidden.
+         * @param senderClient when non-null, the Send form sends through this
+         *   client, as one sender named "Default" whose relative URLs resolve
+         *   against `DebugConfig.appServerBaseUrl`; when `null`, the Send route
+         *   is hidden. To send through several clients, or through one that is
+         *   built after Lustro, use the overload that takes `senders`.
          * @param classifier tags captured URLs with category labels (default: none).
          * @param redactor removes sensitive data at capture time (default:
          *   [DefaultRedactor]).
@@ -762,7 +800,48 @@ public class NetworkDebugTab private constructor(
             captureFilter: NetworkCaptureFilter = NoOpNetworkCaptureFilter,
         ): NetworkDebugTab =
             newTab(
-                senderClient = senderClient,
+                senders = listOfNotNull(senderClient?.let { OkHttpSender(it) }),
+                sendersUseConfigBaseUrl = true,
+                capturePlatformHttp = false,
+                classifier = classifier,
+                redactor = redactor,
+                mockRuleStorage = mockRuleStorage,
+                captureFilter = captureFilter,
+            )
+
+        /**
+         * Creates a [NetworkDebugTab] whose Send form offers [senders], for
+         * example one for each OkHttp client that the app builds with its own
+         * interceptors or for its own host. Otherwise the same as the
+         * [overload][create] that takes `senderClient`.
+         *
+         * @param senders the senders the Send form lists, in this order; the
+         *   first one is the default, also for `POST send` without a `sender`.
+         *   Each resolves relative URLs against its own
+         *   [base URL][OkHttpSender.baseUrl]; `DebugConfig.appServerBaseUrl`
+         *   does not apply to them. An empty list hides the Send route.
+         * @param classifier tags captured URLs with category labels (default: none).
+         * @param redactor removes sensitive data at capture time (default:
+         *   [DefaultRedactor]).
+         * @param mockRuleStorage persists mock rules; `null` keeps them in memory.
+         * @param captureFilter decides which requests are captured (default: all).
+         *   It affects capture only: mock rules and the throttle still apply to a
+         *   request it skips. The Network tab shows how many it skipped, with its
+         *   description.
+         * @throws IllegalArgumentException when two senders have the same name.
+         */
+        @JvmStatic
+        @JvmOverloads
+        public fun create(
+            senders: List<OkHttpSender>,
+            classifier: NetworkClassifier = NoOpNetworkClassifier,
+            redactor: Redactor = DefaultRedactor,
+            mockRuleStorage: MockRuleStorage? = null,
+            captureFilter: NetworkCaptureFilter = NoOpNetworkCaptureFilter,
+        ): NetworkDebugTab =
+            newTab(
+                senders = senders,
+                sendersUseConfigBaseUrl = false,
                 capturePlatformHttp = false,
                 classifier = classifier,
                 redactor = redactor,
@@ -780,8 +859,10 @@ public class NetworkDebugTab private constructor(
          * fail-open). This rests on a non-public platform detail, hence the
          * [ExperimentalPlatformCapture] opt-in.
          *
-         * @param senderClient when non-null, wrapped in an [OkHttpSender] to power
-         *   the "Send Request" panel; when `null`, the Send route is hidden.
+         * @param senderClient when non-null, the Send form sends through this
+         *   client, as one sender named "Default" whose relative URLs resolve
+         *   against `DebugConfig.appServerBaseUrl`; when `null`, the Send route
+         *   is hidden.
          * @param capturePlatformHttp when `true`, installs the process-global
          *   `HttpURLConnection` capture (best-effort, fail-open).
          * @param classifier tags captured URLs with category labels (default: none).
@@ -805,7 +886,49 @@ public class NetworkDebugTab private constructor(
             captureFilter: NetworkCaptureFilter = NoOpNetworkCaptureFilter,
         ): NetworkDebugTab =
             newTab(
-                senderClient = senderClient,
+                senders = listOfNotNull(senderClient?.let { OkHttpSender(it) }),
+                sendersUseConfigBaseUrl = true,
+                capturePlatformHttp = capturePlatformHttp,
+                classifier = classifier,
+                redactor = redactor,
+                mockRuleStorage = mockRuleStorage,
+                captureFilter = captureFilter,
+            )
+
+        /**
+         * Creates a [NetworkDebugTab] whose Send form offers [senders],
+         * optionally installing the process-global `HttpURLConnection` capture.
+         * See the [overload][create] that takes `senders` and the one that takes
+         * `senderClient` and [capturePlatformHttp].
+         *
+         * @param senders the senders the Send form lists, in this order; the
+         *   first one is the default. An empty list hides the Send route.
+         * @param capturePlatformHttp when `true`, installs the process-global
+         *   `HttpURLConnection` capture (best-effort, fail-open).
+         * @param classifier tags captured URLs with category labels (default: none).
+         * @param redactor removes sensitive data at capture time (default:
+         *   [DefaultRedactor]).
+         * @param mockRuleStorage persists mock rules; `null` keeps them in memory.
+         * @param captureFilter decides which requests are captured, OkHttp and
+         *   `HttpURLConnection` alike (default: all). It affects capture only:
+         *   mock rules and the throttle still apply to an OkHttp request it skips.
+         *   The Network tab shows how many it skipped, with its description.
+         * @throws IllegalArgumentException when two senders have the same name.
+         */
+        @ExperimentalPlatformCapture
+        @JvmStatic
+        @JvmOverloads
+        public fun create(
+            senders: List<OkHttpSender>,
+            capturePlatformHttp: Boolean,
+            classifier: NetworkClassifier = NoOpNetworkClassifier,
+            redactor: Redactor = DefaultRedactor,
+            mockRuleStorage: MockRuleStorage? = null,
+            captureFilter: NetworkCaptureFilter = NoOpNetworkCaptureFilter,
+        ): NetworkDebugTab =
+            newTab(
+                senders = senders,
+                sendersUseConfigBaseUrl = false,
                 capturePlatformHttp = capturePlatformHttp,
                 classifier = classifier,
                 redactor = redactor,
@@ -814,13 +937,16 @@ public class NetworkDebugTab private constructor(
             )
 
         private fun newTab(
-            senderClient: OkHttpClient?,
+            senders: List<OkHttpSender>,
+            sendersUseConfigBaseUrl: Boolean,
             capturePlatformHttp: Boolean,
             classifier: NetworkClassifier,
             redactor: Redactor,
             mockRuleStorage: MockRuleStorage?,
             captureFilter: NetworkCaptureFilter,
         ): NetworkDebugTab {
+            val duplicate = senders.groupBy { it.name }.entries.firstOrNull { it.value.size > 1 }?.key
+            require(duplicate == null) { "Two senders are named \"$duplicate\"; each needs its own name" }
             val store =
                 NetworkTrafficStore(
                     maxTransactions = DEFAULT_MAX_TRANSACTIONS,
@@ -831,7 +957,8 @@ public class NetworkDebugTab private constructor(
             return NetworkDebugTab(
                 store = store,
                 captureFilter = SafeCaptureFilter(captureFilter),
-                senderClient = senderClient,
+                senders = senders.toList(),
+                sendersUseConfigBaseUrl = sendersUseConfigBaseUrl,
                 capturePlatformHttp = capturePlatformHttp,
                 maxBodyCaptureBytes = DEFAULT_MAX_BODY_CAPTURE_BYTES,
                 redactor = redactor,
@@ -840,6 +967,8 @@ public class NetworkDebugTab private constructor(
         }
 
         private const val SEND_CANCEL_GRACE_MS = 1_000L
+
+        private val ABSOLUTE_URL = Regex("^https?://", RegexOption.IGNORE_CASE)
 
         private const val EXPORT_FORMAT_HAR = "har"
 

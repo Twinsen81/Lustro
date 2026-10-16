@@ -1150,9 +1150,28 @@ def cmd_mock_sync(args: argparse.Namespace) -> int:
 # ── send ───────────────────────────────────────────────────────────────────────
 
 
+def cmd_senders(args: argparse.Namespace) -> int:
+    client = _build_client(args)
+    data = client.get(NETWORK + "/senders")
+    if args.json:
+        _emit(data, raw_json=True)
+        return 0
+    for index, sender in enumerate(data.get("items") or []):
+        print(
+            "{name}  {base}{default}".format(
+                name=sender.get("name"),
+                base=sender.get("baseUrl") or "(absolute URLs only)",
+                default="  (default)" if index == 0 else "",
+            )
+        )
+    return 0
+
+
 def cmd_send(args: argparse.Namespace) -> int:
     client = _build_client(args)
     payload: dict = {"url": args.url, "method": args.method}
+    if args.sender is not None:
+        payload["sender"] = args.sender
     if args.header:
         payload["headers"] = _parse_headers(args.header)
     if args.body is not None:
@@ -1486,8 +1505,12 @@ def build_parser() -> argparse.ArgumentParser:
     m_sync.set_defaults(func=cmd_mock_sync)
 
     # send
-    p_send = sub.add_parser("send", parents=[common], help="POST send (synchronous replay through NetworkSender)")
-    p_send.add_argument("--url", required=True, help="absolute URL or path resolved against app base")
+    p_senders = sub.add_parser("senders", parents=[common], help="GET senders (the clients send can use; the first is the default)")
+    p_senders.set_defaults(func=cmd_senders)
+
+    p_send = sub.add_parser("send", parents=[common], help="POST send (synchronous, through one of the app's senders)")
+    p_send.add_argument("--url", required=True, help="absolute URL, or a path appended to the sender's base URL")
+    p_send.add_argument("--sender", default=None, metavar="NAME", help="name of a sender from 'lustro senders' (default: the first)")
     p_send.add_argument("--method", default="GET")
     p_send.add_argument("--header", action="append", metavar="K:V", help="request header (repeatable)")
     p_send.add_argument("--body", default=None, help="request body")
