@@ -3,7 +3,7 @@
   "info": {
     "title": "Lustro Logs debug tab",
     "version": "1.0",
-    "description": "The app's own logcat (logcat -v threadtime --pid=<the app's pid>), from the start of its process: a live tail, filters, and a plain-text export. The tab reads logcat while Lustro is started, also in the background, and holds the newest lines in a buffer of a fixed size on the app's heap. Log lines are not redacted. All routes are token-authenticated (Bearer header or HttpOnly cookie) and live under /api/v1/logs. Errors use the shared error envelope."
+    "description": "The app's own logcat (logcat -v threadtime -v UTC --pid=<the app's pid>), from the start of its process: a live tail, filters, and a plain-text export. The tab reads logcat while Lustro is started, also in the background, and holds the newest lines in a buffer of a fixed size on the app's heap. Log lines are not redacted. All routes are token-authenticated (Bearer header or HttpOnly cookie) and live under /api/v1/logs. Errors use the shared error envelope."
   },
   "servers": [
     {
@@ -71,7 +71,7 @@
               "type": "string",
               "maxLength": 200
             },
-            "description": "A Java regular expression found in the message, case-sensitive. 400 with field mq when it is longer than 200 characters or doesn't compile. The filters of one response stop after 5 s with a 400, because a regex such as (a+)+$ can take very long."
+            "description": "A Java regular expression found in the message, case-sensitive. 400 with field mq when it is longer than 200 characters or doesn't compile. The filters check the time between lines and stop with a 400 after 5 s. One match can't be stopped, so a regex that backtracks a lot, such as (a+)+$, can hold the request for long: keep tag and mq simple."
           },
           {
             "name": "limit",
@@ -174,7 +174,7 @@
               "type": "string",
               "maxLength": 200
             },
-            "description": "A Java regular expression found in the message, case-sensitive. 400 with field mq when it is longer than 200 characters or doesn't compile. The filters of one response stop after 5 s with a 400, because a regex such as (a+)+$ can take very long."
+            "description": "A Java regular expression found in the message, case-sensitive. 400 with field mq when it is longer than 200 characters or doesn't compile. The filters check the time between lines and stop with a 400 after 5 s. One match can't be stopped, so a regex that backtracks a lot, such as (a+)+$, can hold the request for long: keep tag and mq simple."
           },
           {
             "name": "limit",

@@ -6,8 +6,8 @@ import java.io.IOException
 import java.util.Locale
 
 /**
- * Runs `logcat -v threadtime --pid=<pid>` on a thread of its own, and adds each
- * line it parses to [buffer].
+ * Runs `logcat -v threadtime -v UTC --pid=<pid>` on a thread of its own, and
+ * adds each line it parses to [buffer].
  *
  * The first run reads from [processStartMs], so the buffer also gets the lines
  * the app wrote before the tab started. A later run, after a failure or after
@@ -104,7 +104,8 @@ internal class LogcatReader(
     }
 
     private fun arguments(since: Long): List<String> {
-        val arguments = listOf("logcat", "-v", "threadtime", "--pid=$pid")
+        // UTC, so that a change of the device's time zone can't shift the times it parses.
+        val arguments = listOf("logcat", "-v", "threadtime", "-v", "UTC", "--pid=$pid")
         if (!passSince) return arguments
         // Seconds since the epoch: unlike MM-dd, it has no year and no time zone to get wrong.
         return arguments + listOf("-T", String.format(Locale.US, "%d.%03d", since / MILLIS_PER_SECOND, since % MILLIS_PER_SECOND))

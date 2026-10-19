@@ -16,8 +16,8 @@ see [DECISIONS.md](DECISIONS.md).
 
 - **The Logs plugin serves the app's own logcat.** `lustro-logs` and its
   release half `lustro-logs-noop` add a tab, registered with
-  `LogsDebugTab.create()`, that runs `logcat -v threadtime --pid=<the app's
-  pid>` from `Lustro.start()` to `Lustro.stop()`, from the start of the
+  `LogsDebugTab.create()`, that runs `logcat -v threadtime -v UTC --pid=<the
+  app's pid>` from `Lustro.start()` to `Lustro.stop()`, from the start of the
   process, so the lines the app wrote before `start()` are there too. An
   agent reads the app's log through Lustro, with no `adb logcat` and no pid
   filter of its own. `GET /api/v1/logs/entries` polls the log in the stream

@@ -476,7 +476,7 @@ request body with no `Content-Type` is stored as text, and its `requestContentTy
 Base path `/api/v1/logs`, when the app registers the Logs plugin (`LogsDebugTab.create()`; without
 it, the routes are an enveloped `404 Unknown tab: logs`). The authoritative contract is
 `lustro-logs/src/main/assets/lustro/logs.openapi.json`, version `1.0`. The tab runs
-`logcat -v threadtime --pid=<the app's pid>` while Lustro is started, also in the background, from
+`logcat -v threadtime -v UTC --pid=<the app's pid>` while Lustro is started, also in the background, from
 the start of the app's process, and holds the newest lines in a buffer of a fixed size (4 MiB by
 default). The CLI has no `logs` commands: use `lustro api`.
 
@@ -499,7 +499,9 @@ have with that `seq`, do not add a second one.
 `(?i)` to ignore case, anchor with `^` and `$`), each at most 200 characters. `q` is text the
 message contains, ignoring case. They combine. The cursor moves past the lines they leave out, so
 keep the same filters while you follow one cursor. A bad value gets a `400` with `field` set to
-the parameter, and filters that run longer than 5 s, such as a regex that backtracks, a `400`.
+the parameter. The filters check the time between lines and stop with a `400` after 5 s; one match
+can't be stopped, so a regex that backtracks a lot, such as `(a+)+$`, can hold the request for
+long. Keep `tag` and `mq` simple.
 
 **Reader status.** `state.reader` is `running`; `restarting`, for the second after logcat ended
 before the tab starts it again; `failed`, after logcat ended four times in a row without a line,

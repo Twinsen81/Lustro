@@ -27,6 +27,20 @@ class ThreadtimeParserTest {
     }
 
     @Test
+    fun `a line with its zone, as -v UTC prints it, is read in that zone, whatever the parser's zone`() {
+        val madrid = ThreadtimeParser(TimeZone.getTimeZone("Europe/Madrid")) { now }
+        val utcLine = madrid.parse("10-19 14:22:20.010 +0000  4321  4350 D OkHttp  : --> GET /a")!!
+        assertEquals(now, utcLine.at)
+        assertEquals(4321, utcLine.pid)
+        assertEquals("OkHttp", utcLine.tag)
+        assertEquals("--> GET /a", utcLine.message)
+        assertEquals(now, madrid.parse("10-19 16:22:20.010 +0200  4321  4350 D OkHttp  : m")!!.at)
+        assertEquals(now, madrid.parse("10-19 09:22:20.010 -0500  4321  4350 D OkHttp  : m")!!.at)
+        // Without a zone, the parser's own.
+        assertEquals(now, madrid.parse("10-19 16:22:20.010  4321  4350 D OkHttp  : m")!!.at)
+    }
+
+    @Test
     fun `a tag longer than the padding, or with spaces and colons, ends at the first colon and space`() {
         assertEquals("ActivityTaskManager", parser.parse("10-19 14:22:20.010  1  2 I ActivityTaskManager: Displayed")!!.tag)
         assertEquals("My Tag", parser.parse("10-19 14:22:20.010  1  2 I My Tag  : m")!!.tag)

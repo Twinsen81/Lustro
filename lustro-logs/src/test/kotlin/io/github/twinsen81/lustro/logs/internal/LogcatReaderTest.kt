@@ -34,7 +34,7 @@ class LogcatReaderTest {
         launcher.add(logcat)
         reader.start()
 
-        assertEquals(listOf("logcat", "-v", "threadtime", "--pid=4321", "-T", "1792419680.010"), launcher.nextLaunch())
+        assertEquals(listOf("logcat", "-v", "threadtime", "-v", "UTC", "--pid=4321", "-T", "1792419680.010"), launcher.nextLaunch())
         logcat.emit(
             "--------- beginning of main",
             "10-19 14:22:20.000  4321  4330 I App     : started",
@@ -66,7 +66,7 @@ class LogcatReaderTest {
         reader.start()
 
         assertTrue(launcher.nextLaunch().contains("-T"))
-        assertEquals(listOf("logcat", "-v", "threadtime", "--pid=4321"), launcher.nextLaunch())
+        assertEquals(listOf("logcat", "-v", "threadtime", "-v", "UTC", "--pid=4321"), launcher.nextLaunch())
         second.emit("10-19 14:22:20.000  4321  4330 I App     : read")
         awaitMessages("read")
     }

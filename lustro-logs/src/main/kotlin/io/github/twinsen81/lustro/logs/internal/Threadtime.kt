@@ -8,7 +8,11 @@ import java.util.TimeZone
 
 /**
  * Parses the lines of `logcat -v threadtime`:
- * `MM-dd HH:mm:ss.SSS  PID  TID L TAG     : message`.
+ * `MM-dd HH:mm:ss.SSS  PID  TID L TAG     : message`, and of
+ * `logcat -v threadtime -v UTC`, which has the zone after the time:
+ * `MM-dd HH:mm:ss.SSS +0000  PID ...`. The reader asks for UTC: a local time
+ * shifts when the device's time zone changes, and repeats an hour when
+ * daylight saving time ends. A line without a zone is read in [zone].
  *
  * The line has no year. The parser takes the current one, and the year before
  * when that puts the line more than a day in the future, as for a line from
@@ -18,7 +22,8 @@ internal class ThreadtimeParser(
     zone: TimeZone = TimeZone.getDefault(),
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
-    private val calendar = Calendar.getInstance(zone, Locale.US)
+    private val local = Calendar.getInstance(zone, Locale.US)
+    private val utc = Calendar.getInstance(TimeZone.getTimeZone("UTC"), Locale.US)
 
     /**
      * Returns the parsed line, or `null` for a line in another format, such as
@@ -29,6 +34,8 @@ internal class ThreadtimeParser(
         var i = TIMESTAMP_LENGTH
         if (line[i] != ' ') return null
         i = skipSpaces(line, i)
+        val offsetMinutes = offsetAt(line, i)
+        if (offsetMinutes != null) i = skipSpaces(line, i + OFFSET_LENGTH)
         val pidEnd = digitsEnd(line, i)
         if (pidEnd == i) return null
         val pid = line.substring(i, pidEnd).toIntOrNull() ?: return null
@@ -55,16 +62,31 @@ internal class ThreadtimeParser(
             return null
         }
         val tag = line.substring(tagStart, separator).trimEnd()
-        val at = timeOf(line) ?: return null
+        val at = timeOf(line, offsetMinutes) ?: return null
         return LogLine(at, pid, tid, level, tag, message)
     }
 
-    private fun timeOf(line: String): Long? {
+    // The offset of "+hhmm" or "-hhmm" followed by a space at [at], in minutes, or null.
+    private fun offsetAt(line: String, at: Int): Int? {
+        if (at + OFFSET_LENGTH >= line.length || line[at + OFFSET_LENGTH] != ' ') return null
+        val sign =
+            when (line[at]) {
+                '+' -> 1
+                '-' -> -1
+                else -> return null
+            }
+        if ((at + 1..at + 4).any { line[it] !in '0'..'9' }) return null
+        return sign * (twoDigits(line, at + 1) * MINUTES_PER_HOUR + twoDigits(line, at + 3))
+    }
+
+    private fun timeOf(line: String, offsetMinutes: Int?): Long? {
         val month = twoDigits(line, 0)
         val day = twoDigits(line, MONTH_DAY_OFFSET)
         if (month !in 1..MONTHS || day !in 1..MAX_DAY) return null
+        val calendar = if (offsetMinutes == null) local else utc
+        val shift = (offsetMinutes ?: 0) * MILLIS_PER_MINUTE
         val now = clock()
-        calendar.timeInMillis = now
+        calendar.timeInMillis = now + shift
         val year = calendar.get(Calendar.YEAR)
         calendar.clear()
         calendar.set(
@@ -76,10 +98,10 @@ internal class ThreadtimeParser(
             twoDigits(line, SECOND_OFFSET),
         )
         calendar.set(Calendar.MILLISECOND, threeDigits(line, MILLIS_OFFSET))
-        var at = calendar.timeInMillis
+        var at = calendar.timeInMillis - shift
         if (at - now > DAY_MS) {
             calendar.set(Calendar.YEAR, year - 1)
-            at = calendar.timeInMillis
+            at = calendar.timeInMillis - shift
         }
         return at
     }
@@ -99,6 +121,9 @@ internal class ThreadtimeParser(
         const val MONTHS = 12
         const val MAX_DAY = 31
         const val DAY_MS = 24L * 60 * 60 * 1000
+        const val OFFSET_LENGTH = 5
+        const val MINUTES_PER_HOUR = 60
+        const val MILLIS_PER_MINUTE = 60_000L
 
         fun hasTimestampShape(line: String): Boolean =
             TIMESTAMP_SHAPE.indices.all { index ->
