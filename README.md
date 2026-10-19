@@ -565,6 +565,47 @@ try {
   until the background thread catches up, as OkHttp capture does.
 - In `lustro-noop`, the sink records nothing and finds no rule.
 
+## Logs
+
+The Logs plugin serves your app's own logcat: a live tail, filters, and a plain-text export. Your
+app gives it no data source: the tab runs `logcat --pid=<your app's pid>` itself. It is a pair of
+artifacts, split by variant as `lustro` is:
+
+```toml
+lustro-logs      = { group = "io.github.twinsen81", name = "lustro-logs",      version.ref = "lustro" }
+lustro-logs-noop = { group = "io.github.twinsen81", name = "lustro-logs-noop", version.ref = "lustro" }
+```
+
+```kotlin
+dependencies {
+    debugImplementation(libs.lustro.logs)
+    releaseImplementation(libs.lustro.logs.noop)
+}
+
+val lustro = Lustro.builder(application)
+    .addTab(NetworkDebugTab.create(senderClient = client))
+    .addTab(LogsDebugTab.create())
+    .build()
+```
+
+- **From the start of the process.** The tab reads logcat from `start()` to `stop()`, also while
+  the app is in the background, and starts with the lines that your process wrote before
+  `start()`. `stop()` ends the `logcat` process; the next `start()` goes on after the newest line.
+- **A bounded buffer.** The newest lines stay in memory, at most `bufferBytes` (default 4 MiB, by
+  the size of their text on the heap, about 12,000 lines of 100 characters):
+  `LogsDebugTab.create(bufferBytes = 8 * 1024 * 1024)`. A line that repeats the line before folds
+  into it as a count, so a flood of one line costs almost nothing.
+- **Routes, no view yet.** The console has no Logs view yet, so the tab is not in the tab bar.
+  `GET /api/v1/logs/entries` polls the log in the stream envelope, with `level`, `tag`, `q`, and
+  `mq` filters; `GET /api/v1/logs/text` exports it as logcat's threadtime text; and `POST clear`,
+  `pause`, and `compact` control it. The `lustro` CLI reaches them with `lustro api`, for example
+  `lustro api GET logs/text --param level=W`. See [docs/AGENTS.md](docs/AGENTS.md#logs-tab-operations)
+  and [`logs.openapi.json`](lustro-logs/src/main/assets/lustro/logs.openapi.json).
+- **Not redacted.** Log lines are served as the app wrote them, tokens that an
+  `HttpLoggingInterceptor` logs among them. See [SECURITY.md](SECURITY.md#threat-model).
+- **Only logcat.** A message longer than logcat's limit of about 4 KB is cut, as in `adb logcat`.
+- In `lustro-logs-noop`, the tab reads no logs.
+
 ## Security model
 
 Lustro deliberately surfaces app internals, so its defaults are conservative. See
@@ -595,8 +636,9 @@ Lustro deliberately surfaces app internals, so its defaults are conservative. Se
   capture entirely. A JSON body with no sensitive field in it is stored exactly as it arrived, so
   what you inspect and copy is what was on the wire. The text of a WebSocket message is redacted as
   a body is; a binary message is stored as it arrived (see [WebSocket messages](#websocket-messages)).
-- **Nothing persisted to disk except mock rules.** Captured traffic lives only in a bounded
-  in-memory ring buffer and is lost when the process dies; the sole persisted state is your mock
+- **Log lines are not redacted.** The [Logs](#logs) plugin serves the app's logcat as it is.
+- **Nothing persisted to disk except mock rules.** Captured traffic and log lines live only in
+  bounded in-memory ring buffers and are lost when the process dies; the sole persisted state is your mock
   rules, and only when you give the tab a `MockRuleStorage` (see [Mock rules](#mock-rules)). The
   browser keeps no copy of them.
 - **Release builds are inert.** Release variants depend on `:lustro-noop`, whose runtime bodies
@@ -723,7 +765,10 @@ Shared shapes: a uniform **error envelope** `{ error, message, code?, field?, hi
 `{ cursor, status, items?, dropped? }` has the same statuses for a list that only grows at its
 end: its `delta` carries only the entries after the cursor. The schemas and the SemVer
 policy live in [`wire-protocol/v1/`](wire-protocol/v1/); the Network tab's contract is
-[`lustro/src/main/assets/lustro/network.openapi.json`](lustro/src/main/assets/lustro/network.openapi.json).
+[`lustro/src/main/assets/lustro/network.openapi.json`](lustro/src/main/assets/lustro/network.openapi.json),
+and the Logs tab's is
+[`lustro-logs/src/main/assets/lustro/logs.openapi.json`](lustro-logs/src/main/assets/lustro/logs.openapi.json),
+with a version of its own.
 
 For driving Lustro from agents, scripts, or the `lustro` CLI, see
 [docs/AGENTS.md](docs/AGENTS.md).
@@ -752,6 +797,8 @@ For driving Lustro from agents, scripts, or the `lustro` CLI, see
 | `:lustro` | `io.github.twinsen81:lustro` | Debug runtime AAR: embedded server, capture, built-in Network tab, mock storage, OkHttp adapters. |
 | `:lustro-noop` | `io.github.twinsen81:lustro-noop` | Release-safe no-op AAR mirroring `:lustro`'s public facades with empty bodies. |
 | `:lustro-api` | `io.github.twinsen81:lustro-api` | Pure-Kotlin public SPI (`DebugTab`, `DebugRequest`/`DebugResponse`, `Headers`, `MediaType`, network seams). |
+| `:lustro-logs` | `io.github.twinsen81:lustro-logs` | The [Logs](#logs) plugin: the app's own logcat under `/api/v1/logs/`. |
+| `:lustro-logs-noop` | `io.github.twinsen81:lustro-logs-noop` | Release-safe no-op half of `:lustro-logs`. |
 | `lustro-cli/` | `lustro-cli` (PyPI) | Python CLI that wraps the HTTP API, installing a `lustro` command; published alongside each release. |
 
 See also: [CONTRIBUTING.md](CONTRIBUTING.md) · [SECURITY.md](SECURITY.md) ·

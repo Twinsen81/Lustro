@@ -5,6 +5,7 @@
   "folders": [
     "lustro/",
     "lustro-api/",
+    "lustro-logs/",
     "docs/",
     "wire-protocol/",
     "lustro-cli/"
