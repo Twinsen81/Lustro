@@ -161,6 +161,11 @@ def test_a_url_is_a_usage_error(lustro, capsys):
     assert "not a URL" in capsys.readouterr().err
 
 
+def test_a_url_in_the_query_of_the_path_is_sent(lustro, capsys):
+    assert lustro("GET", "echo?search=https://api.example.com/v1") == 0
+    assert echoed(capsys)["query"] == [["search", "https://api.example.com/v1"]]
+
+
 @pytest.mark.parametrize(
     "argv",
     [

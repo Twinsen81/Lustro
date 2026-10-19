@@ -649,9 +649,13 @@ def cmd_schema(args: argparse.Namespace) -> int:
 # ── api: any route ─────────────────────────────────────────────────────────────
 
 
+# A URL starts with a scheme. A query in PATH can still hold one, such as ?search=https://x.
+_URL_START = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://")
+
+
 def _api_path(path: str) -> str:
     """The route to request: PATH as it is, or after /api/v1/ when it has no leading slash."""
-    if "://" in path:
+    if _URL_START.match(path):
         raise UsageError("PATH is a route such as /api/v1/_meta or network/transactions, not a URL: {}".format(path))
     return path if path.startswith("/") else API_ROOT + path
 
