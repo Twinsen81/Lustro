@@ -35,6 +35,7 @@ Other useful targets:
 ```bash
 ./gradlew :lustro:testDebugUnitTest      # unit + Robolectric tests for :lustro
 ./gradlew test                           # all module unit tests
+./gradlew :build-logic:test              # the convention plugins, checkFacadeParity among them
 ```
 
 Tests use JUnit 4, Robolectric for the Android pieces, and MockWebServer for
@@ -107,9 +108,68 @@ sets the device to stay awake while it charges. CI runs both on API 24, 35, and
 - **`:sample`** — demo app and public-API regression target; debug uses
   `:lustro`, release uses `:lustro-noop`.
 - **`:lustro-cli`** — the Python CLI that drives Lustro over the HTTP API.
+- **`build-logic/`**: an included build with the convention plugins that the
+  published modules apply, so their build files hold only what is their own:
+  - `lustro.android-library`: an Android library module. compileSdk and minSdk
+    from the catalog, the `lustro_` resource prefix, no BuildConfig, toolchain
+    21 with JVM 17 bytecode, explicit API, the Kotlin floor and
+    `checkKotlinFloor`, and detekt. Its `lustroLibrary { pairCapability(...) }`
+    declares the capability that both halves of a pair share.
+  - `lustro.kotlin-library`: the same for a Kotlin/JVM module, such as
+    `:lustro-api`.
+  - `lustro.publishing`: the vanniktech publishing, after one of the two
+    above (or `java-library` alone). The root build adds every module with it
+    to the Dokka site and to `collectReleaseArtifacts`, which collects the files
+    of the GitHub Release.
+  - `lustro.facade-parity`: `checkFacadeParity`, at the root.
 
 The wire protocol is versioned under `wire-protocol/v1/`; per-tab OpenAPI
 fragments live at `lustro/src/main/assets/lustro/<id>.openapi.json`.
+
+### Adding a plugin module pair
+
+A plugin tab ships as two artifacts, `:lustro-<name>` and `:lustro-<name>-noop`
+(DECISIONS.md, row 7). Both depend only on `:lustro-api`, and an app adds them
+as it adds `:lustro`: `debugImplementation` for the runtime and
+`releaseImplementation` for the no-op half.
+
+1. Add both modules to `settings.gradle.kts`.
+2. Give each a `gradle.properties` with `POM_NAME` and `POM_DESCRIPTION`, and a
+   `build.gradle.kts` such as:
+
+   ```kotlin
+   plugins {
+       id("lustro.android-library")
+       id("lustro.publishing")
+   }
+
+   android {
+       namespace = "io.github.twinsen81.lustro.<name>" // ".<name>.noop" for the no-op half
+   }
+
+   dependencies {
+       api(project(":lustro-api"))
+   }
+
+   lustroLibrary {
+       // The same name in both halves, so that an app can't resolve both.
+       pairCapability("lustro-<name>-runtime")
+   }
+   ```
+
+   The no-op half keeps its unused-parameter findings in `detekt-baseline.xml`
+   (`./gradlew :lustro-<name>-noop:detektBaseline`), as `:lustro-noop` does.
+3. Add the pair and its facade packages to the `facadeParity { }` block of the
+   root `build.gradle.kts`.
+4. Put the tab's assets in the runtime module: `src/main/assets/lustro/<id>.js`,
+   `<id>.css`, and `<id>.openapi.json`, with its own `info.version`
+   (DECISIONS.md, row 9). The server serves them from the app's merged assets,
+   with no change to `:lustro`. The no-op half ships no assets.
+
+Nothing else names the modules: the Dokka site and the GitHub Release take
+every module that applies `lustro.publishing`. Until the pair has commands of
+its own, `lustro api` reaches its routes, for example
+`lustro api GET <id>/entries --param level=W`.
 
 ## Coding standards
 
@@ -192,7 +252,7 @@ Every commit in a pull request must carry a sign-off line.
 5. Make sure the full local gate passes:
 
    ```bash
-   ./gradlew test detekt apiCheck checkFacadeParity checkDocsVersion
+   ./gradlew test :build-logic:test detekt apiCheck checkFacadeParity checkDocsVersion
    ```
 
 6. Open the PR, fill in the template, and confirm every commit is signed off.
@@ -212,9 +272,10 @@ breaking changes, **minor** for additive changes, **patch** for fixes.
   SPI, regenerate the dump (`./gradlew apiDump`) and explain the change in your
   PR.
 - **`checkFacadeParity` must pass.** It is what catches a change to the `:lustro`
-  facades (`Lustro`, `DebugConfig`, `NetworkDebugTab`, …): it compares the public
-  member signatures each facade itself contributes and fails on any difference,
-  so a method added to one side only is rejected. Two things are outside what it
+  facades (`Lustro`, `DebugConfig`, `NetworkDebugTab`, …), and to those of every
+  other pair in the `facadeParity { }` block of the root build: it compares the
+  public member signatures each facade itself contributes and fails on any
+  difference, so a method added to one side only is rejected. Two things are outside what it
   compares, and neither is caught anywhere else, so review them by hand:
   **constructors**, which it normalizes away, and a change made identically on
   **both** facades, which passes it and passes `apiCheck` too because neither

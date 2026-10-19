@@ -876,6 +876,19 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Changed
 
+- **The GitHub Release also carries the `lustro-api` jar.** It attached the
+  two AARs and the `lustro-wire-schema` jar, but not the jar of the SPI that
+  both AARs depend on. The files now come from one list: every module that
+  applies the build's publishing plugin. The published artifacts do not
+  change: their POMs, Gradle module metadata, AARs, jars, sources, and
+  Javadoc jars are byte for byte the same as before.
+- **Shared build logic for the published modules.** The modules repeated
+  the toolchain, the Kotlin floor, explicit API, detekt, and the publishing
+  setup, and `:lustro` and `:lustro-noop` each declared their shared
+  capability. These are now convention plugins in the `build-logic/`
+  included build, and `checkFacadeParity` compares each runtime and no-op
+  pair in a list in the root build, so a plugin pair needs only its own
+  build file and one entry there. CONTRIBUTING.md describes the steps.
 - **Send has no tab of its own.** "Send Request" was a tab next to the
   detail of the selected request, so it looked related to that request,
   although its form was always empty. **+ New request**, next to the search

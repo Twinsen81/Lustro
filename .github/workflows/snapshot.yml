@@ -38,11 +38,12 @@ jobs:
             echo "Version $VERSION is NOT a snapshot — skipping snapshot publish."
           fi
 
-      # Publishes the three library artifacts + :lustro-wire-schema to the Central
-      # Portal snapshot repository. Snapshots do not require the staging-release
-      # step, so `publishToMavenCentral` (not publishAndRelease...) is correct.
-      # Signing is opt-in: it activates because the in-memory signing key env vars
-      # below are present (see each module's mavenPublishing { } gate).
+      # Publishes every module that applies lustro.publishing (the three library
+      # artifacts + :lustro-wire-schema) to the Central Portal snapshot repository.
+      # Snapshots do not require the staging-release step, so
+      # `publishToMavenCentral` (not publishAndRelease...) is correct. Signing is
+      # opt-in: it activates because the in-memory signing key env vars below are
+      # present (see build-logic/.../PublishingPlugin.kt).
       - name: Publish snapshot
         if: ${{ steps.gate.outputs.publish == 'true' }}
         run: ./gradlew publishToMavenCentral --no-configuration-cache --console=plain --stacktrace

@@ -69,8 +69,12 @@ lint-checks = { group = "com.android.tools.lint", name = "lint-checks", version.
 lint = { group = "com.android.tools.lint", name = "lint", version.ref = "lint" }
 lint-tests = { group = "com.android.tools.lint", name = "lint-tests", version.ref = "lint" }
 
-# Build / publishing tooling.
+# Build / publishing tooling. The convention plugins in build-logic/ compile
+# against these; the root build puts the same plugins on the classpath.
+android-gradle-api = { group = "com.android.tools.build", name = "gradle-api", version.ref = "agp" }
+kotlin-gradle-plugin = { group = "org.jetbrains.kotlin", name = "kotlin-gradle-plugin", version.ref = "kotlin" }
 detekt-gradle-plugin = { group = "io.gitlab.arturbosch.detekt", name = "detekt-gradle-plugin", version.ref = "detekt" }
+vanniktech-gradle-plugin = { group = "com.vanniktech", name = "gradle-maven-publish-plugin", version.ref = "vanniktech" }
 
 [plugins]
 android-library = { id = "com.android.library", version.ref = "agp" }

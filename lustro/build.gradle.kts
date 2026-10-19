@@ -1,48 +1,29 @@
-import com.vanniktech.maven.publish.AndroidSingleVariantLibrary
-import com.vanniktech.maven.publish.JavadocJar
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.TaskAction
-import org.jetbrains.kotlin.gradle.dsl.JvmDefaultMode
-import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-import org.jetbrains.kotlin.gradle.dsl.KotlinVersion
 
 plugins {
-    // AGP 9 provides built-in Kotlin; no org.jetbrains.kotlin.android plugin.
-    alias(libs.plugins.android.library)
-    alias(libs.plugins.detekt)
-    alias(libs.plugins.dokka)
-    alias(libs.plugins.vanniktech.publish)
+    // compileSdk, minSdk, the "lustro_" resource prefix, no BuildConfig, toolchain
+    // 21 with JVM 17 bytecode, explicit API, the Kotlin floor, and detekt: see
+    // build-logic/.../AndroidLibraryPlugin.kt.
+    id("lustro.android-library")
+    // The release AAR, a sources jar, and a Dokka Javadoc jar; POM_NAME and
+    // POM_DESCRIPTION come from gradle.properties here.
+    id("lustro.publishing")
     alias(libs.plugins.kover)
 }
 
 android {
     namespace = "io.github.twinsen81.lustro"
-    compileSdk = libs.versions.compileSdk.get().toInt()
-    // Library resources are namespaced so they cannot collide with consumer or
-    // other-library resources.
-    resourcePrefix = "lustro_"
 
     defaultConfig {
-        minSdk = libs.versions.minSdk.get().toInt()
         // INTERNET is declared in the library manifest; loopback-bound by default.
         // R8 rules shipped to consumers (keep public API + the NanoHTTPD engine).
         consumerProguardFiles("consumer-rules.pro")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-    }
-
-    // No library BuildConfig — protocol/library constants are generated into
-    // Versions.kt (see the generateLustroVersions task below).
-    buildFeatures {
-        buildConfig = false
-    }
-
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
     }
 
     testOptions {
@@ -56,74 +37,11 @@ android {
     }
 }
 
-// The published AAR must not raise an app's Kotlin. It is compiled as Kotlin
-// 2.0 (language and API version) against kotlin-stdlib 2.0.21, whatever compiler
-// this build uses, so it carries 2.0 metadata and requires that stdlib. See
-// DECISIONS.md ("Dependency floors").
-val kotlinFloor = libs.versions.kotlinFloor.get()
-val kotlinFloorVersion = KotlinVersion.fromVersion(kotlinFloor.substringBeforeLast('.'))
-
 kotlin {
-    explicitApi()
-    jvmToolchain(21)
-    coreLibrariesVersion = kotlinFloor
     compilerOptions {
-        jvmTarget.set(JvmTarget.JVM_17)
-        languageVersion.set(kotlinFloorVersion)
-        apiVersion.set(kotlinFloorVersion)
-        // Since Kotlin 2.2 an interface's default methods are JVM default methods
-        // (with DefaultImpls kept for older callers), but only for language
-        // version 2.2 and up: 2.0 alone would go back to DefaultImpls only, a
-        // different public API that apiCheck rejects and that breaks Java
-        // implementers of the SPI interfaces.
-        jvmDefault.set(JvmDefaultMode.ENABLE)
         // kotlin.io.encoding.Base64 is stable since Kotlin 2.2, but experimental
         // in the stdlib 2.0 this module compiles against.
         optIn.add("kotlin.io.encoding.ExperimentalEncodingApi")
-        // The compiler deprecates the floor's language version before it drops it
-        // (Kotlin 2.3 deprecates 2.0) and would warn on every build. Dropping it
-        // is still an error, which is when the floor must move.
-        freeCompilerArgs.add("-Xsuppress-version-warnings")
-    }
-}
-
-// checkKotlinFloor: the published variant's compile classpath must hold the
-// floor's kotlin-stdlib, not a newer one a dependency brings. See
-// gradle/kotlin-floor.gradle.kts.
-extra["kotlinFloorVersion"] = kotlinFloor
-extra["kotlinFloorClasspath"] = "releaseCompileClasspath"
-apply(from = rootProject.file("gradle/kotlin-floor.gradle.kts"))
-
-// Library detekt rules (shared config at config/detekt/detekt.yml): explicit
-// return types, no public data classes, and public-API documentation. Only
-// src/main is analysed so the rules never fire on tests; the UndocumentedPublic*
-// rules are scoped in the config so they do not fire on internal/private code.
-detekt {
-    buildUponDefaultConfig = true
-    config.setFrom(rootProject.file("config/detekt/detekt.yml"))
-    source.setFrom("src/main/kotlin")
-}
-
-// --- Publishing (Vanniktech → Sonatype Central Portal) -----------------------
-// POM fields are read automatically from the POM_* gradle.properties. As an
-// Android library we publish a single "release" variant AAR + a sources jar +
-// a Dokka-generated Javadoc jar. The "release" variant is what consumers get;
-// debug-only runtime deps (none are `api`/`implementation` on release here) are
-// therefore NOT leaked into the published POM. Signing is OPT-IN (CI only): see
-// the gate below, so `publishToMavenLocal` works without GPG keys.
-mavenPublishing {
-    publishToMavenCentral()
-    configure(
-        AndroidSingleVariantLibrary(
-            variant = "release",
-            sourcesJar = true,
-            publishJavadocJar = true,
-        ),
-    )
-    if (providers.gradleProperty("signingInMemoryKey").isPresent ||
-        System.getenv("ORG_GRADLE_PROJECT_signingInMemoryKey") != null
-    ) {
-        signAllPublications()
     }
 }
 
@@ -179,37 +97,11 @@ dependencies {
     androidTestImplementation(libs.okhttp.tls)
 }
 
-// --- Mutual-exclusion capability ---------------------------------------------
-// :lustro and :lustro-noop both declare the shared capability
-// `io.github.twinsen81:lustro-runtime`, so a consumer cannot resolve BOTH on the
-// same configuration (Gradle fails the resolution as a capability conflict). We
-// also re-declare each module's own default capability (group:name:version) so
-// the modules stay individually resolvable.
-//
-// The capability must land in TWO places to cover both consumption paths:
-//   - the consumable `...ApiElements` / `...RuntimeElements` configs, which back
-//     PROJECT (composite) consumption — this is what the :sample variant split
-//     relies on; and
-//   - AGP's single-variant library publication, which maps the published
-//     component variants to DEDICATED, non-consumable `...ApiPublication` /
-//     `...RuntimePublication` configurations. The Gradle Module Metadata writer
-//     reads capabilities from THOSE, not from the `...Elements` configs, so a
-//     capability set only on the elements configs never reaches the published
-//     .module (verified: external consumers would get no conflict). Decorating
-//     the `...Publication` configs is what carries the capability into the GMM.
-// Configured eagerly via configureEach; both config families exist at
-// configuration time, so no afterEvaluate is needed.
-run {
-    val lustroRuntimeCapability = "io.github.twinsen81:lustro-runtime:${project.version}"
-    val defaultCapability = "io.github.twinsen81:${project.name}:${project.version}"
-    configurations.configureEach {
-        val isElements = isCanBeConsumed && (name.endsWith("ApiElements") || name.endsWith("RuntimeElements"))
-        val isPublication = name.endsWith("ApiPublication") || name.endsWith("RuntimePublication")
-        if (isElements || isPublication) {
-            outgoing.capability(lustroRuntimeCapability)
-            outgoing.capability(defaultCapability) // keep default so the module stays resolvable
-        }
-    }
+lustroLibrary {
+    // :lustro and :lustro-noop both declare `io.github.twinsen81:lustro-runtime`,
+    // so a consumer cannot resolve BOTH on the same configuration. See
+    // build-logic/.../LustroLibraryExtension.kt.
+    pairCapability("lustro-runtime")
 }
 
 // --- Generated library/protocol constants (replaces BuildConfig) -------------

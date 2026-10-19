@@ -15,6 +15,7 @@ below explain how.
 | 6 | Send Request contract | **Synchronous** | A Send Request call blocks until the configured `NetworkSender` returns the final `NetworkSendResult`, within the per-request timeout (30s). The HTTP response carries the **final status** (success/failure + status code). Its `transactionId` names the transaction that the Lustro interceptor recorded for the request: the request carries an OkHttp tag that the interceptor fills in. It is `null` when the sender's client has no Lustro interceptor, or the request wasn't captured. It returns a single round-trip result rather than a fire-and-forget `{"status":"ok"}` reply that would force clients to poll. Synchronous is simpler for agents and scripts and gives a single round-trip result. | The synchronous shape is part of the v1 wire protocol; changing it is a breaking protocol change. The sender itself still runs off the main thread; the synchronicity is between the HTTP caller and the captured result, bounded by the request timeout (504 on timeout). |
 | 7 | Post-v1 plugins | Logs / SharedPreferences / SQLite are **out of v1 scope** | v1 ships only the Network plugin (Non-Goals: "Built-in tabs beyond Network"). Additional plugins follow the `:lustro-<name>` + `:lustro-<name>-noop` artifact pattern once a second built-in plugin justifies the split. These plugins stay out of scope until a second built-in plugin justifies the split. | Add them later as separate runtime artifacts against the existing `DebugTab` SPI; no `:lustro-api` change is required unless the SPI lacks a needed capability. |
 | 8 | WebSocket inspection | A wrapped `WebSocket.Factory` in the Network plugin; complete messages only | OkHttp sends only the handshake through interceptors. Its public API shows a socket's messages in two places, the `WebSocketListener` and `WebSocket.send`, so `Lustro.webSocketFactory(client)` wraps both, and the app creates its sockets with the returned factory. Capture runs inside the app, so `wss://` needs no proxy. It is part of `:lustro`, not a plugin pair: it needs only OkHttp, shares the redactor, the capture filter, and the pause toggle with HTTP capture, and its no-op mirror is one method that returns its argument. The cost is that a library which takes only an `OkHttpClient` can't use the factory. Frames, fragmentation, compression, and OkHttp's own ping and pong frames are not visible at this level. | A capture below the listener, of the upgraded socket's bytes, would cover every client of an `OkHttpClient` and show frames. It needs a frame parser and an inflater, and OkHttp exposes the upgraded socket to interceptors only in recent 5.x releases (5.3 does, 5.1 does not), while Lustro builds against 4.12. It would be a second capture path next to the factory, not a replacement for the wire shapes. |
+| 9 | Plugin schema versions | Each plugin tab's `<id>.openapi.json` has its own `info.version`; the core `protocolVersion` changes only when the core wire changes | The core protocol version (`_meta.protocolVersion`, the Network schema's `info.version`) is generated into an internal constant of `:lustro`, and a plugin depends only on `:lustro-api`, so it cannot read or follow it. A plugin's routes also change at their own pace: a change to one tab's wire says nothing about the core routes or another tab. A client reads the version of a tab from `GET /api/v1/<id>/_schema`. | To share one version, move the protocol version into a public constant of `:lustro-api` and let each plugin schema use it. Then every change to a plugin's wire also changes the core protocol version. |
 
 ## BCV / apiCheck
 
@@ -41,18 +42,23 @@ modules.
   1. The **cross-variant `:sample` compile** (debug → `:lustro`, release →
      `:lustro-noop`): a signature drift between the two facades fails one of the
      two variants.
-  2. A dedicated **`checkFacadeParity`** Gradle task
-     (`gradle/facade-parity.gradle.kts`, applied from the root build), the
-     BCV-Android follow-up suggested in this note. It runs `javap` over each
-     module's compiled **release** classes, extracts the public signatures of the
-     `io.github.twinsen81.lustro` + `io.github.twinsen81.lustro.network` packages,
-     normalizes them (drops `internal`/synthetic classes, Kotlin-internal mangled
+  2. A dedicated **`checkFacadeParity`** Gradle task (the
+     `lustro.facade-parity` plugin in `build-logic/`, applied at the root), the
+     BCV-Android follow-up suggested in this note. It compares each runtime and
+     no-op pair that the `facadeParity { }` block of the root build lists; for
+     `:lustro` and `:lustro-noop`, the facade packages are
+     `io.github.twinsen81.lustro` and `io.github.twinsen81.lustro.network`. It
+     runs `javap` over each module's compiled **release** classes, extracts the
+     public signatures of the facade packages, normalizes them (drops `internal`/synthetic classes, Kotlin-internal mangled
      members, constructors, and members inherited/overridden from a supertype so
      only the members each facade type itself contributes remain), and **fails on
      any difference**. It passes today (the two facades expose an identical
      contributed surface) and fails if a public facade member is added to only one
-     side — verified by injecting a one-sided method and observing the failure.
-     CI runs it as an explicit job; it does not need BCV or a committed baseline.
+     side — verified by injecting a one-sided method and observing the failure,
+     and by the unit tests in `build-logic/`, which compile a fixture pair with a
+     member and a type on one side only. CI runs it as an explicit job; it does
+     not need BCV or a committed baseline. A plugin pair adds an entry to the
+     block.
 
   Combined with the `:lustro-api`-level BCV check, these gate the full public
   surface both runtimes share.
@@ -204,8 +210,9 @@ must not need a `resolutionStrategy` workaround in the app.
   `lifecycle-runtime-ktx`, coroutines, and `androidx.annotation` are no longer
   dependencies of `lustro`: nothing used them. `androidx.annotation` stays
   `compileOnly` in `lustro-api`, for its CLASS-retention annotations.
-- The three published modules set `coreLibrariesVersion`, `languageVersion`,
-  and `apiVersion` from `kotlinFloor`. Whatever compiler the catalog pins, they
+- The published Kotlin modules set `coreLibrariesVersion`, `languageVersion`,
+  and `apiVersion` from `kotlinFloor`, through the `lustro.android-library` and
+  `lustro.kotlin-library` convention plugins in `build-logic/`. Whatever compiler the catalog pins, they
   compile against kotlin-stdlib 2.0.21, use only its API, and carry Kotlin 2.0
   metadata. The compiler deprecates a language version before it drops it (2.3
   deprecates 2.0), so `-Xsuppress-version-warnings` keeps that warning out of
@@ -214,7 +221,7 @@ must not need a `resolutionStrategy` workaround in the app.
   experimental in stdlib 2.0, hence the opt-in in `:lustro` and `:lustro-api`.
   A dependency can still put a newer stdlib on a module's compile classpath,
   which Gradle keeps while the POM still names the floor, so each published
-  module runs `checkKotlinFloor` (`gradle/kotlin-floor.gradle.kts`), in `check`
+  module runs `checkKotlinFloor` (`CheckKotlinFloorTask` in `build-logic/`), in `check`
   and in CI: it fails when the compile classpath resolves kotlin-stdlib to
   anything but the floor. `:lustro-api` excludes `org.jetbrains.kotlin` from
   its `compileOnly` androidx.annotation for that reason.

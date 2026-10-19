@@ -53,15 +53,11 @@ jobs:
           ORG_GRADLE_PROJECT_signingInMemoryKeyId: ${{ secrets.SIGNING_IN_MEMORY_KEY_ID }}
           ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_IN_MEMORY_KEY_PASSWORD }}
 
-      # Assemble the artifacts to attach to the GitHub Release: the two AARs, the
-      # wire-schema jar, and the CLI wheel/sdist.
+      # Assemble the artifacts to attach to the GitHub Release: the AAR or jar of
+      # every module that applies the lustro.publishing convention plugin (see the
+      # root build.gradle.kts), and the CLI wheel/sdist.
       - name: Assemble release artifacts
-        run: |
-          ./gradlew \
-            :lustro:assembleRelease \
-            :lustro-noop:assembleRelease \
-            :lustro-wire-schema:jar \
-            --console=plain --stacktrace
+        run: ./gradlew collectReleaseArtifacts --console=plain --stacktrace
 
       - name: Build CLI distributions
         run: |
@@ -71,25 +67,13 @@ jobs:
       - name: Collect release files
         # Fail the job if any REQUIRED artifact is missing: shipping a partial
         # GitHub Release (e.g. an AAR or the wheel silently absent) is worse than
-        # failing the release. `set -euo pipefail` makes a failed `cp` abort.
+        # failing the release. `set -euo pipefail` makes a failed `cp` abort, and
+        # collectReleaseArtifacts fails when a module's AAR or jar does not build.
         run: |
           set -euo pipefail
           mkdir -p release-files
-          # Required: both AARs. A missing file aborts the step (no `|| true`).
-          cp lustro/build/outputs/aar/lustro-release.aar release-files/
-          cp lustro-noop/build/outputs/aar/lustro-noop-release.aar release-files/
-          # Required: the main wire-schema jar. `*.jar` would also pick up the
-          # -sources and -javadoc jars Vanniktech produces; exclude those so the
-          # Release carries a single wire-schema artifact (the consumable jar). The
-          # exclusion stays tolerant of those variants, but the MAIN jar is
-          # mandatory — fail loudly if the glob matches nothing.
-          mapfile -t wire_jars < <(find lustro-wire-schema/build/libs -maxdepth 1 -name '*.jar' \
-            ! -name '*-sources.jar' ! -name '*-javadoc.jar')
-          if [[ ${#wire_jars[@]} -eq 0 ]]; then
-            echo "::error::No wire-schema jar found in lustro-wire-schema/build/libs (expected the main consumable jar)."
-            exit 1
-          fi
-          cp "${wire_jars[@]}" release-files/
+          # Required: the AARs and jars of the published modules.
+          cp build/release-artifacts/* release-files/
           # Required: the CLI distributions (wheel + sdist from `python -m build`).
           cp dist-cli/* release-files/
           ls -l release-files
