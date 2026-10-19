@@ -13,7 +13,7 @@ import json
 import urllib.error
 import urllib.parse
 import urllib.request
-from typing import Any, Callable, Dict, Mapping, NamedTuple, Optional, Tuple
+from typing import Any, Callable, Dict, List, Mapping, NamedTuple, Optional, Sequence, Tuple, Union
 
 # The shared error-envelope status -> machine "error" type map, mirrored from the
 # wire protocol (docs/AGENTS.md "Failure modes" / error-envelope.schema.json). Used as
@@ -94,6 +94,11 @@ class RawBody(NamedTuple):
     content_type: Optional[str]
 
 
+# Query parameters: a mapping, or a sequence of (key, value) pairs, which can
+# repeat a key. A None value in a mapping leaves the key out.
+Params = Union[Mapping[str, Any], Sequence[Tuple[str, Any]]]
+
+
 # urllib honours http_proxy, HTTPS_PROXY, and the system's proxy settings. The
 # server is an adb forward on this machine, which a proxy can't reach, and the
 # token must not leave it, so requests never go through one.
@@ -125,15 +130,18 @@ class LustroClient:
 
     # ── request plumbing ──────────────────────────────────────────────────────
 
-    def _url(self, path: str, params: Optional[Mapping[str, Any]] = None) -> str:
+    def _url(self, path: str, params: Optional[Params] = None) -> str:
         if not path.startswith("/"):
             path = "/" + path
         url = self.base_url + path
         if params:
-            # Drop None values so callers can pass optional params uniformly.
-            filtered = {k: v for k, v in params.items() if v is not None}
-            if filtered:
-                url += "?" + urllib.parse.urlencode(filtered)
+            if isinstance(params, Mapping):
+                # Drop None values so callers can pass optional params uniformly.
+                pairs: List[Tuple[str, Any]] = [(k, v) for k, v in params.items() if v is not None]
+            else:
+                pairs = list(params)
+            if pairs:
+                url += ("&" if "?" in path else "?") + urllib.parse.urlencode(pairs)
         return url
 
     def _headers(self, accept: str) -> Dict[str, str]:
@@ -162,7 +170,19 @@ class LustroClient:
         """GET a route whose body isn't JSON, such as a captured body, and return
         it undecoded with its ``Content-Type``. Errors raise :class:`LustroError`
         as :meth:`request` does, since they still use the error envelope."""
-        data, content_type = self._send("GET", path, params=params, json_body=None, accept="*/*")
+        return self.request_raw("GET", path, params=params)
+
+    def request_raw(
+        self,
+        method: str,
+        path: str,
+        *,
+        params: Optional[Params] = None,
+        json_body: Any = None,
+    ) -> RawBody:
+        """Perform any request and return the body undecoded, with its
+        ``Content-Type``. Errors raise :class:`LustroError` as :meth:`request` does."""
+        data, content_type = self._send(method, path, params=params, json_body=json_body, accept="*/*")
         return RawBody(data, content_type)
 
     def _send(
@@ -170,7 +190,7 @@ class LustroClient:
         method: str,
         path: str,
         *,
-        params: Optional[Mapping[str, Any]],
+        params: Optional[Params],
         json_body: Any,
         accept: str,
     ) -> Tuple[bytes, Optional[str]]:

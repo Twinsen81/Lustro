@@ -90,6 +90,7 @@ discovery), `--json` (JSON output). They go before or after the command:
 | `lustro mock sync <file.json>` | `POST network/rules/_/sync` (atomic) |
 | `lustro senders` | `GET network/senders`: the clients that `send` can use, the default first |
 | `lustro send --url … [--sender NAME]` | `POST network/send` (synchronous), through the first sender or the one named |
+| `lustro api METHOD PATH [--param K=V] [--body JSON \| --input FILE]` | any route: prints the response body (see [Any route](#any-route)) |
 
 > **Live use of `lustro open`** requires a running app: the server only listens
 > while the app is foregrounded, and discovery reads the `LustroToken` log line
@@ -174,6 +175,24 @@ The output is small by default, because an agent reads all of it.
   new event as it comes, until Ctrl-C or until the app clears the connection.
   `--json` prints JSON Lines for both commands, and `--fields` keeps only the
   keys you name. A connection id can be its start, as for a transaction.
+
+## Any route
+
+`lustro api` sends one request to any route, with the token and the port that
+the other commands find, and prints the response body: JSON as JSON (compact
+when stdout is not a terminal), any other body as it is. Use it for a tab that
+has no commands of its own; `lustro schema <tabId>` prints the tab's routes.
+
+```bash
+lustro api GET network/transactions --param search=orders   # PATH without / is under /api/v1/
+lustro api GET /api/v1/network/transactions/<id>
+lustro api POST network/throttle --body '{"delayMs": 2000}'
+lustro api POST network/rules/_/sync --input rules.json     # --input - reads stdin
+```
+
+`--param KEY=VALUE` adds a query parameter, and can repeat a key. An error
+response prints the error from its envelope on stderr, such as
+`error: 404 not_found: ...`, and exits 1; nothing goes to stdout.
 
 `net wait` polls until a matching request finishes, prints it, and exits 0. It
 exits 1 after `--timeout` seconds (30 by default). It ignores the requests that

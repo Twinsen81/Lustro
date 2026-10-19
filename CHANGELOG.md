@@ -14,6 +14,18 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Added
 
+- **`lustro api` sends a request to any route.** Each command of the CLI
+  maps to one route of the Network tab, so the routes of another tab, such
+  as a plugin's, needed curl, with the token and the port found by hand.
+  `lustro api METHOD PATH` uses the discovery of the other commands and
+  prints the response body: JSON as JSON, and any other body as it is. A
+  PATH without a leading `/` is under `/api/v1/`, `--param KEY=VALUE` adds a
+  query parameter and can repeat a key, and `--body JSON` or `--input FILE`
+  (`-` for stdin) sends a JSON body. For an error response, it prints the
+  error from the envelope on stderr and exits 1, as the other commands do.
+  For example, `lustro api GET network/transactions --param search=orders`.
+  The CLI end to end in CI runs it against the debug sample on API 24, 35,
+  and 36 emulators.
 - **The throttle goes up to 1 minute.** The throttle select in the Network
   tab's toolbar now also has 10s, 30s, and 1 min, to test timeout handling
   and long loading states. A delay that the select has no option for, such

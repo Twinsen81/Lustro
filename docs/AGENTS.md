@@ -42,7 +42,14 @@ lustro net wait --url /v1/orders -- adb shell input tap 540 1200
 lustro net export --har out.har   # every transaction as a HAR file
 lustro net ws list                # the WebSocket connections, newest first
 lustro net ws events <id> --last 20   # the last 20 messages and lifecycle events of one
+lustro api GET network/transactions --param search=orders   # any route; prints the response
 ```
+
+`lustro api METHOD PATH` reaches every route, also those of a tab that has no commands of its own,
+with the same discovery and the same error output: it prints the response body, and for an error
+the error from the envelope on stderr, with exit status 1. A PATH without a leading `/` is under
+`/api/v1/`. `--param KEY=VALUE` adds a query parameter, `--body JSON` or `--input FILE` (`-` for
+stdin) sends a JSON body. `lustro schema <tabId>` prints the tab's routes.
 
 Each row of `net list` starts with a short transaction id: the first 8 characters of the id, or more
 when two listed ids start with the same 8. `net get`, `net body`, and `net export --ids` take the short id, the full id,
