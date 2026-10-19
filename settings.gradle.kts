@@ -28,6 +28,8 @@ rootProject.name = "lustro"
 include(":lustro-api")
 include(":lustro")
 include(":lustro-noop")
+include(":lustro-logs")
+include(":lustro-logs-noop")
 include(":lustro-lint")
 include(":lustro-wire-schema")
 include(":sample")

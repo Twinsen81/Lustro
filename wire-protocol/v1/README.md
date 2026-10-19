@@ -19,7 +19,9 @@ the protocol a stable public contract independent of the library's Kotlin API.
   tab and framework route reuses.
 - **Per-tab OpenAPI fragments**: live next to the tab assets at
   `lustro/src/main/assets/lustro/<id>.openapi.json` and are bundled into the AAR.
-  They are served at `GET /api/v1/<id>/_schema`.
+  They are served at `GET /api/v1/<id>/_schema`. A plugin tab's document lives in
+  its own module, such as `lustro-logs/src/main/assets/lustro/logs.openapi.json`,
+  and has a version of its own in `info.version` (see "Plugin tabs" below).
 - **Golden response fixtures**: published alongside the schemas for contract
   tests between the server and the CLI.
 
@@ -151,11 +153,26 @@ client got them.
   each counted with the copies it had replaced in turn. It is `0` when the
   transaction replaced none.
 
+## Plugin tabs
+
+A plugin tab ships in its own artifact pair and versions its routes in its own
+OpenAPI document's `info.version`; the core protocol version above changes only
+with the core wire.
+
+- **Logs `1.0`** (`:lustro-logs`) - the app's own logcat under `/api/v1/logs/`.
+  `GET entries` polls it in the stream envelope, with the filters `level`,
+  `tag`, `q`, and `mq`, and `state` carries the reader's status and the
+  `paused` and `compact` flags. A repeated line comes again in a later poll
+  with the same `seq` and a larger `count`, and replaces the earlier copy.
+  `GET text` exports the held lines as logcat's threadtime text. `POST clear`
+  returns the cursor of the empty log; `POST pause` and `POST compact` set or
+  toggle their flags.
+
 ## Status
 
-The concrete schema files (`*.schema.json`), the Network OpenAPI document, and
-the golden fixtures (`golden/`) are present: envelopes + Network tab schemas,
-and the golden response corpus (CLI contract tests). See
+The concrete schema files (`*.schema.json`), the Network and Logs OpenAPI
+documents, and the golden fixtures (`golden/`) are present: envelopes + tab
+schemas, and the golden response corpus (CLI contract tests). See
 `SCHEMA_INDEX.md` for the full set. The golden fixtures are also vendored into
 the `lustro-cli` wheel under `lustro_cli/wire/` so the installed CLI ships its
 own contract corpus.

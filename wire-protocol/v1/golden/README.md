@@ -4,8 +4,9 @@ Realistic recorded responses for the Lustro HTTP wire protocol. They are the
 **contract-test corpus**: the `lustro` CLI and any other wire-protocol client
 validate against these to prove they parse the exact shapes the server emits,
 and the fixtures themselves are validated against the JSON Schemas in the parent
-directory (`../*.schema.json`) and the Network tab's OpenAPI components
-(`lustro/src/main/assets/lustro/network.openapi.json`).
+directory (`../*.schema.json`) and the OpenAPI components of the Network tab
+(`lustro/src/main/assets/lustro/network.openapi.json`) and the Logs tab
+(`lustro-logs/src/main/assets/lustro/logs.openapi.json`).
 
 These files are bundled into the `lustro-cli` wheel under
 `lustro_cli/wire/golden/`, so the installed CLI ships its own contract corpus
@@ -30,6 +31,9 @@ with no source checkout required.
 | `stream-reset.json` | `GET network/websockets/{id}/events` first poll (`status: reset`) | `stream-envelope.schema.json` + OpenAPI `WebSocketEventStreamEnvelope` |
 | `stream-delta.json` | `GET network/websockets/{id}/events` after new events (`status: delta`) | `stream-envelope.schema.json` + OpenAPI `WebSocketEventStreamEnvelope` |
 | `stream-unchanged.json` | `GET network/websockets/{id}/events` no new event (`status: unchanged`, items omitted) | `stream-envelope.schema.json` + OpenAPI `WebSocketEventStreamEnvelope` |
+| `logs-reset.json` | `GET logs/entries` first poll (`status: reset`) | `stream-envelope.schema.json` + Logs OpenAPI `LogStreamEnvelope` |
+| `logs-delta.json` | `GET logs/entries` after new lines (`status: delta`) | `stream-envelope.schema.json` + Logs OpenAPI `LogStreamEnvelope` |
+| `logs-unchanged.json` | `GET logs/entries` no new line, capture paused (`status: unchanged`) | `stream-envelope.schema.json` + Logs OpenAPI `LogStreamEnvelope` |
 
 ## Notes on the shapes
 
@@ -84,6 +88,16 @@ with no source checkout required.
   has no fixture. `export-har-websocket.json` is the HAR export of the same
   socket's handshake, with its messages in `_webSocketMessages`; a unit test in
   `:lustro` checks that the export writes exactly this document.
+
+- **Logs.** `logs-reset.json` is the first poll of an app's log: six lines,
+  the last of them a `tick` that came twice in a row, so it carries `count`
+  and `lastAt`. `logs-delta.json` is the next poll, after two more ticks and
+  two new lines: the tick comes again with its `seq` 5 and `count` 4, which
+  replaces the row the client has, and the new lines follow. The `seq` of a
+  line is where it came first, so the seqs have gaps. `logs-unchanged.json`
+  is a poll after `POST pause`: no new line, and `state.paused` is `true`. The
+  fixtures model a device in UTC. A unit test in `:lustro-logs` checks that
+  the route writes these fixtures, except the cursors, which are random.
 
 When the server's emitted shapes change, update these fixtures in the same
 change that bumps the protocol version, and keep the schema validation green.

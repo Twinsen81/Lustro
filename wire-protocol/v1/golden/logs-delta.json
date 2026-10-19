@@ -1,0 +1,44 @@
+{
+  "cursor": "NDE5MzY1Njc4MDY2MDM2MTg3OTo5",
+  "status": "delta",
+  "items": [
+    {
+      "seq": 5,
+      "at": 1792419740000,
+      "timestamp": "10-19 14:22:20.000",
+      "pid": 12873,
+      "tid": 12873,
+      "level": "V",
+      "tag": "Heartbeat",
+      "message": "tick",
+      "count": 4,
+      "lastAt": 1792419743000
+    },
+    {
+      "seq": 7,
+      "at": 1792419743410,
+      "timestamp": "10-19 14:22:23.410",
+      "pid": 12873,
+      "tid": 12901,
+      "level": "E",
+      "tag": "SyncWorker",
+      "message": "sync failed: java.net.SocketTimeoutException: timeout"
+    },
+    {
+      "seq": 8,
+      "at": 1792419743411,
+      "timestamp": "10-19 14:22:23.411",
+      "pid": 12873,
+      "tid": 12873,
+      "level": "I",
+      "tag": "SyncWorker",
+      "message": "next sync in 300 s"
+    }
+  ],
+  "dropped": 0,
+  "state": {
+    "reader": "running",
+    "paused": false,
+    "compact": true
+  }
+}
