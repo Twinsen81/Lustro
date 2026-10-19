@@ -1,4 +1,7 @@
 pluginManagement {
+    // The convention plugins (lustro.android-library, lustro.kotlin-library,
+    // lustro.publishing, lustro.facade-parity). See build-logic/build.gradle.kts.
+    includeBuild("build-logic")
     repositories {
         google {
             content {

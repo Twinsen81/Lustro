@@ -2,7 +2,8 @@
 
 Argparse-based dispatch over the Lustro HTTP wire protocol. Every subcommand
 maps to a route in ``network.openapi.json`` or a framework route
-(``/api/v1/_meta``, ``/api/v1/_schema``, ``/api/v1/<id>/_schema``).
+(``/api/v1/_meta``, ``/api/v1/_schema``, ``/api/v1/<id>/_schema``), except
+``api``, which sends a request to any route.
 
 The output is small by default, because agents read all of it: ``net list``
 prints the newest rows only, a row shows a short id, ``net get`` cuts long
@@ -36,6 +37,7 @@ from .discovery import (
     token_from_prefs,
 )
 
+API_ROOT = "/api/v1/"
 NETWORK = "/api/v1/network"
 TRANSACTIONS = NETWORK + "/transactions"
 EXPORT = TRANSACTIONS + "/_/export"
@@ -459,6 +461,22 @@ def _positive_seconds(value: str) -> float:
     return seconds
 
 
+_HTTP_METHOD = re.compile(r"[A-Za-z]+")
+
+
+def _http_method(value: str) -> str:
+    if not _HTTP_METHOD.fullmatch(value):
+        raise argparse.ArgumentTypeError("expected an HTTP method such as GET or POST, got {!r}".format(value))
+    return value.upper()
+
+
+def _param_pair(value: str) -> Tuple[str, str]:
+    key, sep, val = value.partition("=")
+    if not sep or not key:
+        raise argparse.ArgumentTypeError("expected KEY=VALUE, such as level=W, got {!r}".format(value))
+    return key, val
+
+
 # ── client construction (discovery) ───────────────────────────────────────────
 
 
@@ -625,6 +643,69 @@ def cmd_schema(args: argparse.Namespace) -> int:
     else:
         path = "/api/v1/_schema"
     _emit(client.get(path), raw_json=args.json)
+    return 0
+
+
+# ── api: any route ─────────────────────────────────────────────────────────────
+
+
+# A URL starts with a scheme. A query in PATH can still hold one, such as ?search=https://x.
+_URL_START = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://")
+
+
+def _api_path(path: str) -> str:
+    """The route to request: PATH as it is, or after /api/v1/ when it has no leading slash."""
+    if _URL_START.match(path):
+        raise UsageError("PATH is a route such as /api/v1/_meta or network/transactions, not a URL: {}".format(path))
+    return path if path.startswith("/") else API_ROOT + path
+
+
+def _api_body(args: argparse.Namespace) -> Any:
+    """The JSON request body from --body or --input, or None for no body."""
+    if args.body is not None:
+        text, source = args.body, "--body"
+    elif args.input is not None:
+        source = "--input " + args.input
+        try:
+            if args.input == "-":
+                text = sys.stdin.read()
+            else:
+                with open(args.input, "r", encoding="utf-8") as fh:
+                    text = fh.read()
+        except (OSError, ValueError) as exc:
+            # ValueError: a file that is not UTF-8, such as a UTF-16 file from PowerShell.
+            raise UsageError("could not read {}: {}".format(args.input, exc))
+    else:
+        return None
+    try:
+        return json.loads(text)
+    except ValueError as exc:
+        raise UsageError("{} is not JSON: {}".format(source, exc))
+
+
+def _is_json_type(content_type: Optional[str]) -> bool:
+    media_type = (content_type or "").split(";", 1)[0].strip().lower()
+    return media_type == "application/json" or media_type.endswith("+json")
+
+
+def cmd_api(args: argparse.Namespace) -> int:
+    """Send one request to any route and print the response body."""
+    path = _api_path(args.path)
+    body = _api_body(args)
+    client = _build_client(args)
+    response = client.request_raw(args.method, path, params=args.param, json_body=body)
+    if not response.data:
+        return 0
+    if _is_json_type(response.content_type):
+        try:
+            decoded = json.loads(response.data.decode("utf-8"))
+        except (ValueError, UnicodeDecodeError):
+            pass
+        else:
+            print(_dumps(decoded, indent=sys.stdout.isatty()))
+            return 0
+    sys.stdout.buffer.write(response.data)
+    sys.stdout.flush()
     return 0
 
 
@@ -1319,6 +1400,34 @@ def build_parser() -> argparse.ArgumentParser:
     p_schema = sub.add_parser("schema", parents=[common], help="GET /api/v1/_schema or /api/v1/<tab>/_schema")
     p_schema.add_argument("tab_id", nargs="?", default=None, metavar="[tabId]")
     p_schema.set_defaults(func=cmd_schema)
+
+    # api METHOD PATH
+    p_api = sub.add_parser(
+        "api",
+        parents=[common],
+        help="send a request to any route, such as a tab's, and print the response",
+        description="Send one request to any route of the app, with the token and the port that the other "
+        "commands use, and print the response body: JSON as JSON, any other body as it is. A PATH without a "
+        "leading / is relative to /api/v1/, so network/transactions is /api/v1/network/transactions. For an error "
+        "response, it prints the error from the error envelope on stderr and exits 1. `lustro schema <tabId>` "
+        "prints the routes of a tab.",
+    )
+    p_api.add_argument("method", type=_http_method, metavar="METHOD", help="GET, POST, or another HTTP method")
+    p_api.add_argument("path", metavar="PATH", help="such as /api/v1/network/transactions or network/transactions")
+    p_api.add_argument(
+        "--param",
+        type=_param_pair,
+        action="append",
+        default=None,
+        metavar="KEY=VALUE",
+        help="a query parameter (repeatable), added to a query in PATH",
+    )
+    api_body = p_api.add_mutually_exclusive_group()
+    api_body.add_argument("--body", default=None, metavar="JSON", help="the JSON request body")
+    api_body.add_argument(
+        "--input", default=None, metavar="FILE", help="read the JSON request body from FILE, or from stdin for -"
+    )
+    p_api.set_defaults(func=cmd_api)
 
     # net ...
     p_net = sub.add_parser("net", parents=[common], help="network tab operations")

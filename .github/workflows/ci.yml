@@ -73,12 +73,18 @@ jobs:
         run: ./gradlew assemble --console=plain --stacktrace
 
       # The published modules compile against the floor's kotlin-stdlib, not a
-      # newer one a dependency brings (see gradle/kotlin-floor.gradle.kts).
+      # newer one a dependency brings (see build-logic/.../CheckKotlinFloorTask.kt).
       - name: Published modules compile against the Kotlin floor
         run: ./gradlew checkKotlinFloor --console=plain --stacktrace
 
       - name: Unit + Robolectric tests
         run: ./gradlew test --console=plain --stacktrace
+
+      # The convention plugins' own tests, among them a runtime and no-op pair
+      # that checkFacadeParity must reject. `test` above does not reach them:
+      # build-logic is an included build.
+      - name: Build logic tests
+        run: ./gradlew :build-logic:test --console=plain --stacktrace
 
       # The modules compile against OkHttp 4.12.0, the floor, and an app on OkHttp
       # 5 runs them against that. Same suite, OkHttp 5 on the test runtime
@@ -98,10 +104,16 @@ jobs:
       - name: Sample debug + release (R8) compile
         run: ./gradlew :sample:assembleDebug :sample:assembleRelease --console=plain --stacktrace
 
-      # The release-safe :lustro-noop facade must match the :lustro facade exactly
-      # (the BCV-Android follow-up; see gradle/facade-parity.gradle.kts).
-      - name: Facade parity (:lustro vs :lustro-noop)
+      # The release-safe no-op half of each pair must match its runtime facade
+      # exactly, :lustro-noop to :lustro first (the BCV-Android follow-up; see the
+      # facadeParity block of the root build.gradle.kts).
+      - name: Facade parity (runtime vs no-op pairs)
         run: ./gradlew checkFacadeParity --console=plain --stacktrace
+
+      # What release.yml attaches to the GitHub Release, so that a change to the
+      # published modules fails here and not at the release tag.
+      - name: Release artifacts
+        run: ./gradlew collectReleaseArtifacts --console=plain --stacktrace
 
       - name: Kover coverage report
         run: ./gradlew :lustro:koverXmlReport --console=plain --stacktrace

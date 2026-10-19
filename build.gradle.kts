@@ -1,14 +1,20 @@
 plugins {
+    // The convention plugins in build-logic/ apply AGP, Kotlin, detekt, and the
+    // vanniktech plugin, and compile against them. They are declared here so that
+    // their classes load once, in the root classloader, which every module shares.
     alias(libs.plugins.android.library) apply false
     alias(libs.plugins.android.application) apply false
     alias(libs.plugins.kotlin.jvm) apply false
+    alias(libs.plugins.detekt) apply false
     // Unapplied at the root so all publishing modules share one plugin classloader:
     // its SonatypeRepositoryBuildService is a shared build service, and per-module
     // classloaders make it mismatch ("Cannot set ... property 'buildService'").
     alias(libs.plugins.vanniktech.publish) apply false
     alias(libs.plugins.binary.compatibility.validator)
-    // Applied at the root to aggregate per-module API docs (see dokka(...) deps below).
+    // Applied at the root to aggregate per-module API docs (see the published
+    // modules below).
     alias(libs.plugins.dokka)
+    id("lustro.facade-parity")
 }
 
 // Binary Compatibility Validator tracks the public API. Excluded projects have no
@@ -58,21 +64,46 @@ if (testOkHttpVersion.isPresent) {
     }
 }
 
-// Registers `checkFacadeParity`: BCV can't dump the AGP-built Kotlin Android
-// facades, so this task diffs the compiled :lustro / :lustro-noop facades directly.
-// See gradle/facade-parity.gradle.kts and DECISIONS.md ("BCV / apiCheck").
-apply(from = "gradle/facade-parity.gradle.kts")
+// checkFacadeParity: the runtime and no-op halves of each pair must expose the
+// same public facades. BCV can't dump the AGP-built Kotlin Android modules, so
+// the task compares their compiled release classes directly. A new pair adds an
+// entry. See build-logic/.../FacadeParityTask.kt and DECISIONS.md ("BCV / apiCheck").
+facadeParity {
+    pair(
+        runtime = ":lustro",
+        noop = ":lustro-noop",
+        packages = listOf("io.github.twinsen81.lustro", "io.github.twinsen81.lustro.network"),
+    )
+}
 
 // Registers `checkDocsVersion`: the coordinates that README.md, llms.txt, and
 // context7.json give to people and agents must match GROUP and VERSION_NAME.
 // See gradle/docs-version.gradle.kts.
 apply(from = "gradle/docs-version.gradle.kts")
 
-// Dokka aggregation: the three published API modules (wire-schema has no Kotlin
-// API). `./gradlew dokkaGenerate` renders the combined site into build/dokka/html,
-// which release.yml deploys to gh-pages.
-dependencies {
-    dokka(project(":lustro-api"))
-    dokka(project(":lustro"))
-    dokka(project(":lustro-noop"))
+// The published modules are the ones that apply lustro.publishing, so a new
+// module needs no entry here or in release.yml:
+//   - `./gradlew dokkaGenerate` renders the API docs of those with Dokka (all but
+//     lustro-wire-schema, which has no Kotlin API) into one site in
+//     build/dokka/html, which release.yml deploys to gh-pages;
+//   - `./gradlew collectReleaseArtifacts` copies the AAR of each Android module and
+//     the jar of each JVM module into build/release-artifacts, which release.yml
+//     attaches to the GitHub Release.
+val collectReleaseArtifacts = tasks.register<Sync>("collectReleaseArtifacts") {
+    group = "distribution"
+    description = "Copies the AAR or jar of every published module into build/release-artifacts."
+    into(layout.buildDirectory.dir("release-artifacts"))
+}
+
+subprojects {
+    val module = this
+    pluginManager.withPlugin("lustro.publishing") {
+        pluginManager.withPlugin("org.jetbrains.dokka") {
+            rootProject.dependencies { dokka(project(module.path)) }
+        }
+        collectReleaseArtifacts.configure {
+            val android = module.pluginManager.hasPlugin("com.android.library")
+            from(module.tasks.named(if (android) "bundleReleaseAar" else "jar"))
+        }
+    }
 }

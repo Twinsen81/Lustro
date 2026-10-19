@@ -130,6 +130,20 @@ def check_transaction(text: str, rules: List[dict]) -> None:
     expect(tx["responseBody"] == rule["responseBody"], "body {!r}, the rule sets {!r}".format(tx["responseBody"], rule["responseBody"]))
 
 
+def check_api_transactions(text: str, rules: List[dict]) -> None:
+    """``lustro api GET network/transactions`` prints the route's response as it is."""
+    listed = json.loads(text)
+    response("/api/v1/network/transactions", "get").validate(listed)
+    pattern = rules[0]["urlPattern"]
+    expect(any(pattern in tx["url"] for tx in listed["items"]), "no listed transaction matches {}".format(pattern))
+
+
+def check_api_throttle(text: str, rules: List[dict]) -> None:
+    result = json.loads(text)
+    response("/api/v1/network/throttle", "post").validate(result)
+    expect(result["delayMs"] == 0, "the throttle is {} ms, the request set 0".format(result["delayMs"]))
+
+
 def check_senders(text: str, rules: List[dict]) -> None:
     listed = json.loads(text)
     response("/api/v1/network/senders", "get").validate(listed)
@@ -226,6 +240,8 @@ CHECKS: Dict[str, Callable[[str, List[dict]], None]] = {
     "state": check_state,
     "find": find,
     "transaction": check_transaction,
+    "api-transactions": check_api_transactions,
+    "api-throttle": check_api_throttle,
     "har": check_har,
     "senders": check_senders,
     "send": check_send,

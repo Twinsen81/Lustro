@@ -164,6 +164,24 @@ esac
 lustro_to net-get-short.json --json net get "$short"
 check transaction "$RULES" < "$OUT/net-get-short.json"
 
+# The generic verb reaches any route with the same discovery, so a tab without
+# commands of its own can be scripted: here the Network routes, a GET with a
+# query parameter and a POST with a body, and an error.
+lustro_to api-transactions.json api GET network/transactions --param "search=$pattern"
+check api-transactions "$RULES" < "$OUT/api-transactions.json"
+
+lustro_to api-throttle.json api POST /api/v1/network/throttle --body '{"delayMs": 0}'
+check api-throttle < "$OUT/api-throttle.json"
+
+step "lustro api: a missing transaction exits 1, with the error on stderr"
+status=0
+lustro api GET "network/transactions/$id-missing" > "$OUT/api-missing.txt" 2> "$OUT/api-missing.err" || status=$?
+cat "$OUT/api-missing.err"
+if [ "$status" != 1 ] || ! grep -q '^error: 404 not_found' "$OUT/api-missing.err"; then
+  echo "error: lustro api exited $status for a missing transaction, expected 1 and a 404 not_found" >&2
+  exit 1
+fi
+
 # The sample's default sender has the fixture host as its base URL, and its client
 # carries the interceptor: the rule answers the relative /get, and the request is
 # captured.

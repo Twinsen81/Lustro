@@ -1,12 +1,12 @@
-import com.vanniktech.maven.publish.JavaLibrary
-import com.vanniktech.maven.publish.JavadocJar
-
 plugins {
     // Pure-JVM resource jar: no Kotlin, no Android. It only PACKAGES the wire
     // protocol artifacts (JSON Schemas + Network OpenAPI + golden fixtures) so
     // tools and contract tests can resolve them as a published Maven dependency.
     `java-library`
-    alias(libs.plugins.vanniktech.publish)
+    // The jar, a sources jar, and an empty Javadoc jar (there is no API to
+    // document). Coordinates: io.github.twinsen81:lustro-wire-schema; POM_NAME and
+    // POM_DESCRIPTION come from gradle.properties here.
+    id("lustro.publishing")
 }
 
 java {
@@ -46,25 +46,5 @@ val syncWireResources =
 sourceSets {
     named("main") {
         resources.srcDir(syncWireResources.map { wireResourcesRoot.get().asFile })
-    }
-}
-
-// --- Publishing (Vanniktech → Sonatype Central Portal) -----------------------
-// Coordinates: io.github.twinsen81:lustro-wire-schema (artifactId = project name).
-// POM name/description come from this module's gradle.properties; the rest
-// (license, SCM, developers, URL) inherit from the root POM_* properties.
-// Signing is OPT-IN (CI only) so `publishToMavenLocal` works without GPG keys.
-mavenPublishing {
-    publishToMavenCentral()
-    configure(
-        JavaLibrary(
-            javadocJar = JavadocJar.Empty(),
-            sourcesJar = true,
-        ),
-    )
-    if (providers.gradleProperty("signingInMemoryKey").isPresent ||
-        System.getenv("ORG_GRADLE_PROJECT_signingInMemoryKey") != null
-    ) {
-        signAllPublications()
     }
 }

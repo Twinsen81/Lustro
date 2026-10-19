@@ -30,7 +30,7 @@ Facts to get right when you add Lustro to an app:
 ## Tools
 
 - [lustro CLI](https://raw.githubusercontent.com/Twinsen81/Lustro/main/lustro-cli/README.md): a Python command-line client for the HTTP API. `lustro open` forwards the port and opens the console with the token
-- Agents: use the `lustro` CLI rather than curl, and keep its output small with `lustro net list --errors --last 20`, `lustro net get <id> --no-body`, and `lustro net body <id> | head -c 4000`. `lustro net wait --url <text> -- <command>` runs the command and waits for the request it causes, and `lustro net export --har out.har [--ids <id> ...]` saves transactions as a HAR file. For WebSockets, `lustro net ws list` prints the connections, `lustro net ws events <id> --last 20` the last events of one, and `lustro net ws payload <id> <seq>` one message's payload
+- Agents: use the `lustro` CLI rather than curl, and keep its output small with `lustro net list --errors --last 20`, `lustro net get <id> --no-body`, and `lustro net body <id> | head -c 4000`. `lustro net wait --url <text> -- <command>` runs the command and waits for the request it causes, and `lustro net export --har out.har [--ids <id> ...]` saves transactions as a HAR file. For WebSockets, `lustro net ws list` prints the connections, `lustro net ws events <id> --last 20` the last events of one, and `lustro net ws payload <id> <seq>` one message's payload. `lustro api GET <tabId>/<route> --param key=value` (or `POST ... --body '<json>'`) sends a request to any route, also of a tab without commands of its own, and prints the response
 
 ## Optional
 
