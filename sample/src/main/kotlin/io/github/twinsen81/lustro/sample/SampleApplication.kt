@@ -1,6 +1,7 @@
 package io.github.twinsen81.lustro.sample
 
 import android.app.Application
+import android.util.Log
 import okhttp3.OkHttpClient
 import okhttp3.WebSocket
 
@@ -49,6 +50,9 @@ public class SampleApplication : Application() {
         // which runs only when a request is sent. The interceptor is added LAST
         // (after any app interceptors), per the documented ordering: the capture
         // sees the final application request.
+        // Written before Lustro starts: the Logs tab still shows it, because it
+        // reads logcat from the start of the process.
+        Log.i("LustroSample", "Application.onCreate, before Lustro starts")
         val interceptor = LustroBootstrap.start(this) { httpClient }
 
         httpClient = OkHttpClient.Builder().addInterceptor(interceptor).build()

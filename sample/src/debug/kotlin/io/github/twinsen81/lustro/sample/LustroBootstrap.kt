@@ -6,6 +6,7 @@ import io.github.twinsen81.lustro.DebugConfig
 import io.github.twinsen81.lustro.ExperimentalPlatformCapture
 import io.github.twinsen81.lustro.Lustro
 import io.github.twinsen81.lustro.LustroStatus
+import io.github.twinsen81.lustro.logs.LogsDebugTab
 import io.github.twinsen81.lustro.network.NetworkDebugTab
 import io.github.twinsen81.lustro.network.OkHttpSender
 import io.github.twinsen81.lustro.network.SharedPreferencesMockRuleStorage
@@ -18,8 +19,8 @@ import okhttp3.WebSocket
  *
  * This file lives in `src/debug` and compiles against the REAL `:lustro`
  * runtime. It owns ALL Lustro registration for the sample: building [Lustro],
- * registering the built-in [NetworkDebugTab] plus the app's custom
- * [SampleFlagsTab], starting the server, and exposing the
+ * registering the built-in [NetworkDebugTab], the [LogsDebugTab] plugin, and the
+ * app's custom [SampleFlagsTab], starting the server, and exposing the
  * [networkInterceptor] for the app's OkHttp client.
  *
  * Because every Lustro/[io.github.twinsen81.lustro.DebugTab] reference is
@@ -92,6 +93,9 @@ public object LustroBootstrap {
                         captureFilter = SampleCaptureFilter(),
                     ),
                 )
+                // The app's own logcat, from :lustro-logs; the release bootstrap
+                // registers the no-op half from :lustro-logs-noop.
+                .addTab(LogsDebugTab.create())
                 // Custom, schema-backed tab. It is debug-only: it never appears in
                 // src/release, so the no-op variant has no Feature Flags tab.
                 .addTab(SampleFlagsTab(app))
@@ -117,6 +121,11 @@ public object LustroBootstrap {
     /** Stops the debug runtime. Idempotent; safe to call from any variant. */
     public fun stop() {
         lustro?.stop()
+    }
+
+    /** Starts the debug runtime again after [stop]. Idempotent. */
+    public fun restart() {
+        lustro?.start()
     }
 
     internal fun extraDemoRequests(base: String): List<DemoRequestSpec> =

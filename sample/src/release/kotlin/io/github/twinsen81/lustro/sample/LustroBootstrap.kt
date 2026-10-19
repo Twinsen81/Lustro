@@ -5,6 +5,7 @@ import io.github.twinsen81.lustro.DebugConfig
 import io.github.twinsen81.lustro.ExperimentalPlatformCapture
 import io.github.twinsen81.lustro.Lustro
 import io.github.twinsen81.lustro.LustroStatus
+import io.github.twinsen81.lustro.logs.LogsDebugTab
 import io.github.twinsen81.lustro.network.NetworkDebugTab
 import io.github.twinsen81.lustro.network.OkHttpSender
 import okhttp3.Interceptor
@@ -23,7 +24,9 @@ import okhttp3.WebSocket
  * what preserves the cross-variant parity gate: if the no-op facade signatures
  * ever drift from the real `:lustro` runtime, ONE of the two variants fails to
  * compile. The release variant registers NO custom tab — [SampleFlagsTab] is a
- * debug-only `DebugTab` and does not exist in this source set. Everything here
+ * debug-only `DebugTab` and does not exist in this source set. It registers the
+ * no-op [LogsDebugTab] from `:lustro-logs-noop`, which checks the plugin pair's
+ * facades the same way. Everything here
  * is a no-op at runtime: nothing binds, nothing is captured, and
  * [Lustro.networkInterceptor] returns a pass-through interceptor.
  */
@@ -62,6 +65,9 @@ public object LustroBootstrap {
                         capturePlatformHttp = true,
                     ),
                 )
+                // The no-op half of :lustro-logs, with the same create() as the
+                // debug bootstrap's: it reads no logs.
+                .addTab(LogsDebugTab.create())
                 .build()
 
         val interceptor = instance.networkInterceptor()
@@ -80,6 +86,11 @@ public object LustroBootstrap {
     /** No-op stop; the no-op build never binds a socket. Idempotent. */
     public fun stop() {
         // No-op: the release facade never started a server.
+    }
+
+    /** No-op restart; the no-op build never binds a socket. Idempotent. */
+    public fun restart() {
+        // No-op: the release facade never starts a server.
     }
 
     internal fun extraDemoRequests(base: String): List<DemoRequestSpec> = emptyList()
