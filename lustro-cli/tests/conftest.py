@@ -20,6 +20,9 @@ GOLDEN_SCHEMA_FILES = {
     "stream-reset.json": ("schema", "stream-envelope.schema.json"),
     "stream-delta.json": ("schema", "stream-envelope.schema.json"),
     "stream-unchanged.json": ("schema", "stream-envelope.schema.json"),
+    "logs-reset.json": ("schema", "stream-envelope.schema.json"),
+    "logs-delta.json": ("schema", "stream-envelope.schema.json"),
+    "logs-unchanged.json": ("schema", "stream-envelope.schema.json"),
 }
 
 # Golden fixtures validated against an OpenAPI component schema.

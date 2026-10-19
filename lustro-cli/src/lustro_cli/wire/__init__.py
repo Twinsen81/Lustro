@@ -3,8 +3,9 @@
 These JSON files are vendored copies of the SemVer-governed wire protocol:
 
 - the shared JSON Schemas from ``wire-protocol/v1/*.schema.json``,
-- the authoritative Network OpenAPI document
-  (``lustro/src/main/assets/lustro/network.openapi.json``), and
+- the authoritative OpenAPI documents of the Network tab
+  (``lustro/src/main/assets/lustro/network.openapi.json``) and the Logs tab
+  (``lustro-logs/src/main/assets/lustro/logs.openapi.json``), and
 - the golden response fixtures from ``wire-protocol/v1/golden/``.
 
 They are packaged into the wheel so the installed CLI ships its own schemas and
@@ -43,9 +44,9 @@ def load_schema(name: str) -> Any:
     return _load(name)
 
 
-def load_openapi() -> Any:
-    """Load the bundled Network OpenAPI document."""
-    return _load("network.openapi.json")
+def load_openapi(tab: str = "network") -> Any:
+    """Load the bundled OpenAPI document of a tab: ``"network"`` (the default) or ``"logs"``."""
+    return _load(tab + ".openapi.json")
 
 
 def load_golden(name: str) -> Any:

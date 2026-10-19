@@ -24,6 +24,7 @@ from jsonschema.exceptions import ValidationError
 from lustro_cli import wire
 
 OPENAPI = wire.load_openapi()
+LOGS_OPENAPI = wire.load_openapi("logs")
 
 
 class CheckFailed(Exception):
@@ -76,6 +77,44 @@ def check_meta(text: str, rules: List[dict]) -> None:
 
 def check_schema_network(text: str, rules: List[dict]) -> None:
     expect(json.loads(text) == OPENAPI, "the app serves a Network schema that differs from the CLI's copy")
+
+
+def check_schema_logs(text: str, rules: List[dict]) -> None:
+    expect(json.loads(text) == LOGS_OPENAPI, "the app serves a Logs schema that differs from the CLI's copy")
+
+
+def _logs_envelope(text: str) -> dict:
+    envelope = json.loads(text)
+    schema = LOGS_OPENAPI["components"]["schemas"]["LogStreamEnvelope"]
+    Draft202012Validator(dict(schema, components=LOGS_OPENAPI["components"])).validate(envelope)
+    expect(envelope["state"]["reader"] == "running", "the reader is {}: {}".format(
+        envelope["state"]["reader"], envelope["state"].get("readerError")))
+    return envelope
+
+
+def check_logs_startup(text: str, rules: List[dict]) -> None:
+    """The first poll has the line the sample writes before Lustro.start(), and the one after."""
+    envelope = _logs_envelope(text)
+    expect(envelope["status"] == "reset", "status {}".format(envelope["status"]))
+    messages = [item["message"] for item in envelope["items"]]
+    for expected in ("Application.onCreate, before Lustro starts", "Lustro start() returned ENABLED"):
+        expect(expected in messages, "no {!r} in {}".format(expected, messages))
+
+
+def check_logs_delta(text: str, rules: List[dict]) -> None:
+    """A poll after clear has the lines the sample wrote since, and no dropped count."""
+    envelope = _logs_envelope(text)
+    expect(envelope["status"] == "delta", "status {}".format(envelope["status"]))
+    expect(envelope["dropped"] == 0, "dropped {}".format(envelope["dropped"]))
+    repeated = [item for item in envelope["items"] if item["message"] == "the same warning, again"]
+    expect(bool(repeated), "no repeated warning in {}".format([item["message"] for item in envelope["items"]]))
+
+
+def check_logs_text(text: str, rules: List[dict]) -> None:
+    lines = [line for line in text.splitlines() if line]
+    expect(bool(lines), "no line")
+    for line in lines:
+        expect(re.match(r"\d\d-\d\d \d\d:\d\d:\d\d\.\d{3} +\d+ +\d+ [EF] ", line) is not None, "not an E or F threadtime line: {!r}".format(line))
 
 
 def check_sync(text: str, rules: List[dict]) -> None:
@@ -234,6 +273,10 @@ CHECKS: Dict[str, Callable[[str, List[dict]], None]] = {
     "open": check_open,
     "meta": check_meta,
     "schema-network": check_schema_network,
+    "schema-logs": check_schema_logs,
+    "logs-startup": check_logs_startup,
+    "logs-delta": check_logs_delta,
+    "logs-text": check_logs_text,
     "sync": check_sync,
     "rules": check_rules,
     "list": check_list,
