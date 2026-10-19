@@ -151,6 +151,13 @@ def test_an_error_prints_the_envelope_on_stderr_and_exits_1(lustro, capsys):
     assert captured.err.startswith("error: 404 {}: {}".format(envelope["error"], envelope["message"]))
 
 
+def test_an_input_file_that_is_not_utf8_is_a_usage_error(lustro, capsys, tmp_path):
+    rules = tmp_path / "rules.json"
+    rules.write_text('{"delayMs": 1}', encoding="utf-16")
+    assert lustro("POST", "echo", "--input", str(rules)) == 2
+    assert "could not read {}".format(rules) in capsys.readouterr().err
+
+
 def test_a_body_that_is_not_json_is_a_usage_error(lustro, capsys):
     assert lustro("POST", "echo", "--body", "{delayMs: 1}") == 2
     assert "--body is not JSON" in capsys.readouterr().err

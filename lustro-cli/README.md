@@ -176,6 +176,16 @@ The output is small by default, because an agent reads all of it.
   `--json` prints JSON Lines for both commands, and `--fields` keeps only the
   keys you name. A connection id can be its start, as for a transaction.
 
+`net wait` polls until a matching request finishes, prints it, and exits 0. It
+exits 1 after `--timeout` seconds (30 by default). It ignores the requests that
+finished before it started, and a mocked request finishes in a few
+milliseconds, so give the action that sends the request after `--`. `net wait`
+runs it after its first poll:
+
+```bash
+lustro net wait --url /v1/orders --errors -- adb shell input tap 540 1200
+```
+
 ## Any route
 
 `lustro api` sends one request to any route, with the token and the port that
@@ -193,16 +203,6 @@ lustro api POST network/rules/_/sync --input rules.json     # --input - reads st
 `--param KEY=VALUE` adds a query parameter, and can repeat a key. An error
 response prints the error from its envelope on stderr, such as
 `error: 404 not_found: ...`, and exits 1; nothing goes to stdout.
-
-`net wait` polls until a matching request finishes, prints it, and exits 0. It
-exits 1 after `--timeout` seconds (30 by default). It ignores the requests that
-finished before it started, and a mocked request finishes in a few
-milliseconds, so give the action that sends the request after `--`. `net wait`
-runs it after its first poll:
-
-```bash
-lustro net wait --url /v1/orders --errors -- adb shell input tap 540 1200
-```
 
 ## Contract tests
 

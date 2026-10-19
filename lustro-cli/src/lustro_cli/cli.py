@@ -672,7 +672,8 @@ def _api_body(args: argparse.Namespace) -> Any:
             else:
                 with open(args.input, "r", encoding="utf-8") as fh:
                     text = fh.read()
-        except OSError as exc:
+        except (OSError, ValueError) as exc:
+            # ValueError: a file that is not UTF-8, such as a UTF-16 file from PowerShell.
             raise UsageError("could not read {}: {}".format(args.input, exc))
     else:
         return None
