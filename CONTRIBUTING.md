@@ -55,7 +55,7 @@ built by Gradle, so it has its own runner — the one built into Node, with no
 `package.json` and no dependencies:
 
 ```bash
-node --test lustro/src/test/js/*.test.js
+node --test */src/test/js/*.test.js
 ```
 
 Those tests cover the code worth pinning rather than the file as a whole: the
@@ -65,6 +65,11 @@ table, and the hex dump), the HTML escaping that decides whether a captured
 body renders as text or as markup, and how a search's matches are marked. DOM wiring, resizers, toasts, modals, and one-line helpers are
 deliberately left untested. Please keep it that way when adding to them, and
 keep the suite dependency-free.
+
+A plugin's view has its tests in its own module, in `src/test/js` next to
+`src/main/assets/lustro`, as `lustro-logs` has: they load the plugin's script
+after `shared.js` with `loadTabJs(module, id)` from
+`lustro/src/test/js/harness.js`, and read the wire goldens with `golden(name)`.
 
 The platform `HttpURLConnection` capture gets the platform's URL handlers by
 reflection, so it has an instrumented test that needs a device or emulator:

@@ -28,58 +28,82 @@ internal class ThreadtimeParser(
     /**
      * Returns the parsed line, or `null` for a line in another format, such as
      * logcat's `--------- beginning of main` or an error message.
+     *
+     * The line is the first [length] bytes of [line], UTF-8 as logcat writes it,
+     * without its line break. The fields before the tag are ASCII, and the tag
+     * and the message are decoded on their own, because logcat cuts its prefix
+     * at a byte count.
      */
-    fun parse(line: String): LogLine? {
-        if (line.length < MIN_LENGTH || !hasTimestampShape(line)) return null
+    fun parse(line: ByteArray, length: Int = line.size): LogLine? {
+        if (length < MIN_LENGTH || !hasTimestampShape(line)) return null
         var i = TIMESTAMP_LENGTH
-        if (line[i] != ' ') return null
-        i = skipSpaces(line, i)
-        val offsetMinutes = offsetAt(line, i)
-        if (offsetMinutes != null) i = skipSpaces(line, i + OFFSET_LENGTH)
-        val pidEnd = digitsEnd(line, i)
+        if (line.char(i) != ' ') return null
+        i = skipSpaces(line, i, length)
+        val offsetMinutes = offsetAt(line, i, length)
+        if (offsetMinutes != null) i = skipSpaces(line, i + OFFSET_LENGTH, length)
+        val pidEnd = digitsEnd(line, i, length)
         if (pidEnd == i) return null
-        val pid = line.substring(i, pidEnd).toIntOrNull() ?: return null
-        i = skipSpaces(line, pidEnd)
+        val pid = number(line, i, pidEnd) ?: return null
+        i = skipSpaces(line, pidEnd, length)
         if (i == pidEnd) return null
-        val tidEnd = digitsEnd(line, i)
+        val tidEnd = digitsEnd(line, i, length)
         if (tidEnd == i) return null
-        val tid = line.substring(i, tidEnd).toIntOrNull() ?: return null
-        i = skipSpaces(line, tidEnd)
-        if (i == tidEnd || i + 1 >= line.length) return null
-        val level = levelOf(line[i]) ?: return null
-        if (line[i + 1] != ' ') return null
+        val tid = number(line, i, tidEnd) ?: return null
+        i = skipSpaces(line, tidEnd, length)
+        if (i == tidEnd || i + 1 >= length) return null
+        val level = levelOf(line.char(i)) ?: return null
+        if (line.char(i + 1) != ' ') return null
         val tagStart = i + 2
-        // The tag is padded to 8 characters and followed by ": ". A tag can hold
-        // a colon, so the first ": " ends it.
-        var separator = line.indexOf(": ", tagStart)
-        val message: String
-        if (separator >= 0) {
-            message = line.substring(separator + 2)
-        } else if (line.endsWith(':') && line.length - 1 >= tagStart) {
-            separator = line.length - 1
-            message = ""
+        val tagEnd: Int
+        val messageStart: Int
+        // logcat pads the tag to 8 bytes before its ": ", so a ": " in a shorter tag
+        // is not the separator. It writes the prefix, from the time to that ": ",
+        // into 128 bytes with the C string's NUL, so a ": " that ends after byte
+        // 127 is in the message.
+        val padded = separator(line, tagStart + TAG_WIDTH, minOf(length, MAX_PREFIX_BYTES))
+        if (padded >= 0) {
+            tagEnd = padded
+            messageStart = padded + 2
+        } else if (length >= MAX_PREFIX_BYTES) {
+            // A long tag: logcat cut the prefix at byte 127, the ": " with it, and the message starts there.
+            tagEnd = wholeCharactersEnd(line, tagStart, MAX_PREFIX_BYTES)
+            messageStart = MAX_PREFIX_BYTES
         } else {
-            return null
+            // A tag without the padding, or an empty message without the space after the colon.
+            val unpadded = separator(line, tagStart, length)
+            if (unpadded >= 0) {
+                tagEnd = unpadded
+                messageStart = unpadded + 2
+            } else if (line.char(length - 1) == ':' && length - 1 >= tagStart) {
+                tagEnd = length - 1
+                messageStart = length
+            } else {
+                return null
+            }
         }
-        val tag = line.substring(tagStart, separator).trimEnd()
+        val tag = String(line, tagStart, tagEnd - tagStart, Charsets.UTF_8).trimEnd()
+        val message = String(line, messageStart, length - messageStart, Charsets.UTF_8)
         val at = timeOf(line, offsetMinutes) ?: return null
         return LogLine(at, pid, tid, level, tag, message)
     }
 
+    /** [parse] of [line] as UTF-8. */
+    fun parse(line: String): LogLine? = parse(line.toByteArray(Charsets.UTF_8))
+
     // The offset of "+hhmm" or "-hhmm" followed by a space at [at], in minutes, or null.
-    private fun offsetAt(line: String, at: Int): Int? {
-        if (at + OFFSET_LENGTH >= line.length || line[at + OFFSET_LENGTH] != ' ') return null
+    private fun offsetAt(line: ByteArray, at: Int, length: Int): Int? {
+        if (at + OFFSET_LENGTH >= length || line.char(at + OFFSET_LENGTH) != ' ') return null
         val sign =
-            when (line[at]) {
+            when (line.char(at)) {
                 '+' -> 1
                 '-' -> -1
                 else -> return null
             }
-        if ((at + 1..at + 4).any { line[it] !in '0'..'9' }) return null
+        if ((at + 1..at + 4).any { line.char(it) !in '0'..'9' }) return null
         return sign * (twoDigits(line, at + 1) * MINUTES_PER_HOUR + twoDigits(line, at + 3))
     }
 
-    private fun timeOf(line: String, offsetMinutes: Int?): Long? {
+    private fun timeOf(line: ByteArray, offsetMinutes: Int?): Long? {
         val month = twoDigits(line, 0)
         val day = twoDigits(line, MONTH_DAY_OFFSET)
         if (month !in 1..MONTHS || day !in 1..MAX_DAY) return null
@@ -113,6 +137,8 @@ internal class ThreadtimeParser(
 
         // "MM-dd HH:mm:ss.SSS 1 1 D T: " is the shortest line with every field.
         const val MIN_LENGTH = TIMESTAMP_LENGTH + 8
+        const val TAG_WIDTH = 8
+        const val MAX_PREFIX_BYTES = 127
         const val MONTH_DAY_OFFSET = 3
         const val HOUR_OFFSET = 6
         const val MINUTE_OFFSET = 9
@@ -124,28 +150,64 @@ internal class ThreadtimeParser(
         const val OFFSET_LENGTH = 5
         const val MINUTES_PER_HOUR = 60
         const val MILLIS_PER_MINUTE = 60_000L
+        const val BYTE_MASK = 0xff
+        const val UTF8_CONTINUATION_MASK = 0xc0
+        const val UTF8_CONTINUATION = 0x80
+        const val UTF8_TWO_BYTES = 0xc0
+        const val UTF8_THREE_BYTES = 0xe0
+        const val UTF8_FOUR_BYTES = 0xf0
 
-        fun hasTimestampShape(line: String): Boolean =
+        // A byte as a char: an ASCII byte is its character, and a byte of a
+        // multi-byte UTF-8 character is never one of the ASCII ones compared with.
+        fun ByteArray.char(index: Int): Char = (this[index].toInt() and BYTE_MASK).toChar()
+
+        fun hasTimestampShape(line: ByteArray): Boolean =
             TIMESTAMP_SHAPE.indices.all { index ->
                 val expected = TIMESTAMP_SHAPE[index]
-                if (expected == '0') line[index] in '0'..'9' else line[index] == expected
+                if (expected == '0') line.char(index) in '0'..'9' else line.char(index) == expected
             }
 
-        fun skipSpaces(line: String, from: Int): Int {
+        fun skipSpaces(line: ByteArray, from: Int, length: Int): Int {
             var i = from
-            while (i < line.length && line[i] == ' ') i++
+            while (i < length && line.char(i) == ' ') i++
             return i
         }
 
-        fun digitsEnd(line: String, from: Int): Int {
+        fun digitsEnd(line: ByteArray, from: Int, length: Int): Int {
             var i = from
-            while (i < line.length && line[i] in '0'..'9') i++
+            while (i < length && line.char(i) in '0'..'9') i++
             return i
         }
 
-        fun twoDigits(line: String, at: Int): Int = (line[at] - '0') * 10 + (line[at + 1] - '0')
+        fun number(line: ByteArray, from: Int, to: Int): Int? = String(line, from, to - from, Charsets.US_ASCII).toIntOrNull()
 
-        fun threeDigits(line: String, at: Int): Int = (line[at] - '0') * 100 + twoDigits(line, at + 1)
+        // The end of the last whole UTF-8 character before [end]: a cut at a byte count
+        // can end in the middle of one.
+        fun wholeCharactersEnd(line: ByteArray, from: Int, end: Int): Int {
+            var lead = end - 1
+            while (lead > from && (line[lead].toInt() and UTF8_CONTINUATION_MASK) == UTF8_CONTINUATION) lead--
+            val first = line[lead].toInt() and BYTE_MASK
+            val size =
+                when {
+                    first >= UTF8_FOUR_BYTES -> 4
+                    first >= UTF8_THREE_BYTES -> 3
+                    first >= UTF8_TWO_BYTES -> 2
+                    else -> 1
+                }
+            return if (lead + size > end) lead else end
+        }
+
+        // The index of the first ": " at [from] or later that ends by [end], or -1.
+        fun separator(line: ByteArray, from: Int, end: Int): Int {
+            for (i in from until end - 1) {
+                if (line.char(i) == ':' && line.char(i + 1) == ' ') return i
+            }
+            return -1
+        }
+
+        fun twoDigits(line: ByteArray, at: Int): Int = (line.char(at) - '0') * 10 + (line.char(at + 1) - '0')
+
+        fun threeDigits(line: ByteArray, at: Int): Int = (line.char(at) - '0') * 100 + twoDigits(line, at + 1)
 
         // logcat prints the priority ASSERT as F on most versions, and as A on some.
         fun levelOf(char: Char): Char? =

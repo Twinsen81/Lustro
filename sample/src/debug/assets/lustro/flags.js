@@ -21,9 +21,9 @@
         listEl.innerHTML = allFlags.map(function(f) {
             var checked = f.enabled ? ' checked' : '';
             return '<div class="flag-card">'
-                + '<label class="flag-toggle" title="Toggle this flag. The change advances the poll cursor and is reflected immediately.">'
+                + '<label class="dc-switch" title="Toggle this flag. The change advances the poll cursor and is reflected immediately.">'
                 + '<input type="checkbox"' + checked + ' data-action="toggleFlag" data-flag-id="' + window.debugEscapeHtml(f.id) + '">'
-                + '<span class="flag-toggle-slider"></span></label>'
+                + '<span class="dc-switch__track"></span></label>'
                 + '<div class="flag-meta">'
                 + '<span class="flag-id">' + window.debugEscapeHtml(f.id) + '</span>'
                 + '<span class="flag-desc">' + window.debugEscapeHtml(f.description || '') + '</span>'

@@ -8,15 +8,10 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
-const fs = require('node:fs');
-const path = require('node:path');
-const { loadNetworkJs } = require('./harness.js');
+const { loadNetworkJs, golden } = require('./harness.js');
 
 const network = loadNetworkJs();
 const markdown = (...txs) => network.netTransactionsMarkdown(txs);
-
-const GOLDEN_DIR = path.join(__dirname, '..', '..', '..', '..', 'wire-protocol', 'v1', 'golden');
-const golden = (name) => JSON.parse(fs.readFileSync(path.join(GOLDEN_DIR, name), 'utf8'));
 
 function detail(fields) {
     return Object.assign({

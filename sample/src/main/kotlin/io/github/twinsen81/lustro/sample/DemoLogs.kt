@@ -55,6 +55,16 @@ internal class DemoLogs {
         Log.e(TAG_SYNC, "sync crashed", IllegalStateException("journal 7 has no key"))
     }
 
+    /** Writes a line with JSON in it, which the Logs tab's row toolbar shows indented. */
+    fun json() {
+        Log.d(TAG_SYNC, "sync response: {\"journals\":3,\"entries\":12,\"tags\":[\"work\",\"travel\"],\"next\":null}")
+    }
+
+    /** Writes a line at logcat's fatal level, F, which the Logs tab's Fatal chip shows. */
+    fun fatal() {
+        Log.println(Log.ASSERT, TAG_SYNC, "the journal store is corrupt, sync gives up")
+    }
+
     private companion object {
         const val TAG_HEARTBEAT = "SampleHeartbeat"
         const val TAG_SYNC = "SampleSync"

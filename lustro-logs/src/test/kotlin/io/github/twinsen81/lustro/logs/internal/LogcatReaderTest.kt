@@ -45,6 +45,26 @@ class LogcatReaderTest {
     }
 
     @Test
+    fun `a carriage return in a message keeps the rest of the message, and a long tag keeps its message`() {
+        val logcat = FakeLogcat()
+        launcher.add(logcat)
+        reader.start()
+        launcher.nextLaunch()
+
+        // As logcat printed them on a physical device (API 37): the CR as it is, and
+        // a prefix cut at 127 bytes, the ": " with it.
+        val longTag = "10-19 14:22:20.001 +0000  4321  4330 I " + "T".repeat(60) + "x".repeat(28)
+        logcat.emit(
+            "10-19 14:22:20.000 +0000  4321  4330 I App     : before\rafter",
+            longTag + "message: with colon",
+            "10-19 14:22:20.002 +0000  4321  4330 I App     : windows line end\r",
+        )
+        awaitMessages("before\rafter", "message: with colon", "windows line end")
+        val snapshot = buffer.snapshot(null, issuesCursor = false)
+        assertEquals("T".repeat(60) + "x".repeat(28), snapshot[snapshot.first + 1]!!.tag)
+    }
+
+    @Test
     fun `lines from before the process started are skipped, as logcat on API 24 prints them all`() {
         val logcat = FakeLogcat()
         launcher.add(logcat)

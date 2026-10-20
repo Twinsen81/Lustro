@@ -14,7 +14,12 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-const ASSET_DIR = path.join(__dirname, '..', '..', 'main', 'assets', 'lustro');
+const REPO_ROOT = path.join(__dirname, '..', '..', '..', '..');
+
+// The console assets of a module: lustro, or a plugin such as lustro-logs.
+function assetPath(module, name) {
+    return path.join(REPO_ROOT, module, 'src', 'main', 'assets', 'lustro', name);
+}
 
 function stubElement() {
     return {
@@ -73,19 +78,29 @@ function loadSharedJs() {
     sandbox.addEventListener = () => {};
 
     vm.createContext(sandbox);
-    const source = fs.readFileSync(path.join(ASSET_DIR, 'shared.js'), 'utf8');
+    const source = fs.readFileSync(assetPath('lustro', 'shared.js'), 'utf8');
     vm.runInContext(source, sandbox, { filename: 'shared.js' });
     return sandbox;
 }
 
-// shared.js, then the Network tab's network.js in the same context. The tab
-// registers its DOM setup with lustroOnContentReady, which never fires here, so
-// only its top-level functions run.
-function loadNetworkJs() {
+// shared.js, then a tab's <id>.js from a module's assets in the same context,
+// as the console loads them. The tab registers its DOM setup with
+// lustroOnContentReady, which never fires here, so only its top-level functions
+// run. A plugin's tests, in <plugin>/src/test/js, load its script with this.
+function loadTabJs(module, id) {
     const sandbox = loadSharedJs();
-    const source = fs.readFileSync(path.join(ASSET_DIR, 'network.js'), 'utf8');
-    vm.runInContext(source, sandbox, { filename: 'network.js' });
+    const source = fs.readFileSync(assetPath(module, id + '.js'), 'utf8');
+    vm.runInContext(source, sandbox, { filename: id + '.js' });
     return sandbox;
 }
 
-module.exports = { loadSharedJs, loadNetworkJs };
+function loadNetworkJs() {
+    return loadTabJs('lustro', 'network');
+}
+
+// The golden fixtures of the wire protocol, which pin what the routes return.
+function golden(name) {
+    return JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'wire-protocol', 'v1', 'golden', name), 'utf8'));
+}
+
+module.exports = { loadSharedJs, loadTabJs, loadNetworkJs, golden };

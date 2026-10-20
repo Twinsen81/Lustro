@@ -1,0 +1,187 @@
+/* Logs tab. Builds on the tokens and .dc-* components from shared.css: every
+   color here is a token or a color-mix of one, so both themes work. */
+
+.logs { height: 100%; min-height: 0; display: flex; flex-direction: column; }
+
+/* ── The bar: filters and actions, then the chips and the count ── */
+/* Above the table, so that its menus and the tag tip cover the rows. */
+.logs-bar {
+    flex: none;
+    position: relative;
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 14px 22px 12px;
+    background: var(--header);
+    border-bottom: 1px solid var(--border-soft);
+}
+.logs-bar__row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+
+/* The level select: a field-like button that opens a single-select .dc-menu. */
+.logs-level {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    min-width: 138px;
+    padding: 8px 11px;
+    background: var(--field);
+    border: 1px solid var(--chip-border);
+    border-radius: var(--radius);
+    color: var(--t1);
+    font-family: inherit;
+    font-size: 12px;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    cursor: pointer;
+}
+.logs-level:hover { border-color: var(--hover-border); }
+.logs-level[aria-expanded="true"] { border-color: var(--accent-border); }
+.logs-level__value { display: flex; align-items: center; gap: 8px; }
+.logs-level__caret { color: var(--t4); }
+.logs-level-menu { min-width: 170px; }
+
+/* The menus' items are buttons, for the keyboard; :where() keeps the .dc-menu rules first. */
+:where(.logs-menu) button.dc-menu__item {
+    width: 100%;
+    background: none;
+    border: none;
+    font-family: inherit;
+    text-align: left;
+}
+.logs-level-menu .dc-menu__item { text-transform: uppercase; }
+.logs-menu__label { flex: 1; }
+.logs-menu__locked { color: var(--t4); cursor: not-allowed; }
+
+/* The filter fields. */
+.logs-tag { position: relative; }
+.logs-field--tag { width: 210px; }
+.logs-field--search { flex: 1; min-width: 220px; }
+.logs-field--invalid, .logs-field--invalid:focus-within { border-color: var(--danger); }
+.logs-field__label { display: flex; flex: 1; align-items: center; gap: 8px; min-width: 0; cursor: text; }
+.logs-field__icon { flex: none; color: var(--t4); }
+/* A 24px hit target that doesn't make the field taller. */
+.logs-field__clear { min-width: 24px; min-height: 24px; margin: -5px -4px; padding: 0 4px; font-size: 15px; line-height: 1; }
+.logs-filter-error { color: var(--danger); font-size: 11.5px; line-height: 1.5; overflow-wrap: anywhere; }
+
+/* The tag regex examples: shown after 1 s on the field, so that a pointer
+   on its way elsewhere doesn't open it, and never pinned open by focus. */
+.logs-tip {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: 40;
+    min-width: 330px;
+    padding: 11px 13px;
+    background: var(--menu);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-menu);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity .15s ease, visibility 0s .15s;
+}
+.logs-tag:hover .logs-tip { opacity: 1; visibility: visible; transition: opacity .15s ease 1s, visibility 0s 1s; }
+.logs-tip__title { margin-bottom: 8px; font-size: 10.5px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--t4); }
+.logs-tip__table { border-collapse: collapse; font-size: 11.5px; }
+.logs-tip__table td { padding: 3px 12px 3px 0; color: var(--t2); vertical-align: baseline; white-space: nowrap; }
+.logs-tip__table code {
+    padding: 1px 6px;
+    background: var(--field);
+    border: 1px solid var(--chip-border);
+    border-radius: var(--radius-sm);
+    color: var(--accent-2);
+    font-family: var(--font-mono);
+}
+.logs-tip__note { margin-top: 8px; font-size: 11px; color: var(--t4); }
+
+/* The actions: as tall as the fields beside them. */
+.logs-actions { display: flex; flex: none; gap: 6px; }
+.logs-actions .dc-btn { padding: 8px 13px; font-size: 11.5px; }
+.logs-actions .dc-btn[aria-expanded="true"] { border-color: var(--accent-border); }
+/* Paused = the purple --ai accent (reserved for mock/paused), as in the Network tab. */
+#logs-pause.dc-btn--active { background: var(--ai-soft); border-color: var(--ai-border); color: var(--ai); }
+
+.logs-paused {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-left: 6px;
+    padding: 4px 11px;
+    border-radius: var(--radius-pill);
+    background: var(--ai-soft);
+    color: var(--ai);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+}
+.logs-paused::before { content: ''; width: 6px; height: 6px; background: currentColor; }
+.logs-count { margin-left: auto; font-size: 11.5px; color: var(--t4); }
+
+/* The reader's status, when logcat ended or failed. */
+.logs-banner { flex: none; padding: 9px 22px; border-bottom: 1px solid var(--border-soft); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.logs-banner--warn { background: color-mix(in srgb, var(--lvl-w) 12%, transparent); color: var(--lvl-w); }
+.logs-banner--error { background: var(--danger-soft); color: var(--danger); }
+
+/* ── The table ── */
+.logs-body { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.logs-scroll { flex: 1; min-height: 0; overflow: auto; }
+.logs-table { table-layout: fixed; }
+.logs-table .dc-cell { vertical-align: top; line-height: 1.5; }
+.logs-th--lvl, .logs-cell--lvl { text-align: center; }
+.logs-cell--lvl { font-weight: 700; text-overflow: clip; }
+.logs-lvl--V { color: var(--lvl-v); }
+.logs-lvl--D { color: var(--lvl-d); }
+.logs-lvl--I { color: var(--lvl-i); }
+.logs-lvl--W { color: var(--lvl-w); }
+.logs-lvl--E { color: var(--lvl-e); }
+.logs-lvl--F { color: var(--lvl-f); }
+.logs-cell--tag { color: var(--t3); }
+.dc-row--warn .logs-cell--msg { color: var(--lvl-w); }
+.dc-row--error .logs-cell--tag, .dc-row--error .logs-cell--msg { color: var(--danger); }
+/* Fatal: the error row, in the deeper Fatal red and a stronger tint. */
+.logs-row--fatal { background: color-mix(in srgb, var(--lvl-f) 16%, transparent); box-shadow: inset 3px 0 0 var(--lvl-f); }
+.logs-row--fatal .logs-cell--tag, .logs-row--fatal .logs-cell--msg { color: var(--lvl-f); }
+
+/* A message up to 240 characters wraps; a longer one shows one line until a
+   click opens it. */
+.logs-cell--msg { white-space: normal; text-overflow: clip; }
+.logs-msg-wrap { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.logs-msg { min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.logs-msg--long { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.logs-msg--long.logs-msg--open { white-space: pre-wrap; }
+.logs-repeat {
+    flex: none;
+    padding: 0 7px;
+    border-radius: var(--radius-pill);
+    background: var(--accent-soft);
+    color: var(--accent-2);
+    font-size: 10.5px;
+    font-weight: 600;
+    line-height: 18px;
+}
+
+/* The column resize handle, at the right edge of a header cell. */
+.logs-resize { position: absolute; top: 0; right: 0; width: 6px; height: 100%; cursor: col-resize; }
+.logs-resize:hover, .logs-resize--dragging { box-shadow: inset -2px 0 0 var(--accent); }
+
+.logs-empty { padding: 40px; text-align: center; color: var(--t4); font-size: 12.5px; }
+
+/* Floating layers: the jump button and the row toolbar. */
+.logs-jump { position: absolute; right: 22px; bottom: 16px; z-index: 2; background: var(--menu); box-shadow: var(--shadow-menu); }
+.logs-tools {
+    position: fixed;
+    z-index: 45;
+    display: flex;
+    gap: 4px;
+    padding: 5px;
+    background: var(--menu);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-menu);
+}
+
+.logs-json { margin: 0; max-height: 60vh; overflow: auto; }

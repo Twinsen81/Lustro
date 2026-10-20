@@ -16,7 +16,9 @@ public class SampleFlagsTab(
     override val id: String = "flags"
     override val title: String = "Sample Client Feature Flags"
     override val icon: String = "🚩"
-    override val order: Int = 20
+
+    // The app's own tab goes after the library's tabs and the plugins' tabs.
+    override val order: Int = Int.MAX_VALUE
 
     // In-memory flag store. A monotonically increasing sequence backs the opaque
     // cursor so pollers can detect changes (mirrors the Network tab's cursor).

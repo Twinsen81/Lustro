@@ -16,7 +16,6 @@ public class LogsDebugTab private constructor() : DebugTab() {
     override val title: String = "Logs"
     override val icon: String = "📜"
     override val order: Int = 20
-    override val showInTabBar: Boolean = false
 
     /** Returns `null`; the no-op build routes nothing. */
     override fun handle(request: DebugRequest): DebugResponse? = null

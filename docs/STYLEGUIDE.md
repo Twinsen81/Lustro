@@ -48,7 +48,8 @@ Defined on `:root` (dark default) with light overrides under
   `--accent-soft` (tinted bg), `--accent-border`; same shape for `--ai-*`,
   `--live-*`, `--danger-*`.
 - **Semantic sets** (each themed for dark and light): `--method-get/post/put/
-  patch/delete/head`, `--status-2xx/3xx/4xx/5xx`, `--lvl-v/d/i/w/e`,
+  patch/delete/head`, `--status-2xx/3xx/4xx/5xx`, `--lvl-v/d/i/w/e/f` (a
+  log level; Fatal, `--lvl-f`, is a deeper red than Error),
   `--type-string/boolean/int/long/float`, `--cat-sync/ai/config/media/auth/
   other/wiretap`, `--syn-key/str/num/bool/punc` (JSON highlighting).
 - **Row states**: `--row-selected`, `--row-zebra`, `--row-hover`, `--row-warn`,
@@ -99,6 +100,13 @@ too. Semantic color is passed via the `--c` custom property where noted:
   `margin-left: auto`.
 - `.dc-field` (+ `.dc-field__prefix`, `.dc-input`), `.dc-input--block`,
   `.dc-textarea`, `.dc-label`, `.dc-check(--on/--locked)`: inputs and labels.
+- `.dc-switch` + `.dc-switch__track`: an on/off setting that applies when it is
+  flipped, such as a mock rule's Enabled. The markup is
+  `<label class="dc-switch"><input type="checkbox"><span
+  class="dc-switch__track"></span></label>`, and the input takes the events. On
+  is the accent; set `--c` for another color, as the sample flags tab does
+  with `--live`. For a choice that a Save or an Apply button sends, use a
+  `.dc-check` instead.
 - `.dc-table` family (`.dc-thead`, `.dc-th(--sortable/--sorted)`, `.dc-row
   (--selected/--warn/--error)`, `.dc-cell(--num/--null/--muted)`): data grids,
   as a `<table>` or as div rows. Header cells stick to the top of the scroll
@@ -146,7 +154,16 @@ too. Semantic color is passed via the `--c` custom property where noted:
 - `.dc-listitem` (+ `.dc-star`), `.dc-comment`, `.dc-mono-label`, and the chrome
   shell: `.dc-app`, `.dc-topbar`, `.dc-nav`.
 
-## 5. Theming
+## 5. Showing and hiding
+
+Hide an element with the `hidden` attribute (`el.hidden = true`), not with a
+class or an inline `display`. `shared.css` has one global rule,
+`[hidden] { display: none !important; }`, so `hidden` also hides a component
+that sets `display` itself, such as a `.dc-btn` or a `.dc-field`, and a tab
+needs no `[hidden]` rule of its own. The `.dc-modal-scrim` and `.dc-menu` layers
+show and hide in the same way.
+
+## 6. Theming
 
 `shared.js` owns the theme: it cycles auto → light → dark, persists to
 `localStorage['debug-theme']`, and sets `data-theme` on `<html>`. Tabs need to
@@ -154,7 +171,7 @@ do **nothing** — if every color in your CSS is a token (or a `color-mix` of
 one), both themes work automatically. Semantic colors intentionally darken in
 light mode for contrast; never collapse the two sets.
 
-## 6. Tab-author rules
+## 7. Tab-author rules
 
 - Reference tokens, never hex values; pick the token by *meaning*.
 - Build on the `.dc-*` components before writing custom CSS; when you do write

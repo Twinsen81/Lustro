@@ -595,15 +595,20 @@ val lustro = Lustro.builder(application)
   the size of their text on the heap, about 12,000 lines of 100 characters):
   `LogsDebugTab.create(bufferBytes = 8 * 1024 * 1024)`. A line that repeats the line before folds
   into it as a count, so a flood of one line costs almost nothing.
-- **Routes, no view yet.** The console has no Logs view yet, so the tab is not in the tab bar.
-  `GET /api/v1/logs/entries` polls the log in the stream envelope, with `level`, `tag`, `q`, and
-  `mq` filters; `GET /api/v1/logs/text` exports it as logcat's threadtime text; and `POST clear`,
-  `pause`, and `compact` control it. The `lustro` CLI reaches them with `lustro api`, for example
-  `lustro api GET logs/text --param level=W`. See [docs/AGENTS.md](docs/AGENTS.md#logs-tab-operations)
+- **A live tail in the console.** The **Logs** tab follows the newest lines, with a lowest level,
+  a tag regex, and a message search, which the app applies to its whole buffer. It can pause,
+  fold repeated lines, clear the buffer, copy the lines it shows as text, and show or hide the
+  Time, Level, Tag, and PID / TID columns. A line with JSON in it opens indented from the toolbar
+  that shows on a row after a second.
+- **Routes.** `GET /api/v1/logs/entries` polls the log in the stream envelope, with `level`, `tag`,
+  `q`, and `mq` filters; `GET /api/v1/logs/text` exports it as logcat's threadtime text; and
+  `POST clear`, `pause`, and `compact` control it. The `lustro` CLI reaches them with `lustro api`,
+  for example `lustro api GET logs/text --param level=W`. See [docs/AGENTS.md](docs/AGENTS.md#logs-tab-operations)
   and [`logs.openapi.json`](lustro-logs/src/main/assets/lustro/logs.openapi.json).
 - **Not redacted.** Log lines are served as the app wrote them, tokens that an
   `HttpLoggingInterceptor` logs among them. See [SECURITY.md](SECURITY.md#threat-model).
 - **Only logcat.** A message longer than logcat's limit of about 4 KB is cut, as in `adb logcat`.
+  So is a tag longer than about 88 bytes: logcat prints the first part of it, and the message after.
 - In `lustro-logs-noop`, the tab reads no logs.
 
 ## Security model

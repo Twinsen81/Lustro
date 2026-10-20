@@ -43,44 +43,8 @@
     color: var(--t3);
 }
 
-/* Toggle switch */
-.flag-toggle {
-    position: relative;
-    display: inline-block;
-    width: 38px;
-    height: 22px;
-    flex: none;
-    cursor: pointer;
-}
-.flag-toggle input {
-    opacity: 0;
-    width: 0;
-    height: 0;
-}
-.flag-toggle-slider {
-    position: absolute;
-    inset: 0;
-    background: var(--t5);
-    border-radius: var(--radius-pill);
-    transition: background 0.2s;
-}
-.flag-toggle-slider::before {
-    content: '';
-    position: absolute;
-    width: 16px;
-    height: 16px;
-    left: 3px;
-    top: 3px;
-    background: #fff;
-    border-radius: 50%;
-    transition: transform 0.2s;
-}
-.flag-toggle input:checked + .flag-toggle-slider {
-    background: var(--live);
-}
-.flag-toggle input:checked + .flag-toggle-slider::before {
-    transform: translateX(16px);
-}
+/* An enabled flag is live: its switch is green, as its ON badge. */
+.flag-card .dc-switch { --c: var(--live); }
 
 /* Upload modal */
 .flags-upload-hint {

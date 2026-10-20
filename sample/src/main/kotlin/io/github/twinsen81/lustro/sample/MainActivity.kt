@@ -189,6 +189,8 @@ public class MainActivity : Activity() {
         addButton(root, "Log a burst of 500 lines") { demoLogs.burst(LOG_BURST_LINES) }
         addButton(root, "Log the same line 20 times") { demoLogs.repeatLine(LOG_REPEATS) }
         addButton(root, "Log an exception") { demoLogs.exception() }
+        addButton(root, "Log a line with JSON") { demoLogs.json() }
+        addButton(root, "Log a fatal line") { demoLogs.fatal() }
 
         // Lustro.stop() ends the debug server and what its tabs run, such as
         // the Logs tab's logcat process; Lustro.start() starts them again.
