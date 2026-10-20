@@ -14,6 +14,35 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Added
 
+- **The Logs tab in the console.** The Logs plugin's tab is now in the tab
+  bar, with a live tail of the app's log. It polls `GET /api/v1/logs/entries`
+  every half second and follows the newest line while the list is scrolled to
+  the end; scrolled up, it keeps its place and shows **Latest**. The level
+  menu, the Fatal chip, the tag regex (with examples after a second of hover),
+  and the message search go to the app as the route's filters, so they apply
+  to the whole buffer, not only to the lines on the page. A tag regex that the
+  app rejects shows its reason, and the list leaves it out until it changes.
+  **Pause**, **Compact**, and **Clear** call the routes of the same name;
+  after a clear, the list polls from the cursor that `POST clear` returns.
+  **Copy** writes the lines in the list as text, with the columns it shows,
+  and the Columns menu shows or hides Time, Level, Tag, and PID / TID, whose
+  widths a drag on a header edge sets; the browser remembers both. A repeated
+  line shows a ×N count and replaces its row when its count grows, a message
+  longer than 240 characters or with line breaks shows its first line until a
+  click, and the page keeps the newest 5000 lines. After a second of hover, a
+  row shows **Format JSON**, **Copy**, and **Filter by this tag**. A banner
+  says when logcat failed or ended, and the count says how many lines left the
+  app's buffer before the page read them. The view's JavaScript has tests in
+  `lustro-logs/src/test/js`, which the console's test harness now loads for a
+  plugin.
+- **Three additions to the console's design system.** `.dc-switch` is a
+  switch for a setting that applies when it is flipped; the mock rules and the
+  sample flags tab now use it in place of their own. `--lvl-f` is the color of
+  the Fatal level, a deeper red than Error, in both themes. And
+  `[hidden] { display: none !important; }` makes the `hidden` attribute hide
+  any element, also a `.dc-btn` or a `.dc-field`, which set `display`, so a tab
+  needs no `[hidden]` rule of its own. `docs/STYLEGUIDE.md` describes all
+  three.
 - **The Logs plugin serves the app's own logcat.** `lustro-logs` and its
   release half `lustro-logs-noop` add a tab, registered with
   `LogsDebugTab.create()`, that runs `logcat -v threadtime -v UTC --pid=<the
@@ -32,8 +61,7 @@ see [DECISIONS.md](DECISIONS.md).
   the same `seq` and a larger `count`, and a flood of one line costs almost
   no memory. When logcat ends, the tab starts it again up to 3 times, 1 s
   apart, and then reports `failed` in the poll's `state`, with the reason.
-  The console has no view for it yet, so the tab is not in the tab bar. Its
-  schema, `logs.openapi.json`, has its own version, `1.0`. Log lines are not
+  Its schema, `logs.openapi.json`, has its own version, `1.0`. Log lines are not
   redacted: SECURITY.md says what that exposes on a LAN. The sample
   registers the tab, writes demo lines every two seconds, and has buttons to
   log a burst, a repeated line, and an exception, and to stop and start
