@@ -51,7 +51,10 @@ internal class EventLog(private val clock: () -> Long = System::currentTimeMilli
         recentEvents.update { events ->
             val index = events.indexOfFirst { it.run == event.run }
             when {
-                index < 0 || feedback.moveToTop -> (listOf(event) + events.filterNot { it.run == event.run }).take(HISTORY_SIZE)
+                feedback.moveToTop -> (listOf(event) + events.filterNot { it.run == event.run }).take(HISTORY_SIZE)
+                // A quiet run that newer runs pushed out stays out: back on top, it
+                // would hide the newest result every few seconds.
+                index < 0 -> events
                 else -> events.toMutableList().also { it[index] = event }
             }
         }
@@ -83,7 +86,8 @@ internal class Feedback(
 
     /**
      * Updates the same history row without moving it to the top, and without
-     * the chip of [label]: for a run that posts every few seconds.
+     * the chip of [label]: for a run that posts every few seconds. Once newer
+     * runs push the row out of the history, its updates no longer show.
      */
     fun quiet(): Feedback = Feedback(log, run, label = null, moveToTop = false)
 

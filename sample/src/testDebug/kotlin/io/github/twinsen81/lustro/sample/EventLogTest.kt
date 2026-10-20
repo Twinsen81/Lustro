@@ -2,6 +2,7 @@ package io.github.twinsen81.lustro.sample
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class EventLogTest {
@@ -30,6 +31,17 @@ class EventLogTest {
 
         assertEquals(listOf("200 GET /get", "200 GET /anything/sync #1"), log.recent.value.map { it.text })
         assertEquals("Periodic sync started", log.latestByLabel.value.getValue("Start periodic sync").text)
+    }
+
+    @Test
+    fun `a quiet run that newer runs pushed out does not come back on top`() {
+        val sync = log.start("Start periodic sync")
+        sync.ok("Periodic sync started")
+        repeat(EventLog.HISTORY_SIZE) { log.start("action $it").ok("result $it") }
+        sync.quiet().ok("200 GET /anything/sync #7")
+
+        assertEquals("result ${EventLog.HISTORY_SIZE - 1}", log.recent.value.first().text)
+        assertTrue(log.recent.value.none { it.run == sync.run })
     }
 
     @Test

@@ -1,6 +1,7 @@
 package io.github.twinsen81.lustro.sample
 
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.concurrent.thread
 import okhttp3.Request
 import okhttp3.Response
@@ -28,20 +29,17 @@ internal class WebSocketDemo(
     @Volatile
     private var socket: WebSocket? = null
 
-    // The runs that wait for the socket: a connect waits for onOpen, a close for onClosed.
-    @Volatile
-    private var connecting: Feedback? = null
-
-    @Volatile
-    private var closing: Feedback? = null
+    // The runs that wait for the socket: a connect waits for onOpen, a close for
+    // onClosed. Whoever ends a run takes it out first, so each run ends once.
+    private val connecting = AtomicReference<Feedback?>()
+    private val closing = AtomicReference<Feedback?>()
     private val sent = AtomicInteger()
 
     private val listener =
         object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 if (webSocket !== socket) return
-                (connecting ?: events.start(null)).ok("WS open (${response.code})")
-                connecting = null
+                (connecting.getAndSet(null) ?: events.start(null)).ok("WS open (${response.code})")
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
@@ -59,24 +57,22 @@ internal class WebSocketDemo(
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                (closing ?: events.start(null)).ok("WS closed ($code${if (reason.isEmpty()) "" else " $reason"})")
-                closing = null
+                (closing.getAndSet(null) ?: events.start(null)).ok("WS closed ($code${if (reason.isEmpty()) "" else " $reason"})")
             }
 
             // A socket that connect or cancel replaced fails too; that is expected, not news.
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 if (webSocket !== socket) return
                 val what = if (response != null) "WS upgrade refused (${response.code})" else "WS failed"
-                (connecting ?: closing ?: events.start(null)).failed(what, t.message)
-                connecting = null
-                closing = null
+                val pending = listOfNotNull(connecting.getAndSet(null), closing.getAndSet(null))
+                pending.ifEmpty { listOf(events.start(null)) }.forEach { it.failed(what, t.message) }
             }
         }
 
     fun connect(url: String, feedback: Feedback) {
         val previous = socket
-        connecting = feedback
-        closing = null
+        endPending("replaced by a new connect")
+        connecting.set(feedback)
         feedback.running("WS connect ${url.removePrefix("wss://").trimEnd('/')}")
         socket = sockets.newWebSocket(Request.Builder().url(url).build(), listener)
         previous?.cancel()
@@ -96,20 +92,27 @@ internal class WebSocketDemo(
 
     // One message at a time, so the console's log grows while you watch it. The
     // echo server also closes the connection when many messages arrive at once.
-    fun sendMany(feedback: Feedback) =
-        send(feedback, "WS sends $MANY_MESSAGES messages") { socket ->
-            thread(isDaemon = true, name = "websocket-demo") {
-                repeat(MANY_MESSAGES) {
-                    if (!socket.send("""{"n":${sent.incrementAndGet()}}""")) return@thread
-                    Thread.sleep(SEND_INTERVAL_MS)
-                }
+    // The run ends when the worker does, with the number the socket accepted.
+    fun sendMany(feedback: Feedback) {
+        val socket = socket ?: return feedback.failed("Connect the WebSocket first")
+        feedback.running("WS sending $MANY_MESSAGES messages")
+        thread(isDaemon = true, name = "websocket-demo") {
+            var accepted = 0
+            while (accepted < MANY_MESSAGES && socket.send("""{"n":${sent.incrementAndGet()}}""")) {
+                accepted++
+                if (accepted < MANY_MESSAGES) Thread.sleep(SEND_INTERVAL_MS)
             }
-            true
+            if (accepted == MANY_MESSAGES) {
+                feedback.ok("WS sent $MANY_MESSAGES messages")
+            } else {
+                feedback.failed("WS sent $accepted of $MANY_MESSAGES messages", "The socket is closing or closed")
+            }
         }
+    }
 
     fun close(feedback: Feedback) {
         if (socket?.close(NORMAL_CLOSURE, "done") == true) {
-            closing = feedback
+            closing.getAndSet(feedback)?.info("WS close repeated")
             feedback.running("WS closing")
         } else {
             feedback.failed("No open WebSocket")
@@ -119,10 +122,16 @@ internal class WebSocketDemo(
     fun cancel(feedback: Feedback) {
         val current = socket ?: return feedback.failed("No WebSocket")
         socket = null
-        connecting = null
-        closing = null
+        endPending("cancelled")
         current.cancel()
         feedback.ok("WS cancelled")
+    }
+
+    // The callbacks of a socket that is cancelled or replaced are ignored, so the
+    // runs that wait for it end here; otherwise their spinners would stay.
+    private fun endPending(why: String) {
+        connecting.getAndSet(null)?.info("WS connect $why")
+        closing.getAndSet(null)?.info("WS close $why")
     }
 
     private fun send(feedback: Feedback, done: String, action: (WebSocket) -> Boolean) {
