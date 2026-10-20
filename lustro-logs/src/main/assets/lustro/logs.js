@@ -257,7 +257,7 @@
     var columns = DEFAULT_COLUMNS;
     var widths = {};
     var openSeqs = new Set();
-    var state = {};
+    var state = { paused: false, compact: true };
     // Every change of filters, and every clear, starts a generation: a response
     // to a request of an earlier one is late and changes nothing.
     var generation = 0;
@@ -432,26 +432,26 @@
     }
 
     function onFilterInput(input) {
-        var field = input.id === 'logs-tag' ? 'tag' : 'q';
         showClear(input);
         if (filterTimer) clearTimeout(filterTimer);
-        filterTimer = setTimeout(function() {
-            filterTimer = null;
-            if (filters[field] === input.value) return;
-            filters[field] = input.value;
-            if (field === 'tag') clearTagError();
-            filtersChanged();
-        }, FILTER_DEBOUNCE_MS);
+        filterTimer = setTimeout(applyInputs, FILTER_DEBOUNCE_MS);
     }
 
     function setInput(input, value) {
         input.value = value;
         showClear(input);
+        applyInputs();
+    }
+
+    // Both fields at once: a pending change in one is not lost to an edit in the other.
+    function applyInputs() {
         if (filterTimer) { clearTimeout(filterTimer); filterTimer = null; }
-        var field = input.id === 'logs-tag' ? 'tag' : 'q';
-        if (filters[field] === value) return;
-        filters[field] = value;
-        if (field === 'tag') clearTagError();
+        var tag = els.tag.value;
+        var q = els.q.value;
+        if (filters.tag === tag && filters.q === q) return;
+        if (filters.tag !== tag) clearTagError();
+        filters.tag = tag;
+        filters.q = q;
         filtersChanged();
     }
 
@@ -575,7 +575,8 @@
     // ── The row toolbar: on a row after 1 s of hover ────────────
 
     var toolsSeq = null;
-    var hoveredRow = null;
+    // The row is known by its seq: a repeat of its line replaces its element.
+    var hoveredSeq = null;
     var showTimer = null;
     var hideTimer = null;
     var pointerX = 0;
@@ -603,7 +604,7 @@
         if (showTimer) { clearTimeout(showTimer); showTimer = null; }
         if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
         if (els.tools) els.tools.hidden = true;
-        hoveredRow = null;
+        hoveredSeq = null;
         toolsSeq = null;
         if (followPending) {
             followPending = false;
@@ -616,28 +617,34 @@
         hideTimer = setTimeout(hideTools, TOOLS_HIDE_DELAY_MS);
     }
 
+    function rowOfSeq(seq) {
+        return els.rows.querySelector('tr[data-seq="' + seq + '"]');
+    }
+
     function onRowOver(e) {
         var row = e.target.closest('tr');
         // While the toolbar shows, the pointer crosses other rows on its way to it.
-        if (!row || !els.tools.hidden || row === hoveredRow) return;
+        if (!row || !els.tools.hidden || row.dataset.seq === hoveredSeq) return;
         if (showTimer) clearTimeout(showTimer);
-        hoveredRow = row;
+        var seq = row.dataset.seq;
+        hoveredSeq = seq;
         showTimer = setTimeout(function() {
             showTimer = null;
-            if (hoveredRow === row && row.isConnected) showTools(row);
+            var current = hoveredSeq === seq ? rowOfSeq(seq) : null;
+            if (current) showTools(current);
         }, TOOLS_DELAY_MS);
     }
 
     function onRowOut(e) {
         var row = e.target.closest('tr');
-        if (!row || row !== hoveredRow) return;
+        if (!row || row.dataset.seq !== hoveredSeq) return;
         var to = e.relatedTarget;
         if (to && (row.contains(to) || els.tools.contains(to))) return;
         if (!els.tools.hidden) {
             scheduleHide();
         } else {
             if (showTimer) { clearTimeout(showTimer); showTimer = null; }
-            hoveredRow = null;
+            hoveredSeq = null;
         }
     }
 
@@ -785,7 +792,7 @@
                 followPending = false;
                 hideTools();
             }
-            if (isAtEnd()) els.jump.hidden = true;
+            els.jump.hidden = isAtEnd();
         });
         window.addEventListener('resize', hideTools);
         document.addEventListener('keydown', function(ev) {
@@ -809,6 +816,7 @@
             levelLabel: document.getElementById('logs-level-label'),
             levelMenu: document.getElementById('logs-level-menu'),
             tag: document.getElementById('logs-tag'),
+            q: document.getElementById('logs-q'),
             tagField: document.getElementById('logs-tag-field'),
             pause: document.getElementById('logs-pause'),
             compact: document.getElementById('logs-compact'),
