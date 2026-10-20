@@ -12,6 +12,7 @@ import io.github.twinsen81.lustro.network.OkHttpSender
 import io.github.twinsen81.lustro.network.SharedPreferencesMockRuleStorage
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
+import kotlinx.coroutines.flow.StateFlow
 import okhttp3.WebSocket
 
 /**
@@ -40,6 +41,12 @@ public object LustroBootstrap {
     @Volatile
     private var interceptor: Interceptor? = null
 
+    @Volatile
+    private var flagsTab: SampleFlagsTab? = null
+
+    @Volatile
+    private var running = false
+
     /**
      * Builds and starts Lustro for the debug variant, then returns the OkHttp
      * application interceptor the app must install on the client whose traffic
@@ -58,12 +65,13 @@ public object LustroBootstrap {
         interceptor?.let { return it }
 
         val prefs = app.getSharedPreferences("lustro_sample_mocks", Context.MODE_PRIVATE)
+        val flags = SampleFlagsTab(app)
 
         val instance =
             Lustro.builder(app)
                 .config(
                     DebugConfig.builder()
-                        .serverPort(8080)
+                        .serverPort(CONSOLE_PORT)
                         .build(),
                 )
                 .addTab(
@@ -98,14 +106,16 @@ public object LustroBootstrap {
                 .addTab(LogsDebugTab.create())
                 // Custom, schema-backed tab. It is debug-only: it never appears in
                 // src/release, so the no-op variant has no Feature Flags tab.
-                .addTab(SampleFlagsTab(app))
+                .addTab(flags)
                 .build()
 
         val captured = instance.networkInterceptor()
         lustro = instance
         interceptor = captured
+        flagsTab = flags
 
         val status: LustroStatus = instance.start()
+        running = status == LustroStatus.ENABLED
         android.util.Log.i("LustroSample", "Lustro start() returned $status")
         return captured
     }
@@ -121,36 +131,71 @@ public object LustroBootstrap {
     /** Stops the debug runtime. Idempotent; safe to call from any variant. */
     public fun stop() {
         lustro?.stop()
+        running = false
     }
 
     /** Starts the debug runtime again after [stop]. Idempotent. */
     public fun restart() {
-        lustro?.start()
+        running = lustro?.start() == LustroStatus.ENABLED
+    }
+
+    /** True in this variant: the app has a debug server to show and control. */
+    internal const val CONSOLE_AVAILABLE: Boolean = true
+
+    /** Whether the server is armed: the last [start] or [restart] armed it, and [stop] has not run since. */
+    internal fun isRunning(): Boolean = running
+
+    /** The flags of the Feature Flags tab, which the app reads. */
+    internal fun flags(): StateFlow<List<SampleFlag>>? = flagsTab?.flags
+
+    /** Sets a flag from the app. The console shows the change on its next poll. */
+    internal fun setFlag(id: String, enabled: Boolean) {
+        flagsTab?.setEnabled(id, enabled)
     }
 
     internal fun extraDemoRequests(base: String): List<DemoRequestSpec> =
         listOf(
-            DemoRequestSpec("GET /status/304", "GET", "$base/status/304"),
-            DemoRequestSpec("GET /status/400", "GET", "$base/status/400"),
-            DemoRequestSpec("GET /status/401", "GET", "$base/status/401"),
-            DemoRequestSpec("GET /status/404", "GET", "$base/status/404"),
-            DemoRequestSpec("GET /status/429", "GET", "$base/status/429"),
-            DemoRequestSpec("GET /status/503", "GET", "$base/status/503"),
-            DemoRequestSpec("GET /bearer", "GET", "$base/bearer"),
-            DemoRequestSpec("GET /image/png", "GET", "$base/image/png"),
-            DemoRequestSpec("GET /anything/other", "GET", "$base/anything/other"),
-            DemoRequestSpec("HEAD /status/204", "HEAD", "$base/status/204"),
-            DemoRequestSpec("GET https://127.0.0.1:1/lustro-error", "GET", "https://127.0.0.1:1/lustro-error"),
+            status(base, 304, "Not Modified, without a body."),
+            status(base, 400, "Bad Request. The Errors category of the sample's classifier tags it."),
+            status(base, 401, "Unauthorized. The Errors category tags it."),
+            status(base, 404, "Not Found. The Errors category tags it."),
+            status(base, 429, "Too Many Requests. The Errors category tags it."),
+            status(base, 503, "Service Unavailable. The Errors category tags it."),
+            DemoRequestSpec(
+                "GET /bearer",
+                "GET",
+                "$base/bearer",
+                detail = "Calls an endpoint that needs a bearer token, without one, so the server answers 401. The Auth category tags it.",
+            ),
+            DemoRequestSpec("GET /image/png", "GET", "$base/image/png", detail = "A PNG response. The Preview view shows the picture."),
+            DemoRequestSpec("GET /anything/other", "GET", "$base/anything/other", detail = "A request that the sample's classifier tags as Other."),
+            DemoRequestSpec("HEAD /status/204", "HEAD", "$base/status/204", detail = "A HEAD request. The server answers 204, with no body."),
+            DemoRequestSpec(
+                "GET https://127.0.0.1:1/lustro-error",
+                "GET",
+                "https://127.0.0.1:1/lustro-error",
+                chip = "Refused connection",
+                detail = "Connects to port 1 on the phone itself, where nothing listens. The row shows the connection error.",
+            ),
             DemoRequestSpec(
                 "GET /get with $NO_CAPTURE_HEADER (not captured)",
                 "GET",
                 "$base/get",
                 headers = mapOf(NO_CAPTURE_HEADER to "1"),
+                chip = "Not captured ($NO_CAPTURE_HEADER)",
+                detail = "GET /get with the header $NO_CAPTURE_HEADER: 1. The capture filter skips it, so no row appears, and the ⚠ count goes up.",
             ),
             DemoRequestSpec(
                 "GET ${SampleCaptureFilter.ANALYTICS_HOST} (not captured)",
                 "GET",
                 "https://${SampleCaptureFilter.ANALYTICS_HOST}/collect",
+                chip = "Not captured (analytics host)",
+                detail =
+                    "A call to ${SampleCaptureFilter.ANALYTICS_HOST}. The capture filter skips this host. " +
+                        "The host does not exist, so the call also fails.",
             ),
         )
+
+    private fun status(base: String, code: Int, meaning: String): DemoRequestSpec =
+        DemoRequestSpec("GET /status/$code", "GET", "$base/status/$code", detail = "The server answers $code $meaning")
 }

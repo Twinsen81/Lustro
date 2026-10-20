@@ -1,0 +1,5 @@
+# Overrides of the shared config/detekt/detekt.yml for the sample's Compose UI.
+naming:
+  FunctionNaming:
+    # Composable functions are named like types, by Compose convention.
+    ignoreAnnotated: ['Composable']

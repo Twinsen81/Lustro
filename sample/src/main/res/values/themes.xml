@@ -1,13 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!--
-        Targeting API 35 makes the status bar transparent over the light action bar,
-        where the platform's default white status bar icons are invisible, so ask for
-        dark ones. Below API 35 the status bar keeps its own color: match it to the
-        action bar so both look the same.
+        The UI is Compose and draws edge-to-edge, with its own top bar, so the window
+        has no action bar. The background matches the light theme's, so the window
+        shows no flash of another color before the first frame.
     -->
-    <style name="Theme.LustroSample" parent="@android:style/Theme.Material.Light">
-        <item name="android:windowLightStatusBar">true</item>
-        <item name="android:statusBarColor">?android:attr/colorPrimary</item>
+    <style name="Theme.LustroSample" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/sample_background</item>
     </style>
 </resources>

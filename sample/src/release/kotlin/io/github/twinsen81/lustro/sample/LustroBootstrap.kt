@@ -10,6 +10,7 @@ import io.github.twinsen81.lustro.network.NetworkDebugTab
 import io.github.twinsen81.lustro.network.OkHttpSender
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
+import kotlinx.coroutines.flow.StateFlow
 import okhttp3.WebSocket
 
 /**
@@ -49,7 +50,7 @@ public object LustroBootstrap {
             Lustro.builder(app)
                 .config(
                     DebugConfig.builder()
-                        .serverPort(8080)
+                        .serverPort(CONSOLE_PORT)
                         .build(),
                 )
                 .addTab(
@@ -94,4 +95,18 @@ public object LustroBootstrap {
     }
 
     internal fun extraDemoRequests(base: String): List<DemoRequestSpec> = emptyList()
+
+    /** False in this variant: there is no server, so the app hides its controls. */
+    internal const val CONSOLE_AVAILABLE: Boolean = false
+
+    /** Always false: the no-op build never binds a socket. */
+    internal fun isRunning(): Boolean = false
+
+    /** Null: the release build has no Feature Flags tab, so the app uses its defaults. */
+    internal fun flags(): StateFlow<List<SampleFlag>>? = null
+
+    /** No-op: the release build has no flags to set. */
+    internal fun setFlag(id: String, enabled: Boolean) {
+        // No-op: there is no Feature Flags tab in this variant.
+    }
 }

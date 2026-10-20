@@ -5,6 +5,9 @@ import android.util.Log
 import okhttp3.OkHttpClient
 import okhttp3.WebSocket
 
+/** The port the debug server binds; both [LustroBootstrap] variants configure it. */
+internal const val CONSOLE_PORT: Int = 8080
+
 /**
  * Sample app entry point.
  *

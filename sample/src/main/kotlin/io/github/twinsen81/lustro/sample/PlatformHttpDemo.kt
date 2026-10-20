@@ -29,7 +29,7 @@ public object PlatformHttpDemo {
     public fun rawGet(
         url: String,
         headers: Map<String, String> = emptyMap(),
-        onResult: (status: String) -> Unit,
+        onResult: (code: Int) -> Unit,
         onError: (message: String) -> Unit,
     ) {
         val connection = URL(url).openConnection() as HttpURLConnection
@@ -46,7 +46,7 @@ public object PlatformHttpDemo {
                     connection.errorStream
                 }
             stream?.use { it.readBytes() }
-            onResult("HTTP $code")
+            onResult(code)
         } catch (e: IOException) {
             onError(e.message ?: "connection error")
         } finally {
@@ -62,14 +62,14 @@ public object PlatformHttpDemo {
     public fun volleyGet(
         context: Context,
         url: String,
-        onResult: (status: String) -> Unit,
+        onResult: (chars: Int) -> Unit,
         onError: (message: String) -> Unit,
     ) {
         val request =
             StringRequest(
                 Request.Method.GET,
                 url,
-                { response -> onResult("Volley OK (${response.length} chars)") },
+                { response -> onResult(response.length) },
                 { error -> onError(error.message ?: "volley error") },
             )
         obtainQueue(context).add(request)
