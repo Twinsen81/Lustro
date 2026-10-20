@@ -67,10 +67,7 @@ internal fun GroupSheet(group: ActionGroup, latest: Map<String, ActionEvent>, on
                         Icon(SampleIcons.InfoCircle, contentDescription = null, tint = toneColor, modifier = Modifier.size(18.dp))
                     }
                     Spacer(Modifier.width(12.dp))
-                    Column {
-                        Text(group.title, style = SampleText.barTitle)
-                        Text("${group.actions.size} ACTIONS", style = SampleText.eyebrow, color = p.textFaint)
-                    }
+                    Text(group.title, style = SampleText.barTitle)
                 }
                 Spacer(Modifier.height(10.dp))
                 Text(group.note, style = SampleText.body, color = p.textMuted)

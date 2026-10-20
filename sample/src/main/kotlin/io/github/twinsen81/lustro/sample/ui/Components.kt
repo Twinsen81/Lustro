@@ -83,7 +83,7 @@ internal fun IconTile(
 }
 
 @Composable
-internal fun HomeBar(variant: String) {
+internal fun HomeBar() {
     Row(
         Modifier.fillMaxWidth().padding(horizontal = ScreenPadding, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -105,7 +105,6 @@ internal fun HomeBar(variant: String) {
             Text("Lustro", style = SampleText.barTitle)
             Text("SAMPLE APP", style = SampleText.eyebrow, color = palette.textFaint)
         }
-        Pill(variant, content = palette.onAccentContainer, background = palette.accentContainer)
     }
 }
 
@@ -127,13 +126,12 @@ internal fun SubScreenBar(title: String, subtitle: String, onBack: () -> Unit, t
     }
 }
 
-/** A square bordered button for an icon, such as Back or Search. */
+/** A square bordered button for an icon, such as Back. */
 @Composable
-internal fun PressableBox(onClick: () -> Unit, modifier: Modifier = Modifier, active: Boolean = false, content: @Composable () -> Unit) {
+internal fun PressableBox(onClick: () -> Unit, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val scale by animateFloatAsState(if (pressed) 0.9f else 1f, spring(stiffness = 800f), label = "box-press")
-    val background by animateColorAsState(if (active) palette.accentContainer else palette.surface, label = "box-background")
     Box(
         modifier
             .size(36.dp)
@@ -142,7 +140,7 @@ internal fun PressableBox(onClick: () -> Unit, modifier: Modifier = Modifier, ac
                 scaleY = scale
             }
             .clip(RoundedCornerShape(10.dp))
-            .background(background)
+            .background(palette.surface)
             .border(1.dp, palette.border, RoundedCornerShape(10.dp))
             .clickable(interactionSource = interaction, indication = null, role = Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center,
@@ -204,7 +202,6 @@ internal fun ModuleCard(
                 Spacer(Modifier.height(8.dp))
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp), content = meta)
             }
-            Icon(SampleIcons.ArrowUpRight, contentDescription = null, tint = palette.textFaint, modifier = Modifier.size(18.dp))
         }
     }
 }

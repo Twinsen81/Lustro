@@ -24,7 +24,6 @@ internal class ActionGroup(
     val tone: Tone,
     val note: String,
     val actions: List<DemoAction>,
-    val debugOnly: Boolean = false,
 )
 
 internal object DemoCatalog {
@@ -241,7 +240,6 @@ internal object DemoCatalog {
                     Tone.SLATE,
                     "Status codes, auth, and two requests that the capture filter leaves out.",
                     specs.map { spec -> DemoAction(spec.label, chip = spec.chip, detail = spec.detail) { requests.send(spec.buildRequest(), it) } },
-                    debugOnly = true,
                 )
             },
         )

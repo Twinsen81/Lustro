@@ -42,7 +42,7 @@ internal fun HomeScreen(viewModel: SampleViewModel, flags: List<SampleFlag>?, la
     val modules = if (flags != null) MODULES_WITH_FLAGS else MODULES
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        HomeBar(variant = if (viewModel.consoleAvailable) "DEBUG" else "RELEASE")
+        HomeBar()
         AnimatedVisibility(
             visible = SampleFlags.isOn(flags, SampleFlags.HOME_INTRO),
             enter = expandVertically() + fadeIn(),

@@ -16,8 +16,8 @@ see [DECISIONS.md](DECISIONS.md).
 
 - **The sample app has a home screen with one card per module.** Network,
   Logs, Feature flags, and Console each open a screen of their own; on the
-  Network screen the 50 requests are chips in nine groups that open and close,
-  with a search. The "i" button of a group opens a sheet that says what each
+  Network screen the 50 requests are chips in nine groups that open and close.
+  The "i" button of a group opens a sheet that says what each
   of its actions does and what to look for in the console, with a Run button
   for each; after a run, a line under the group explains the action that ran.
   A bar at the bottom of every screen shows the newest result

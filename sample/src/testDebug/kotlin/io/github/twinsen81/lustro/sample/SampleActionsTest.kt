@@ -3,7 +3,6 @@ package io.github.twinsen81.lustro.sample
 import android.app.Application
 import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -43,7 +42,7 @@ class SampleActionsTest {
 
         assertEquals(50, actions.size)
         assertEquals(actions.size, actions.map { it.label }.toSet().size)
-        assertTrue(viewModel.network.last().debugOnly)
+        assertEquals("More requests", viewModel.network.last().title)
     }
 
     // The group sheet and the note under a group show this text.

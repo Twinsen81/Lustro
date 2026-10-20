@@ -28,23 +28,17 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
@@ -62,56 +56,21 @@ import io.github.twinsen81.lustro.sample.SampleViewModel
 @Composable
 internal fun NetworkScreen(viewModel: SampleViewModel, latest: Map<String, ActionEvent>, onBack: () -> Unit) {
     val groups = viewModel.network
-    var searching by rememberSaveable { mutableStateOf(false) }
-    var query by rememberSaveable { mutableStateOf("") }
     var expanded by rememberSaveable { mutableStateOf(listOf(groups.first().title)) }
     var about by rememberSaveable { mutableStateOf<String?>(null) }
 
-    val filtered =
-        if (query.isBlank()) {
-            groups.map { it to it.actions }
-        } else {
-            groups.mapNotNull { group ->
-                val actions = if (group.title.contains(query, ignoreCase = true)) group.actions else group.actions.filter { it.matches(query) }
-                actions.takeIf { it.isNotEmpty() }?.let { group to it }
-            }
-        }
-
     Column(Modifier.fillMaxSize()) {
-        SubScreenBar("Network", "${groups.sumOf { it.actions.size }} actions", onBack) {
-            PressableBox(
-                onClick = {
-                    searching = !searching
-                    if (!searching) query = ""
-                },
-                modifier = Modifier.testTag("Search"),
-                active = searching,
-            ) {
-                Icon(SampleIcons.Search, contentDescription = "Search", tint = palette.text, modifier = Modifier.size(18.dp))
-            }
-        }
+        SubScreenBar("Network", "${groups.sumOf { it.actions.size }} actions", onBack)
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
             ScreenHeader("Network requests", "Open a group, then tap an action. The Network tab shows each request.")
-            AnimatedVisibility(searching, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
-                SearchField(query, onQuery = { query = it })
-            }
-            filtered.forEach { (group, actions) ->
+            groups.forEach { group ->
                 GroupCard(
                     group = group,
-                    actions = actions,
-                    expanded = query.isNotBlank() || group.title in expanded,
+                    expanded = group.title in expanded,
                     onToggle = { expanded = if (group.title in expanded) expanded - group.title else expanded + group.title },
                     onAbout = { about = group.title },
                     latest = latest,
                     onRun = viewModel::run,
-                )
-            }
-            if (filtered.isEmpty()) {
-                Text(
-                    "No action matches \"$query\".",
-                    style = SampleText.body,
-                    color = palette.textMuted,
-                    modifier = Modifier.padding(horizontal = ScreenPadding, vertical = 24.dp),
                 )
             }
             Spacer(Modifier.height(16.dp))
@@ -119,45 +78,6 @@ internal fun NetworkScreen(viewModel: SampleViewModel, latest: Map<String, Actio
     }
     groups.firstOrNull { it.title == about }?.let { group ->
         GroupSheet(group, latest, onRun = viewModel::run, onDismiss = { about = null })
-    }
-}
-
-private fun DemoAction.matches(query: String): Boolean =
-    chip.contains(query, ignoreCase = true) || label.contains(query, ignoreCase = true) || detail?.contains(query, ignoreCase = true) == true
-
-@Composable
-private fun SearchField(query: String, onQuery: (String) -> Unit) {
-    val focus = remember { FocusRequester() }
-    // Focus when the user opens the search, not again when a rotation recreates it.
-    var focused by rememberSaveable { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        if (!focused) {
-            focus.requestFocus()
-            focused = true
-        }
-    }
-    Row(
-        Modifier
-            .padding(start = ScreenPadding, end = ScreenPadding, bottom = 12.dp)
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(palette.surface)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(SampleIcons.Search, contentDescription = null, tint = palette.textFaint, modifier = Modifier.size(16.dp))
-        Spacer(Modifier.width(10.dp))
-        Box(Modifier.weight(1f)) {
-            if (query.isEmpty()) Text("Find an action, such as gzip or 404", style = SampleText.body, color = palette.textFaint)
-            BasicTextField(
-                value = query,
-                onValueChange = onQuery,
-                singleLine = true,
-                textStyle = SampleText.body.copy(color = palette.text),
-                cursorBrush = SolidColor(palette.accent),
-                modifier = Modifier.fillMaxWidth().focusRequester(focus).testTag("Search field"),
-            )
-        }
     }
 }
 
@@ -170,7 +90,6 @@ private fun SearchField(query: String, onQuery: (String) -> Unit) {
 @Composable
 private fun GroupCard(
     group: ActionGroup,
-    actions: List<DemoAction>,
     expanded: Boolean,
     onToggle: () -> Unit,
     onAbout: () -> Unit,
@@ -179,6 +98,7 @@ private fun GroupCard(
 ) {
     val (toneColor, toneContainer) = palette.tone(group.tone)
     val rotation by animateFloatAsState(if (expanded) 90f else 0f, spring(stiffness = 500f), label = "chevron")
+    val actions = group.actions
     val busy = actions.any { latest[it.label]?.outcome == Outcome.RUNNING }
     SampleCard(Modifier.padding(horizontal = ScreenPadding, vertical = 5.dp)) {
         Row(
@@ -202,20 +122,10 @@ private fun GroupCard(
             }
             Spacer(Modifier.width(12.dp))
             Text(group.title, style = SampleText.cardTitle.copy(fontSize = SampleText.body.fontSize))
-            if (group.debugOnly) {
-                Spacer(Modifier.width(8.dp))
-                Pill("DEBUG", content = palette.slate, background = palette.slateContainer)
-            }
             Spacer(Modifier.weight(1f))
             AnimatedVisibility(busy && !expanded, enter = fadeIn(), exit = fadeOut()) {
                 PulseDot(palette.accent, Modifier.padding(end = 10.dp))
             }
-            Text(
-                "${actions.size}",
-                style = SampleText.small,
-                color = palette.textFaint,
-                modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(palette.surfaceMuted).padding(horizontal = 7.dp, vertical = 2.dp),
-            )
             Box(
                 Modifier
                     .size(36.dp)
