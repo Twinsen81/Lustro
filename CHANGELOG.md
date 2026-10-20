@@ -35,6 +35,18 @@ see [DECISIONS.md](DECISIONS.md).
   app's buffer before the page read them. The view's JavaScript has tests in
   `lustro-logs/src/test/js`, which the console's test harness now loads for a
   plugin.
+- **The Logs tab reads three kinds of lines that it lost or split wrongly.**
+  A message with a carriage return lost the text after it, because the
+  reader ended a line at a `\r` as well as at a `\n`; logcat ends a line only
+  at `\n`, so the reader does too now. A tag longer than about 88 bytes lost
+  its line: logcat cuts its prefix at 127 bytes, the `": "` after the tag with
+  it, so the parser found no separator, or split at a `": "` in the message.
+  It now takes the tag to byte 127 and the message after it. And a tag shorter
+  than 8 bytes with a `": "` in it, such as `a: b`, was split at that `": "`;
+  logcat pads a tag to 8 bytes, so the parser now looks for the separator
+  after them. A longer tag with a `": "` can't be told from a message with
+  one, and the first `": "` still ends it. Checked on a physical device (API
+  37) and an API 28 emulator.
 - **Three additions to the console's design system.** `.dc-switch` is a
   switch for a setting that applies when it is flipped; the mock rules and the
   sample flags tab now use it in place of their own. `--lvl-f` is the color of

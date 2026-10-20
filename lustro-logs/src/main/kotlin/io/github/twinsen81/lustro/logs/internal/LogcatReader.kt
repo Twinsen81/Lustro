@@ -190,12 +190,14 @@ internal class LogcatReader(
             var readAny = false
             var lastOther: String? = null
             try {
-                started.inputStream.bufferedReader().use { reader ->
+                started.inputStream.use { input ->
+                    val lines = LogcatLines(input)
                     while (active) {
-                        val text = reader.readLine() ?: break
+                        if (!lines.next()) break
                         if (!active) break
-                        val line = parser.parse(text)
+                        val line = parser.parse(lines.line, lines.length)
                         if (line == null) {
+                            val text = lines.text()
                             if (!text.startsWith(BANNER_PREFIX) && text.isNotBlank()) lastOther = text
                             continue
                         }

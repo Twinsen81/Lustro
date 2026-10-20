@@ -50,6 +50,37 @@ class ThreadtimeParserTest {
     }
 
     @Test
+    fun `a colon and a space in a tag shorter than the padding are part of the tag`() {
+        val line = parser.parse("10-19 14:22:20.010  1  2 I a: b    : short colon tag")!!
+        assertEquals("a: b", line.tag)
+        assertEquals("short colon tag", line.message)
+        // A longer tag with a colon and a space can't be told from a message that has one.
+        assertEquals("Retrofit", parser.parse("10-19 14:22:20.010  1  2 I Retrofit: OkHttp: msg")!!.tag)
+    }
+
+    @Test
+    fun `a long tag that logcat cut at 127 bytes keeps its first part, and the message after it`() {
+        // As logcat printed it on a physical device (API 37): the prefix ends at byte 127,
+        // with no ": ", and a ": " in the message is not the separator.
+        val prefix = "10-20 12:20:04.484 +0000 21058 21058 I "
+        val cut = parser.parse(prefix + "T".repeat(60) + "x".repeat(28) + "message: with colon")!!
+        assertEquals("T".repeat(60) + "x".repeat(28), cut.tag)
+        assertEquals("message: with colon", cut.message)
+
+        // A cut in the middle of a character drops the part of it.
+        val bytes = (prefix + "a" + "Ä".repeat(43)).toByteArray() + "Ä".toByteArray().copyOf(1) + "msg".toByteArray()
+        assertEquals(127, bytes.size - 3)
+        val split = parser.parse(bytes)!!
+        assertEquals("a" + "Ä".repeat(43), split.tag)
+        assertEquals("msg", split.message)
+
+        // A prefix of exactly 127 bytes, ": " included, is whole.
+        val whole = parser.parse(prefix + "T".repeat(86) + ": m")!!
+        assertEquals("T".repeat(86), whole.tag)
+        assertEquals("m", whole.message)
+    }
+
+    @Test
     fun `an empty message is kept, with or without the space after the colon`() {
         assertEquals("", parser.parse("10-19 14:22:20.010  1  2 I Tag     : ")!!.message)
         assertEquals("", parser.parse("10-19 14:22:20.010  1  2 I Tag     :")!!.message)

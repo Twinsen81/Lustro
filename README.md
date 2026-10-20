@@ -608,6 +608,7 @@ val lustro = Lustro.builder(application)
 - **Not redacted.** Log lines are served as the app wrote them, tokens that an
   `HttpLoggingInterceptor` logs among them. See [SECURITY.md](SECURITY.md#threat-model).
 - **Only logcat.** A message longer than logcat's limit of about 4 KB is cut, as in `adb logcat`.
+  So is a tag longer than about 88 bytes: logcat prints the first part of it, and the message after.
 - In `lustro-logs-noop`, the tab reads no logs.
 
 ## Security model
