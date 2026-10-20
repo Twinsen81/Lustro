@@ -14,6 +14,24 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Added
 
+- **The sample app has a home screen with one card per module.** Network,
+  Logs, Feature flags, and Console each open a screen of their own; on the
+  Network screen the 50 requests are chips in nine groups that open and close.
+  The "i" button of a group opens a sheet that says what each
+  of its actions does and what to look for in the console, with a Run button
+  for each; after a run, a line under the group explains the action that ran.
+  A bar at the bottom of every screen shows the newest result
+  and the four before it. Each action shows its result where you tapped it: a
+  chip shows a spinner while its request runs, then a check, a warning for a
+  4xx or 5xx status, or a cross for a failure, and fades back. The app now
+  reads the flags of its own Feature Flags tab: `dark-mode-v2` switches the
+  app to a dark theme and `new-onboarding` shows the intro, so a toggle in the
+  browser changes the phone at once, and a switch on the phone shows in the
+  browser on its next poll. A `request` launch extra still runs an action by
+  its old button label, on any screen, and each control's label is its test
+  tag, which uiautomator shows as its resource id. The UI is Compose: Compose
+  1.8 and activity 1.10, the newest lines that compile against compileSdk 35.
+  Lustro itself still has no Compose dependency.
 - **The Logs tab in the console.** The Logs plugin's tab is now in the tab
   bar, with a live tail of the app's log. It polls `GET /api/v1/logs/entries`
   every half second and follows the newest line while the list is scrolled to
@@ -484,6 +502,14 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Fixed
 
+- **A start after `Lustro.stop()` no longer says that platform capture is
+  off.** Each start made a new platform capture, which tried to set the
+  process's `URLStreamHandlerFactory` again. A process can set it only once,
+  so the second start logged "Failed to install URLStreamHandlerFactory;
+  capture disabled", while the factory from the first start went on
+  capturing. The Network tab now keeps one capture and sets the factory on
+  its first start only. The warning now comes only when another factory is
+  set in the process, and says that.
 - **Copy in the JSON Tree view copies the JSON as the tree shows it.** The
   Copy button of a JSON body or WebSocket message copied the text as
   captured in every view, so a compact body was pasted on one line while

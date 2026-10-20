@@ -43,7 +43,9 @@ import javax.net.ssl.SSLSocketFactory
  * involved.
  *
  * Caveats:
- * - The factory can only be set once per process; install early and exactly once.
+ * - The factory can only be set once per process, and never removed. [install]
+ *   sets it once for this instance, so its owner keeps one instance for its
+ *   lifetime and calls [install] on each start.
  * - Obtaining the real delegate handler requires reflecting the platform-internal
  *   `com.android.okhttp.HttpHandler`, which Android's hidden-API policy may block
  *   on newer releases. If that fails we degrade gracefully (no capture).
@@ -55,6 +57,9 @@ internal class HttpUrlConnectionCapture(
     private val isPaused: () -> Boolean,
     private val captureFilter: SafeCaptureFilter,
     private val maxBodySize: Int,
+    // The two steps that act on the whole process. Tests replace them, because a
+    // real factory cannot be removed once it is set.
+    private val platform: Platform = Platform.Default,
 ) {
     private val installed = AtomicBoolean(false)
 
@@ -77,8 +82,8 @@ internal class HttpUrlConnectionCapture(
 
         // Capture the platform's real handlers BEFORE installing our factory, otherwise
         // later lookups would resolve back into us.
-        val realHttps = platformHandler("HttpsHandler", "https://localhost")
-        val realHttp = platformHandler("HttpHandler", "http://localhost")
+        val realHttps = platform.handler("HttpsHandler", "https://localhost")
+        val realHttp = platform.handler("HttpHandler", "http://localhost")
 
         if (realHttps == null && realHttp == null) {
             Log.w(TAG, "Could not obtain platform URL handlers (hidden-API blocked?); capture disabled")
@@ -96,40 +101,54 @@ internal class HttpUrlConnectionCapture(
             }
 
         try {
-            URL.setURLStreamHandlerFactory(factory)
+            platform.setFactory(factory)
             httpsSource = realHttps?.source
             httpSource = realHttp?.source
             Log.d(TAG, "HttpURLConnection capture installed (https=${realHttps?.source}, http=${realHttp?.source})")
         } catch (t: Throwable) {
-            // Already set by something else, or denied — leave the platform stack untouched.
-            Log.w(TAG, "Failed to install URLStreamHandlerFactory; capture disabled", t)
+            // Another factory is set in this process (by the app, a library, or another
+            // Lustro instance), or the platform denied it: leave the platform stack untouched.
+            Log.w(TAG, "Another URLStreamHandlerFactory is set in this process; platform capture disabled", t)
             installed.set(false)
         }
     }
 
-    private fun platformHandler(className: String, spec: String): PlatformHandler? =
-        realHandler(className)?.let { PlatformHandler(it, HandlerSource.HANDLER_CLASS) }
-            ?: handlerOf(spec)?.let { PlatformHandler(it, HandlerSource.URL_FIELD) }
+    /** The process-wide steps of [install]: get a platform handler, and set the factory. */
+    internal interface Platform {
+        fun handler(className: String, spec: String): PlatformHandler?
 
-    /** Instantiate a platform-internal handler (e.g. com.android.okhttp.HttpHandler) reflectively. */
-    private fun realHandler(simpleName: String): URLStreamHandler? =
-        try {
-            val clazz = Class.forName("com.android.okhttp.$simpleName")
-            clazz.getDeclaredConstructor().newInstance() as URLStreamHandler
-        } catch (t: Throwable) {
-            Log.w(TAG, "Reflective handler $simpleName unavailable: ${t.javaClass.simpleName}")
-            null
-        }
+        fun setFactory(factory: URLStreamHandlerFactory)
 
-    /** Fallback: read the resolved handler off a freshly-built URL (before our factory is set). */
-    private fun handlerOf(spec: String): URLStreamHandler? =
-        try {
-            val field = URL::class.java.getDeclaredField("handler")
-            field.isAccessible = true
-            field.get(URL(spec)) as? URLStreamHandler
-        } catch (t: Throwable) {
-            null
+        object Default : Platform {
+            override fun handler(className: String, spec: String): PlatformHandler? =
+                realHandler(className)?.let { PlatformHandler(it, HandlerSource.HANDLER_CLASS) }
+                    ?: handlerOf(spec)?.let { PlatformHandler(it, HandlerSource.URL_FIELD) }
+
+            override fun setFactory(factory: URLStreamHandlerFactory) {
+                URL.setURLStreamHandlerFactory(factory)
+            }
+
+            /** Instantiate a platform-internal handler (e.g. com.android.okhttp.HttpHandler) reflectively. */
+            private fun realHandler(simpleName: String): URLStreamHandler? =
+                try {
+                    val clazz = Class.forName("com.android.okhttp.$simpleName")
+                    clazz.getDeclaredConstructor().newInstance() as URLStreamHandler
+                } catch (t: Throwable) {
+                    Log.w(TAG, "Reflective handler $simpleName unavailable: ${t.javaClass.simpleName}")
+                    null
+                }
+
+            /** Fallback: read the resolved handler off a freshly-built URL (before our factory is set). */
+            private fun handlerOf(spec: String): URLStreamHandler? =
+                try {
+                    val field = URL::class.java.getDeclaredField("handler")
+                    field.isAccessible = true
+                    field.get(URL(spec)) as? URLStreamHandler
+                } catch (t: Throwable) {
+                    null
+                }
         }
+    }
 
     /** The two ways [install] can get a platform handler. The hidden-API policy decides which works. */
     enum class HandlerSource {
@@ -140,7 +159,7 @@ internal class HttpUrlConnectionCapture(
         URL_FIELD,
     }
 
-    private class PlatformHandler(val handler: URLStreamHandler, val source: HandlerSource)
+    internal class PlatformHandler(val handler: URLStreamHandler, val source: HandlerSource)
 
     // Internal for tests, which hand it a stand-in for the platform handler.
     internal class CapturingStreamHandler(

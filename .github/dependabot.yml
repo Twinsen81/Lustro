@@ -22,6 +22,12 @@ updates:
       - dependency-name: "com.squareup.okhttp3:*"
       - dependency-name: "androidx.lifecycle:*"
       - dependency-name: "org.nanohttpd:*"
+      # The sample's Compose UI stays on the newest line that compiles against
+      # compileSdk 35: Compose 1.9 (BOM 2025.08.00) and activity 1.11 need 36.
+      - dependency-name: "androidx.compose:compose-bom"
+        versions: [">= 2025.08.00"]
+      - dependency-name: "androidx.activity:*"
+        versions: [">= 1.11.0"]
     groups:
       gradle-dependencies:
         patterns:

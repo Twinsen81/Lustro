@@ -6,10 +6,17 @@ import io.github.twinsen81.lustro.DebugResponse
 import io.github.twinsen81.lustro.DebugTab
 import io.github.twinsen81.lustro.escapeForJson
 import java.util.concurrent.atomic.AtomicLong
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import org.json.JSONArray
 import org.json.JSONObject
 
-/** Debug-only sample tab for cursor polling, modal upload, and schema discovery. */
+/**
+ * Debug-only sample tab for cursor polling, modal upload, and schema discovery.
+ * The app reads the flags through [flags], so a toggle in the console changes
+ * the app, and a toggle in the app shows in the console on its next poll.
+ */
 public class SampleFlagsTab(
     @Suppress("UNUSED_PARAMETER") application: Application,
 ) : DebugTab() {
@@ -23,20 +30,37 @@ public class SampleFlagsTab(
     // In-memory flag store. A monotonically increasing sequence backs the opaque
     // cursor so pollers can detect changes (mirrors the Network tab's cursor).
     private val lock = Any()
-    private val flags = linkedMapOf<String, Flag>()
+    private val byId = linkedMapOf<String, SampleFlag>()
     private val sequence = AtomicLong(0)
+    private val state = MutableStateFlow<List<SampleFlag>>(emptyList())
+
+    internal val flags: StateFlow<List<SampleFlag>> = state.asStateFlow()
 
     init {
-        // Seed a few flags so the tab is populated on first open.
-        putFlag(Flag("new-onboarding", "New onboarding flow", enabled = true))
-        putFlag(Flag("dark-mode-v2", "Dark mode v2", enabled = false))
-        putFlag(Flag("offline-sync", "Offline sync", enabled = true))
+        // Seed a few flags so the tab is populated on first open. The app reads
+        // the first two; see SampleFlags.
+        putFlag(SampleFlag(SampleFlags.HOME_INTRO, "Intro on the sample's home screen", enabled = true))
+        putFlag(SampleFlag(SampleFlags.DARK_THEME, "Dark theme for the sample app", enabled = false))
+        putFlag(SampleFlag("offline-sync", "Offline sync (the sample does not read it)", enabled = true))
     }
 
-    private data class Flag(val id: String, val description: String, val enabled: Boolean)
+    /** Sets a flag. Returns false when there is no flag with [id]. */
+    internal fun setEnabled(id: String, enabled: Boolean): Boolean {
+        synchronized(lock) {
+            val existing = byId[id] ?: return false
+            if (existing.enabled == enabled) return true
+            byId[id] = existing.copy(enabled = enabled)
+            state.value = byId.values.toList()
+        }
+        sequence.incrementAndGet()
+        return true
+    }
 
-    private fun putFlag(flag: Flag) {
-        synchronized(lock) { flags[flag.id] = flag }
+    private fun putFlag(flag: SampleFlag) {
+        synchronized(lock) {
+            byId[flag.id] = flag
+            state.value = byId.values.toList()
+        }
     }
 
     // Static shell; flags.js owns rendering and event delegation.
@@ -84,7 +108,7 @@ public class SampleFlagsTab(
             currentSequence = sequence.get(),
             clientCursor = request.queryParam("cursor"),
         ) {
-            val snapshot = synchronized(lock) { flags.values.toList() }
+            val snapshot = synchronized(lock) { byId.values.toList() }
             snapshot.forEachIndexed { index, flag ->
                 if (index > 0) append(",")
                 append("{")
@@ -108,9 +132,10 @@ public class SampleFlagsTab(
         }
         val updated =
             synchronized(lock) {
-                val existing = flags[flagId] ?: return DebugResponse.notFound("Unknown flag: $flagId")
+                val existing = byId[flagId] ?: return DebugResponse.notFound("Unknown flag: $flagId")
                 val toggled = existing.copy(enabled = !existing.enabled)
-                flags[flagId] = toggled
+                byId[flagId] = toggled
+                state.value = byId.values.toList()
                 toggled
             }
         sequence.incrementAndGet()
@@ -137,7 +162,7 @@ public class SampleFlagsTab(
             val flagId = obj.optString("id")
             if (flagId.isBlank()) continue
             putFlag(
-                Flag(
+                SampleFlag(
                     id = flagId,
                     description = obj.optString("description", flagId),
                     enabled = obj.optBoolean("enabled", false),

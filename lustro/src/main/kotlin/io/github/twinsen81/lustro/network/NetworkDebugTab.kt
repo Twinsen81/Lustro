@@ -98,6 +98,13 @@ public class NetworkDebugTab private constructor(
 
     private val webSocketStore = WebSocketTrafficStore()
 
+    @Volatile
+    private var platformCapture: HttpUrlConnectionCapture? = null
+
+    // Tests replace it: they cannot undo the real process-wide handler factory.
+    @Volatile
+    internal var platform: HttpUrlConnectionCapture.Platform = HttpUrlConnectionCapture.Platform.Default
+
     // Shares the pause toggle, the capture filter, the redactor, and the payload
     // cap with HTTP capture, so one setting covers both kinds of traffic.
     internal val webSocketCapture: WebSocketCapture =
@@ -176,14 +183,19 @@ public class NetworkDebugTab private constructor(
     override fun onStart() {
         // Platform capture installs a process-global handler; it is best-effort and
         // fail-open. Gated by capturePlatformHttp. Built here (after applyConfig)
-        // so it observes the configured body cap.
+        // so it observes the configured body cap. A process can set the handler
+        // factory only once, so the tab keeps its capture: on a start after
+        // Lustro.stop() the factory is still in place and install() returns at once.
         if (capturePlatformHttp) {
-            HttpUrlConnectionCapture(
-                sink = store.sinkFor(CaptureSource.PLATFORM),
-                isPaused = { store.isPaused() },
-                captureFilter = captureFilter,
-                maxBodySize = maxBodyCaptureBytes.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
-            ).install()
+            val capture =
+                platformCapture ?: HttpUrlConnectionCapture(
+                    sink = store.sinkFor(CaptureSource.PLATFORM),
+                    isPaused = { store.isPaused() },
+                    captureFilter = captureFilter,
+                    maxBodySize = maxBodyCaptureBytes.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
+                    platform = platform,
+                ).also { platformCapture = it }
+            capture.install()
         }
     }
 

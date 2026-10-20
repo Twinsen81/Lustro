@@ -3,6 +3,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 plugins {
     // AGP 9 provides built-in Kotlin; no org.jetbrains.kotlin.android plugin.
     alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.detekt)
 }
 
@@ -37,6 +38,10 @@ android {
         }
     }
 
+    buildFeatures {
+        compose = true
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -65,10 +70,11 @@ kotlin {
 
 // Detekt on the sample's Kotlin sources, using the shared library config. The
 // UndocumentedPublic* rules are scoped in the config so they do not fire on this
-// app's public surface (the sample is not a published library).
+// app's public surface (the sample is not a published library). detekt.yml here
+// adds the overrides that the Compose UI needs.
 detekt {
     buildUponDefaultConfig = true
-    config.setFrom(rootProject.file("config/detekt/detekt.yml"))
+    config.setFrom(rootProject.file("config/detekt/detekt.yml"), file("detekt.yml"))
     source.setFrom("src/main/kotlin")
 }
 
@@ -84,6 +90,12 @@ dependencies {
     // (not OkHttp). The demo fires a request through it to show that platform-HTTP
     // capture picks up traffic that never touches the app's OkHttpClient.
     implementation(libs.volley)
+
+    // The sample's own UI. Lustro does not need Compose.
+    implementation(platform(libs.compose.bom))
+    implementation(libs.compose.foundation)
+    implementation(libs.compose.material3)
+    implementation(libs.activity.compose)
 
     // CI network test (testDebugUnitTest): exercises the real interceptor against
     // an offline MockWebServer. The real :lustro runtime is already on the debug
