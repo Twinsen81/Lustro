@@ -6,6 +6,7 @@ import io.github.twinsen81.lustro.DebugTab
 import io.github.twinsen81.lustro.logs.internal.LogBuffer
 import io.github.twinsen81.lustro.logs.internal.LogRoutes
 import io.github.twinsen81.lustro.logs.internal.LogcatReader
+import io.github.twinsen81.lustro.logs.internal.LogsView
 
 /**
  * The Logs tab: the app's own logcat, with a live tail, filters, and a plain-text
@@ -24,17 +25,20 @@ import io.github.twinsen81.lustro.logs.internal.LogcatReader
  * [bufferBytes][create] on the app's heap, and folds a line that repeats the one
  * before into a count.
  *
- * The console has no view for the tab yet, so it is not in the tab bar. Its
- * routes work, and `GET /api/v1/logs/_schema` describes them.
+ * In the console, the tab shows a live tail of the log, with filters for the
+ * level, the tag, and the message. `GET /api/v1/logs/_schema` describes its
+ * routes.
  */
 public class LogsDebugTab private constructor(buffer: LogBuffer, private val reader: LogcatReader) : DebugTab() {
     override val id: String = "logs"
     override val title: String = "Logs"
     override val icon: String = "📜"
     override val order: Int = 20
-    override val showInTabBar: Boolean = false
 
     private val routes = LogRoutes(buffer, reader)
+
+    /** The view's static shell; `logs.js` and `logs.css` in the assets fill and style it. */
+    override fun renderContent(): String = LogsView.HTML
 
     /** Serves the routes under `/api/v1/logs/`; the static `logs.openapi.json` describes them. */
     override fun handle(request: DebugRequest): DebugResponse? = routes.handle(request)

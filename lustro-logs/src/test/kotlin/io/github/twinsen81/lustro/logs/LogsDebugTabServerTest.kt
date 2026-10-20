@@ -144,6 +144,18 @@ class LogsDebugTabServerTest {
         assertTrue(JSONObject(schema.body!!.string()).getJSONObject("paths").has("/api/v1/logs/entries"))
     }
 
+    @Test
+    fun `the tab is in the tab bar, and serves its view with its script and styles`() {
+        val page = http.newCall(Request.Builder().url(base.removeSuffix("/api/v1/logs") + "/tab/logs").build()).execute()
+        assertTrue(page.body!!.string().contains("<a href=\"/tab/logs\" class=\"dc-nav__item dc-nav__item--active\">"))
+
+        val view = get("_view")
+        assertEquals(200, view.code)
+        assertTrue(view.body!!.string().contains("<tbody id=\"logs-rows\"></tbody>"))
+        assertTrue(get("_view.js").body!!.string().contains("window.logsApplyEnvelope"))
+        assertTrue(get("_view.css").body!!.string().contains(".logs-bar"))
+    }
+
     private fun awaitItems(count: Int): JSONObject {
         val deadline = System.currentTimeMillis() + 5_000
         var envelope: JSONObject
