@@ -484,6 +484,14 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Fixed
 
+- **A start after `Lustro.stop()` no longer says that platform capture is
+  off.** Each start made a new platform capture, which tried to set the
+  process's `URLStreamHandlerFactory` again. A process can set it only once,
+  so the second start logged "Failed to install URLStreamHandlerFactory;
+  capture disabled", while the factory from the first start went on
+  capturing. The Network tab now keeps one capture and sets the factory on
+  its first start only. The warning now comes only when another factory is
+  set in the process, and says that.
 - **Copy in the JSON Tree view copies the JSON as the tree shows it.** The
   Copy button of a JSON body or WebSocket message copied the text as
   captured in every view, so a compact body was pasted on one line while
