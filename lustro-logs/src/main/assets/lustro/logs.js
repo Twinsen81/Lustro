@@ -277,6 +277,9 @@
     var followScroll = false;
     // The list follows the tail, but waits for the row toolbar to close.
     var followPending = false;
+    // Whether the list was at its end at its last scroll. A change of its height,
+    // such as a smaller window or the banner, scrolls no list, so it keeps this.
+    var stuckToEnd = true;
 
     function storage() {
         try { return window.localStorage; } catch(e) { return null; }
@@ -313,7 +316,7 @@
     function onEntries(data) {
         if (!data) return;
         updateState(data.state);
-        var follow = followPending || isAtEnd();
+        var follow = followPending || stuckToEnd;
         var changes = applyEnvelope(view, data, MAX_ROWS);
         if (changes) {
             if (changes.reset) {
@@ -399,6 +402,7 @@
             followScroll = true;
             el.scrollTop = el.scrollHeight;
         }
+        stuckToEnd = true;
         els.jump.hidden = true;
     }
 
@@ -798,9 +802,15 @@
                 followPending = false;
                 hideTools();
             }
-            els.jump.hidden = isAtEnd();
+            stuckToEnd = isAtEnd();
+            els.jump.hidden = stuckToEnd;
         });
         window.addEventListener('resize', hideTools);
+        if (window.ResizeObserver) {
+            new window.ResizeObserver(function() {
+                if (stuckToEnd) followEnd();
+            }).observe(els.scroll);
+        }
         document.addEventListener('keydown', function(ev) {
             if (ev.key !== 'Escape' || ev.defaultPrevented) return;
             if (!els.menuScrim.hidden) {
