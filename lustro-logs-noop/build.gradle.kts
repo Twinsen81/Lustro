@@ -1,7 +1,6 @@
 plugins {
     // The same Android library settings as :lustro-logs: see
-    // build-logic/.../AndroidLibraryPlugin.kt. detekt-baseline.xml here keeps the
-    // unused parameter of the no-op factory.
+    // build-logic/.../AndroidLibraryPlugin.kt.
     id("lustro.android-library")
     // The release AAR, a sources jar, and a Dokka Javadoc jar; POM_NAME and
     // POM_DESCRIPTION come from gradle.properties here.

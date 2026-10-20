@@ -143,6 +143,24 @@ class LogcatReaderTest {
     }
 
     @Test
+    fun `a throwable on the reader thread fails the reader instead of leaving the thread`() {
+        val reader =
+            LogcatReader(
+                buffer,
+                pid = 1,
+                processStartMs = { now },
+                launch = { throw OutOfMemoryError("no memory for logcat") },
+                restartDelayMs = 1,
+            )
+        reader.start()
+        val deadline = System.currentTimeMillis() + 5_000
+        while (reader.status != LogcatReader.Status.FAILED && System.currentTimeMillis() < deadline) Thread.sleep(5)
+        assertEquals(LogcatReader.Status.FAILED, reader.status)
+        assertEquals("the reader stopped: java.lang.OutOfMemoryError: no memory for logcat", reader.error)
+        reader.stop()
+    }
+
+    @Test
     fun `a paused buffer drops the lines that the reader goes on reading`() {
         val logcat = FakeLogcat()
         launcher.add(logcat)

@@ -159,15 +159,28 @@ class LogRoutesTest {
     }
 
     @Test
+    fun `a request whose thread is interrupted, as the server does on a timeout, stops filtering with a 400`() {
+        append("a")
+        try {
+            Thread.currentThread().interrupt()
+            assertBadRequest(get("entries", "mq" to "a"), "mq")
+            Thread.currentThread().interrupt()
+            assertBadRequest(get("text", "tag" to "Tag"), "tag")
+        } finally {
+            Thread.interrupted()
+        }
+    }
+
+    @Test
     fun `text prints threadtime lines with the same filters, and limit keeps the last ones`() {
-        val utc = TimeZone.getDefault()
+        val zone = TimeZone.getDefault()
         buffer.append(line("first", at = 0L, level = 'D', tag = "A", pid = 1234, tid = 56))
         buffer.append(line("second", at = 1L, level = 'W', tag = "LongerThanEight", pid = 1234, tid = 56))
         buffer.append(line("second", at = 2L, level = 'W', tag = "LongerThanEight", pid = 1234, tid = 56))
 
         val response = routes.handle(get("text"))!!
         assertEquals("text/plain; charset=utf-8", response.contentType.toString())
-        val format = ThreadtimeFormat(utc)
+        val format = ThreadtimeFormat(zone)
         assertEquals(
             "${format.format(0)}  1234    56 D A       : first\n" +
                 "${format.format(1)}  1234    56 W LongerThanEight: second [×2]\n",

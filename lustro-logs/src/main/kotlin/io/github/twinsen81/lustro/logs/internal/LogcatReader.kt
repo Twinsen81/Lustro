@@ -123,7 +123,18 @@ internal class LogcatReader(
             process?.destroy()
         }
 
+        // Nothing may leave this thread: on Android, an uncaught throwable, an Error
+        // such as OutOfMemoryError included, kills the host app.
         override fun run() {
+            try {
+                readUntilEnded()
+            } catch (t: Throwable) {
+                report(Status.FAILED, "the reader stopped: $t")
+                Log.w(TAG, "The Logs tab's logcat reader stopped", t)
+            }
+        }
+
+        private fun readUntilEnded() {
             var failures = 0
             while (active) {
                 val readAny = readOnce()
