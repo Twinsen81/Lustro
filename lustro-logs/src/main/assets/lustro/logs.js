@@ -112,8 +112,10 @@
         return space >= 0 ? text.slice(space + 1) : text;
     }
 
+    // A message has no line breaks: logcat prints each line of a multi-line
+    // message, such as a stack trace, as a line of its own.
     function isLongMessage(message) {
-        return message.length > COLLAPSE_AT || message.indexOf('\n') !== -1;
+        return message.length > COLLAPSE_AT;
     }
 
     function repeatTitle(entry) {
@@ -184,9 +186,7 @@
         if (state.reader === 'restarting') {
             return { kind: 'warn', text: 'Logcat ended. The tab starts it again in a second.' };
         }
-        if (state.reader === 'stopped') {
-            return { kind: 'warn', text: 'Lustro is stopped, so the tab reads no new lines.' };
-        }
+        // No client can poll 'stopped': the reader stops only when the server does.
         return null;
     }
 

@@ -168,10 +168,10 @@ test('a hidden column renders its cells hidden', () => {
     assert.ok(html.includes('data-col="tag" title="Sync">Sync</td>'), html);
 });
 
-test('a long message, or one with line breaks, folds, and a repeated one shows its count', () => {
+test('a long message folds, and a repeated one shows its count', () => {
     const long = logs.logsRowHtml(line(1, { message: 'x'.repeat(241) }), allColumns(), false);
     assert.ok(long.includes('class="logs-msg logs-msg--long" data-action="toggleMessage"'), long);
-    const open = logs.logsRowHtml(line(1, { message: 'a\nb' }), allColumns(), true);
+    const open = logs.logsRowHtml(line(1, { message: 'x'.repeat(241) }), allColumns(), true);
     assert.ok(open.includes('class="logs-msg logs-msg--long logs-msg--open"'), open);
     const short = logs.logsRowHtml(line(1, { message: 'x'.repeat(240) }), allColumns(), false);
     assert.ok(short.includes('class="logs-msg">'), short);

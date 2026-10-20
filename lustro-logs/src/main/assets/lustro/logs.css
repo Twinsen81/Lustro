@@ -146,8 +146,8 @@
 .logs-row--fatal { background: color-mix(in srgb, var(--lvl-f) 16%, transparent); box-shadow: inset 3px 0 0 var(--lvl-f); }
 .logs-row--fatal .logs-cell--tag, .logs-row--fatal .logs-cell--msg { color: var(--lvl-f); }
 
-/* A message up to 240 characters on one line wraps; a longer one, or one with
-   line breaks, shows its first line until a click opens it. */
+/* A message up to 240 characters wraps; a longer one shows one line until a
+   click opens it. */
 .logs-cell--msg { white-space: normal; text-overflow: clip; }
 .logs-msg-wrap { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
 .logs-msg { min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }

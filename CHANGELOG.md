@@ -28,8 +28,8 @@ see [DECISIONS.md](DECISIONS.md).
   and the Columns menu shows or hides Time, Level, Tag, and PID / TID, whose
   widths a drag on a header edge sets; the browser remembers both. A repeated
   line shows a ×N count and replaces its row when its count grows, a message
-  longer than 240 characters or with line breaks shows its first line until a
-  click, and the page keeps the newest 5000 lines. After a second of hover, a
+  longer than 240 characters shows one line until a click, and the page keeps
+  the newest 5000 lines. After a second of hover, a
   row shows **Format JSON**, **Copy**, and **Filter by this tag**. A banner
   says when logcat failed or ended, and the count says how many lines left the
   app's buffer before the page read them. The view's JavaScript has tests in
