@@ -14,6 +14,30 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Added
 
+- **The Logs plugin serves the app's own logcat.** `lustro-logs` and its
+  release half `lustro-logs-noop` add a tab, registered with
+  `LogsDebugTab.create()`, that runs `logcat -v threadtime -v UTC --pid=<the
+  app's pid>` from `Lustro.start()` to `Lustro.stop()`, from the start of the
+  process, so the lines the app wrote before `start()` are there too. An
+  agent reads the app's log through Lustro, with no `adb logcat` and no pid
+  filter of its own. `GET /api/v1/logs/entries` polls the log in the stream
+  envelope, with a lowest `level`, a `tag` and a message (`mq`) regular
+  expression of at most 200 characters, and a text `q`; `GET
+  /api/v1/logs/text` exports the held lines as logcat's threadtime text;
+  `POST clear` returns the cursor of the empty log, so the next poll has no
+  `dropped` count; and `POST pause` and `POST compact` set or toggle the
+  capture and the folding of repeated lines. The newest lines stay in a
+  buffer of 4 MiB by default (`create(bufferBytes = ...)`). A line that
+  repeats the one before folds into it: it comes again in a later poll with
+  the same `seq` and a larger `count`, and a flood of one line costs almost
+  no memory. When logcat ends, the tab starts it again up to 3 times, 1 s
+  apart, and then reports `failed` in the poll's `state`, with the reason.
+  The console has no view for it yet, so the tab is not in the tab bar. Its
+  schema, `logs.openapi.json`, has its own version, `1.0`. Log lines are not
+  redacted: SECURITY.md says what that exposes on a LAN. The sample
+  registers the tab, writes demo lines every two seconds, and has buttons to
+  log a burst, a repeated line, and an exception, and to stop and start
+  Lustro.
 - **`lustro api` sends a request to any route.** Each command of the CLI
   maps to one route of the Network tab, so the routes of another tab, such
   as a plugin's, needed curl, with the token and the port found by hand.

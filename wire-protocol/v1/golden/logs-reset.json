@@ -1,0 +1,73 @@
+{
+  "cursor": "NDE5MzY1Njc4MDY2MDM2MTg3OTo2",
+  "status": "reset",
+  "items": [
+    {
+      "seq": 0,
+      "at": 1792419738204,
+      "timestamp": "10-19 14:22:18.204",
+      "pid": 12873,
+      "tid": 12873,
+      "level": "I",
+      "tag": "LustroSample",
+      "message": "Lustro start() returned ENABLED"
+    },
+    {
+      "seq": 1,
+      "at": 1792419738311,
+      "timestamp": "10-19 14:22:18.311",
+      "pid": 12873,
+      "tid": 12873,
+      "level": "D",
+      "tag": "SyncWorker",
+      "message": "sync started for 3 journals"
+    },
+    {
+      "seq": 2,
+      "at": 1792419738402,
+      "timestamp": "10-19 14:22:18.402",
+      "pid": 12873,
+      "tid": 12901,
+      "level": "I",
+      "tag": "okhttp.OkHttpClient",
+      "message": "--> GET https://httpbingo.org/get"
+    },
+    {
+      "seq": 3,
+      "at": 1792419739006,
+      "timestamp": "10-19 14:22:19.006",
+      "pid": 12873,
+      "tid": 12901,
+      "level": "I",
+      "tag": "okhttp.OkHttpClient",
+      "message": "<-- 200 https://httpbingo.org/get (604ms)"
+    },
+    {
+      "seq": 4,
+      "at": 1792419739512,
+      "timestamp": "10-19 14:22:19.512",
+      "pid": 12873,
+      "tid": 12901,
+      "level": "W",
+      "tag": "SyncWorker",
+      "message": "retry 1 of 3 after a timeout"
+    },
+    {
+      "seq": 5,
+      "at": 1792419740000,
+      "timestamp": "10-19 14:22:20.000",
+      "pid": 12873,
+      "tid": 12873,
+      "level": "V",
+      "tag": "Heartbeat",
+      "message": "tick",
+      "count": 2,
+      "lastAt": 1792419741000
+    }
+  ],
+  "state": {
+    "reader": "running",
+    "paused": false,
+    "compact": true
+  }
+}

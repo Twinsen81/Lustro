@@ -243,4 +243,28 @@ step "lustro net export --har: the handshake carries the WebSocket"
 lustro net export --har "$OUT/export-ws.har"
 check ws-har "$RULES" < "$OUT/export-ws.har"
 
+# The Logs tab reads the sample's logcat from the start of its process, so the
+# first poll has the line the sample writes before Lustro.start(). After a clear,
+# the cursor that clear returns gets the lines since, with no dropped count.
+step "lustro --json schema logs"
+lustro --json schema logs > "$OUT/schema-logs.json"
+check schema-logs < "$OUT/schema-logs.json"
+echo "matches the CLI's copy ($(wc -c < "$OUT/schema-logs.json") bytes)"
+
+lustro_to logs-startup.json api GET logs/entries --param 'tag=^LustroSample$'
+check logs-startup < "$OUT/logs-startup.json"
+
+step "lustro api POST logs/clear, log a repeated warning and an exception, and poll from the clear"
+lustro api POST logs/clear > "$OUT/logs-clear.json"
+cat "$OUT/logs-clear.json"
+cursor="$("$OUT/venv/bin/python" -c 'import json,sys; print(json.load(sys.stdin)["cursor"])' < "$OUT/logs-clear.json")"
+adb shell am start -W --activity-single-top -n "$PACKAGE/.MainActivity" --es request "'Log the same line 20 times'"
+adb shell am start -W --activity-single-top -n "$PACKAGE/.MainActivity" --es request "'Log an exception'"
+sleep 2
+lustro_to logs-delta.json api GET logs/entries --param 'tag=^SampleSync$' --param "cursor=$cursor"
+check logs-delta < "$OUT/logs-delta.json"
+
+lustro_to logs-errors.txt api GET logs/text --param level=E --param "cursor=$cursor"
+check logs-text < "$OUT/logs-errors.txt"
+
 step "The CLI end to end passed"

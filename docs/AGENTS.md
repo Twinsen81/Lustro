@@ -23,6 +23,9 @@ This document is about using a running Lustro. To add Lustro to an app, follow t
 - **Built-in tab.** v1 ships exactly one built-in tab: `network` (capture, inspect, mock,
   throttle, replay, and the messages of WebSocket connections). Its contract is
   `lustro/src/main/assets/lustro/network.openapi.json`.
+- **Plugin tabs.** An app can also register plugin tabs, such as `logs`, the app's own logcat
+  (see [Logs tab operations](#logs-tab-operations)). `_meta` lists the ones the app registered,
+  and each plugin's `_schema` has a version of its own in `info.version`.
 
 ## Use the `lustro` CLI
 
@@ -468,6 +471,43 @@ sends it, so a transaction is listed first with `requestBodyBytes` alone and get
 `requestBody` once the body is sent; a request that fails before that keeps the size alone. A
 request body with no `Content-Type` is stored as text, and its `requestContentType` is `null`.
 
+## Logs tab operations
+
+Base path `/api/v1/logs`, when the app registers the Logs plugin (`LogsDebugTab.create()`; without
+it, the routes are an enveloped `404 Unknown tab: logs`). The authoritative contract is
+`lustro-logs/src/main/assets/lustro/logs.openapi.json`, version `1.0`. The tab runs
+`logcat -v threadtime -v UTC --pid=<the app's pid>` while Lustro is started, also in the background, from
+the start of the app's process, and holds the newest lines in a buffer of a fixed size (4 MiB by
+default). The CLI has no `logs` commands: use `lustro api`.
+
+| Operation | Route | Notes |
+| --- | --- | --- |
+| Poll the log | `GET entries?cursor=&level=&tag=&q=&mq=&limit=` | Stream envelope. The first poll gets `reset` with the last `limit` lines (default 500, at most 5000) that pass the filters; a poll with the cursor gets `delta` with the lines after it, oldest first, in pages of `limit`, or `unchanged`. `state` is `{ reader, readerError?, paused, compact }` on every response. |
+| Export as text | `GET text?cursor=&level=&tag=&q=&mq=&limit=` | `text/plain`: the held lines as `adb logcat -v threadtime` prints them, oldest first, every one that passes the filters, or the last `limit`. A repeated line prints once with ` [×N]`. With a cursor from `entries`, only the lines after it. |
+| Clear | `POST clear` | Empties the buffer and returns `{ status: "ok", cursor }`: poll with that cursor to get only the later lines, with no `dropped` count. A cursor from before the clear gets a `reset`. |
+| Pause | `POST pause` | Body `{ "paused": true }` or `false`; without a body it toggles. While paused, the tab drops new lines. Returns `{ status: "ok", paused }`. |
+| Compact | `POST compact` | Body `{ "compact": true }` or `false`; without a body it toggles. On by default: a line that repeats the line before (same level, tag, pid, tid, and message) folds into it. Returns `{ status: "ok", compact }`. |
+
+**An item.** `{ seq, at, timestamp, pid, tid, level, tag, message }`, and `count` and `lastAt` for a
+repeated line. `at` and `lastAt` are epoch milliseconds, and `timestamp` is `at` as logcat prints
+it, `MM-dd HH:mm:ss.SSS` in the device's time zone. `seq` identifies the line. **A repeated line
+comes again** in a later `delta` with the same `seq` and a larger `count`: replace the row you
+have with that `seq`, do not add a second one.
+
+**Filters.** `level` is the lowest level, one of `V D I W E F` (`W` gives W, E, and F). `tag` and
+`mq` are Java regular expressions found in the tag and in the message, case-sensitive (prefix
+`(?i)` to ignore case, anchor with `^` and `$`), each at most 200 characters. `q` is text the
+message contains, ignoring case. They combine. The cursor moves past the lines they leave out, so
+keep the same filters while you follow one cursor. A bad value gets a `400` with `field` set to
+the parameter. The filters check the time between lines and stop with a `400` after 5 s; one match
+can't be stopped, so a regex that backtracks a lot, such as `(a+)+$`, can hold the request for
+long. Keep `tag` and `mq` simple.
+
+**Reader status.** `state.reader` is `running`; `restarting`, for the second after logcat ended
+before the tab starts it again; `failed`, after logcat ended four times in a row without a line,
+with the reason in `readerError` (the buffer keeps what it has, and `entries` still serves it); or
+`stopped`, between `Lustro.stop()` and `start()`.
+
 ## Common workflows
 
 **Mock a 500 for an endpoint**
@@ -527,6 +567,26 @@ request went through a sender with the wrong auth or the wrong base URL. A sent 
 as its own transaction, only when the sender's client carries `lustro.networkInterceptor()`; then
 `transactionId` names it, and `GET transactions/{id}` has the response.
 
+**Tail the app's log**
+
+```bash
+lustro api GET logs/entries --param level=W --param limit=50 > page.json   # the last 50 warnings and errors
+cursor=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["cursor"])' < page.json)
+lustro api GET logs/entries --param level=W --param cursor="$cursor"       # only what came since
+```
+
+Keep the same filters with a cursor. Poll again while a `delta` is a full page of `limit` lines. A
+`reset` means the log was cleared or the app restarted: replace what you have.
+
+**Export the log for a bug report**
+
+```bash
+lustro api POST logs/clear                                  # start from an empty log
+adb shell input tap 540 1200                                # reproduce the problem
+lustro api GET logs/text > repro.txt                        # every line since the clear
+lustro api GET logs/text --param tag='^(OkHttp|SyncWorker)$' --param level=I
+```
+
 **Atomically sync a rule set** (declarative — the resulting set equals exactly what you post):
 
 ```bash
@@ -554,7 +614,11 @@ Errors use the shared envelope; key statuses:
 - **`504 timeout`** — a handler (e.g. a slow `send`) exceeded the per-request timeout.
 - **`404 not_found`** — unknown route, missing transaction, a body that wasn't kept, or `send` with
   no sender configured. Also a WebSocket connection that the app cleared or evicted, and a message
-  with no stored payload.
+  with no stored payload. Also every `logs/` route when the app did not register the Logs plugin
+  (`Unknown tab: logs`).
+- **No log lines**: check `state.reader` in `GET logs/entries`: `failed` with `readerError` when
+  logcat could not run, `stopped` when Lustro is stopped, and `state.paused` when the capture is
+  paused. Lines from other processes are never shown: the tab reads the app's own process only.
 - **Connection refused / no response** — the app is backgrounded (the server only listens while
   foregrounded) or `adb forward` isn't set up. Re-check the `LustroToken` log line for the live
   endpoint. A connection closed without a response can also mean the server is at its

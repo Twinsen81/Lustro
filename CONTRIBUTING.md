@@ -105,8 +105,10 @@ sets the device to stay awake while it charges. CI runs both on API 24, 35, and
   of `:lustro` with empty bodies so release builds ship no server. `:lustro` and
   `:lustro-noop` declare the same Gradle capability, so a consumer cannot pull
   both.
+- **`:lustro-logs`** and **`:lustro-logs-noop`**: the Logs plugin pair, the
+  app's own logcat under `/api/v1/logs/` and its release-safe no-op half.
 - **`:sample`** — demo app and public-API regression target; debug uses
-  `:lustro`, release uses `:lustro-noop`.
+  `:lustro` and `:lustro-logs`, release uses their no-op halves.
 - **`:lustro-cli`** — the Python CLI that drives Lustro over the HTTP API.
 - **`build-logic/`**: an included build with the convention plugins that the
   published modules apply, so their build files hold only what is their own:

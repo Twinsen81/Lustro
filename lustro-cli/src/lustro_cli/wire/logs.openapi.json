@@ -1,0 +1,576 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Lustro Logs debug tab",
+    "version": "1.0",
+    "description": "The app's own logcat (logcat -v threadtime -v UTC --pid=<the app's pid>), from the start of its process: a live tail, filters, and a plain-text export. The tab reads logcat while Lustro is started, also in the background, and holds the newest lines in a buffer of a fixed size on the app's heap. Log lines are not redacted. All routes are token-authenticated (Bearer header or HttpOnly cookie) and live under /api/v1/logs. Errors use the shared error envelope."
+  },
+  "servers": [
+    {
+      "url": "/",
+      "description": "The Lustro debug server (loopback by default)."
+    }
+  ],
+  "paths": {
+    "/api/v1/logs/entries": {
+      "get": {
+        "operationId": "listLogEntries",
+        "summary": "Poll the log: the lines after the cursor, filtered.",
+        "description": "A stream envelope. The first poll (no cursor, or one from before a clear) gets status=reset with the last lines that pass the filters, at most limit of them. A poll with the returned cursor gets status=delta with only the lines after it, oldest first, or status=unchanged. When more than limit lines are new, the delta has the oldest limit of them, and the next poll goes on from there. dropped counts the places in the log that it evicted before this client got them. The filters leave lines out of items; the cursor still moves past them. A line that repeats the line before folds into it while compact is on: it comes again in a later poll with the same seq and a larger count, and replaces the earlier copy. state carries the reader's status and the paused and compact flags with every response.",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Opaque cursor from the previous response. Omit on the first poll."
+          },
+          {
+            "name": "level",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "V",
+                "D",
+                "I",
+                "W",
+                "E",
+                "F"
+              ]
+            },
+            "description": "The lowest level: W gives W, E, and F. A lowercase letter works too. 400 with field level for any other value."
+          },
+          {
+            "name": "tag",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "description": "A Java regular expression found in the tag, case-sensitive: ^OkHttp$ for one tag, (?i)sync to ignore case. 400 with field tag when it is longer than 200 characters or doesn't compile."
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Text that the message contains, ignoring case."
+          },
+          {
+            "name": "mq",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "description": "A Java regular expression found in the message, case-sensitive. 400 with field mq when it is longer than 200 characters or doesn't compile. The filters check the time between lines and stop with a 400 after 5 s. One match can't be stopped, so a regex that backtracks a lot, such as (a+)+$, can hold the request for long: keep tag and mq simple."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5000,
+              "default": 500
+            },
+            "description": "The most lines in one response. 400 when it is not a whole number from 1 to 5000."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Stream envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogStreamEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/logs/text": {
+      "get": {
+        "operationId": "exportLogText",
+        "summary": "The held lines as logcat's threadtime text, for a bug report or a file.",
+        "description": "Every held line that passes the filters, oldest first, one per line: MM-dd HH:mm:ss.SSS PID TID L TAG: message, in the device's time zone. A repeated line prints once, with [×N] at its end. With a cursor from entries, only the lines after it. The response gives no cursor.",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Opaque cursor from the previous response. Omit on the first poll."
+          },
+          {
+            "name": "level",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "V",
+                "D",
+                "I",
+                "W",
+                "E",
+                "F"
+              ]
+            },
+            "description": "The lowest level: W gives W, E, and F. A lowercase letter works too. 400 with field level for any other value."
+          },
+          {
+            "name": "tag",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "description": "A Java regular expression found in the tag, case-sensitive: ^OkHttp$ for one tag, (?i)sync to ignore case. 400 with field tag when it is longer than 200 characters or doesn't compile."
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Text that the message contains, ignoring case."
+          },
+          {
+            "name": "mq",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "description": "A Java regular expression found in the message, case-sensitive. 400 with field mq when it is longer than 200 characters or doesn't compile. The filters check the time between lines and stop with a 400 after 5 s. One match can't be stopped, so a regex that backtracks a lot, such as (a+)+$, can hold the request for long: keep tag and mq simple."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "description": "Only the last limit lines. Without it, every held line that passes the filters. 400 when it is not a whole number of 1 or more."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The lines.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/logs/clear": {
+      "post": {
+        "operationId": "clearLog",
+        "summary": "Empty the buffer, and get the cursor of the empty log.",
+        "description": "The log starts again, so a cursor from before the clear gets a reset, not a dropped count. The returned cursor gets only the lines after the clear. logcat's own buffer stays as it is.",
+        "responses": {
+          "200": {
+            "description": "The log is empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "cursor"
+                  ],
+                  "properties": {
+                    "status": {
+                      "const": "ok"
+                    },
+                    "cursor": {
+                      "type": "string",
+                      "description": "The cursor to poll entries with next."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/logs/pause": {
+      "post": {
+        "operationId": "pauseLog",
+        "summary": "Pause or resume the capture.",
+        "description": "While paused, the reader goes on reading logcat, so logcat never blocks, and drops the lines. Resume does not bring them back.",
+        "requestBody": {
+          "required": false,
+          "description": "{\"paused\": true} or false sets it. Without a body, or without the key, it toggles.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "paused": {
+                    "type": "boolean",
+                    "description": "true pauses the capture; false resumes it."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The new value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "paused"
+                  ],
+                  "properties": {
+                    "status": {
+                      "const": "ok"
+                    },
+                    "paused": {
+                      "type": "boolean",
+                      "description": "Whether the capture is paused."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/logs/compact": {
+      "post": {
+        "operationId": "setLogCompact",
+        "summary": "Fold repeated lines into a count, or keep each one.",
+        "description": "On by default. It applies to the lines that come after it: a line folds into the one before when its level, tag, pid, tid, and message are the same.",
+        "requestBody": {
+          "required": false,
+          "description": "{\"compact\": true} or false sets it. Without a body, or without the key, it toggles.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "compact": {
+                    "type": "boolean",
+                    "description": "true folds repeated lines; false keeps each one."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The new value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "compact"
+                  ],
+                  "properties": {
+                    "status": {
+                      "const": "ok"
+                    },
+                    "compact": {
+                      "type": "boolean",
+                      "description": "Whether repeated lines fold."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "responses": {
+      "Error": {
+        "description": "Error envelope.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorEnvelope"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "ErrorEnvelope": {
+        "type": "object",
+        "required": [
+          "error",
+          "message"
+        ],
+        "properties": {
+          "error": {
+            "type": "string",
+            "enum": [
+              "bad_request",
+              "unauthorized",
+              "forbidden",
+              "not_found",
+              "method_not_allowed",
+              "payload_too_large",
+              "internal_error",
+              "unavailable",
+              "timeout"
+            ],
+            "description": "Machine error type, e.g. bad_request, not_found, timeout."
+          },
+          "message": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "field": {
+            "type": "string"
+          },
+          "hint": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "LogStreamEnvelope": {
+        "type": "object",
+        "required": [
+          "cursor",
+          "status",
+          "state"
+        ],
+        "properties": {
+          "cursor": {
+            "type": "string",
+            "description": "Opaque cursor token."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "delta",
+              "unchanged",
+              "reset"
+            ]
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LogEntry"
+            },
+            "description": "Oldest first. For reset, the last lines; for delta, the lines after the cursor. An item whose seq the client has replaces that row."
+          },
+          "dropped": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "For delta: places in the log that it evicted before this client got them."
+          },
+          "state": {
+            "$ref": "#/components/schemas/LogState"
+          }
+        },
+        "additionalProperties": false
+      },
+      "LogEntry": {
+        "type": "object",
+        "required": [
+          "seq",
+          "at",
+          "timestamp",
+          "pid",
+          "tid",
+          "level",
+          "tag",
+          "message"
+        ],
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Identifies the line: the place in the log where it came first."
+          },
+          "at": {
+            "type": "integer",
+            "description": "When the line was written, in epoch milliseconds."
+          },
+          "timestamp": {
+            "type": "string",
+            "description": "at as logcat prints it, MM-dd HH:mm:ss.SSS in the device's time zone."
+          },
+          "pid": {
+            "type": "integer"
+          },
+          "tid": {
+            "type": "integer"
+          },
+          "level": {
+            "type": "string",
+            "enum": [
+              "V",
+              "D",
+              "I",
+              "W",
+              "E",
+              "F"
+            ]
+          },
+          "tag": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string",
+            "description": "One line of logcat's output. Android keeps at most about 4 KB of a log message, and logcat prints each line of a multi-line message, such as a stack trace, as a line of its own."
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 2,
+            "description": "Only for a repeated line: how many times it came in a row."
+          },
+          "lastAt": {
+            "type": "integer",
+            "description": "Only for a repeated line: when the last repeat was written, in epoch milliseconds."
+          }
+        },
+        "additionalProperties": false
+      },
+      "LogState": {
+        "type": "object",
+        "required": [
+          "reader",
+          "paused",
+          "compact"
+        ],
+        "properties": {
+          "reader": {
+            "type": "string",
+            "enum": [
+              "running",
+              "restarting",
+              "failed",
+              "stopped"
+            ],
+            "description": "running: logcat runs. restarting: logcat ended, and the reader starts it again in 1 s. failed: logcat ended four times in a row without a line, and the reader stopped; the buffer keeps its lines. stopped: Lustro is stopped."
+          },
+          "readerError": {
+            "type": "string",
+            "description": "Why logcat ended or could not start, while no line came since."
+          },
+          "paused": {
+            "type": "boolean"
+          },
+          "compact": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  }
+}

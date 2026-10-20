@@ -76,6 +76,9 @@ dependencies {
     // Debug builds get the real runtime; release builds get the no-op artifact.
     debugImplementation(project(":lustro"))
     releaseImplementation(project(":lustro-noop"))
+    // The Logs plugin pair, split the same way.
+    debugImplementation(project(":lustro-logs"))
+    releaseImplementation(project(":lustro-logs-noop"))
 
     // A mainstream HTTP client whose default transport is java.net.HttpURLConnection
     // (not OkHttp). The demo fires a request through it to show that platform-HTTP

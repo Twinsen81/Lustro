@@ -20,6 +20,9 @@ SHARED_SCHEMA_CASES = [
     ("stream-reset.json", "stream-envelope.schema.json"),
     ("stream-delta.json", "stream-envelope.schema.json"),
     ("stream-unchanged.json", "stream-envelope.schema.json"),
+    ("logs-reset.json", "stream-envelope.schema.json"),
+    ("logs-delta.json", "stream-envelope.schema.json"),
+    ("logs-unchanged.json", "stream-envelope.schema.json"),
 ]
 
 
@@ -277,3 +280,55 @@ def test_the_golden_websocket_har_carries_the_messages_chrome_reads():
     assert messages[3]["_truncated"] is True and messages[3]["_payloadBytes"] > len(messages[3]["data"])
     assert entry["_lustro"]["webSocket"]["state"] == "closed"
 
+
+
+# ── Logs tab ──────────────────────────────────────────────────────────────────
+
+LOGS_FIXTURES = ("logs-reset.json", "logs-delta.json", "logs-unchanged.json")
+
+
+@pytest.mark.parametrize("fixture", LOGS_FIXTURES)
+def test_logs_fixture_matches_the_logs_stream_envelope(fixture):
+    validator = _component_validator(wire.load_openapi("logs"), "LogStreamEnvelope")
+    validator.validate(wire.load_golden(fixture))
+
+
+def test_the_logs_schema_is_valid_and_has_its_own_version():
+    logs = wire.load_openapi("logs")
+    assert logs["openapi"].startswith("3.1")
+    assert logs["info"]["version"] == "1.0"
+    for name, schema in logs["components"]["schemas"].items():
+        Draft202012Validator.check_schema(schema)
+    # The error envelope is the same everywhere.
+    assert logs["components"]["schemas"]["ErrorEnvelope"] == wire.load_openapi()["components"]["schemas"]["ErrorEnvelope"]
+
+
+def test_the_logs_routes_are_declared():
+    paths = wire.load_openapi("logs")["paths"]
+    entries = paths["/api/v1/logs/entries"]["get"]
+    params = {p["name"]: p for p in entries["parameters"]}
+    assert set(params) == {"cursor", "level", "tag", "q", "mq", "limit"}
+    assert params["level"]["schema"]["enum"] == ["V", "D", "I", "W", "E", "F"]
+    assert params["tag"]["schema"]["maxLength"] == params["mq"]["schema"]["maxLength"] == 200
+    assert params["limit"]["schema"]["maximum"] == 5000
+    assert "400" in entries["responses"]
+    text = paths["/api/v1/logs/text"]["get"]
+    assert "text/plain" in text["responses"]["200"]["content"]
+    assert {p["name"] for p in text["parameters"]} == set(params)
+    for route in ("clear", "pause", "compact"):
+        assert "post" in paths["/api/v1/logs/" + route]
+
+
+def test_a_golden_log_line_comes_again_with_its_seq_when_it_repeats():
+    reset = wire.load_golden("logs-reset.json")
+    delta = wire.load_golden("logs-delta.json")
+    by_seq = {item["seq"]: item for item in reset["items"]}
+    repeated = [item for item in delta["items"] if item["seq"] in by_seq]
+    assert repeated, "the delta repeats no line of the reset"
+    for item in repeated:
+        assert item["count"] > by_seq[item["seq"]].get("count", 1)
+        assert item["lastAt"] > item["at"]
+    # A line that came once has neither key.
+    assert all(("count" in item) == ("lastAt" in item) for item in reset["items"] + delta["items"])
+    assert "items" not in wire.load_golden("logs-unchanged.json")
+    assert wire.load_golden("logs-unchanged.json")["state"]["paused"] is True

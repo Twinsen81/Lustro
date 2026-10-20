@@ -69,11 +69,23 @@ public class MainActivity : Activity() {
 
     private val webSocketDemo by lazy { WebSocketDemo((application as SampleApplication).webSockets, ::setStatus) }
 
+    private val demoLogs = DemoLogs()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(buildUi())
         // A recreated activity, after a rotation for example, must not click it again.
         if (savedInstanceState == null) clickButtonNamedIn(intent)
+    }
+
+    override fun onStart() {
+        super.onStart()
+        demoLogs.start()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        demoLogs.stop()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -109,7 +121,8 @@ public class MainActivity : Activity() {
                         "Open the debug console (debug build) and watch the Network " +
                         "tab. Flip the Overwrite toggle while a periodic sync runs to " +
                         "collapse repeats into one row, or use Mocks to " +
-                        "inject error responses."
+                        "inject error responses. The app's logcat is at " +
+                        "/api/v1/logs/entries."
                 setPadding(0, 0, 0, PADDING)
             },
         )
@@ -169,6 +182,25 @@ public class MainActivity : Activity() {
         addSection(root, "Periodic sync")
         val syncButton = addButton(root, START_SYNC_LABEL)
         syncButton.setOnClickListener { toggleSync(syncButton) }
+
+        // Lines for the Logs tab (GET /api/v1/logs/entries). While the app is in the
+        // foreground, a few demo lines come every two seconds as well.
+        addSection(root, "Logs")
+        addButton(root, "Log a burst of 500 lines") { demoLogs.burst(LOG_BURST_LINES) }
+        addButton(root, "Log the same line 20 times") { demoLogs.repeatLine(LOG_REPEATS) }
+        addButton(root, "Log an exception") { demoLogs.exception() }
+
+        // Lustro.stop() ends the debug server and what its tabs run, such as
+        // the Logs tab's logcat process; Lustro.start() starts them again.
+        addSection(root, "Lustro")
+        addButton(root, "Stop the Lustro server") {
+            LustroBootstrap.stop()
+            setStatus("Lustro stopped")
+        }
+        addButton(root, "Start the Lustro server") {
+            LustroBootstrap.restart()
+            setStatus("Lustro started")
+        }
 
         addSection(root, "Platform HTTP (non-OkHttp)")
         addButton(root, "Raw HttpURLConnection GET") { rawPlatformRequest() }
@@ -473,5 +505,7 @@ public class MainActivity : Activity() {
         private const val BMP_SQUARE = 8
         private const val START_SYNC_LABEL = "Start periodic sync"
         private const val STOP_SYNC_LABEL = "Stop periodic sync"
+        private const val LOG_BURST_LINES = 500
+        private const val LOG_REPEATS = 20
     }
 }

@@ -50,7 +50,9 @@ build, and that even in debug builds it stays bound to the local device.
   flags `DebugTab` subclasses — consumer code the no-op swap cannot remove from
   an APK — outside a `debug` source set. Lustro does not inspect the consumer's
   dependency graph; the shared `io.github.twinsen81:lustro-runtime` capability
-  only prevents `:lustro` and `:lustro-noop` landing on the same configuration.
+  only prevents `:lustro` and `:lustro-noop` landing on the same configuration,
+  and `lustro-logs-runtime` does the same for `:lustro-logs` and
+  `:lustro-logs-noop`.
 - **Loopback-bound by default.** The server binds to `127.0.0.1` and is
   reachable only while the app is foregrounded; the socket is torn down on
   background after draining in-flight requests. LAN exposure is strictly opt-in
@@ -153,9 +155,21 @@ build, and that even in debug builds it stays bound to the local device.
   of capture, error text and image bodies included. It does the same for a
   WebSocket: a socket it skips has neither its handshake nor a message
   captured.
+- **Log lines are not redacted.** The Logs plugin (`:lustro-logs`) serves the
+  app's own logcat, `logcat --pid=<the app's pid>`, as the app wrote it, from
+  `GET /api/v1/logs/entries` and `GET /api/v1/logs/text`. No `Redactor` runs on
+  it. A log can hold what the network redaction masks: an `HttpLoggingInterceptor`
+  at the `HEADERS` or `BODY` level writes the `Authorization` header and the
+  bodies, and an app can log a token or a user's data itself. With the default
+  loopback binding this adds little, because `adb logcat` can already read the
+  same lines. With `DebugConfig.bindAddress` set for LAN access, every client
+  with the token can read them. Treat the Logs tab as sensitive as the log: keep
+  secrets out of the app's logs, or do not register the tab in a build whose
+  server listens on a network. It reads only the app's own process, which
+  logcat allows an app without any permission.
 - **Nothing persisted to disk except mock rules.** Captured traffic, WebSocket
-  messages included, lives only in bounded in-memory buffers and is lost when
-  the process dies. The sole
+  messages included, and log lines live only in bounded in-memory buffers and
+  are lost when the process dies. The sole
   persisted state is user-authored mock rules.
 - **Exceptions are contained.** Library exceptions do not escape into the host
   app; server-level errors are logged through `android.util.Log` at WARN.

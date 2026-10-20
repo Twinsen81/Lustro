@@ -1,0 +1,9 @@
+{
+  "cursor": "NDE5MzY1Njc4MDY2MDM2MTg3OTo5",
+  "status": "unchanged",
+  "state": {
+    "reader": "running",
+    "paused": true,
+    "compact": true
+  }
+}
