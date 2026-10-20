@@ -212,6 +212,11 @@ test('Format JSON finds the JSON in a message', () => {
     assert.strictEqual(logs.logsExtractJson('{"a":1}'), '{"a":1}');
     assert.strictEqual(logs.logsExtractJson('<-- 200 body: {"items":[1,2]} (12ms)'), '{"items":[1,2]}');
     assert.strictEqual(logs.logsExtractJson('ids [1, 2]'), '[1, 2]');
+    // A bracketed note before or after the body.
+    assert.strictEqual(logs.logsExtractJson('[requestId=42] response: {"ok":true}'), '{"ok":true}');
+    assert.strictEqual(logs.logsExtractJson('response: {"ok":true} [128ms]'), '{"ok":true}');
+    // Both brackets parse: the outer one.
+    assert.strictEqual(logs.logsExtractJson('rows [{"a":1}] done'), '[{"a":1}]');
     assert.strictEqual(logs.logsExtractJson('Map{a=1}'), null);
     assert.strictEqual(logs.logsExtractJson('no json here'), null);
 });

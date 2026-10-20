@@ -190,17 +190,23 @@
         return null;
     }
 
-    // The JSON in a message: all of it, or the text from its first { or [ to its
-    // last } or ], or null when neither parses.
+    // The JSON in a message: all of it, or else the longer of the text from its
+    // first { to its last } and from its first [ to its last ] that parses, or
+    // null. Each bracket is tried alone because a logger often puts a bracketed
+    // note before or after the body: "[req 42] response: {...}", "{...} [128ms]".
     function extractJson(text) {
         if (!text || !/[{[]/.test(text)) return null;
         try { JSON.parse(text); return text; } catch(e) {}
-        var braces = [text.indexOf('{'), text.indexOf('[')].filter(function(i) { return i >= 0; });
-        var start = Math.min.apply(null, braces);
-        var end = Math.max(text.lastIndexOf('}'), text.lastIndexOf(']'));
-        if (end <= start) return null;
-        var slice = text.slice(start, end + 1);
-        try { JSON.parse(slice); return slice; } catch(e) { return null; }
+        var found = null;
+        [['{', '}'], ['[', ']']].forEach(function(pair) {
+            var start = text.indexOf(pair[0]);
+            var end = text.lastIndexOf(pair[1]);
+            if (start < 0 || end <= start) return;
+            var slice = text.slice(start, end + 1);
+            if (found !== null && found.length >= slice.length) return;
+            try { JSON.parse(slice); found = slice; } catch(e) {}
+        });
+        return found;
     }
 
     // A regex that finds exactly this tag. Java's regex syntax escapes the same
