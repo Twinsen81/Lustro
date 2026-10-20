@@ -15,8 +15,7 @@
 .net-list-head .dc-mono-label { margin-right: 2px; }
 
 /* Capture filter flag: shown only once the app's filter skipped a request.
-   Small, but in the warning color on a tinted fill so it stands out. .dc-btn
-   sets display, so [hidden] needs its own rule. */
+   Small, but in the warning color on a tinted fill so it stands out. */
 .net-filter-flag {
     color: var(--lvl-w);
     background: color-mix(in srgb, var(--lvl-w) 16%, transparent);
@@ -26,7 +25,6 @@
     line-height: 1.2;
 }
 .net-filter-flag:hover { color: var(--lvl-w); background: color-mix(in srgb, var(--lvl-w) 28%, transparent); }
-.net-filter-flag[hidden] { display: none; }
 .net-filter-note { margin: 0; color: var(--t2); font-size: 12px; line-height: 1.5; }
 .net-filter-field { display: flex; flex-direction: column; gap: 6px; }
 .net-filter-description { margin: 0; color: var(--t1); font-size: 13px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -35,12 +33,10 @@
 .net-search { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 13px 22px 0; }
 .net-search > .dc-field { flex: 1; min-width: 0; }
 .net-search > .net-search-error { flex-basis: 100%; }
-/* .dc-btn sets display, so [hidden] needs its own rule. */
-#new-request-btn[hidden] { display: none; }
 /* Mocks: the number of enabled rules, in the accent color while any is. */
 .net-mocks-count { color: var(--ai); }
 /* The clear, Regex, and help buttons in a search field: 24px hit targets that
-   don't make the field taller. .dc-btn sets display, so [hidden] needs its own rule. */
+   don't make the field taller. */
 .net-search-clear, .net-search-regex, .net-search-help { min-height: 24px; margin: -5px 0; }
 .net-search-clear, .net-search-help { min-width: 24px; padding: 0 4px; line-height: 1; }
 .net-search-clear { font-size: 15px; }
@@ -49,10 +45,8 @@
 /* The field's label holds the prefix and the input only: a label can't hold
    the buttons, which are controls of their own. */
 .net-search-label { display: flex; flex: 1; align-items: center; gap: 8px; min-width: 0; cursor: text; }
-.net-search-clear[hidden] { display: none; }
 .dc-field.net-search--invalid, .dc-field.net-search--invalid:focus-within { border-color: var(--danger); }
 .net-search-error { color: var(--danger); font-size: 11.5px; line-height: 1.5; overflow-wrap: anywhere; }
-.net-search-error[hidden] { display: none; }
 .net-ws-detail .net-search-error { padding: 0 0 8px; }
 .net-search-examples .dc-kv__key { width: 42%; white-space: pre; }
 .net-category-bar {
@@ -208,7 +202,6 @@
     padding: 10px 22px;
     border-bottom: 1px solid var(--border-soft);
 }
-.net-select-bar[hidden] { display: none; }
 .net-select-count {
     color: var(--accent-2);
     font-size: 12px;
@@ -284,7 +277,6 @@
     background: var(--tabbar);
     border-bottom: 1px solid var(--border);
 }
-.net-detail-bar[hidden], .net-detail-bar .dc-btn[hidden] { display: none; }
 .net-detail-bar-copy { margin-left: auto; }
 
 .net-tab-content {
@@ -612,42 +604,6 @@
     margin-top: 5px;
 }
 
-/* Toggle switch */
-.net-toggle {
-    position: relative;
-    width: 30px;
-    height: 16px;
-    cursor: pointer;
-    flex-shrink: 0;
-}
-/* Expand the switch's touch target to ≥24px tall without changing its size. */
-.net-toggle::after { content: ''; position: absolute; inset: -5px -4px; }
-.net-toggle input {
-    opacity: 0;
-    width: 0;
-    height: 0;
-}
-.net-toggle-slider {
-    position: absolute;
-    inset: 0;
-    background: var(--t5);
-    border-radius: var(--radius-pill);
-    transition: background 0.2s;
-}
-.net-toggle-slider::before {
-    content: '';
-    position: absolute;
-    width: 12px;
-    height: 12px;
-    left: 2px;
-    bottom: 2px;
-    background: #fff;
-    border-radius: 50%;
-    transition: transform 0.2s;
-}
-.net-toggle input:checked + .net-toggle-slider { background: var(--accent); }
-.net-toggle input:checked + .net-toggle-slider::before { transform: translateX(14px); }
-
 /* ── Mock rule / send request forms ── */
 .net-rule-form {
     border: 1px solid var(--border-soft);
@@ -774,7 +730,7 @@
 .net-ws-close { margin-top: 8px; color: var(--t2); font-size: 12px; }
 .net-ws-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 8px 0; font-size: 11.5px; }
 .net-ws-search { flex: 1; min-width: 140px; padding: 5px 10px; }
-.net-ws-log-note:empty, .net-ws-log-note[hidden] { display: none; }
+.net-ws-log-note:empty { display: none; }
 .net-ws-log-note { margin-bottom: 6px; font-size: 11.5px; }
 .net-ws-log {
     flex: 1 1 0;

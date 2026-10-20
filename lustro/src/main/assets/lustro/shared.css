@@ -123,12 +123,14 @@
   --status-4xx: #fb923c;
   --status-5xx: #f87171;
 
-  /* Log level coding (Verbose/Debug/Info/Warning/Error) */
+  /* Log level coding (Verbose/Debug/Info/Warning/Error/Fatal). Fatal is a
+     deeper red than Error, so the two levels stay apart in a log. */
   --lvl-v: #6b7280;
   --lvl-d: #60a5fa;
   --lvl-i: #34d399;
   --lvl-w: #fbbf24;
   --lvl-e: #f87171;
+  --lvl-f: #ef4444;
 
   /* Value-type badges (e.g. SharedPrefs) */
   --type-string:  #60a5fa;
@@ -230,6 +232,7 @@
   --lvl-i: #059669;
   --lvl-w: #b45309;
   --lvl-e: #dc2626;
+  --lvl-f: #b91c1c;
 
   --type-string:  #2563eb;
   --type-boolean: #7c3aed;
@@ -270,6 +273,9 @@ body {
 input::placeholder, textarea::placeholder { color: var(--t4); }
 a { text-decoration: none; color: inherit; }
 mark { background: var(--search-highlight); color: inherit; border-radius: 2px; padding: 0 1px; } /* search matches in bodies */
+/* The hidden attribute always hides: without this rule, a component that sets
+   display (.dc-btn, .dc-chip, .dc-field…) shows an element that has it. */
+[hidden] { display: none !important; }
 
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb { background: rgba(128, 128, 128, 0.32); border-radius: 6px; }
@@ -412,6 +418,20 @@ select.dc-btn {
 .dc-check--on { background: var(--accent); border-color: var(--accent); }
 .dc-check--locked { background: var(--t4); border-color: var(--t4); } /* always-on / disabled */
 
+/* Switch: a setting that applies when it is flipped.
+   <label class="dc-switch"><input type="checkbox"><span class="dc-switch__track"></span></label>
+   The on color is the accent; set --c for another. */
+.dc-switch { position: relative; display: inline-block; flex: none; width: 30px; height: 16px; cursor: pointer; }
+.dc-switch::after { content: ''; position: absolute; inset: -5px -4px; } /* a 26px hit target on a 16px switch */
+.dc-switch input { opacity: 0; width: 0; height: 0; margin: 0; }
+.dc-switch__track { position: absolute; inset: 0; background: var(--t5); border-radius: var(--radius-pill); transition: background .2s; }
+.dc-switch__track::before { content: ''; position: absolute; left: 2px; top: 2px; width: 12px; height: 12px; border-radius: 50%; background: #fff; transition: transform .2s; }
+.dc-switch input:checked + .dc-switch__track { background: var(--c, var(--accent)); }
+.dc-switch input:checked + .dc-switch__track::before { transform: translateX(14px); }
+.dc-switch input:focus-visible + .dc-switch__track { outline: 2px solid var(--accent); outline-offset: 2px; }
+.dc-switch:has(input:disabled) { cursor: not-allowed; }
+.dc-switch input:disabled + .dc-switch__track { opacity: .5; }
+
 /* ---------- Toolbar (title row with actions above a list or grid) ---------- */
 /* Title: a .dc-mono-label; push the actions right with margin-left: auto. */
 .dc-toolbar { flex: none; display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 14px 22px 12px; border-bottom: 1px solid var(--border-soft); }
@@ -463,7 +483,6 @@ select.dc-btn {
 /* ---------- Modal dialog ---------- */
 /* A modal kept in the markup starts with the hidden attribute; debugModal(id) shows and hides it. */
 .dc-modal-scrim { position: fixed; inset: 0; z-index: 50; background: var(--scrim); display: flex; align-items: center; justify-content: center; padding: 24px; }
-.dc-modal-scrim[hidden] { display: none; }
 .dc-modal { width: 460px; max-width: 94vw; max-height: 90vh; display: flex; flex-direction: column; overflow: hidden;
   background: var(--raise); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-modal); animation: dc-modal-in .16s ease; }
 .dc-modal--wide { width: 620px; }
