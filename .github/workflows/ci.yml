@@ -227,9 +227,10 @@ jobs:
           node-version: "22"
 
       # A directory argument is not expanded by every Node version's test
-      # runner, so the files are passed explicitly.
+      # runner, so the files are passed explicitly: the console's own tests in
+      # lustro/, and a plugin's in its module, such as lustro-logs/.
       - name: Run tests
-        run: node --test lustro/src/test/js/*.test.js
+        run: node --test */src/test/js/*.test.js
 
   # --- Emulator matrix: instrumented tests and the CLI end to end ------------
   # Only a real Android image can check the platform HttpURLConnection capture,
