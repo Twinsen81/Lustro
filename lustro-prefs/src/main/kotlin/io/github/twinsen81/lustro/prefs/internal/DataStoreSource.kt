@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import io.github.twinsen81.lustro.prefs.ValuePolicy
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.catch
@@ -30,6 +31,9 @@ internal class DataStoreSource(
     // Guarded by this. The scope that follows the store's data, while the tab listens.
     private var scope: CoroutineScope? = null
 
+    // Guarded by this. The job that follows the store's data, which a failed read ends.
+    private var following: Job? = null
+
     // The data that the tab last saw, which stays from stop() to start(), so that a
     // change made between them moves the cursor when the tab listens again.
     @Volatile
@@ -37,28 +41,36 @@ internal class DataStoreSource(
 
     /**
      * Follows the store's data, which emits once now and again after each change.
-     * A failed read ends it: [read] says why, and the next [listen] tries again.
+     * A failed read ends it: [read] says why, and the next read that succeeds
+     * follows the data again.
      */
     @Synchronized
     override fun listen() {
         if (scope != null) return
-        val following = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-        scope = following
-        dataStore.data
-            .onEach { data ->
-                val before = seen
-                seen = data
-                if (before != null && before != data) changed()
-            }
-            // Without it, the failure would reach the app's uncaught exception handler.
-            .catch { }
-            .launchIn(following)
+        val created = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        scope = created
+        follow(created)
     }
 
     @Synchronized
     override fun unlisten() {
         scope?.cancel()
         scope = null
+        following = null
+    }
+
+    // Guarded by this.
+    private fun follow(scope: CoroutineScope) {
+        following =
+            dataStore.data
+                .onEach { data ->
+                    val before = seen
+                    seen = data
+                    if (before != null && before != data) changed()
+                }
+                // Without it, the failure would reach the app's uncaught exception handler.
+                .catch { }
+                .launchIn(scope)
     }
 
     override fun read(): Contents {
@@ -68,7 +80,20 @@ internal class DataStoreSource(
             } catch (e: Exception) {
                 throw UnreadableFileException("Can't read the data store $name: $e", e)
             }
+        followAgain(data)
         return Contents(data.asMap().mapKeys { it.key.name }, encrypted = false, policy = policy, readOnly = readOnly)
+    }
+
+    // A store reads its file again after a failed read, such as an IOException or a migration
+    // that threw, so a read can succeed after the store's data failed and ended the job. Without
+    // a new one, the app's changes would no longer move the cursor. The data that this read gave
+    // the client is what the new job compares with, when the job never saw any.
+    @Synchronized
+    private fun followAgain(data: Preferences) {
+        val listening = scope ?: return
+        if (following?.isActive == true) return
+        if (seen == null) seen = data
+        follow(listening)
     }
 
     override fun writable(): Boolean = !readOnly

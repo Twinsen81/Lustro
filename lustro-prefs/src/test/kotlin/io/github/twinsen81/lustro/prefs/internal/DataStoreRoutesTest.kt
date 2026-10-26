@@ -18,11 +18,17 @@ import io.github.twinsen81.lustro.prefs.PrefsDataStore
 import io.github.twinsen81.lustro.prefs.PrefsFile
 import io.github.twinsen81.lustro.prefs.ValuePolicy
 import java.io.File
+import java.io.IOException
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.After
@@ -179,6 +185,23 @@ class DataStoreRoutesTest {
     }
 
     @Test
+    fun `after the store's data failed, a read that succeeds follows the data again`() {
+        val flaky = FlakyStore(appState)
+        val routes = routes(PrefsDataStore("app_state", flaky))
+        registry!!.start()
+        assertTrue("the store's data failed", flaky.failed.await(TIMEOUT_MS, TimeUnit.MILLISECONDS))
+        // Let the job that followed the data end.
+        Thread.sleep(SETTLE_MS)
+        flaky.broken = false
+
+        val cursor = get(routes, "entries", "store" to STORE, "file" to "app_state").getString("cursor")
+        edit(appState) { it[intPreferencesKey("launch_count")] = 4 }
+
+        val delta = eventually { get(routes, "entries", "store" to STORE, "file" to "app_state", "cursor" to cursor) }
+        assertEquals(4, item(delta, "launch_count").getInt("value"))
+    }
+
+    @Test
     fun `a read-only registered store refuses edit, delete, and clear with an enveloped 403`() {
         val routes = routes(PrefsDataStore("app_state", appState, ValuePolicy.VISIBLE, readOnly = true))
         for ((route, body) in listOf(
@@ -286,6 +309,25 @@ class DataStoreRoutesTest {
         }
         assertEquals(200, post(routes, "edit", """{"store":"$STORE","file":"app_state","key":"k","type":"double","value":"2"}""").status)
         assertEquals(2.0, data(appState)["k"])
+    }
+
+    // A store whose data fails while it is broken, as after an IOException or a migration
+    // that threw. DataStore reads its file again when its data is collected again.
+    private class FlakyStore(private val store: DataStore<Preferences>) : DataStore<Preferences> {
+        @Volatile
+        var broken = true
+        val failed = CountDownLatch(1)
+
+        override val data: Flow<Preferences> =
+            flow {
+                if (broken) {
+                    failed.countDown()
+                    throw IOException("the disk is busy")
+                }
+                emitAll(store.data)
+            }
+
+        override suspend fun updateData(transform: suspend (t: Preferences) -> Preferences): Preferences = store.updateData(transform)
     }
 
     private fun store(name: String): DataStore<Preferences> = PreferenceDataStoreFactory.create(scope = scope) { File(directory, "$name.preferences_pb") }
