@@ -64,7 +64,7 @@ internal object PrefsView {
                     <div class="prefs-empty" id="prefs-empty" hidden></div>
                 </div>
             </div>
-            <div class="prefs-none" id="prefs-none" hidden>// the app has no SharedPreferences files</div>
+            <div class="prefs-none" id="prefs-none" hidden>// the app has no SharedPreferences files or Preferences DataStores</div>
             <div id="prefs-edit-modal" class="dc-modal-scrim" hidden>
                 <div class="dc-modal dc-modal--wide" id="prefs-edit-dialog" role="dialog" aria-modal="true" aria-labelledby="prefs-edit-title">
                     <div class="dc-modal__head">

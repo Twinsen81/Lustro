@@ -10,6 +10,7 @@ import io.github.twinsen81.lustro.logs.LogsDebugTab
 import io.github.twinsen81.lustro.network.NetworkDebugTab
 import io.github.twinsen81.lustro.network.OkHttpSender
 import io.github.twinsen81.lustro.network.SharedPreferencesMockRuleStorage
+import io.github.twinsen81.lustro.prefs.PrefsDataStore
 import io.github.twinsen81.lustro.prefs.PrefsDebugTab
 import io.github.twinsen81.lustro.prefs.PrefsFile
 import io.github.twinsen81.lustro.prefs.ValuePolicy
@@ -107,9 +108,10 @@ public object LustroBootstrap {
                 // The app's own logcat, from :lustro-logs; the release bootstrap
                 // registers the no-op half from :lustro-logs-noop.
                 .addTab(LogsDebugTab.create())
-                // The app's SharedPreferences, from :lustro-prefs: one file with every
-                // value visible, one with keys only and read-only, and the other files
-                // on disk, which the tab finds and keeps read-only. The release
+                // The app's SharedPreferences and DataStores, from :lustro-prefs: one file
+                // with every value visible, one with keys only and read-only, one
+                // DataStore with its sensitive values masked, and the other files and
+                // stores on disk, which the tab finds and keeps read-only. The release
                 // bootstrap registers the no-op half from :lustro-prefs-noop.
                 .addTab(
                     PrefsDebugTab.create(
@@ -124,6 +126,7 @@ public object LustroBootstrap {
                                     readOnly = true,
                                 ),
                             ),
+                        dataStores = listOf(PrefsDataStore(DemoDataStore.APP_STATE, DemoDataStore.appState(app))),
                     ),
                 )
                 // Custom, schema-backed tab. It is debug-only: it never appears in

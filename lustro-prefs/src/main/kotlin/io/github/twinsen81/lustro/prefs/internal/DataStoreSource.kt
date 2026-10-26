@@ -1,0 +1,98 @@
+package io.github.twinsen81.lustro.prefs.internal
+
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.MutablePreferences
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.stringPreferencesKey
+import io.github.twinsen81.lustro.prefs.ValuePolicy
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.runBlocking
+
+/**
+ * A Preferences DataStore that the app registered: the tab reads and writes
+ * through the app's own instance. Only this class calls DataStore and
+ * coroutines, which are `compileOnly`, so an app without them never loads it.
+ * The routes' threads may block, so the calls wait with `runBlocking`.
+ */
+internal class DataStoreSource(
+    name: String,
+    private val dataStore: DataStore<Preferences>,
+    policy: ValuePolicy,
+    readOnly: Boolean,
+) : PrefsSource(name, PrefsStore.PREFERENCES_DATASTORE, policy, readOnly, registered = true) {
+    // Guarded by this. The scope that follows the store's data, while the tab listens.
+    private var scope: CoroutineScope? = null
+
+    // The data that the tab last saw, which stays from stop() to start(), so that a
+    // change made between them moves the cursor when the tab listens again.
+    @Volatile
+    private var seen: Preferences? = null
+
+    /**
+     * Follows the store's data, which emits once now and again after each change.
+     * A failed read ends it: [read] says why, and the next [listen] tries again.
+     */
+    @Synchronized
+    override fun listen() {
+        if (scope != null) return
+        val following = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        scope = following
+        dataStore.data
+            .onEach { data ->
+                val before = seen
+                seen = data
+                if (before != null && before != data) changed()
+            }
+            // Without it, the failure would reach the app's uncaught exception handler.
+            .catch { }
+            .launchIn(following)
+    }
+
+    @Synchronized
+    override fun unlisten() {
+        scope?.cancel()
+        scope = null
+    }
+
+    override fun read(): Contents {
+        val data =
+            try {
+                runBlocking { dataStore.data.first() }
+            } catch (e: Exception) {
+                throw UnreadableFileException("Can't read the data store $name: $e", e)
+            }
+        return Contents(data.asMap().mapKeys { it.key.name }, encrypted = false, policy = policy, readOnly = readOnly)
+    }
+
+    override fun writable(): Boolean = !readOnly
+
+    // The store writes the file, then updates its data, so a change that fails leaves both as they were.
+    override fun write(change: PrefChange) {
+        try {
+            runBlocking { dataStore.updateData { data -> data.toMutablePreferences().apply { make(change) } } }
+        } catch (e: Exception) {
+            throw WriteFailedException("Can't write the data store $name: $e", e)
+        }
+    }
+
+    private fun MutablePreferences.make(change: PrefChange) {
+        when (change) {
+            is PrefChange.Put -> this[key(change.key)] = change.value
+            is PrefChange.Remove -> remove(key(change.key))
+            PrefChange.Clear -> clear()
+        }
+    }
+
+    // Every key factory makes a Preferences.Key of the name, keys are equal by name, and
+    // the store writes a value by its class. So one factory serves every type, also the
+    // byte array of DataStore 1.1, which DataStore 1.0 has no factory for and refuses to write.
+    @Suppress("UNCHECKED_CAST")
+    private fun key(name: String): Preferences.Key<Any> = stringPreferencesKey(name) as Preferences.Key<Any>
+}

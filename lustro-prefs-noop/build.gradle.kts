@@ -21,6 +21,10 @@ android {
 
 dependencies {
     api(project(":lustro-api"))
+    // PrefsDataStore takes a DataStore<Preferences>, as in :lustro-prefs. An app
+    // that registers one has DataStore; the no-op half never calls it.
+    compileOnly(libs.datastore.preferences.core.floor) { exclude(group = "org.jetbrains.kotlin") }
+    compileOnly(libs.datastore.core.floor) { exclude(group = "org.jetbrains.kotlin") }
 }
 
 lustroLibrary {

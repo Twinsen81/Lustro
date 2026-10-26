@@ -27,6 +27,16 @@
 .prefs-file__lock { font-size: 11px; }
 .prefs-file__count { color: var(--t4); }
 .prefs-file.dc-tab--active .prefs-file__count { color: var(--accent-2); }
+/* Marks a DataStore's tab, so that it differs from a SharedPreferences file of the same name. */
+.prefs-file__store {
+    padding: 1px 4px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-size: 9.5px;
+    letter-spacing: .06em;
+    color: var(--t3);
+}
+.prefs-file.dc-tab--active .prefs-file__store { color: var(--accent-2); border-color: var(--accent-border); }
 
 /* ── The open file ── */
 .prefs-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; }

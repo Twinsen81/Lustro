@@ -1,7 +1,8 @@
-// The Preferences tab: the app's SharedPreferences files, to read and edit them.
-// A poll asks GET files, which has the cursor of each file, and asks GET entries
-// for the open file only when its cursor moved, so a poll of a file that did not
-// change is one short request. prefs.openapi.json describes the routes.
+// The Preferences tab: the app's SharedPreferences files and Preferences
+// DataStores, to read and edit them. A poll asks GET files, which has the cursor
+// of each file, and asks GET entries for the open file only when its cursor
+// moved, so a poll of a file that did not change is one short request.
+// prefs.openapi.json describes the routes.
 (function() {
     var STORAGE_KEY = 'debug-prefs';
     var WIDTHS_KEY = 'debug-prefs-column-widths';
@@ -19,22 +20,35 @@
     var ACTIONS_WIDTH = 96;
     var DEFAULT_WIDTHS = { key: 300, type: 110 };
 
-    var TYPES = ['string', 'int', 'long', 'float', 'boolean', 'string_set'];
-    var TYPE_LABELS = {
-        string: 'String', int: 'Int', long: 'Long', float: 'Float', boolean: 'Boolean',
-        string_set: 'String set', unknown: 'Unknown'
+    var SHARED_PREFS = 'shared_prefs';
+    var DATASTORE = 'preferences_datastore';
+    // The types that POST edit writes to a file of each store: the SharedPreferences
+    // setters, and for a Preferences DataStore a double and bytes too.
+    var STORE_TYPES = {
+        shared_prefs: ['string', 'int', 'long', 'float', 'boolean', 'string_set'],
+        preferences_datastore: ['string', 'int', 'long', 'float', 'double', 'boolean', 'string_set', 'bytes']
     };
-    // A string set has the color of a string: the label tells the two apart.
+    var STORE_LABELS = { shared_prefs: 'SharedPreferences', preferences_datastore: 'Preferences DataStore' };
+    var TYPE_LABELS = {
+        string: 'String', int: 'Int', long: 'Long', float: 'Float', double: 'Double', boolean: 'Boolean',
+        string_set: 'String set', bytes: 'Bytes', unknown: 'Unknown'
+    };
+    // A string set and bytes have the color of a string, and a double the color of
+    // a float: the label tells them apart.
     var TYPE_COLORS = {
-        string: '--type-string', string_set: '--type-string', int: '--type-int',
-        long: '--type-long', float: '--type-float', boolean: '--type-boolean'
+        string: '--type-string', string_set: '--type-string', bytes: '--type-string', int: '--type-int',
+        long: '--type-long', float: '--type-float', double: '--type-float', boolean: '--type-boolean'
     };
     var INT_RANGE = ['-2147483648', '2147483647'];
     var LONG_RANGE = ['-9223372036854775808', '9223372036854775807'];
     var NON_FINITE = ['NaN', 'Infinity', '-Infinity'];
+    var DECIMAL = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
+    // Padded base64, as the routes write bytes and take them back.
+    var BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
     var POLICY_LABELS = { visible: 'Values visible', mask_sensitive: 'Sensitive values masked', keys_only: 'Keys only' };
     // Lustro's own file, which holds the token.
     var LUSTRO_FILE = 'lustro_debug';
+    var BYTES_HINT = '// the bytes as padded base64, such as AAEC/w==';
 
     // ── Reading the routes' JSON ────────────────────────────────
 
@@ -47,6 +61,45 @@
 
     function parseJson(text) {
         return JSON.parse(String(text).replace(LONG_VALUE, '"value":"$1"'));
+    }
+
+    // ── Files and their stores ──────────────────────────────────
+
+    // A SharedPreferences file and a DataStore can have the same name, so the page
+    // tells files apart by the store too. A name has no '/'.
+    function storeOf(file) {
+        return file && file.store ? file.store : SHARED_PREFS;
+    }
+
+    function fileId(file) {
+        return storeOf(file) + '/' + file.name;
+    }
+
+    // An id that the page stored before files had a store names a SharedPreferences file.
+    function idOf(stored) {
+        return stored.indexOf('/') >= 0 ? stored : SHARED_PREFS + '/' + stored;
+    }
+
+    function nameOf(id) {
+        return id.slice(id.indexOf('/') + 1);
+    }
+
+    // The fields of a request that pick the file of id.
+    function target(id) {
+        return { store: id.slice(0, id.indexOf('/')), file: nameOf(id) };
+    }
+
+    function fileQuery(id) {
+        var picked = target(id);
+        return 'store=' + encodeURIComponent(picked.store) + '&file=' + encodeURIComponent(picked.file);
+    }
+
+    function writeTypes(file) {
+        return STORE_TYPES[storeOf(file)] || STORE_TYPES[SHARED_PREFS];
+    }
+
+    function canWrite(file, type) {
+        return writeTypes(file).indexOf(type) >= 0;
     }
 
     // ── The page's copy of a file ───────────────────────────────
@@ -105,19 +158,19 @@
         view.entries = sortEntries(Array.from(view.byKey.values()));
     }
 
-    // The names of the files in the order of their tabs: by key count, the fullest
+    // The ids of the files in the order of their tabs: by key count, the fullest
     // first, and in the app's order for the same count (sort is stable). A poll
     // keeps the order the page has, so that a tab doesn't move under the pointer;
     // a new or a gone file, or Refresh, sorts them again.
     function orderFiles(files, order, resort) {
-        var names = files.map(function(file) { return file.name; });
-        if (!resort && order && order.length === names.length
-                && order.every(function(name) { return names.indexOf(name) >= 0; })) {
+        var ids = files.map(fileId);
+        if (!resort && order && order.length === ids.length
+                && order.every(function(id) { return ids.indexOf(id) >= 0; })) {
             return order.slice();
         }
         return files.slice()
             .sort(function(a, b) { return (b.keyCount || 0) - (a.keyCount || 0); })
-            .map(function(file) { return file.name; });
+            .map(fileId);
     }
 
     // Why the page can't change a file, or null when it can. The app decides it,
@@ -126,6 +179,9 @@
         if (!file) return 'No file is open.';
         if (file.error) return 'The tab can\'t read this file: ' + file.error;
         if (!file.readOnly) return null;
+        if (!file.registered && storeOf(file) === DATASTORE) {
+            return 'The tab found this DataStore file on disk and reads the file itself. A DataStore keeps its values in memory and would not see an edit to its file, so a found one is always read-only. Register the store with a PrefsDataStore to edit it.';
+        }
         if (!file.registered && file.name === LUSTRO_FILE) {
             return 'This is Lustro\'s own file: it holds the console\'s token, so the tab never changes it.';
         }
@@ -199,7 +255,7 @@
         }
         if (type === 'float') {
             if (NON_FINITE.indexOf(trimmed) >= 0) return { value: trimmed };
-            if (!/^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(trimmed)) {
+            if (!DECIMAL.test(trimmed)) {
                 return { error: 'A float is a number such as 1.5 or -2e3, or NaN, Infinity, or -Infinity.' };
             }
             var number = Number(trimmed);
@@ -209,6 +265,21 @@
                 return { error: 'The number is outside the range of a float, about ±3.4e38.' };
             }
             return { value: number };
+        }
+        if (type === 'double') {
+            if (NON_FINITE.indexOf(trimmed) >= 0) return { value: trimmed };
+            if (!DECIMAL.test(trimmed)) {
+                return { error: 'A double is a number such as 1.5 or -2e3, or NaN, Infinity, or -Infinity.' };
+            }
+            // A JS number is a double, so it sends the value exactly.
+            var double = Number(trimmed);
+            if (!isFinite(double)) return { error: 'The number is outside the range of a double, about ±1.8e308.' };
+            return { value: double };
+        }
+        if (type === 'bytes') {
+            var base64 = text.replace(/\s+/g, '');
+            if (!BASE64.test(base64)) return { error: 'Bytes are padded base64 text, such as AAEC/w==.' };
+            return { value: base64 };
         }
         if (type === 'string_set') {
             var error = { error: 'A string set is a JSON array of strings, such as ["work", "travel"].' };
@@ -248,7 +319,7 @@
 
     function defaultText(type) {
         if (type === 'string_set') return '[]';
-        if (type === 'int' || type === 'long' || type === 'float') return '0';
+        if (type === 'int' || type === 'long' || type === 'float' || type === 'double') return '0';
         return '';
     }
 
@@ -271,6 +342,10 @@
             }
             if (string.length > TEXTAREA_FROM_CHARS || /[\r\n]/.test(string)) return { control: 'textarea', text: string };
             return { control: 'input', text: string };
+        }
+        if (type === 'bytes') {
+            var base64 = String(value);
+            return { control: base64.length > TEXTAREA_FROM_CHARS ? 'textarea' : 'input', text: base64 };
         }
         return { control: 'input', text: formatValue(type, value) };
     }
@@ -314,10 +389,12 @@
         return bytes === 1 ? '1 byte' : (bytes || 0) + ' bytes';
     }
 
-    // A whole float keeps its point, as the app's getFloat shows it: 1.0, not 1.
+    // A whole float or double keeps its point, as the app's getter shows it: 1.0, not 1.
     function formatValue(type, value) {
         if (Array.isArray(value)) return JSON.stringify(value);
-        if (type === 'float' && typeof value === 'number' && Number.isInteger(value) && Math.abs(value) < 1e21) return value.toFixed(1);
+        if ((type === 'float' || type === 'double') && typeof value === 'number' && Number.isInteger(value) && Math.abs(value) < 1e21) {
+            return value.toFixed(1);
+        }
         return String(value);
     }
 
@@ -346,7 +423,7 @@
     }
 
     function fileTitle(file) {
-        var parts = [file.name, keysLabel(file.keyCount || 0), file.registered ? 'registered' : 'found on disk',
+        var parts = [file.name, STORE_LABELS[storeOf(file)] || storeOf(file), keysLabel(file.keyCount || 0), file.registered ? 'registered' : 'found on disk',
             policyLabel(file.policy).toLowerCase(), file.readOnly ? 'read-only' : 'writable'];
         if (file.encrypted) parts.push('encrypted');
         return parts.join(' · ') + '.';
@@ -355,9 +432,10 @@
     function fileTabHtml(file, active) {
         var esc = window.debugEscapeHtml;
         return '<button type="button" class="dc-tab prefs-file' + (active ? ' dc-tab--active' : '') + '" role="tab"'
-            + ' aria-selected="' + (active ? 'true' : 'false') + '" data-action="selectFile" data-file="' + esc(file.name) + '"'
+            + ' aria-selected="' + (active ? 'true' : 'false') + '" data-action="selectFile" data-file="' + esc(fileId(file)) + '"'
             + ' title="' + esc(fileTitle(file)) + '">'
             + (file.encrypted ? '<span class="prefs-file__lock" aria-hidden="true">🔒</span>' : '')
+            + (storeOf(file) === DATASTORE ? '<span class="prefs-file__store">DS</span>' : '')
             + esc(file.name)
             + '<span class="prefs-file__count">(' + esc(String(file.keyCount || 0)) + ')</span>'
             + '</button>';
@@ -370,10 +448,16 @@
         function tag(text, title, color) {
             return '<span class="dc-tag"' + (color ? ' style="--c: var(' + color + ')"' : '') + ' title="' + esc(title) + '">' + esc(text) + '</span>';
         }
+        var dataStore = storeOf(file) === DATASTORE;
         var html = '<span class="prefs-count">' + esc(countLabel(shown, total)) + '</span>';
+        html += dataStore
+            ? tag('DataStore', 'A Preferences DataStore. Its values can also be doubles and bytes.')
+            : tag('SharedPreferences', 'A SharedPreferences file.');
         html += file.registered
             ? tag('Registered', 'The app registered this file, with its policy and read-only flag.')
-            : tag('Found on disk', 'The tab found this file in the app\'s shared_prefs directory, such as the file of a library.');
+            : tag('Found on disk', dataStore
+                ? 'The tab found this file in the app\'s files/datastore directory, such as the store of a library, and reads the file itself.'
+                : 'The tab found this file in the app\'s shared_prefs directory, such as the file of a library.');
         html += tag(policyLabel(file.policy), {
             visible: 'The policy shows every value.',
             mask_sensitive: 'The policy leaves out the value of each key that looks like it holds a secret, such as a token or a password.',
@@ -394,7 +478,7 @@
         var lock = ctx.lock;
         if (entry.masked || !('value' in entry)) {
             var hidden = '<span class="dc-comment prefs-hidden">' + esc(hiddenText(entry, ctx.file)) + '</span>';
-            if (lock || entry.type === 'unknown') return '<span class="prefs-hidden-wrap" title="' + esc(hiddenTitle(ctx.file)) + '">' + hidden + '</span>';
+            if (lock || !canWrite(ctx.file, entry.type)) return '<span class="prefs-hidden-wrap" title="' + esc(hiddenTitle(ctx.file)) + '">' + hidden + '</span>';
             return '<button type="button" class="prefs-value prefs-value--hidden" data-action="openEdit" data-key="' + key + '"'
                 + ' title="' + esc(hiddenTitle(ctx.file) + ' Click to write a new value.') + '">' + hidden + OPEN_MARK + '</button>';
         }
@@ -477,6 +561,8 @@
         return widths;
     }
 
+    window.prefsFileId = fileId;
+    window.prefsWriteTypes = writeTypes;
     window.prefsParseJson = parseJson;
     window.prefsNewView = newView;
     window.prefsApplyEnvelope = applyEnvelope;
@@ -504,9 +590,11 @@
     var settings = null;
     var widths = {};
     var files = [];
-    var byName = {};
+    // The files by id: the store and the name.
+    var byId = {};
     var order = null;
     var loaded = false;
+    // The id of the open file.
     var active = null;
     var view = newView();
     // A change of the open file starts a generation: a response to a request of
@@ -597,21 +685,22 @@
 
     function onFiles(data, resort) {
         files = data && Array.isArray(data.items) ? data.items : [];
-        byName = {};
-        files.forEach(function(file) { byName[file.name] = file; });
+        byId = {};
+        files.forEach(function(file) { byId[fileId(file)] = file; });
         order = orderFiles(files, order, resort);
         var first = !loaded;
         loaded = true;
-        if (!active || !byName[active]) {
+        if (!active || !byId[active]) {
             var gone = active;
-            var next = settings.activeFile && byName[settings.activeFile] ? settings.activeFile : order[0] || null;
+            var stored = settings.activeFile ? idOf(settings.activeFile) : null;
+            var next = stored && byId[stored] ? stored : order[0] || null;
             if (next !== active) openFile(next);
-            if (gone) window.debugToast('The file ' + gone + ' is no longer in the app' + (next ? ', so the tab shows ' + next : ''), 'info');
+            if (gone) window.debugToast('The file ' + nameOf(gone) + ' is no longer in the app' + (next ? ', so the tab shows ' + nameOf(next) : ''), 'info');
         }
         renderFiles();
         if (first) scrollTabIntoView();
         renderHead();
-        var file = active ? byName[active] : null;
+        var file = active ? byId[active] : null;
         if (!file) {
             renderRows();
             return;
@@ -633,7 +722,7 @@
         }
     }
 
-    function openFile(name) {
+    function openFile(id) {
         generation++;
         // The rows go at once, also when a field in them has the focus, which defers a
         // render. The browser fires the field's change as it goes; the change then
@@ -641,30 +730,30 @@
         pendingRender = false;
         els.rows.innerHTML = '';
         els.rows.dataset.generation = String(generation);
-        active = name;
+        active = id;
         view = newView();
         saved.clear();
         changedKeys.clear();
         // The banner is about the file that was open.
         showBanner('');
-        if (name) {
-            settings.activeFile = name;
+        if (id) {
+            settings.activeFile = id;
             storeSettings();
         }
     }
 
-    function selectFile(name) {
-        if (!byName[name] || name === active) return;
-        openFile(name);
+    function selectFile(id) {
+        if (!byId[id] || id === active) return;
+        openFile(id);
         renderFiles();
         renderHead();
         renderRows();
         scrollTabIntoView();
-        if (!byName[name].error) loadEntries();
+        if (!byId[id].error) loadEntries();
     }
 
     function renderFiles() {
-        var html = order ? order.map(function(name) { return fileTabHtml(byName[name], name === active); }).join('') : '';
+        var html = order ? order.map(function(id) { return fileTabHtml(byId[id], id === active); }).join('') : '';
         if (html !== lastFilesHtml) {
             els.files.innerHTML = html;
             lastFilesHtml = html;
@@ -682,7 +771,7 @@
     }
 
     function renderHead() {
-        var file = active ? byName[active] : null;
+        var file = active ? byId[active] : null;
         els.panel.hidden = !file;
         els.none.hidden = !!file || !loaded;
         if (!file) return;
@@ -713,7 +802,7 @@
         if (!active) return;
         entriesInFlight = true;
         var requestGeneration = generation;
-        var path = 'entries?file=' + encodeURIComponent(active) + (view.cursor ? '&cursor=' + encodeURIComponent(view.cursor) : '');
+        var path = 'entries?' + fileQuery(active) + (view.cursor ? '&cursor=' + encodeURIComponent(view.cursor) : '');
         window.debugFetch(window.lustroApiUrl(path))
             .then(function(r) { return r.text(); })
             .then(function(text) {
@@ -769,7 +858,7 @@
         }
         pendingRender = false;
         els.rows.dataset.generation = String(generation);
-        var file = active ? byName[active] : null;
+        var file = active ? byId[active] : null;
         if (!file || view.file !== active) {
             els.rows.innerHTML = '';
             els.empty.hidden = !file || !!file.error;
@@ -818,7 +907,7 @@
         // response, when the field loses the focus, don't show the old one.
         var written = entry ? Object.assign({}, entry, { value: read.value }) : null;
         if (written) putEntry(view, written);
-        post('edit', { file: file, key: key, type: kind, value: read.value }).then(function(data) {
+        post('edit', Object.assign(target(file), { key: key, type: kind, value: read.value })).then(function(data) {
             if (file !== active) return;
             saved.set(key, Date.now());
             putEntry(view, data && data.item);
@@ -851,7 +940,7 @@
     }
 
     function renderTypeChips() {
-        els.editType.innerHTML = '<div class="prefs-types" role="radiogroup" aria-label="Type">' + TYPES.map(function(type) {
+        els.editType.innerHTML = '<div class="prefs-types" role="radiogroup" aria-label="Type">' + writeTypes(byId[edit.file]).map(function(type) {
             var on = edit.type === type;
             return '<button type="button" class="prefs-type' + (on ? ' prefs-type--on' : '') + '" role="radio" aria-checked="' + (on ? 'true' : 'false') + '"'
                 + ' style="--c: var(' + TYPE_COLORS[type] + ')" data-action="pickType" data-type="' + type + '">'
@@ -871,7 +960,7 @@
                 + (readOnly ? ' readonly' : '') + '></textarea>';
             control().value = editor.text;
         } else {
-            var numeric = edit.type === 'int' || edit.type === 'long' ? 'numeric' : edit.type === 'float' ? 'decimal' : null;
+            var numeric = edit.type === 'int' || edit.type === 'long' ? 'numeric' : edit.type === 'float' || edit.type === 'double' ? 'decimal' : null;
             els.editValue.innerHTML = '<input type="text" id="prefs-edit-input" class="dc-input--block" autocomplete="off" spellcheck="false" ' + label
                 + (numeric ? ' inputmode="' + numeric + '"' : '') + (readOnly ? ' readonly' : '') + '>';
             control().value = editor.text;
@@ -918,7 +1007,7 @@
     }
 
     function openAdd() {
-        var file = active ? byName[active] : null;
+        var file = active ? byId[active] : null;
         if (!file || lockReason(file)) return;
         edit = { mode: 'add', file: active, type: 'string' };
         els.editKey.innerHTML = '<input type="text" id="prefs-edit-key-input" class="dc-input--block" placeholder="key name" autocomplete="off" spellcheck="false" aria-labelledby="prefs-edit-key-label">';
@@ -930,18 +1019,19 @@
     }
 
     function pickType(type) {
-        if (!edit || edit.mode !== 'add' || TYPES.indexOf(type) < 0 || type === edit.type) return;
+        if (!edit || edit.mode !== 'add' || !canWrite(byId[edit.file], type) || type === edit.type) return;
         edit.type = type;
         renderTypeChips();
         renderEditor(editorFor(type, type === 'boolean' ? false : defaultText(type)), false);
+        setEditMessage(els.editHint, type === 'bytes' ? BYTES_HINT : '');
     }
 
     function openEdit(key) {
         var entry = view.byKey.get(key);
-        var file = active ? byName[active] : null;
+        var file = active ? byId[active] : null;
         if (!entry || !file) return;
         var lock = lockReason(file);
-        var mode = lock || entry.type === 'unknown' ? 'view' : 'edit';
+        var mode = lock || !canWrite(file, entry.type) ? 'view' : 'edit';
         edit = { mode: mode, file: active, key: key, type: entry.type, opened: entry, original: entry.value };
         els.editKey.textContent = key;
         els.editType.innerHTML = badgeHtml(entry.type);
@@ -954,12 +1044,16 @@
     }
 
     function fillEditor(entry, readOnly) {
-        var file = byName[edit.file];
+        var file = byId[edit.file];
         renderEditor(editorFor(entry.type, entry.value, entry.masked || !('value' in entry)), readOnly);
         if (entry.masked) {
             setEditMessage(els.editHint, '// ' + hiddenTitle(file) + (readOnly ? '' : ' What you save replaces the value.'));
         } else if (entry.type === 'unknown') {
             setEditMessage(els.editHint, '// a value that no SharedPreferences getter returns: the tab can show it, not write it');
+        } else if (!canWrite(file, entry.type)) {
+            setEditMessage(els.editHint, '// a ' + TYPE_LABELS[entry.type].toLowerCase() + ' value, which no setter of this file writes: the tab can show it, not write it');
+        } else if (entry.type === 'bytes') {
+            setEditMessage(els.editHint, BYTES_HINT);
         }
         var el = control();
         if (el && !readOnly && el.type !== 'checkbox') {
@@ -974,7 +1068,7 @@
         els.editSave.disabled = true;
         els.editValue.innerHTML = '<div class="dc-comment">// reading the whole value…</div>';
         els.previewRow.hidden = true;
-        var path = 'entry?file=' + encodeURIComponent(state.file) + '&key=' + encodeURIComponent(state.key);
+        var path = 'entry?' + fileQuery(state.file) + '&key=' + encodeURIComponent(state.key);
         window.debugFetch(window.lustroApiUrl(path))
             .then(function(r) { return r.text(); })
             .then(function(text) {
@@ -1036,7 +1130,7 @@
         }
         setEditMessage(els.editError, '');
         els.editSave.disabled = true;
-        post('edit', { file: state.file, key: key, type: state.type, value: read.value }).then(function(data) {
+        post('edit', Object.assign(target(state.file), { key: key, type: state.type, value: read.value })).then(function(data) {
             if (edit === state) editModal.hide();
             window.debugToast(state.mode === 'add' ? 'Added ' + key : 'Saved ' + key, 'success');
             if (state.file !== active) return;
@@ -1064,12 +1158,12 @@
         els.confirmOk.focus();
     }
 
-    // file is the dialog's file, which a poll can have closed while the dialog was open.
+    // file is the id of the dialog's file, which a poll can have closed while the dialog was open.
     function confirmDelete(key, file) {
         file = file || active;
-        if (!file || !byName[file] || lockReason(byName[file])) return;
-        showConfirm('Delete key', 'Delete the key "' + key + '" from the file ' + file + '?', 'Delete', function() {
-            post('delete', { file: file, key: key }).then(function(data) {
+        if (!file || !byId[file] || lockReason(byId[file])) return;
+        showConfirm('Delete key', 'Delete the key "' + key + '" from the file ' + nameOf(file) + '?', 'Delete', function() {
+            post('delete', Object.assign(target(file), { key: key })).then(function(data) {
                 window.debugToast(data && data.deleted === false ? 'The file had no key ' + key : 'Deleted ' + key, 'success');
                 refreshNow(false);
             }).catch(function(e) {
@@ -1080,12 +1174,12 @@
 
     function confirmClear() {
         var file = active;
-        if (!file || lockReason(byName[file])) return;
-        var count = view.file === file ? view.entries.length : byName[file].keyCount || 0;
-        showConfirm('Clear file', 'Remove all ' + keysLabel(count) + ' from the file ' + file + '? The app can\'t get them back.', 'Clear file', function() {
-            post('clear', { file: file, confirm: true }).then(function(data) {
+        if (!file || lockReason(byId[file])) return;
+        var count = view.file === file ? view.entries.length : byId[file].keyCount || 0;
+        showConfirm('Clear file', 'Remove all ' + keysLabel(count) + ' from the file ' + nameOf(file) + '? The app can\'t get them back.', 'Clear file', function() {
+            post('clear', Object.assign(target(file), { confirm: true })).then(function(data) {
                 var removed = data && typeof data.removed === 'number' ? data.removed : count;
-                window.debugToast('Removed ' + keysLabel(removed) + ' from ' + file, 'success');
+                window.debugToast('Removed ' + keysLabel(removed) + ' from ' + nameOf(file), 'success');
                 refreshNow(false);
             }).catch(function(e) {
                 window.debugToast('Not cleared: ' + e.message, 'error');

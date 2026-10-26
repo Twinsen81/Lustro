@@ -29,6 +29,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.twinsen81.lustro.sample.ActionEvent
+import io.github.twinsen81.lustro.sample.DemoDataStore
 import io.github.twinsen81.lustro.sample.DemoPrefs
 import io.github.twinsen81.lustro.sample.SampleViewModel
 import io.github.twinsen81.lustro.sample.Tone
@@ -36,12 +37,13 @@ import io.github.twinsen81.lustro.sample.Tone
 @Composable
 internal fun PrefsScreen(viewModel: SampleViewModel, latest: Map<String, ActionEvent>, onBack: () -> Unit) {
     val values by viewModel.prefsValues.collectAsState()
+    val storeValues by viewModel.dataStoreValues.collectAsState()
     Column(Modifier.fillMaxSize()) {
         SubScreenBar("Preferences", "${viewModel.prefsActions.size} actions", onBack)
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
             ScreenHeader(
                 "Preferences",
-                "The Preferences tab reads and edits these SharedPreferences files, in the console and over the API. " +
+                "The Preferences tab reads and edits these SharedPreferences files and Preferences DataStores, in the console and over the API. " +
                     "Change a value here or in the console: the other side follows.",
             )
             SampleCard(Modifier.padding(horizontal = ScreenPadding)) {
@@ -66,6 +68,13 @@ internal fun PrefsScreen(viewModel: SampleViewModel, latest: Map<String, ActionE
                     Text("The file is empty", style = SampleText.small, color = palette.textFaint, modifier = Modifier.padding(16.dp))
                 }
                 values.forEach { (key, value) -> ValueRow(key, value) }
+            }
+            SectionLabel(DemoDataStore.APP_STATE.uppercase() + " · DATASTORE", "${storeValues.size} KEYS")
+            SampleCard(Modifier.padding(horizontal = ScreenPadding)) {
+                if (storeValues.isEmpty()) {
+                    Text("The store is empty", style = SampleText.small, color = palette.textFaint, modifier = Modifier.padding(16.dp))
+                }
+                storeValues.forEach { (key, value) -> ValueRow(key, value) }
             }
             SectionLabel("APP CHANGES")
             viewModel.prefsActions.forEach { action ->

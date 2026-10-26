@@ -15,10 +15,10 @@ internal class DecryptingPrefs(private val platform: SharedPreferences) : Shared
     private val listeners = ArrayList<SharedPreferences.OnSharedPreferenceChangeListener>()
 
     init {
-        platform.edit().apply { PrefsSource.KEYSET_KEYS.forEach { putString(it, "keyset") } }.commit()
+        platform.edit().apply { SharedPrefsSource.KEYSET_KEYS.forEach { putString(it, "keyset") } }.commit()
     }
 
-    override fun getAll(): Map<String, *> = platform.all.filterKeys { it !in PrefsSource.KEYSET_KEYS }
+    override fun getAll(): Map<String, *> = platform.all.filterKeys { it !in SharedPrefsSource.KEYSET_KEYS }
 
     override fun getString(key: String?, defValue: String?): String? = checked(key) { platform.getString(key, defValue) }
 
@@ -45,7 +45,7 @@ internal class DecryptingPrefs(private val platform: SharedPreferences) : Shared
     }
 
     private fun <T> checked(key: String?, read: () -> T): T {
-        if (key in PrefsSource.KEYSET_KEYS) throw SecurityException("$key is a reserved key for the encryption keyset.")
+        if (key in SharedPrefsSource.KEYSET_KEYS) throw SecurityException("$key is a reserved key for the encryption keyset.")
         return read()
     }
 

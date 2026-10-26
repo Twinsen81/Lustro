@@ -25,6 +25,7 @@ internal class SampleViewModel(application: Application) : AndroidViewModel(appl
     private val requests = DemoRequests(application, { app.httpClient }, io)
     private val demoLogs = DemoLogs()
     private val demoPrefs = DemoPrefs(application)
+    private val demoDataStore = DemoDataStore(application, viewModelScope)
 
     val events = EventLog()
 
@@ -79,10 +80,13 @@ internal class SampleViewModel(application: Application) : AndroidViewModel(appl
 
     val logActions: List<DemoAction> = DemoCatalog.logs(demoLogs)
 
-    val prefsActions: List<DemoAction> = DemoCatalog.prefs(demoPrefs)
+    val prefsActions: List<DemoAction> = DemoCatalog.prefs(demoPrefs, demoDataStore)
 
     /** The settings file as the app reads it: an edit from the console shows here. */
     val prefsValues: StateFlow<List<Pair<String, String>>> = demoPrefs.settingsValues
+
+    /** The registered DataStore as the app reads it: an edit from the console shows here too. */
+    val dataStoreValues: StateFlow<List<Pair<String, String>>> = demoDataStore.appStateValues
 
     // Lustro.stop() ends the debug server and what its tabs run, such as the Logs
     // tab's logcat process; Lustro.start() starts them again.

@@ -76,7 +76,13 @@ internal fun HomeScreen(viewModel: SampleViewModel, flags: List<SampleFlag>?, la
             MetaText("·", palette.textFaint)
             MetaText("${viewModel.logActions.size} actions")
         }
-        ModuleCard(SampleIcons.Sliders, Tone.ACCENT, "Preferences", "SharedPreferences, read and edited from the console", onClick = { onOpen(Screen.PREFS) }) {
+        ModuleCard(
+            SampleIcons.Sliders,
+            Tone.ACCENT,
+            "Preferences",
+            "SharedPreferences and DataStores, read and edited from the console",
+            onClick = { onOpen(Screen.PREFS) },
+        ) {
             MetaText("${prefsKeys.size} keys in ${DemoPrefs.SETTINGS}")
             MetaText("·", palette.textFaint)
             MetaText("${viewModel.prefsActions.size} actions")

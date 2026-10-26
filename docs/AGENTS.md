@@ -25,7 +25,7 @@ This document is about using a running Lustro. To add Lustro to an app, follow t
   `lustro/src/main/assets/lustro/network.openapi.json`.
 - **Plugin tabs.** An app can also register plugin tabs, such as `logs`, the app's own logcat
   (see [Logs tab operations](#logs-tab-operations)), and `prefs`, the app's SharedPreferences
-  (see [Preferences tab operations](#preferences-tab-operations)). `_meta` lists the ones the app registered,
+  and Preferences DataStores (see [Preferences tab operations](#preferences-tab-operations)). `_meta` lists the ones the app registered,
   and each plugin's `_schema` has a version of its own in `info.version`.
 
 ## Use the `lustro` CLI
@@ -519,19 +519,27 @@ commands: use `lustro api`.
 
 | Operation | Route | Notes |
 | --- | --- | --- |
-| List the files | `GET files` | `{ items: [{ name, registered, policy, readOnly, encrypted, keyCount, cursor, error? }] }`: the files that the app registered, in its order, then the files that the tab found in `shared_prefs`, by name. `cursor` is the file's cursor now; compare it with the one you polled with to see that the file changed. `error` says why a file's instance can't read it. |
-| Poll a file | `GET entries?file=&cursor=` | Cursor envelope. `reset` or `delta` carries every entry of the file, by key; `unchanged` carries none. A cursor of another file, or from before an app restart, gets a `reset`. |
-| Read one value whole | `GET entry?file=&key=` | `{ item }`, after the value policy, never cut. `404` with `field: "key"` when the file has no such key. |
-| Write a value | `POST edit` | Body `{ file, key, type, value }`. Returns `{ status: "ok", item }`: the entry as the file now holds it. |
-| Remove a key | `POST delete` | Body `{ file, key }`. Returns `{ status: "ok", deleted }`, `false` when the key was not there. |
-| Empty a file | `POST clear` | Body `{ file, confirm: true }`; without `confirm: true`, a `400` with `field: "confirm"`. Returns `{ status: "ok", removed }`. |
+| List the files | `GET files` | `{ items: [{ name, store, registered, policy, readOnly, encrypted, keyCount, cursor, error? }] }`: the SharedPreferences files and then the Preferences DataStores that the app registered, in its order, then the files that the tab found in `shared_prefs` and `files/datastore`, by name. `store` is `shared_prefs` or `preferences_datastore`. `cursor` is the file's cursor now; compare it with the one you polled with to see that the file changed. `error` says why a file's instance can't read it. |
+| Poll a file | `GET entries?store=&file=&cursor=` | Cursor envelope. `reset` or `delta` carries every entry of the file, by key; `unchanged` carries none. A cursor of another file, or from before an app restart, gets a `reset`. |
+| Read one value whole | `GET entry?store=&file=&key=` | `{ item }`, after the value policy, never cut. `404` with `field: "key"` when the file has no such key. |
+| Write a value | `POST edit` | Body `{ store?, file, key, type, value }`. Returns `{ status: "ok", item }`: the entry as the file now holds it. |
+| Remove a key | `POST delete` | Body `{ store?, file, key }`. Returns `{ status: "ok", deleted }`, `false` when the key was not there. |
+| Empty a file | `POST clear` | Body `{ store?, file, confirm: true }`; without `confirm: true`, a `400` with `field: "confirm"`. Returns `{ status: "ok", removed }`. |
+
+**Stores.** A SharedPreferences file and a Preferences DataStore can have the same name, so
+`store` picks the kind: `shared_prefs`, the default when a request leaves it out, or
+`preferences_datastore`. Any other value is a `400` with `field: "store"`. The tab reads and
+writes a registered DataStore through the app's own instance. A DataStore that the tab found in
+`files/datastore` is read from its file, and it is always read-only.
 
 **An item.** `{ key, type, value?, bytes, masked?, truncated? }`. `type` is `string`, `int`,
-`long`, `float`, `boolean`, `string_set`, or `unknown` (a value that only a custom
-SharedPreferences implementation can hold). `value` is a JSON string, number, boolean, or, for
-`string_set`, a sorted array of strings; a float that is not finite is the string `"NaN"`,
-`"Infinity"`, or `"-Infinity"`. `bytes` is the size of the whole value: a string's UTF-8 bytes,
-the sum of those of a set's strings, or 4, 8, 4, and 1 for `int`, `long`, `float`, and `boolean`.
+`long`, `float`, `double`, `boolean`, `string_set`, `bytes`, or `unknown` (a value that only a
+custom SharedPreferences implementation can hold). `double` and `bytes` come only from a
+DataStore. `value` is a JSON string, number, boolean, or, for `string_set`, a sorted array of
+strings; a float or a double that is not finite is the string `"NaN"`, `"Infinity"`, or
+`"-Infinity"`, and `bytes` is padded base64. `bytes` (the field) is the size of the whole value:
+a string's UTF-8 bytes, the sum of those of a set's strings, a byte array's length, or 4, 8, 4,
+8, and 1 for `int`, `long`, `float`, `double`, and `boolean`.
 `masked: true` comes instead of `value` when the policy leaves it out. In `entries`, a value longer
 than 4096 characters (for a set, all its strings together) is cut and has `truncated: true`; read
 it with `GET entry`.
@@ -544,20 +552,26 @@ redaction's key check), or `keys_only` (no value). The keys always show. A disco
 keysets of one and a plain instance reads it, which is always `keys_only` and read-only.
 
 **Writing.** `type` picks the setter: `string`, `int`, `long`, `float`, `boolean`, or
-`string_set`. For a number or a boolean, `value` can also be a string, as a text field holds it
-(`"42"`, `"true"`); `int` and `long` take whole numbers in their range, `float` a number in a
-float's range or `"NaN"`, `"Infinity"`, `"-Infinity"`, and `string_set` a JSON array of strings.
-A wrong value is a `400` with `field: "value"`. An edit can give a key another type: the app's
-getter of the old type then throws `ClassCastException`. A masked value can still be written. All
-three mutations commit the file and move its cursor when they change it. A read-only file answers
+`string_set`, and for a DataStore also `double` and `bytes` (base64; a DataStore before 1.1
+can't write it, and answers a `500`). Another type is a `400` with `field: "type"`. For a
+number or a boolean, `value` can also be a string, as a text field holds it (`"42"`, `"true"`);
+`int` and `long` take whole numbers in their range, `float` a number in a float's range or
+`"NaN"`, `"Infinity"`, `"-Infinity"`, `double` the same in a double's range, and `string_set` a
+JSON array of strings. A wrong value is a `400` with `field: "value"`. An edit can give a key
+another type: the app's getter of the old type then throws `ClassCastException`. A masked value can still be written. All
+three mutations return when the file on disk has the change, and move its cursor when they
+change it. A read-only file answers
 `403` with `code: "read_only"` and `field: "file"`: a file that the app registered with
 `readOnly = true`, a discovered file unless the app made them writable, Lustro's own
-`lustro_debug`, and an encrypted file read plain. A `500` after a write means the disk write
-failed; the instance's memory holds the change.
+`lustro_debug`, an encrypted file read plain, and every discovered DataStore. A `500` after a
+write means the disk write failed: a SharedPreferences instance's memory holds the change, and a
+DataStore keeps what it had.
 
 **What moves a cursor.** The tab's own changes, at once, and the app's changes, through a
 listener, while Lustro is started. Before API 30, `clear()` calls no listener, so a clear by the
 app shows only with the next change to the file. Another process that writes the file is not seen.
+A registered DataStore moves its cursor when its data changes, while Lustro is started, and a
+discovered one when the bytes of its file change, on the next poll.
 A `file` that names no file is a `404`, and one with `/` or `\` a `400`, both with
 `field: "file"`; the tab never creates a file.
 
@@ -640,7 +654,7 @@ lustro api GET logs/text > repro.txt                        # every line since t
 lustro api GET logs/text --param tag='^(OkHttp|SyncWorker)$' --param level=I
 ```
 
-**Read and change a SharedPreferences value**
+**Read and change a SharedPreferences or DataStore value**
 
 ```bash
 lustro api GET prefs/files                                   # names, policies, read-only flags
@@ -648,6 +662,8 @@ lustro api GET prefs/entries --param file=settings > page.json
 cursor=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["cursor"])' < page.json)
 lustro api POST prefs/edit --body '{"file":"settings","key":"onboarding_done","type":"boolean","value":false}'
 lustro api GET prefs/entries --param file=settings --param cursor="$cursor"   # delta: the file again
+lustro api GET prefs/entries --param store=preferences_datastore --param file=app_state
+lustro api POST prefs/edit --body '{"store":"preferences_datastore","file":"app_state","key":"zoom","type":"double","value":1.5}'
 ```
 
 The app reads the new value at its next `get`. Code that read the value before, such as a cached

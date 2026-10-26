@@ -3,6 +3,7 @@ package io.github.twinsen81.lustro.prefs.internal
 import io.github.twinsen81.lustro.prefs.internal.PrefValues.appendItem
 import org.json.JSONArray
 import org.json.JSONObject
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -77,8 +78,30 @@ class PrefValuesTest {
     }
 
     @Test
-    fun `only the six types are editable`() {
-        assertEquals(listOf("string", "int", "long", "float", "boolean", "string_set"), PrefType.EDITABLE.map { it.wireName })
+    fun `a double is a finite number, or one of the names JSON has no number for`() {
+        assertEquals(0.1, parse("double", "0.1"))
+        assertEquals(1e300, parse("double", "\"1e300\""))
+        assertEquals(3.0, parse("double", "3"))
+        assertTrue((parse("double", "\"NaN\"") as Double).isNaN())
+        assertEquals(Double.NEGATIVE_INFINITY, parse("double", "\"-Infinity\""))
+        rejects("double", "\"1e309\"", "\"abc\"", "true", "[1]")
+    }
+
+    @Test
+    fun `bytes are a base64 string`() {
+        assertArrayEquals(byteArrayOf(0, 1, 2, -1), parse("bytes", "\"AAEC/w==\"") as ByteArray)
+        assertArrayEquals(byteArrayOf(0, 1, 2, -1), parse("bytes", "\"AAEC\\n/w==\"") as ByteArray)
+        assertArrayEquals(byteArrayOf(), parse("bytes", "\"\"") as ByteArray)
+        rejects("bytes", "\"AAEC/w=\"", "\"*\"", "[0,1]", "5")
+    }
+
+    @Test
+    fun `a store writes the types of its setters, and nothing writes unknown`() {
+        assertEquals(listOf("string", "int", "long", "float", "boolean", "string_set"), PrefsStore.SHARED_PREFS.writeTypes.map { it.wireName })
+        assertEquals(
+            listOf("string", "int", "long", "float", "boolean", "string_set", "double", "bytes"),
+            PrefsStore.PREFERENCES_DATASTORE.writeTypes.map { it.wireName },
+        )
         assertEquals(null, PrefType.forWireName("unknown"))
         assertEquals(null, PrefType.forWireName("String"))
     }
@@ -91,6 +114,26 @@ class PrefValuesTest {
         assertEquals("""{"key":"n","type":"float","value":0.25,"bytes":4}""", item("n", 0.25f))
         assertEquals("""{"key":"n","type":"boolean","value":true,"bytes":1}""", item("n", true))
         assertEquals("""{"key":"tags","type":"string_set","value":["a","bé","c"],"bytes":5}""", item("tags", setOf("c", "bé", "a")))
+        assertEquals("""{"key":"n","type":"double","value":0.1,"bytes":8}""", item("n", 0.1))
+        assertEquals("""{"key":"n","type":"double","value":"Infinity","bytes":8}""", item("n", Double.POSITIVE_INFINITY))
+        assertEquals("""{"key":"b","type":"bytes","value":"AAEC/w==","bytes":4}""", item("b", byteArrayOf(0, 1, 2, -1)))
+    }
+
+    @Test
+    fun `a long byte array is cut at a whole base64 quantum`() {
+        val json = JSONObject(item("b", ByteArray(9), maxChars = 10))
+        assertEquals("AAAAAAAA", json.getString("value"))
+        assertTrue(json.getBoolean("truncated"))
+        assertEquals(9, json.getInt("bytes"))
+        assertFalse(JSONObject(item("b", ByteArray(9), maxChars = 12)).has("truncated"))
+    }
+
+    @Test
+    fun `two byte arrays with the same bytes are the same value`() {
+        assertTrue(PrefValues.same(byteArrayOf(1, 2), byteArrayOf(1, 2)))
+        assertFalse(PrefValues.same(byteArrayOf(1, 2), byteArrayOf(1)))
+        assertTrue(PrefValues.same("a", "a"))
+        assertFalse(PrefValues.same(null, "a"))
     }
 
     @Test

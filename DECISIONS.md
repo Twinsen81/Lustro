@@ -212,6 +212,16 @@ must not need a `resolutionStrategy` workaround in the app.
   `lifecycle-runtime-ktx`, coroutines, and `androidx.annotation` are no longer
   dependencies of `lustro`: nothing used them. `androidx.annotation` stays
   `compileOnly` in `lustro-api`, for its CLASS-retention annotations.
+- DataStore and coroutines are `compileOnly` in `lustro-prefs` and
+  `lustro-prefs-noop`, at the floors `datastoreFloor` 1.0.0 and
+  `coroutinesFloor` 1.5.0 (the coroutines that DataStore 1.0.0 depends on). An
+  app that registers a `PrefsDataStore` has both; one that does not never
+  loads the classes that call them, and the consumer rules carry `-dontwarn`
+  for their packages. Only `DataStoreSource` calls them, with the APIs that
+  every release since those floors has, so a newer DataStore of the app runs
+  the same calls. A separate `lustro-prefs-datastore` pair was the other
+  option: it would add two artifacts and a public store SPI in `lustro-prefs`
+  to keep stable.
 - The published Kotlin modules set `coreLibrariesVersion`, `languageVersion`,
   and `apiVersion` from `kotlinFloor`, through the `lustro.android-library` and
   `lustro.kotlin-library` convention plugins in `build-logic/`. Whatever compiler the catalog pins, they

@@ -269,7 +269,7 @@ internal object DemoCatalog {
             },
         )
 
-    fun prefs(prefs: DemoPrefs): List<DemoAction> =
+    fun prefs(prefs: DemoPrefs, dataStore: DemoDataStore): List<DemoAction> =
         listOf(
             DemoAction(
                 "Count a launch",
@@ -300,9 +300,30 @@ internal object DemoCatalog {
             ) {
                 it.ok("Removed ${prefs.clearSettings()} keys from ${DemoPrefs.SETTINGS}")
             },
-            DemoAction("Reset the demo preferences", chip = "Reset the values", detail = "Writes the demo values of the three files again", badge = "⟲") {
+            DemoAction(
+                "Count an open in the DataStore",
+                chip = "Count an open",
+                detail = "Adds 1 to open_count in the ${DemoDataStore.APP_STATE} DataStore. The tab follows the store's data, so the next poll gets a delta",
+                badge = "DS",
+            ) { feedback ->
+                dataStore.countOpen { feedback.ok("open_count is $it") }
+            },
+            DemoAction(
+                "Refresh the SDK DataStore",
+                chip = "Refresh the SDK store",
+                detail = "Changes ${DemoDataStore.SDK_STATE}, which the app does not register: the tab reads it from its file, read-only, and masks api_key",
+                badge = "SDK",
+            ) { feedback ->
+                dataStore.refreshSdkState { feedback.ok("config_version is $it") }
+            },
+            DemoAction(
+                "Reset the demo preferences",
+                chip = "Reset the values",
+                detail = "Writes the demo values of the three files and the two stores again",
+                badge = "⟲",
+            ) { feedback ->
                 prefs.reset()
-                it.ok("Wrote the demo values again")
+                dataStore.reset { feedback.ok("Wrote the demo values again") }
             },
         )
 }
