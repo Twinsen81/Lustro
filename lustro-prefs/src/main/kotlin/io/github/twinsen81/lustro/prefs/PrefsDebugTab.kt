@@ -82,7 +82,12 @@ public class PrefsDebugTab private constructor(private val registry: PrefsRegist
         registry.start()
     }
 
-    /** Stops listening. The cursors keep their place, and a change made while stopped shows with the next one. */
+    /**
+     * Stops listening. The cursors keep their place. A change that the app makes
+     * while stopped moves the cursor of a SharedPreferences file with the file's
+     * next change, and the cursor of a registered data store at the next start.
+     * A discovered data store's cursor moves on the next poll either way.
+     */
     override fun onStop() {
         registry.stop()
     }

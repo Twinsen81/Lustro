@@ -306,7 +306,7 @@ internal object DemoCatalog {
                 detail = "Adds 1 to open_count in the ${DemoDataStore.APP_STATE} DataStore. The tab follows the store's data, so the next poll gets a delta",
                 badge = "DS",
             ) { feedback ->
-                dataStore.countOpen { feedback.ok("open_count is $it") }
+                dataStore.countOpen({ feedback.ok("open_count is $it") }) { feedback.failed("Count an open", it.message) }
             },
             DemoAction(
                 "Refresh the SDK DataStore",
@@ -314,7 +314,7 @@ internal object DemoCatalog {
                 detail = "Changes ${DemoDataStore.SDK_STATE}, which the app does not register: the tab reads it from its file, read-only, and masks api_key",
                 badge = "SDK",
             ) { feedback ->
-                dataStore.refreshSdkState { feedback.ok("config_version is $it") }
+                dataStore.refreshSdkState({ feedback.ok("config_version is $it") }) { feedback.failed("Refresh the SDK store", it.message) }
             },
             DemoAction(
                 "Reset the demo preferences",
@@ -323,7 +323,7 @@ internal object DemoCatalog {
                 badge = "⟲",
             ) { feedback ->
                 prefs.reset()
-                dataStore.reset { feedback.ok("Wrote the demo values again") }
+                dataStore.reset({ feedback.ok("Wrote the demo values again") }) { feedback.failed("Reset the values", it.message) }
             },
         )
 }

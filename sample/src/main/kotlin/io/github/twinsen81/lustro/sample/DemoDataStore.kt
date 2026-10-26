@@ -13,6 +13,7 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -43,8 +44,8 @@ internal class DemoDataStore(context: Context, private val scope: CoroutineScope
     val appStateValues: StateFlow<List<Pair<String, String>>> =
         appState.data.map { read(it) }.stateIn(scope, SharingStarted.Eagerly, emptyList())
 
-    fun countOpen(done: (Int) -> Unit) {
-        scope.launch {
+    fun countOpen(done: (Int) -> Unit, failed: (Exception) -> Unit) {
+        change(failed) {
             var count = 0
             appState.edit {
                 count = (it[OPEN_COUNT] ?: 0) + 1
@@ -55,8 +56,8 @@ internal class DemoDataStore(context: Context, private val scope: CoroutineScope
         }
     }
 
-    fun refreshSdkState(done: (Int) -> Unit) {
-        scope.launch {
+    fun refreshSdkState(done: (Int) -> Unit, failed: (Exception) -> Unit) {
+        change(failed) {
             var version = 0
             sdkState.edit {
                 version = (it[CONFIG_VERSION] ?: 0) + 1
@@ -67,10 +68,25 @@ internal class DemoDataStore(context: Context, private val scope: CoroutineScope
         }
     }
 
-    fun reset(done: () -> Unit) {
-        scope.launch {
+    fun reset(done: () -> Unit, failed: (Exception) -> Unit) {
+        change(failed) {
             writeDefaults(appState, sdkState)
             done()
+        }
+    }
+
+    // A change runs in a coroutine, out of reach of the try in SampleViewModel.run(). What it
+    // throws, such as the ClassCastException of a key that the console gave another type, goes
+    // to failed, as a SharedPreferences action's failure does, and does not end the process.
+    private fun change(failed: (Exception) -> Unit, block: suspend () -> Unit) {
+        scope.launch {
+            try {
+                block()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                failed(e)
+            }
         }
     }
 
