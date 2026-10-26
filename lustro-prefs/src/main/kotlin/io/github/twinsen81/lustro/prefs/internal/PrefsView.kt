@@ -13,13 +13,13 @@ internal object PrefsView {
                 <button type="button" class="dc-btn dc-btn--soft" data-action="refresh" title="Read the list of files and the open file again.">↻ Refresh</button>
                 <div class="prefs-auto">
                     <label class="dc-switch" title="Auto-refresh: ask the app for changes at the interval on the right. A poll gets the entries of the open file again only when the file changed. Your browser remembers the choice.">
-                        <input type="checkbox" id="prefs-auto" data-action="toggleAuto" aria-label="Auto-refresh">
+                        <input type="checkbox" id="prefs-auto" aria-label="Auto-refresh">
                         <span class="dc-switch__track"></span>
                     </label>
                     <label class="prefs-auto__label" for="prefs-auto">Auto-refresh</label>
                 </div>
                 <div class="dc-field prefs-interval" title="How often auto-refresh asks the app for changes, in milliseconds: at least 1000.">
-                    <input type="text" id="prefs-interval" class="dc-input" inputmode="numeric" autocomplete="off" spellcheck="false" data-action="interval" aria-label="Auto-refresh interval in milliseconds">
+                    <input type="text" id="prefs-interval" class="dc-input" inputmode="numeric" autocomplete="off" spellcheck="false" aria-label="Auto-refresh interval in milliseconds">
                     <span class="prefs-interval__unit" aria-hidden="true">ms</span>
                 </div>
             </div>
@@ -32,12 +32,14 @@ internal object PrefsView {
                     </div>
                     <div class="prefs-head__actions">
                         <div class="dc-field prefs-search">
-                            <label class="prefs-search__label" for="prefs-q"><svg class="prefs-search__icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg><input type="text" id="prefs-q" name="q" class="dc-input" placeholder="search keys…" autocomplete="off" spellcheck="false" data-action="search" aria-label="Search keys" title="Show the keys that contain this text, ignoring case. With Values on, the values too."></label>
+                            <label class="prefs-search__label" for="prefs-q"><svg class="prefs-search__icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg><input type="text" id="prefs-q" name="q" class="dc-input" placeholder="search keys…" autocomplete="off" spellcheck="false" aria-label="Search keys" title="Show the keys that contain this text, ignoring case. With Values on, the values too."></label>
                             <button type="button" class="dc-btn dc-btn--icon prefs-search__clear" id="prefs-q-clear" data-action="clearSearch" hidden aria-label="Clear the search" title="Clear the search.">×</button>
                             <button type="button" class="dc-btn dc-btn--sm prefs-search__values" id="prefs-values" data-action="toggleValues" aria-pressed="false" title="Values: search the values too, and each string of a set. A value that the file's policy leaves out is not searched, and of a value longer than 4096 characters, the first 4096. Your browser remembers the choice.">Values</button>
                         </div>
-                        <button type="button" class="dc-btn dc-btn--primary" id="prefs-add" data-action="openAdd">+ Add key</button>
-                        <button type="button" class="dc-btn dc-btn--danger" id="prefs-clear" data-action="confirmClear">Clear file</button>
+                        <div class="prefs-head__buttons">
+                            <button type="button" class="dc-btn dc-btn--primary" id="prefs-add" data-action="openAdd">+ Add key</button>
+                            <button type="button" class="dc-btn dc-btn--danger" id="prefs-clear" data-action="confirmClear">Clear file</button>
+                        </div>
                     </div>
                 </div>
                 <div class="prefs-banner" id="prefs-banner" role="alert" hidden></div>

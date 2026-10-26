@@ -43,10 +43,12 @@
 .prefs-name { margin: 0; font-size: 14px; font-weight: 600; letter-spacing: .02em; color: var(--t1); overflow-wrap: anywhere; }
 .prefs-facts { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 .prefs-count { margin-right: 4px; font-size: 11.5px; color: var(--t4); }
-.prefs-head__actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex: 1; min-width: 280px; }
-.prefs-head__actions > .dc-btn { flex: none; padding: 8px 14px; font-size: 11.5px; }
+.prefs-head__actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 10px; flex: 1; min-width: 280px; }
+.prefs-head__buttons { display: flex; flex: none; gap: 10px; }
+.prefs-head__buttons > .dc-btn { padding: 8px 14px; font-size: 11.5px; }
 
-.prefs-search { flex: 1; max-width: 380px; min-width: 0; }
+/* On a narrow page the buttons wrap below the search, which keeps room to type. */
+.prefs-search { flex: 1 1 220px; max-width: 380px; min-width: 200px; }
 .prefs-search__label { display: flex; flex: 1; align-items: center; gap: 8px; min-width: 0; cursor: text; }
 .prefs-search__icon { flex: none; color: var(--t4); }
 /* The clear and Values buttons: 24px hit targets that don't make the field taller. */
