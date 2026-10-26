@@ -291,6 +291,10 @@ test('a float takes a decimal number in its range, or NaN and the infinities', (
     assert.deepStrictEqual(read('NaN'), { value: 'NaN' });
     assert.deepStrictEqual(read('-Infinity'), { value: '-Infinity' });
     assert.match(read('1e39').error, /range of a float/);
+    // Float.MAX_VALUE as the routes write it, just past the exact maximum as a double.
+    assert.deepStrictEqual(read('3.4028235E38'), { value: 3.4028235e38 });
+    assert.deepStrictEqual(read('-3.4028235E38'), { value: -3.4028235e38 });
+    assert.match(read('3.5e38').error, /range of a float/);
     // Java's parser takes these; the form does not.
     assert.ok(read('0x1p3').error);
     assert.ok(read('1f').error);

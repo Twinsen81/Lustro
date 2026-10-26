@@ -31,7 +31,6 @@
     };
     var INT_RANGE = ['-2147483648', '2147483647'];
     var LONG_RANGE = ['-9223372036854775808', '9223372036854775807'];
-    var FLOAT_MAX = 3.4028234663852886e38;
     var NON_FINITE = ['NaN', 'Infinity', '-Infinity'];
     var POLICY_LABELS = { visible: 'Values visible', mask_sensitive: 'Sensitive values masked', keys_only: 'Keys only' };
     // Lustro's own file, which holds the token.
@@ -204,7 +203,9 @@
                 return { error: 'A float is a number such as 1.5 or -2e3, or NaN, Infinity, or -Infinity.' };
             }
             var number = Number(trimmed);
-            if (!isFinite(number) || Math.abs(number) > FLOAT_MAX) {
+            // Rounded to a float as the app's toFloat() rounds it, so that 3.4028235E38,
+            // as the routes write Float.MAX_VALUE, is in range.
+            if (!isFinite(Math.fround(number))) {
                 return { error: 'The number is outside the range of a float, about ±3.4e38.' };
             }
             return { value: number };
@@ -636,6 +637,8 @@
         view = newView();
         saved.clear();
         changedKeys.clear();
+        // The banner is about the file that was open.
+        showBanner('');
         if (name) {
             settings.activeFile = name;
             storeSettings();
@@ -1051,9 +1054,10 @@
         els.confirmOk.focus();
     }
 
-    function confirmDelete(key) {
-        var file = active;
-        if (!file || lockReason(byName[file])) return;
+    // file is the dialog's file, which a poll can have closed while the dialog was open.
+    function confirmDelete(key, file) {
+        file = file || active;
+        if (!file || !byName[file] || lockReason(byName[file])) return;
         showConfirm('Delete key', 'Delete the key "' + key + '" from the file ' + file + '?', 'Delete', function() {
             post('delete', { file: file, key: key }).then(function(data) {
                 window.debugToast(data && data.deleted === false ? 'The file had no key ' + key : 'Deleted ' + key, 'success');
@@ -1155,8 +1159,9 @@
         deleteFromEdit: function() {
             if (!edit || edit.mode === 'add') return;
             var key = edit.key;
+            var file = edit.file;
             editModal.hide();
-            confirmDelete(key);
+            confirmDelete(key, file);
         },
         confirmOk: function() {
             var action = confirmAction;
