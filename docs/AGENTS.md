@@ -514,9 +514,8 @@ with the reason in `readerError` (the buffer keeps what it has, and `entries` st
 Base path `/api/v1/prefs`, when the app registers the Preferences plugin
 (`PrefsDebugTab.create(context, ...)`; without it, the routes are an enveloped
 `404 Unknown tab: prefs`). The authoritative contract is
-`lustro-prefs/src/main/assets/lustro/prefs.openapi.json`, version `1.0`. The tab has no console
-view yet, so it is not in the tab bar, but `_meta` lists it. The CLI has no `prefs` commands: use
-`lustro api`.
+`lustro-prefs/src/main/assets/lustro/prefs.openapi.json`, version `1.0`. The CLI has no `prefs`
+commands: use `lustro api`.
 
 | Operation | Route | Notes |
 | --- | --- | --- |
