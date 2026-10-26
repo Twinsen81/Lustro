@@ -616,7 +616,7 @@
             "$ref": "#/components/schemas/PrefType"
           },
           "value": {
-            "description": "Absent when masked. A string, a number, a boolean, or for string_set an array of strings, sorted. A float that is not finite is the string \"NaN\", \"Infinity\", or \"-Infinity\".",
+            "description": "Absent when masked, and for an unknown value that is null. A string, a number, a boolean, or for string_set an array of strings, sorted. A float that is not finite is the string \"NaN\", \"Infinity\", or \"-Infinity\".",
             "type": [
               "string",
               "number",

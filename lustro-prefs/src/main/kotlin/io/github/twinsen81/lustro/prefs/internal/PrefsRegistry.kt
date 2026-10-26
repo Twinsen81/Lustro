@@ -8,7 +8,7 @@ import java.io.File
 /**
  * The files of the Preferences tab: the registered ones, and, with a
  * [directory], the other files in it, which it opens with [open] the first
- * time it lists them.
+ * time it lists them. [open] returns the platform's instance of a file.
  */
 internal class PrefsRegistry(
     files: List<PrefsFile>,
@@ -17,7 +17,9 @@ internal class PrefsRegistry(
     private val open: (String) -> SharedPreferences,
 ) {
     private val registered: Map<String, PrefsSource> =
-        files.associateTo(LinkedHashMap()) { it.name to PrefsSource(it.name, it.prefs, it.policy, it.readOnly, registered = true) }
+        files.associateTo(LinkedHashMap()) { file ->
+            file.name to PrefsSource(file.name, file.prefs, file.policy, file.readOnly, registered = true) { open(file.name) }
+        }
 
     private val lock = Any()
 

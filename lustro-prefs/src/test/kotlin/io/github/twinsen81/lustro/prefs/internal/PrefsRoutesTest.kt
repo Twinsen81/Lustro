@@ -250,6 +250,41 @@ class PrefsRoutesTest {
     }
 
     @Test
+    fun `a decrypting instance under another class name is still found, and stays writable`() {
+        val secure = DecryptingPrefs(prefs("secure"))
+        secure.edit().putString("refresh_token", "rt-1").putString("theme", "dark").commit()
+        val routes = routes(PrefsFile("secure", secure, ValuePolicy.VISIBLE))
+        val file = file(routes, "secure")
+        assertTrue(file.getBoolean("encrypted"))
+        assertEquals("visible", file.getString("policy"))
+        assertFalse(file.getBoolean("readOnly"))
+        assertEquals(2, file.getInt("keyCount"))
+
+        val edit = post(routes, "edit", """{"file":"secure","key":"theme","type":"string","value":"light"}""")
+        assertEquals(edit.text(), 200, edit.status)
+        assertEquals("light", secure.getString("theme", null))
+    }
+
+    @Test
+    fun `a clear through a decrypting instance moves the cursor, which its own listeners never hear`() {
+        val secure = DecryptingPrefs(prefs("secure"))
+        secure.edit().putString("refresh_token", "rt-1").commit()
+        val routes = routes(PrefsFile("secure", secure, ValuePolicy.KEYS_ONLY))
+        registry!!.start()
+        val cursor = get(routes, "entries", "file" to "secure").getString("cursor")
+
+        secure.edit().clear().commit()
+
+        val delta = get(routes, "entries", "file" to "secure", "cursor" to cursor)
+        assertEquals("delta", delta.getString("status"))
+        assertEquals(0, delta.getJSONArray("items").length())
+        registry!!.stop()
+        secure.edit().putString("refresh_token", "rt-2").commit()
+        val afterStop = delta.getString("cursor")
+        assertEquals("stop removes both listeners", "unchanged", get(routes, "entries", "file" to "secure", "cursor" to afterStop).getString("status"))
+    }
+
+    @Test
     fun `edit writes every type with its setter, and returns what the file holds`() {
         val routes = routes(PrefsFile("settings", settings, ValuePolicy.VISIBLE))
         val cases =

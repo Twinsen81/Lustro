@@ -19,6 +19,11 @@ internal class PrefsSource(
     /** Whether the app made the file read-only. [writable] also checks the file. */
     val readOnly: Boolean,
     val registered: Boolean,
+    /**
+     * Opens the platform's instance of the file, which the tab listens to as well
+     * when [prefs] is another one, such as an `EncryptedSharedPreferences` over it.
+     */
+    private val openPlatform: (() -> SharedPreferences)? = null,
 ) {
     private val sequence = AtomicLong()
 
@@ -31,11 +36,27 @@ internal class PrefsSource(
     // Guarded by this.
     private var listening = false
 
+    // Guarded by this. The platform's instance, while the tab listens to it.
+    private var platform: SharedPreferences? = null
+
     /** The change sequence: the listener and the tab's own changes move it. */
     val currentSequence: Long get() = sequence.get()
 
-    /** Whether the instance is an `EncryptedSharedPreferences`, which decrypts what it reads. */
-    val decrypting: Boolean = prefs.javaClass.name == ENCRYPTED_PREFS_CLASS
+    /**
+     * Whether the instance is an `EncryptedSharedPreferences`, which decrypts what
+     * it reads. R8 can rename the class, so a lookup of a keyset's key, which such
+     * an instance refuses, decides too. Lazy, so that a plain instance is asked on
+     * a request's thread, which may wait for the file to load.
+     */
+    val decrypting: Boolean by lazy {
+        prefs.javaClass.name == ENCRYPTED_PREFS_CLASS ||
+            try {
+                prefs.contains(KEYSET_KEYS[0])
+                false
+            } catch (_: SecurityException) {
+                true
+            }
+    }
 
     fun cursor(): String = CursorCodec.encode(currentSequence, epoch)
 
@@ -48,10 +69,17 @@ internal class PrefsSource(
         sequence.incrementAndGet()
     }
 
+    /**
+     * Listens to the instance and, when it is another one, to the platform's
+     * instance of the file too: `EncryptedSharedPreferences.Editor.clear()`
+     * removes the keys through the platform's editor and calls no listener of
+     * its own, on every API level, while the platform's instance reports each key.
+     */
     @Synchronized
     fun listen() {
         if (listening) return
         prefs.registerOnSharedPreferenceChangeListener(listener)
+        platform = platformInstance()?.also { it.registerOnSharedPreferenceChangeListener(listener) }
         listening = true
     }
 
@@ -59,8 +87,20 @@ internal class PrefsSource(
     fun unlisten() {
         if (!listening) return
         prefs.unregisterOnSharedPreferenceChangeListener(listener)
+        platform?.unregisterOnSharedPreferenceChangeListener(listener)
+        platform = null
         listening = false
     }
+
+    // The platform keeps one instance for each file, so for a plain registered
+    // file this is prefs itself. Opening can fail, for example in direct boot,
+    // and then the tab listens to prefs only.
+    private fun platformInstance(): SharedPreferences? =
+        try {
+            openPlatform?.invoke()?.takeIf { it !== prefs }
+        } catch (_: RuntimeException) {
+            null
+        }
 
     /**
      * Reads every entry of the file.
