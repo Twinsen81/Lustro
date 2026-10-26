@@ -43,6 +43,8 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import io.github.twinsen81.lustro.sample.ActionEvent
+import io.github.twinsen81.lustro.sample.DemoAction
 import io.github.twinsen81.lustro.sample.R
 import io.github.twinsen81.lustro.sample.Tone
 
@@ -224,6 +226,28 @@ internal fun sampleSwitchColors(): SwitchColors {
 @Composable
 internal fun MetaText(text: String, color: Color = palette.accent) {
     Text(text, style = SampleText.small.copy(fontWeight = FontWeight.SemiBold), color = color)
+}
+
+/** An action as a card: its badge, its text and detail, and a Run button that shows the result. */
+@Composable
+internal fun BadgeActionRow(action: DemoAction, event: ActionEvent?, onRun: () -> Unit) {
+    SampleCard(Modifier.padding(horizontal = ScreenPadding, vertical = 5.dp)) {
+        Row(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(palette.surfaceMuted),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(action.badge.orEmpty(), style = SampleText.mono.copy(fontWeight = FontWeight.Bold), color = palette.textMuted)
+            }
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(action.chip, style = SampleText.cardTitle.copy(fontSize = SampleText.body.fontSize))
+                action.detail?.let { Text(it, style = SampleText.small, color = palette.textMuted) }
+            }
+            Spacer(Modifier.width(8.dp))
+            ActionControl(tag = action.label, text = "Run", event = event, onClick = onRun, style = ControlStyle.ACCENT, resultText = true)
+        }
+    }
 }
 
 private const val LOGO_SCALE = 1.55f

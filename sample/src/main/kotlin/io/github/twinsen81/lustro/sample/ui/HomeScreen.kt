@@ -29,6 +29,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.github.twinsen81.lustro.sample.ActionEvent
 import io.github.twinsen81.lustro.sample.CONSOLE_PORT
+import io.github.twinsen81.lustro.sample.DemoPrefs
 import io.github.twinsen81.lustro.sample.SampleFlag
 import io.github.twinsen81.lustro.sample.SampleFlags
 import io.github.twinsen81.lustro.sample.SampleViewModel
@@ -38,6 +39,7 @@ import io.github.twinsen81.lustro.sample.Tone
 internal fun HomeScreen(viewModel: SampleViewModel, flags: List<SampleFlag>?, latest: Map<String, ActionEvent>, onOpen: (Screen) -> Unit) {
     val ticker by viewModel.ticker.collectAsState()
     val serverRunning by viewModel.serverRunning.collectAsState()
+    val prefsKeys by viewModel.prefsValues.collectAsState()
     val networkCount = viewModel.network.sumOf { it.actions.size }
     val modules = if (flags != null) MODULES_WITH_FLAGS else MODULES
 
@@ -73,6 +75,11 @@ internal fun HomeScreen(viewModel: SampleViewModel, flags: List<SampleFlag>?, la
             MetaText(if (ticker) "Ticker on" else "Ticker paused", if (ticker) palette.accent else palette.textMuted)
             MetaText("·", palette.textFaint)
             MetaText("${viewModel.logActions.size} actions")
+        }
+        ModuleCard(SampleIcons.Sliders, Tone.ACCENT, "Preferences", "SharedPreferences, read and edited from the API", onClick = { onOpen(Screen.PREFS) }) {
+            MetaText("${prefsKeys.size} keys in ${DemoPrefs.SETTINGS}")
+            MetaText("·", palette.textFaint)
+            MetaText("${viewModel.prefsActions.size} actions")
         }
         if (flags != null) {
             ModuleCard(SampleIcons.Flag, Tone.ORANGE, "Feature flags", "Change this app from the browser console", onClick = { onOpen(Screen.FLAGS) }) {
@@ -135,5 +142,5 @@ private fun ConsoleStrip(viewModel: SampleViewModel, running: Boolean, latest: M
     }
 }
 
-private const val MODULES = 3
-private const val MODULES_WITH_FLAGS = 4
+private const val MODULES = 4
+private const val MODULES_WITH_FLAGS = 5

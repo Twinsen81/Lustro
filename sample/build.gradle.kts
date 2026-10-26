@@ -85,6 +85,9 @@ dependencies {
     // The Logs plugin pair, split the same way.
     debugImplementation(project(":lustro-logs"))
     releaseImplementation(project(":lustro-logs-noop"))
+    // The Preferences plugin pair, split the same way.
+    debugImplementation(project(":lustro-prefs"))
+    releaseImplementation(project(":lustro-prefs-noop"))
 
     // A mainstream HTTP client whose default transport is java.net.HttpURLConnection
     // (not OkHttp). The demo fires a request through it to show that platform-HTTP

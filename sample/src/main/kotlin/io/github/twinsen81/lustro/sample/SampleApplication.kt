@@ -56,6 +56,8 @@ public class SampleApplication : Application() {
         // Written before Lustro starts: the Logs tab still shows it, because it
         // reads logcat from the start of the process.
         Log.i("LustroSample", "Application.onCreate, before Lustro starts")
+        // The demo files of the Preferences tab, on disk before the console lists them.
+        DemoPrefs.seed(this)
         val interceptor = LustroBootstrap.start(this) { httpClient }
 
         httpClient = OkHttpClient.Builder().addInterceptor(interceptor).build()

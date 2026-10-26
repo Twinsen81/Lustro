@@ -268,4 +268,41 @@ internal object DemoCatalog {
                 it.ok("Logged a fatal line")
             },
         )
+
+    fun prefs(prefs: DemoPrefs): List<DemoAction> =
+        listOf(
+            DemoAction(
+                "Count a launch",
+                detail = "Adds 1 to launch_count in ${DemoPrefs.SETTINGS}. The next poll of the file gets a delta",
+                badge = "+1",
+            ) {
+                it.ok("launch_count is ${prefs.countLaunch()}")
+            },
+            DemoAction(
+                "Rotate the session",
+                detail = "New session_id in ${DemoPrefs.SESSION}, which the tab shows keys only and read-only",
+                badge = "↻",
+            ) {
+                it.ok("New session ${prefs.rotateSession()}")
+            },
+            DemoAction(
+                "Refresh the SDK config",
+                detail = "Changes ${DemoPrefs.SDK_CACHE}, which the app does not register: the tab finds it on disk and masks api_key",
+                badge = "SDK",
+            ) {
+                it.ok("config_version is ${prefs.refreshSdkConfig()}")
+            },
+            DemoAction(
+                "Clear the settings from the app",
+                chip = "Clear the settings",
+                detail = "Before API 30, a clear calls no listener: the tab shows it with the next change",
+                badge = "∅",
+            ) {
+                it.ok("Removed ${prefs.clearSettings()} keys from ${DemoPrefs.SETTINGS}")
+            },
+            DemoAction("Reset the demo preferences", chip = "Reset the values", detail = "Writes the demo values of the three files again", badge = "⟲") {
+                prefs.reset()
+                it.ok("Wrote the demo values again")
+            },
+        )
 }

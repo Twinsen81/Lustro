@@ -6,12 +6,13 @@ import io.github.twinsen81.lustro.Lustro
 import io.github.twinsen81.lustro.LustroStatus
 import io.github.twinsen81.lustro.logs.LogsDebugTab
 import io.github.twinsen81.lustro.network.NetworkDebugTab
+import io.github.twinsen81.lustro.prefs.PrefsDebugTab
 import okhttp3.OkHttpClient
 
 /**
  * The app with Lustro, wired as the quick start in README.md does it. It compiles
- * against `lustro` and `lustro-logs` in debug and against their no-op halves in
- * release, so every facade is checked from the floor's Kotlin.
+ * against `lustro`, `lustro-logs`, and `lustro-prefs` in debug and against their
+ * no-op halves in release, so every facade is checked from the floor's Kotlin.
  */
 object LustroSetup {
     fun start(app: Application, client: OkHttpClient): Clients {
@@ -19,6 +20,7 @@ object LustroSetup {
             Lustro.builder(app)
                 .addTab(NetworkDebugTab.create(senderClient = client))
                 .addTab(LogsDebugTab.create())
+                .addTab(PrefsDebugTab.create(app))
                 .build()
         val httpClient = client.newBuilder().addInterceptor(lustro.networkInterceptor()).build()
         val status: LustroStatus = lustro.start()

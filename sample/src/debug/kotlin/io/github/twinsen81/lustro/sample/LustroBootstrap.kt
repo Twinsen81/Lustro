@@ -10,6 +10,9 @@ import io.github.twinsen81.lustro.logs.LogsDebugTab
 import io.github.twinsen81.lustro.network.NetworkDebugTab
 import io.github.twinsen81.lustro.network.OkHttpSender
 import io.github.twinsen81.lustro.network.SharedPreferencesMockRuleStorage
+import io.github.twinsen81.lustro.prefs.PrefsDebugTab
+import io.github.twinsen81.lustro.prefs.PrefsFile
+import io.github.twinsen81.lustro.prefs.ValuePolicy
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import kotlinx.coroutines.flow.StateFlow
@@ -20,9 +23,9 @@ import okhttp3.WebSocket
  *
  * This file lives in `src/debug` and compiles against the REAL `:lustro`
  * runtime. It owns ALL Lustro registration for the sample: building [Lustro],
- * registering the built-in [NetworkDebugTab], the [LogsDebugTab] plugin, and the
- * app's custom [SampleFlagsTab], starting the server, and exposing the
- * [networkInterceptor] for the app's OkHttp client.
+ * registering the built-in [NetworkDebugTab], the [LogsDebugTab] and
+ * [PrefsDebugTab] plugins, and the app's custom [SampleFlagsTab], starting the
+ * server, and exposing the [networkInterceptor] for the app's OkHttp client.
  *
  * Because every Lustro/[io.github.twinsen81.lustro.DebugTab] reference is
  * confined to `src/debug`, the published `LustroDebugUsageInRelease` lint check
@@ -104,6 +107,25 @@ public object LustroBootstrap {
                 // The app's own logcat, from :lustro-logs; the release bootstrap
                 // registers the no-op half from :lustro-logs-noop.
                 .addTab(LogsDebugTab.create())
+                // The app's SharedPreferences, from :lustro-prefs: one file with every
+                // value visible, one with keys only and read-only, and the other files
+                // on disk, which the tab finds and keeps read-only. The release
+                // bootstrap registers the no-op half from :lustro-prefs-noop.
+                .addTab(
+                    PrefsDebugTab.create(
+                        app,
+                        files =
+                            listOf(
+                                PrefsFile(DemoPrefs.SETTINGS, app.getSharedPreferences(DemoPrefs.SETTINGS, Context.MODE_PRIVATE), ValuePolicy.VISIBLE),
+                                PrefsFile(
+                                    DemoPrefs.SESSION,
+                                    app.getSharedPreferences(DemoPrefs.SESSION, Context.MODE_PRIVATE),
+                                    ValuePolicy.KEYS_ONLY,
+                                    readOnly = true,
+                                ),
+                            ),
+                    ),
+                )
                 // Custom, schema-backed tab. It is debug-only: it never appears in
                 // src/release, so the no-op variant has no Feature Flags tab.
                 .addTab(flags)
