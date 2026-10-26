@@ -1,6 +1,7 @@
 package io.github.twinsen81.lustro.network
 
 import io.github.twinsen81.lustro.MediaType
+import io.github.twinsen81.lustro.SensitiveKeys
 import io.github.twinsen81.lustro.internal.network.TextualRedactor
 import java.net.URLDecoder
 import java.net.URLEncoder
@@ -33,7 +34,8 @@ import org.json.JSONTokener
  *   where `token` or `tokens` sits next to a word such as `max`, `total`,
  *   `count`, `remaining`, `prompt`, or `input`, as in `prompt_tokens`,
  *   `max_tokens`, `totalTokenCount`, and `x-ratelimit-remaining-tokens`; and a
- *   key that names a column, such as `primary_key` and `partitionKey`.
+ *   key that names a column, such as `primary_key` and `partitionKey`. This
+ *   name check is [SensitiveKeys.isSensitive], which other tabs use too.
  * - The parts of a `multipart/form-data` body: a part whose field name is
  *   sensitive is masked whole, and any other part is redacted as a body of its
  *   own type, so a JSON part is redacted as JSON. A part's own headers are
@@ -81,72 +83,6 @@ public object DefaultRedactor : Redactor {
     // before the fragment heuristic.
     private val NON_SENSITIVE_HEADERS =
         setOf("access-control-allow-credentials", "www-authenticate", "proxy-authenticate")
-
-    // Names that have a sensitive word but hold no secret: an idempotency key
-    // names a request, a VAPID or other public key is published, a primary or
-    // partition key names a column, and a session count is a number. Compared
-    // with the name's words joined, so `Idempotency-Key`, `idempotency_key`, and
-    // `idempotencyKey` all match, and so does the plural `public_keys`.
-    private val PUBLIC_NAMES =
-        setOf(
-            "idempotencykey", "publickey", "vapidkey",
-            "primarykey", "foreignkey", "partitionkey", "sortkey", "rowkey",
-            "sessioncount",
-        )
-
-    // The word `token` or `tokens` next to one of these is a count or a limit,
-    // as LLM APIs report usage and take a cap, and as rate-limit headers say
-    // what is left: `prompt_tokens`, `max_tokens`, `totalTokenCount`,
-    // `x-ratelimit-remaining-tokens`. A credential's name has none of them:
-    // `access_token`, `refresh_tokens`, `device_tokens`. Matched as listed, not
-    // through INFLECTIONS: a count word exempts `token`, a sensitive word, and
-    // `limited` is no count although `limit` is, as a limited-use token is a
-    // credential.
-    private val COUNT_WORDS =
-        setOf(
-            "count", "counts", "total", "totals", "max", "maximum", "min", "minimum",
-            "limit", "limits", "remaining", "used", "usage", "num", "number", "budget",
-            "quota", "ratelimit", "per", "prompt", "completion", "input", "output",
-            "reasoning", "cached", "candidates", "thoughts", "prediction", "estimated",
-            "billed", "cost",
-        )
-
-    private val TOKEN_WORDS = setOf("token", "tokens")
-
-    // Ordinary words that contain a sensitive fragment. A word that only has a
-    // fragment as part of one of these doesn't make its name sensitive.
-    private val NON_SENSITIVE_WORDS =
-        setOf(
-            "author", "authorship", "authority",
-            "design", "designer",
-            "signup", "signal",
-            "assign", "assignee", "assignment",
-            "keyboard", "keyword",
-            "insight",
-        )
-
-    // The regular English inflections, each with what replaces it. PUBLIC_NAMES
-    // and NON_SENSITIVE_WORDS list a word once, and a lookup accepts its plural,
-    // past tense, and -ing form as well, so `assignment` covers `assignments`,
-    // `author` covers `authors` and `authored`, and `authority` covers
-    // `authorities`.
-    private val INFLECTIONS = listOf("s" to "", "es" to "", "ies" to "y", "ed" to "", "ing" to "")
-
-    private val SENSITIVE_KEY_FRAGMENTS =
-        listOf(
-            "token",
-            "key",
-            "secret",
-            "password",
-            "passwd",
-            "pwd",
-            "auth",
-            "session",
-            "credential",
-            "bearer",
-            "signature",
-            "sig",
-        )
 
     /** Returns [url] with sensitive query parameters redacted. */
     override fun redactUrl(url: String): String {
@@ -285,91 +221,8 @@ public object DefaultRedactor : Redactor {
         return trimmed.startsWith("{") || trimmed.startsWith("[")
     }
 
-    // Runs for every key and element name in a captured body. Most names have no
-    // sensitive fragment at all, so that is checked first, without allocating.
-    // Only a name that has one is looked at word by word, and a part of it stays
-    // sensitive unless the ordinary words in it, or a counted `token`, were what
-    // held the fragment.
-    private fun isSensitiveKey(name: String): Boolean {
-        if (!hasSensitiveFragment(name)) return false
-        val parts = nameParts(name)
-        if (PUBLIC_NAMES.containsIgnoringInflection(parts.joinToString("").lowercase())) return false
-        val words = parts.map { camelCaseWords(it) }
-        val counted = words.any { part -> part.any { it in COUNT_WORDS } }
-        return words.any { part ->
-            val rest =
-                part.filterNot { NON_SENSITIVE_WORDS.containsIgnoringInflection(it) || (counted && it in TOKEN_WORDS) }
-                    .joinToString("")
-            SENSITIVE_KEY_FRAGMENTS.any { rest.contains(it) }
-        }
-    }
-
-    /**
-     * Whether [word], or the base form it is an inflection of, is in this set.
-     * The base form is a guess from the word's ending alone (`authored` tries
-     * `author`, `authorities` tries `authority`), and a wrong guess is safe: the
-     * sets hold the words that mark a name as not secret, so a stem that is in
-     * none of them changes nothing, and no word in them has an inflection that
-     * names a credential. `authorization` has no ending to strip and stays.
-     */
-    private fun Set<String>.containsIgnoringInflection(word: String): Boolean =
-        word in this ||
-            INFLECTIONS.any { (suffix, base) -> word.endsWith(suffix) && word.dropLast(suffix.length) + base in this }
-
-    // An ASCII name is matched without allocating a lowercase copy. Other names
-    // still go through lowercase(), which can turn one char into several.
-    private fun hasSensitiveFragment(name: String): Boolean {
-        if (name.any { it >= '\u0080' }) {
-            val lower = name.lowercase()
-            return SENSITIVE_KEY_FRAGMENTS.any { lower.contains(it) }
-        }
-        return SENSITIVE_KEY_FRAGMENTS.any { name.containsIgnoringAsciiCase(it) }
-    }
-
-    /** The runs of letters and digits in [name], split at every other char. */
-    private fun nameParts(name: String): List<String> {
-        val parts = ArrayList<String>()
-        var start = -1
-        for (i in name.indices) {
-            if (name[i].isLetterOrDigit()) {
-                if (start < 0) start = i
-            } else if (start >= 0) {
-                parts += name.substring(start, i)
-                start = -1
-            }
-        }
-        if (start >= 0) parts += name.substring(start)
-        return parts
-    }
-
-    /** The lowercase camelCase words of [part]: `authorName` and `APIKey` have two each. */
-    private fun camelCaseWords(part: String): List<String> {
-        val words = ArrayList<String>()
-        var start = 0
-        for (i in 1 until part.length) {
-            val c = part[i]
-            val prev = part[i - 1]
-            val hump = c.isUpperCase() && (!prev.isUpperCase() || part.getOrNull(i + 1)?.isLowerCase() == true)
-            if (hump) {
-                words += part.substring(start, i).lowercase()
-                start = i
-            }
-        }
-        words += part.substring(start).lowercase()
-        return words
-    }
-
-    /** Whether this ASCII text contains the lowercase [fragment], in any case. */
-    private fun String.containsIgnoringAsciiCase(fragment: String): Boolean {
-        for (start in 0..length - fragment.length) {
-            var matched = 0
-            while (matched < fragment.length && this[start + matched].lowercaseAscii() == fragment[matched]) matched++
-            if (matched == fragment.length) return true
-        }
-        return false
-    }
-
-    private fun Char.lowercaseAscii(): Char = if (this in 'A'..'Z') this + ('a' - 'A') else this
+    // The heuristics are public in :lustro-api, so that plugin tabs mask the same names.
+    private fun isSensitiveKey(name: String): Boolean = SensitiveKeys.isSensitive(name)
 
     /**
      * Structured-JSON redaction. Returns the redacted JSON string, or `null` when
