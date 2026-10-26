@@ -41,8 +41,8 @@ internal fun PrefsScreen(viewModel: SampleViewModel, latest: Map<String, ActionE
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
             ScreenHeader(
                 "Preferences",
-                "The Preferences tab reads and edits these SharedPreferences files over the API. " +
-                    "Change a value here or through the API: the other side follows.",
+                "The Preferences tab reads and edits these SharedPreferences files, in the console and over the API. " +
+                    "Change a value here or in the console: the other side follows.",
             )
             SampleCard(Modifier.padding(horizontal = ScreenPadding)) {
                 Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {

@@ -6,6 +6,7 @@ import io.github.twinsen81.lustro.DebugResponse
 import io.github.twinsen81.lustro.DebugTab
 import io.github.twinsen81.lustro.prefs.internal.PrefsRegistry
 import io.github.twinsen81.lustro.prefs.internal.PrefsRoutes
+import io.github.twinsen81.lustro.prefs.internal.PrefsView
 import java.io.File
 
 /**
@@ -47,17 +48,20 @@ import java.io.File
  * file. A clear through the tab always moves the cursor. Another process that
  * writes the file is not seen: the platform's instance keeps what it read.
  *
- * The tab has no console view yet: it serves its API, and stays out of the tab
- * bar. `GET /api/v1/prefs/_schema` describes its routes.
+ * In the console, the tab shows the files as tabs, with each file's keys,
+ * types, and values, and edits them where the file is not read-only.
+ * `GET /api/v1/prefs/_schema` describes its routes.
  */
 public class PrefsDebugTab private constructor(private val registry: PrefsRegistry) : DebugTab() {
     override val id: String = "prefs"
     override val title: String = "Preferences"
     override val icon: String = "⚙️"
     override val order: Int = 30
-    override val showInTabBar: Boolean = false
 
     private val routes = PrefsRoutes(registry)
+
+    /** The view's static shell; `prefs.js` and `prefs.css` in the assets fill and style it. */
+    override fun renderContent(): String = PrefsView.HTML
 
     /** Serves the routes under `/api/v1/prefs/`; the static `prefs.openapi.json` describes them. */
     override fun handle(request: DebugRequest): DebugResponse? = routes.handle(request)

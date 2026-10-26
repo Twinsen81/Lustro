@@ -127,16 +127,25 @@ class PrefsDebugTabServerTest {
     }
 
     @Test
-    fun `the schema is served, and the tab is listed but stays out of the tab bar`() {
+    fun `the schema is served, and _meta lists the tab`() {
         val schema = get("_schema")
         assertEquals(200, schema.code)
         assertTrue(JSONObject(schema.body!!.string()).getJSONObject("paths").has("/api/v1/prefs/entries"))
 
         val meta = http.newCall(Request.Builder().url("$root/api/v1/_meta").header("Authorization", "Bearer $TOKEN").build()).execute()
         assertTrue(meta.body!!.string().contains("\"prefs\""))
+    }
 
-        val page = http.newCall(Request.Builder().url("$root/tab/network").header("Authorization", "Bearer $TOKEN").build()).execute()
-        assertFalse(page.body!!.string().contains("/tab/prefs"))
+    @Test
+    fun `the tab is in the tab bar, and serves its view with its script and styles`() {
+        val page = http.newCall(Request.Builder().url("$root/tab/prefs").build()).execute()
+        assertTrue(page.body!!.string().contains("<a href=\"/tab/prefs\" class=\"dc-nav__item dc-nav__item--active\">"))
+
+        val view = get("_view")
+        assertEquals(200, view.code)
+        assertTrue(view.body!!.string().contains("<tbody id=\"prefs-rows\"></tbody>"))
+        assertTrue(get("_view.js").body!!.string().contains("window.prefsApplyEnvelope"))
+        assertTrue(get("_view.css").body!!.string().contains(".prefs-bar"))
     }
 
     private fun get(path: String): Response =

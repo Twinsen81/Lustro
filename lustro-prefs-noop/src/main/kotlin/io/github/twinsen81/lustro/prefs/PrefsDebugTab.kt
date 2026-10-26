@@ -17,7 +17,6 @@ public class PrefsDebugTab private constructor() : DebugTab() {
     override val title: String = "Preferences"
     override val icon: String = "⚙️"
     override val order: Int = 30
-    override val showInTabBar: Boolean = false
 
     /** Returns `null`; the no-op build routes nothing. */
     override fun handle(request: DebugRequest): DebugResponse? = null

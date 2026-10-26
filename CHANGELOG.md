@@ -14,6 +14,26 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Added
 
+- **The Preferences tab in the console.** The Preferences plugin's tab is now
+  in the tab bar. Each file is a tab, the fullest first, and the open file
+  shows its policy (values visible, sensitive values masked, or keys only),
+  whether the app registered it or the tab found it on disk, and whether it is
+  read-only. The search finds keys, and with **Values** on, the values too,
+  each string of a set among them. A boolean, an int, or a short string on one
+  line that is not JSON changes in its row; any other value opens a dialog,
+  with a live, highlighted preview of a JSON string or a string set, which it
+  opens indented. **Add key** writes a key of any type, and **Delete** and
+  **Clear file** ask first. For a read-only file, these controls are off, and
+  their tooltips say why. A masked value shows as a comment with its size, and
+  in a writable file it can still take a new value. Auto-refresh is on by
+  default, every 3 s, with an interval of at least 1 s: each poll asks
+  `GET files`, and `GET entries` only when the open file's cursor moved, so an
+  app-side change shows without a reload, and its row lights up. A long past
+  2^53 keeps every digit, and an edited JSON string keeps its numbers as
+  written. A file that changed without a listener, such as a clear by the app
+  before API 30, reads again when its key count no longer matches, and
+  **Refresh** always reads it whole. Columns resize, and the browser keeps
+  their widths and the tab's settings.
 - **The Preferences plugin reads and edits the app's SharedPreferences.**
   `lustro-prefs` and its release half `lustro-prefs-noop` add a tab,
   registered with `PrefsDebugTab.create(context, files, discover,
@@ -37,8 +57,7 @@ see [DECISIONS.md](DECISIONS.md).
   `read_only` for a read-only file. A file's cursor moves with the tab's own
   changes and, through an `OnSharedPreferenceChangeListener` from
   `Lustro.start()` to `Lustro.stop()`, with the app's. Before API 30, a clear
-  by the app calls no listener, so it shows only with the next change. The tab
-  has no console view yet, so it stays out of the tab bar. Its schema,
+  by the app calls no listener, so it shows only with the next change. Its schema,
   `prefs.openapi.json`, has its own version, `1.0`. The sample registers one
   visible file and one keys-only, read-only file, lets the tab find a third on
   disk, and has a Preferences screen that shows the visible file live, with

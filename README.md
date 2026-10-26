@@ -673,7 +673,13 @@ val lustro = Lustro.builder(application)
   `lustro api GET prefs/entries --param file=settings`. See
   [docs/AGENTS.md](docs/AGENTS.md#preferences-tab-operations) and
   [`prefs.openapi.json`](lustro-prefs/src/main/assets/lustro/prefs.openapi.json).
-- **No console view yet.** The tab serves its API and stays out of the console's tab bar.
+- **In the console.** The **Preferences** tab shows each file as a tab, the fullest first, with
+  its policy, whether the app registered it or the tab found it, and whether it is read-only. A
+  key search can also search the values. A boolean, an int, or a short string changes in its row;
+  any other value opens a dialog, with an indented preview of a JSON string or a string set.
+  **Add key**, **Delete**, and **Clear file** ask the routes, and are off, with the reason, for a
+  read-only file. Auto-refresh, on by default every 3 s, shows the app's changes: a poll reads
+  the file again only when its cursor moved.
 - In `lustro-prefs-noop`, the tab reads no files.
 
 ## Security model
