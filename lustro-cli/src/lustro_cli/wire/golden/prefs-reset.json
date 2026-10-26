@@ -1,0 +1,51 @@
+{
+  "cursor": "LTM4NjIzMzkyNTcxNjU3Nzc4NDY6MA==",
+  "status": "reset",
+  "items": [
+    {
+      "key": "auth_token",
+      "type": "string",
+      "bytes": 29,
+      "masked": true
+    },
+    {
+      "key": "last_sync_at",
+      "type": "long",
+      "value": 1792419740010,
+      "bytes": 8
+    },
+    {
+      "key": "launch_count",
+      "type": "int",
+      "value": 3,
+      "bytes": 4
+    },
+    {
+      "key": "notifications",
+      "type": "boolean",
+      "value": true,
+      "bytes": 1
+    },
+    {
+      "key": "pinned_tags",
+      "type": "string_set",
+      "value": [
+        "travel",
+        "work"
+      ],
+      "bytes": 10
+    },
+    {
+      "key": "text_scale",
+      "type": "float",
+      "value": 1.25,
+      "bytes": 4
+    },
+    {
+      "key": "username",
+      "type": "string",
+      "value": "ann",
+      "bytes": 3
+    }
+  ]
+}

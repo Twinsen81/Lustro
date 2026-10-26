@@ -165,6 +165,11 @@ public final class io/github/twinsen81/lustro/MediaType$Companion {
 	public final fun parse (Ljava/lang/String;)Lio/github/twinsen81/lustro/MediaType;
 }
 
+public final class io/github/twinsen81/lustro/SensitiveKeys {
+	public static final field INSTANCE Lio/github/twinsen81/lustro/SensitiveKeys;
+	public static final fun isSensitive (Ljava/lang/String;)Z
+}
+
 public final class io/github/twinsen81/lustro/network/CapturedBody {
 	public fun <init> (Ljava/lang/String;)V
 	public fun <init> (Ljava/lang/String;Z)V

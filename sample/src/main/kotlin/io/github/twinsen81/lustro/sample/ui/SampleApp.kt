@@ -80,6 +80,7 @@ internal fun SampleApp(viewModel: SampleViewModel, systemBars: @Composable (dark
                             Screen.HOME -> HomeScreen(viewModel, flags, latest, open)
                             Screen.NETWORK -> NetworkScreen(viewModel, latest, back)
                             Screen.LOGS -> LogsScreen(viewModel, latest, back)
+                            Screen.PREFS -> PrefsScreen(viewModel, latest, back)
                             Screen.FLAGS -> FlagsScreen(viewModel, flags.orEmpty(), back)
                             Screen.CONSOLE -> ConsoleScreen(viewModel, latest, back)
                         }

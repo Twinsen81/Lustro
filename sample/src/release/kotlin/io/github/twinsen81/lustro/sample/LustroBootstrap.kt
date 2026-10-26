@@ -1,6 +1,7 @@
 package io.github.twinsen81.lustro.sample
 
 import android.app.Application
+import android.content.Context
 import io.github.twinsen81.lustro.DebugConfig
 import io.github.twinsen81.lustro.ExperimentalPlatformCapture
 import io.github.twinsen81.lustro.Lustro
@@ -8,6 +9,9 @@ import io.github.twinsen81.lustro.LustroStatus
 import io.github.twinsen81.lustro.logs.LogsDebugTab
 import io.github.twinsen81.lustro.network.NetworkDebugTab
 import io.github.twinsen81.lustro.network.OkHttpSender
+import io.github.twinsen81.lustro.prefs.PrefsDebugTab
+import io.github.twinsen81.lustro.prefs.PrefsFile
+import io.github.twinsen81.lustro.prefs.ValuePolicy
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import kotlinx.coroutines.flow.StateFlow
@@ -26,8 +30,8 @@ import okhttp3.WebSocket
  * ever drift from the real `:lustro` runtime, ONE of the two variants fails to
  * compile. The release variant registers NO custom tab — [SampleFlagsTab] is a
  * debug-only `DebugTab` and does not exist in this source set. It registers the
- * no-op [LogsDebugTab] from `:lustro-logs-noop`, which checks the plugin pair's
- * facades the same way. Everything here
+ * no-op [LogsDebugTab] from `:lustro-logs-noop` and the no-op [PrefsDebugTab]
+ * from `:lustro-prefs-noop`, which checks the plugin pairs' facades the same way. Everything here
  * is a no-op at runtime: nothing binds, nothing is captured, and
  * [Lustro.networkInterceptor] returns a pass-through interceptor.
  */
@@ -69,6 +73,23 @@ public object LustroBootstrap {
                 // The no-op half of :lustro-logs, with the same create() as the
                 // debug bootstrap's: it reads no logs.
                 .addTab(LogsDebugTab.create())
+                // The no-op half of :lustro-prefs, with the same files as the debug
+                // bootstrap's: it reads none of them.
+                .addTab(
+                    PrefsDebugTab.create(
+                        app,
+                        files =
+                            listOf(
+                                PrefsFile(DemoPrefs.SETTINGS, app.getSharedPreferences(DemoPrefs.SETTINGS, Context.MODE_PRIVATE), ValuePolicy.VISIBLE),
+                                PrefsFile(
+                                    DemoPrefs.SESSION,
+                                    app.getSharedPreferences(DemoPrefs.SESSION, Context.MODE_PRIVATE),
+                                    ValuePolicy.KEYS_ONLY,
+                                    readOnly = true,
+                                ),
+                            ),
+                    ),
+                )
                 .build()
 
         val interceptor = instance.networkInterceptor()

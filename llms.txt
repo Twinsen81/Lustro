@@ -13,6 +13,7 @@ Facts to get right when you add Lustro to an app:
 - To send requests from the console through the app's clients, pass `senders = listOf(OkHttpSender.create("API", baseUrl = "https://api.example.com") { apiClient })` to `NetworkDebugTab.create`. Lustro calls the lambda only at the first send, so the client can be the one built with `lustro.networkInterceptor()`, and the requests sent from the console are captured.
 - For an HTTP client that is neither OkHttp nor platform `HttpURLConnection`, report each request to `lustro.networkCaptureSink()`: `beginRequest`, then `completeRequest` or `failRequest`. `lustro-noop` returns a sink that records nothing.
 - The Logs plugin serves the app's own logcat under `/api/v1/logs/`: add `io.github.twinsen81:lustro-logs:0.1.0-SNAPSHOT` with `debugImplementation` and `io.github.twinsen81:lustro-logs-noop:0.1.0-SNAPSHOT` with `releaseImplementation`, and register `LogsDebugTab.create()` with the builder. It needs no data source and no permission. Its log lines are not redacted.
+- The Preferences plugin reads and edits the app's SharedPreferences under `/api/v1/prefs/`: add `io.github.twinsen81:lustro-prefs:0.1.0-SNAPSHOT` with `debugImplementation` and `io.github.twinsen81:lustro-prefs-noop:0.1.0-SNAPSHOT` with `releaseImplementation`, and register `PrefsDebugTab.create(context, files = listOf(PrefsFile("settings", prefs, ValuePolicy.VISIBLE)))`. A file's `ValuePolicy` is `VISIBLE`, `MASK_SENSITIVE` (the default), or `KEYS_ONLY`; `readOnly = true` makes edits answer `403`. The other files in `shared_prefs` are discovered, masked, and read-only.
 - Custom tabs are `DebugTab` subclasses, and they must be in `src/debug`. The published lint check `LustroDebugUsageInRelease` reports them in other source sets.
 - The server binds `127.0.0.1:8080` on the device, and listens only while the app is in the foreground. Reach it with `adb forward tcp:8080 tcp:8080`.
 - Every API request needs the token from the `LustroToken` logcat line (`Lustro ready endpoint=http://127.0.0.1:8080 token=<token>`), sent as `Authorization: Bearer <token>`. A device that drops Info logs drops that line; a debuggable app also keeps the token, host, and port in `adb shell run-as <package> cat shared_prefs/lustro_debug.xml`. `GET /api/v1/_meta` lists the tabs, and `GET /api/v1/<id>/_schema` returns a tab's OpenAPI document.
@@ -20,19 +21,20 @@ Facts to get right when you add Lustro to an app:
 ## Docs
 
 - [README](https://raw.githubusercontent.com/Twinsen81/Lustro/main/README.md): install, quick start, capture options, mock rules, the security model, custom tabs, and troubleshooting
-- [Driving Lustro from agents](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/AGENTS.md): token discovery, authentication, the wire protocol, and the Network and Logs routes, for agents that use a running Lustro
+- [Driving Lustro from agents](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/AGENTS.md): token discovery, authentication, the wire protocol, and the Network, Logs, and Preferences routes, for agents that use a running Lustro
 - [Security policy](https://raw.githubusercontent.com/Twinsen81/Lustro/main/SECURITY.md): the threat model, and what keeps Lustro out of release builds
 
 ## API contracts
 
 - [Network tab OpenAPI document](https://raw.githubusercontent.com/Twinsen81/Lustro/main/lustro/src/main/assets/lustro/network.openapi.json): the contract of the `/api/v1/network` routes
 - [Logs tab OpenAPI document](https://raw.githubusercontent.com/Twinsen81/Lustro/main/lustro-logs/src/main/assets/lustro/logs.openapi.json): the contract of the `/api/v1/logs` routes
+- [Preferences tab OpenAPI document](https://raw.githubusercontent.com/Twinsen81/Lustro/main/lustro-prefs/src/main/assets/lustro/prefs.openapi.json): the contract of the `/api/v1/prefs` routes
 - [Wire protocol v1](https://raw.githubusercontent.com/Twinsen81/Lustro/main/wire-protocol/v1/README.md): the shared envelopes, their JSON Schemas, and the versioning policy
 
 ## Tools
 
 - [lustro CLI](https://raw.githubusercontent.com/Twinsen81/Lustro/main/lustro-cli/README.md): a Python command-line client for the HTTP API. `lustro open` forwards the port and opens the console with the token
-- Agents: use the `lustro` CLI rather than curl, and keep its output small with `lustro net list --errors --last 20`, `lustro net get <id> --no-body`, and `lustro net body <id> | head -c 4000`. `lustro net wait --url <text> -- <command>` runs the command and waits for the request it causes, and `lustro net export --har out.har [--ids <id> ...]` saves transactions as a HAR file. For WebSockets, `lustro net ws list` prints the connections, `lustro net ws events <id> --last 20` the last events of one, and `lustro net ws payload <id> <seq>` one message's payload. `lustro api GET <tabId>/<route> --param key=value` (or `POST ... --body '<json>'`) sends a request to any route, also of a tab without commands of its own, and prints the response: `lustro api GET logs/text --param level=W` prints the app's warnings and errors
+- Agents: use the `lustro` CLI rather than curl, and keep its output small with `lustro net list --errors --last 20`, `lustro net get <id> --no-body`, and `lustro net body <id> | head -c 4000`. `lustro net wait --url <text> -- <command>` runs the command and waits for the request it causes, and `lustro net export --har out.har [--ids <id> ...]` saves transactions as a HAR file. For WebSockets, `lustro net ws list` prints the connections, `lustro net ws events <id> --last 20` the last events of one, and `lustro net ws payload <id> <seq>` one message's payload. `lustro api GET <tabId>/<route> --param key=value` (or `POST ... --body '<json>'`) sends a request to any route, also of a tab without commands of its own, and prints the response: `lustro api GET logs/text --param level=W` prints the app's warnings and errors, and `lustro api GET prefs/entries --param file=<name>` a SharedPreferences file
 
 ## Optional
 

@@ -15,10 +15,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -27,13 +25,10 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.github.twinsen81.lustro.sample.ActionEvent
-import io.github.twinsen81.lustro.sample.DemoAction
 import io.github.twinsen81.lustro.sample.SampleViewModel
 import io.github.twinsen81.lustro.sample.Tone
 
@@ -55,7 +50,7 @@ internal fun LogsScreen(viewModel: SampleViewModel, latest: Map<String, ActionEv
             TickerCard(ticker, onToggle = viewModel::toggleTicker)
             SectionLabel("LOG ACTIONS")
             viewModel.logActions.forEach { action ->
-                LogActionRow(action, latest[action.label], onRun = { viewModel.run(action) })
+                BadgeActionRow(action, latest[action.label], onRun = { viewModel.run(action) })
             }
             Spacer(Modifier.height(16.dp))
         }
@@ -86,27 +81,6 @@ private fun TickerCard(on: Boolean, onToggle: () -> Unit) {
                 onCheckedChange = { onToggle() },
                 colors = sampleSwitchColors(),
             )
-        }
-    }
-}
-
-@Composable
-private fun LogActionRow(action: DemoAction, event: ActionEvent?, onRun: () -> Unit) {
-    SampleCard(Modifier.padding(horizontal = ScreenPadding, vertical = 5.dp)) {
-        Row(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(palette.surfaceMuted),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(action.badge.orEmpty(), style = SampleText.mono.copy(fontWeight = FontWeight.Bold), color = palette.textMuted)
-            }
-            Spacer(Modifier.width(14.dp))
-            Column(Modifier.weight(1f)) {
-                Text(action.chip, style = SampleText.cardTitle.copy(fontSize = SampleText.body.fontSize))
-                action.detail?.let { Text(it, style = SampleText.small, color = palette.textMuted) }
-            }
-            Spacer(Modifier.width(8.dp))
-            ActionControl(tag = action.label, text = "Run", event = event, onClick = onRun, style = ControlStyle.ACCENT, resultText = true)
         }
     }
 }

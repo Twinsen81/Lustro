@@ -24,6 +24,7 @@ internal class SampleViewModel(application: Application) : AndroidViewModel(appl
     private val main = Handler(Looper.getMainLooper())
     private val requests = DemoRequests(application, { app.httpClient }, io)
     private val demoLogs = DemoLogs()
+    private val demoPrefs = DemoPrefs(application)
 
     val events = EventLog()
 
@@ -78,6 +79,11 @@ internal class SampleViewModel(application: Application) : AndroidViewModel(appl
 
     val logActions: List<DemoAction> = DemoCatalog.logs(demoLogs)
 
+    val prefsActions: List<DemoAction> = DemoCatalog.prefs(demoPrefs)
+
+    /** The settings file as the app reads it: an edit from the console shows here. */
+    val prefsValues: StateFlow<List<Pair<String, String>>> = demoPrefs.settingsValues
+
     // Lustro.stop() ends the debug server and what its tabs run, such as the Logs
     // tab's logcat process; Lustro.start() starts them again.
     val stopServer =
@@ -100,7 +106,8 @@ internal class SampleViewModel(application: Application) : AndroidViewModel(appl
 
     /** Every action, by the label that the `request` launch extra names. */
     val byLabel: Map<String, DemoAction> =
-        (network.flatMap { it.actions } + logActions + listOf(stopServer, startServer, startSync, stopSync)).associateBy { it.label }
+        (network.flatMap { it.actions } + logActions + prefsActions + listOf(stopServer, startServer, startSync, stopSync))
+            .associateBy { it.label }
 
     init {
         flags?.let { source ->
@@ -169,6 +176,7 @@ internal class SampleViewModel(application: Application) : AndroidViewModel(appl
         syncRun = null
         main.removeCallbacks(syncTick)
         demoLogs.stop()
+        demoPrefs.close()
         io.shutdownNow()
     }
 

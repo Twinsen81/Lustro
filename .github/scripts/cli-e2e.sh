@@ -267,4 +267,41 @@ check logs-delta < "$OUT/logs-delta.json"
 lustro_to logs-errors.txt api GET logs/text --param level=E --param "cursor=$cursor"
 check logs-text < "$OUT/logs-errors.txt"
 
+# The Preferences tab lists the sample's files: two that it registers, and the
+# library-like one that the tab finds on disk. An edit through the API is in the
+# app's file, an app change moves the file's cursor, and a read-only file refuses
+# an edit.
+step "lustro --json schema prefs"
+lustro --json schema prefs > "$OUT/schema-prefs.json"
+check schema-prefs < "$OUT/schema-prefs.json"
+echo "matches the CLI's copy ($(wc -c < "$OUT/schema-prefs.json") bytes)"
+
+adb shell am start -W --activity-single-top -n "$PACKAGE/.MainActivity" --es request "'Reset the demo preferences'"
+sleep 1
+lustro_to prefs-files.json api GET prefs/files
+check prefs-files < "$OUT/prefs-files.json"
+
+lustro_to prefs-reset.json api GET prefs/entries --param file=sample_settings
+check prefs-reset < "$OUT/prefs-reset.json"
+
+step "lustro api POST prefs/edit, then count a launch in the app, and poll with the edit's cursor"
+lustro_to prefs-edit.json api POST prefs/edit --body '{"file":"sample_settings","key":"username","type":"string","value":"e2e"}'
+check prefs-edit < "$OUT/prefs-edit.json"
+adb shell run-as "$PACKAGE" cat shared_prefs/sample_settings.xml | grep -q '<string name="username">e2e</string>'
+echo "the app's file holds the new value"
+lustro_to prefs-after-edit.json api GET prefs/entries --param file=sample_settings
+cursor="$("$OUT/venv/bin/python" -c 'import json,sys; print(json.load(sys.stdin)["cursor"])' < "$OUT/prefs-after-edit.json")"
+adb shell am start -W --activity-single-top -n "$PACKAGE/.MainActivity" --es request "'Count a launch'"
+sleep 1
+lustro_to prefs-delta.json api GET prefs/entries --param file=sample_settings --param "cursor=$cursor"
+check prefs-delta "$OUT/prefs-reset.json" < "$OUT/prefs-delta.json"
+
+step "lustro api POST prefs/edit to the read-only session file"
+if lustro api POST prefs/edit --body '{"file":"sample_session","key":"session_id","type":"string","value":"e2e"}' 2> "$OUT/prefs-read-only.txt"; then
+  echo "error: the read-only file took the edit" >&2
+  exit 1
+fi
+cat "$OUT/prefs-read-only.txt"
+grep -q "^error: 403 forbidden" "$OUT/prefs-read-only.txt"
+
 step "The CLI end to end passed"

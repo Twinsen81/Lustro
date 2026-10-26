@@ -6,6 +6,7 @@
     "lustro/",
     "lustro-api/",
     "lustro-logs/",
+    "lustro-prefs/",
     "docs/",
     "wire-protocol/",
     "lustro-cli/"

@@ -14,11 +14,12 @@ floor that moves up there makes this build fail until the floor is a decision.
 
 ## What it checks
 
-- `assembleWithLustroDebug` builds the app with `lustro` and the Logs plugin,
-  `lustro-logs`, which runs AGP's AAR metadata check (`compileSdk`), and compiles
-  the app's Kotlin against the artifacts' metadata with the floor's compiler.
+- `assembleWithLustroDebug` builds the app with `lustro` and the Logs and
+  Preferences plugins, `lustro-logs` and `lustro-prefs`, which runs AGP's AAR
+  metadata check (`compileSdk`), and compiles the app's Kotlin against the
+  artifacts' metadata with the floor's compiler.
 - `assembleWithLustroRelease` builds it with `lustro-noop`, `lustro-logs-noop`,
-  and R8.
+  `lustro-prefs-noop`, and R8.
 - `checkLustroKeepsAppVersions` resolves the compile and runtime classpaths of
   each `withLustro` variant and of the `baseline` flavor, the same app without
   Lustro, and fails on any module that is in both at different versions. It

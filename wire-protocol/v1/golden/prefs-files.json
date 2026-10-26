@@ -1,0 +1,40 @@
+{
+  "items": [
+    {
+      "name": "settings",
+      "registered": true,
+      "policy": "mask_sensitive",
+      "readOnly": false,
+      "encrypted": false,
+      "keyCount": 7,
+      "cursor": "LTM4NjIzMzkyNTcxNjU3Nzc4NDY6MA=="
+    },
+    {
+      "name": "session",
+      "registered": true,
+      "policy": "keys_only",
+      "readOnly": true,
+      "encrypted": false,
+      "keyCount": 2,
+      "cursor": "ODY5MjAzNTI4MzMxMjA4NzcyNzow"
+    },
+    {
+      "name": "sdk_cache",
+      "registered": false,
+      "policy": "mask_sensitive",
+      "readOnly": true,
+      "encrypted": false,
+      "keyCount": 3,
+      "cursor": "LTM1MzU2MDg2MjMzOTAwNDYwMjg6MA=="
+    },
+    {
+      "name": "secure_store",
+      "registered": false,
+      "policy": "keys_only",
+      "readOnly": true,
+      "encrypted": true,
+      "keyCount": 3,
+      "cursor": "MjU5NjI4ODQ4NDc1MDI1NjMyNTow"
+    }
+  ]
+}

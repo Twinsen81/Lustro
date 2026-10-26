@@ -24,7 +24,8 @@ This document is about using a running Lustro. To add Lustro to an app, follow t
   throttle, replay, and the messages of WebSocket connections). Its contract is
   `lustro/src/main/assets/lustro/network.openapi.json`.
 - **Plugin tabs.** An app can also register plugin tabs, such as `logs`, the app's own logcat
-  (see [Logs tab operations](#logs-tab-operations)). `_meta` lists the ones the app registered,
+  (see [Logs tab operations](#logs-tab-operations)), and `prefs`, the app's SharedPreferences
+  (see [Preferences tab operations](#preferences-tab-operations)). `_meta` lists the ones the app registered,
   and each plugin's `_schema` has a version of its own in `info.version`.
 
 ## Use the `lustro` CLI
@@ -508,6 +509,59 @@ before the tab starts it again; `failed`, after logcat ended four times in a row
 with the reason in `readerError` (the buffer keeps what it has, and `entries` still serves it); or
 `stopped`, between `Lustro.stop()` and `start()`.
 
+## Preferences tab operations
+
+Base path `/api/v1/prefs`, when the app registers the Preferences plugin
+(`PrefsDebugTab.create(context, ...)`; without it, the routes are an enveloped
+`404 Unknown tab: prefs`). The authoritative contract is
+`lustro-prefs/src/main/assets/lustro/prefs.openapi.json`, version `1.0`. The tab has no console
+view yet, so it is not in the tab bar, but `_meta` lists it. The CLI has no `prefs` commands: use
+`lustro api`.
+
+| Operation | Route | Notes |
+| --- | --- | --- |
+| List the files | `GET files` | `{ items: [{ name, registered, policy, readOnly, encrypted, keyCount, cursor, error? }] }`: the files that the app registered, in its order, then the files that the tab found in `shared_prefs`, by name. `cursor` is the file's cursor now; compare it with the one you polled with to see that the file changed. `error` says why a file's instance can't read it. |
+| Poll a file | `GET entries?file=&cursor=` | Cursor envelope. `reset` or `delta` carries every entry of the file, by key; `unchanged` carries none. A cursor of another file, or from before an app restart, gets a `reset`. |
+| Read one value whole | `GET entry?file=&key=` | `{ item }`, after the value policy, never cut. `404` with `field: "key"` when the file has no such key. |
+| Write a value | `POST edit` | Body `{ file, key, type, value }`. Returns `{ status: "ok", item }`: the entry as the file now holds it. |
+| Remove a key | `POST delete` | Body `{ file, key }`. Returns `{ status: "ok", deleted }`, `false` when the key was not there. |
+| Empty a file | `POST clear` | Body `{ file, confirm: true }`; without `confirm: true`, a `400` with `field: "confirm"`. Returns `{ status: "ok", removed }`. |
+
+**An item.** `{ key, type, value?, bytes, masked?, truncated? }`. `type` is `string`, `int`,
+`long`, `float`, `boolean`, `string_set`, or `unknown` (a value that only a custom
+SharedPreferences implementation can hold). `value` is a JSON string, number, boolean, or, for
+`string_set`, a sorted array of strings; a float that is not finite is the string `"NaN"`,
+`"Infinity"`, or `"-Infinity"`. `bytes` is the size of the whole value: a string's UTF-8 bytes,
+the sum of those of a set's strings, or 4, 8, 4, and 1 for `int`, `long`, `float`, and `boolean`.
+`masked: true` comes instead of `value` when the policy leaves it out. In `entries`, a value longer
+than 4096 characters (for a set, all its strings together) is cut and has `truncated: true`; read
+it with `GET entry`.
+
+**Policies.** `policy` is `visible` (every value), `mask_sensitive` (every value but those of keys
+that look like they hold a secret, such as `auth_token`, `apiKey`, or `password`, by the network
+redaction's key check), or `keys_only` (no value). The keys always show. A discovered file is
+`mask_sensitive`. `encrypted` is `true` when the file on disk is encrypted: the app registered an
+`EncryptedSharedPreferences`, which shows plain values as its policy lets it, or the file has the
+keysets of one and a plain instance reads it, which is always `keys_only` and read-only.
+
+**Writing.** `type` picks the setter: `string`, `int`, `long`, `float`, `boolean`, or
+`string_set`. For a number or a boolean, `value` can also be a string, as a text field holds it
+(`"42"`, `"true"`); `int` and `long` take whole numbers in their range, `float` a number in a
+float's range or `"NaN"`, `"Infinity"`, `"-Infinity"`, and `string_set` a JSON array of strings.
+A wrong value is a `400` with `field: "value"`. An edit can give a key another type: the app's
+getter of the old type then throws `ClassCastException`. A masked value can still be written. All
+three mutations commit the file and move its cursor when they change it. A read-only file answers
+`403` with `code: "read_only"` and `field: "file"`: a file that the app registered with
+`readOnly = true`, a discovered file unless the app made them writable, Lustro's own
+`lustro_debug`, and an encrypted file read plain. A `500` after a write means the disk write
+failed; the instance's memory holds the change.
+
+**What moves a cursor.** The tab's own changes, at once, and the app's changes, through a
+listener, while Lustro is started. Before API 30, `clear()` calls no listener, so a clear by the
+app shows only with the next change to the file. Another process that writes the file is not seen.
+A `file` that names no file is a `404`, and one with `/` or `\` a `400`, both with
+`field: "file"`; the tab never creates a file.
+
 ## Common workflows
 
 **Mock a 500 for an endpoint**
@@ -587,6 +641,20 @@ lustro api GET logs/text > repro.txt                        # every line since t
 lustro api GET logs/text --param tag='^(OkHttp|SyncWorker)$' --param level=I
 ```
 
+**Read and change a SharedPreferences value**
+
+```bash
+lustro api GET prefs/files                                   # names, policies, read-only flags
+lustro api GET prefs/entries --param file=settings > page.json
+cursor=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["cursor"])' < page.json)
+lustro api POST prefs/edit --body '{"file":"settings","key":"onboarding_done","type":"boolean","value":false}'
+lustro api GET prefs/entries --param file=settings --param cursor="$cursor"   # delta: the file again
+```
+
+The app reads the new value at its next `get`. Code that read the value before, such as a cached
+field, keeps the old one until the app reads it again; restart the app when in doubt
+(`adb shell am force-stop <package>`): the value is on disk.
+
 **Atomically sync a rule set** (declarative — the resulting set equals exactly what you post):
 
 ```bash
@@ -615,7 +683,11 @@ Errors use the shared envelope; key statuses:
 - **`404 not_found`** — unknown route, missing transaction, a body that wasn't kept, or `send` with
   no sender configured. Also a WebSocket connection that the app cleared or evicted, and a message
   with no stored payload. Also every `logs/` route when the app did not register the Logs plugin
-  (`Unknown tab: logs`).
+  (`Unknown tab: logs`), and every `prefs/` route without the Preferences plugin
+  (`Unknown tab: prefs`).
+- **`403 forbidden` with `code: "read_only"`** on `prefs/edit`, `delete`, or `clear`: the file is
+  read-only. `GET prefs/files` says which files are, and the app decides it in
+  `PrefsDebugTab.create(...)`.
 - **No log lines**: check `state.reader` in `GET logs/entries`: `failed` with `readerError` when
   logcat could not run, `stopped` when Lustro is stopped, and `state.paused` when the capture is
   paused. Lines from other processes are never shown: the tab reads the app's own process only.

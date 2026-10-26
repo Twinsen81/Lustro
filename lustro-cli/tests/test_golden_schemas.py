@@ -23,6 +23,9 @@ SHARED_SCHEMA_CASES = [
     ("logs-reset.json", "stream-envelope.schema.json"),
     ("logs-delta.json", "stream-envelope.schema.json"),
     ("logs-unchanged.json", "stream-envelope.schema.json"),
+    ("prefs-reset.json", "cursor-envelope.schema.json"),
+    ("prefs-delta.json", "cursor-envelope.schema.json"),
+    ("prefs-unchanged.json", "cursor-envelope.schema.json"),
 ]
 
 
@@ -332,3 +335,76 @@ def test_a_golden_log_line_comes_again_with_its_seq_when_it_repeats():
     assert all(("count" in item) == ("lastAt" in item) for item in reset["items"] + delta["items"])
     assert "items" not in wire.load_golden("logs-unchanged.json")
     assert wire.load_golden("logs-unchanged.json")["state"]["paused"] is True
+
+
+# ── Preferences tab ───────────────────────────────────────────────────────────
+
+PREFS_ENTRIES_FIXTURES = ("prefs-reset.json", "prefs-delta.json", "prefs-unchanged.json")
+
+
+def _inline_validator(openapi, path, method, status):
+    schema = dict(openapi["paths"][path][method]["responses"][status]["content"]["application/json"]["schema"])
+    schema["components"] = openapi["components"]
+    return Draft202012Validator(schema)
+
+
+@pytest.mark.parametrize("fixture", PREFS_ENTRIES_FIXTURES)
+def test_prefs_fixture_matches_the_prefs_cursor_envelope(fixture):
+    validator = _component_validator(wire.load_openapi("prefs"), "PrefsCursorEnvelope")
+    validator.validate(wire.load_golden(fixture))
+
+
+def test_prefs_files_fixture_matches_the_files_route():
+    prefs = wire.load_openapi("prefs")
+    _inline_validator(prefs, "/api/v1/prefs/files", "get", "200").validate(wire.load_golden("prefs-files.json"))
+
+
+def test_the_prefs_schema_is_valid_and_has_its_own_version():
+    prefs = wire.load_openapi("prefs")
+    assert prefs["openapi"].startswith("3.1")
+    assert prefs["info"]["version"] == "1.0"
+    for schema in prefs["components"]["schemas"].values():
+        Draft202012Validator.check_schema(schema)
+    # The error envelope is the same everywhere.
+    assert prefs["components"]["schemas"]["ErrorEnvelope"] == wire.load_openapi()["components"]["schemas"]["ErrorEnvelope"]
+
+
+def test_the_prefs_routes_are_declared():
+    paths = wire.load_openapi("prefs")["paths"]
+    assert set(paths) == {"/api/v1/prefs/" + route for route in ("files", "entries", "entry", "edit", "delete", "clear")}
+    entries = {p["name"]: p for p in paths["/api/v1/prefs/entries"]["get"]["parameters"]}
+    assert set(entries) == {"file", "cursor"} and entries["file"]["required"]
+    entry = {p["name"]: p for p in paths["/api/v1/prefs/entry"]["get"]["parameters"]}
+    assert set(entry) == {"file", "key"}
+    for route, required in (("edit", ["file", "key", "type", "value"]), ("delete", ["file", "key"]), ("clear", ["file", "confirm"])):
+        post = paths["/api/v1/prefs/" + route]["post"]
+        assert post["requestBody"]["content"]["application/json"]["schema"]["required"] == required
+        # Every mutation answers 403 for a read-only file.
+        assert "403" in post["responses"] and "read_only" in post["description"]
+    types = wire.load_openapi("prefs")["components"]["schemas"]["PrefWriteType"]["enum"]
+    assert types == ["string", "int", "long", "float", "boolean", "string_set"]
+
+
+def test_the_golden_prefs_files_show_every_policy():
+    files = wire.load_golden("prefs-files.json")["items"]
+    by_name = {f["name"]: f for f in files}
+    assert [f["registered"] for f in files] == sorted((f["registered"] for f in files), reverse=True), "registered files come first"
+    assert {"mask_sensitive", "keys_only"} <= {f["policy"] for f in files}
+    discovered = [f for f in files if not f["registered"]]
+    assert discovered and all(f["readOnly"] for f in discovered)
+    encrypted = [f for f in files if f["encrypted"]]
+    assert encrypted and all(f["policy"] == "keys_only" and f["readOnly"] for f in encrypted)
+    # The cursor of a file is the cursor its entries return.
+    assert by_name["settings"]["cursor"] == wire.load_golden("prefs-reset.json")["cursor"]
+
+
+def test_a_golden_masked_entry_has_no_value_and_the_delta_has_the_whole_file():
+    reset = wire.load_golden("prefs-reset.json")
+    delta = wire.load_golden("prefs-delta.json")
+    for item in reset["items"] + delta["items"]:
+        assert ("value" in item) != item.get("masked", False), item
+    assert [i["key"] for i in reset["items"]] == sorted(i["key"] for i in reset["items"])
+    assert [i["key"] for i in delta["items"]] == [i["key"] for i in reset["items"]]
+    assert reset["cursor"] != delta["cursor"]
+    unchanged = wire.load_golden("prefs-unchanged.json")
+    assert "items" not in unchanged and unchanged["cursor"] == delta["cursor"]

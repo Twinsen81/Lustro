@@ -167,11 +167,20 @@ with the core wire.
   `GET text` exports the held lines as logcat's threadtime text. `POST clear`
   returns the cursor of the empty log; `POST pause` and `POST compact` set or
   toggle their flags.
+- **Preferences `1.0`** (`:lustro-prefs`) - the app's SharedPreferences files
+  under `/api/v1/prefs/`. `GET files` lists them with their value policies,
+  read-only flags, and cursors. `GET entries?file=` polls one file in the
+  cursor envelope, each entry with its `type`, its `value` unless the policy
+  masks it, and its size in `bytes`; a value is cut at 4096 characters, with
+  `truncated`, and `GET entry?file=&key=` returns it whole. Each file's cursor
+  has an epoch of its own, so a cursor of one file is foreign to another.
+  `POST edit`, `POST delete`, and `POST clear` change a file and answer `403`
+  with the code `read_only` for a read-only one.
 
 ## Status
 
-The concrete schema files (`*.schema.json`), the Network and Logs OpenAPI
-documents, and the golden fixtures (`golden/`) are present: envelopes + tab
+The concrete schema files (`*.schema.json`), the Network, Logs, and Preferences
+OpenAPI documents, and the golden fixtures (`golden/`) are present: envelopes + tab
 schemas, and the golden response corpus (CLI contract tests). See
 `SCHEMA_INDEX.md` for the full set. The golden fixtures are also vendored into
 the `lustro-cli` wheel under `lustro_cli/wire/` so the installed CLI ships its

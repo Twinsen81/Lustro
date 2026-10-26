@@ -1,0 +1,648 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Lustro Preferences debug tab",
+    "version": "1.0",
+    "description": "The app's SharedPreferences files: the files that the app registers, each with a value policy and a read-only flag, and, with discovery on, the other files in its shared_prefs directory, which are read-only by default. A value policy says what the tab shows of the values: visible shows every value; mask_sensitive leaves out the value of a key that looks like it holds a secret, such as auth_token or password, as the Network tab's redaction finds them; keys_only leaves out every value. A file that has the keysets of EncryptedSharedPreferences, read by a plain instance, shows its keys only and is read-only. Each file has a cursor that moves when a value changes, through the tab or through the app. The tab sees the app's changes while Lustro is started; before API 30, a clear by the app shows only with the next change to the file. All routes are token-authenticated (Bearer header or HttpOnly cookie) and live under /api/v1/prefs. Errors use the shared error envelope."
+  },
+  "servers": [
+    {
+      "url": "/",
+      "description": "The Lustro debug server (loopback by default)."
+    }
+  ],
+  "paths": {
+    "/api/v1/prefs/files": {
+      "get": {
+        "operationId": "listPrefsFiles",
+        "summary": "List the files, with their policies and cursors.",
+        "description": "The registered files, in the order the app registered them, then the discovered files on disk, by name. Each one reads its file, to count the keys and to find an encrypted one. A file that its instance can't read, such as an EncryptedSharedPreferences whose key is gone, is listed with keyCount 0 and the reason in error.",
+        "responses": {
+          "200": {
+            "description": "The files.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/PrefsFile"
+                      }
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/prefs/entries": {
+      "get": {
+        "operationId": "listPrefEntries",
+        "summary": "Poll a file: every entry, after its value policy.",
+        "description": "A cursor envelope. The first poll (no cursor, or a cursor of another file or from before an app restart) gets status=reset with every entry of the file, by key. A poll with the returned cursor gets status=unchanged with no items while the file stays the same, and status=delta with every entry again after a change. A value longer than 4096 characters (for a string set, all its strings together) is cut, with truncated; GET entry returns it whole. 500 when the file's instance can't read it.",
+        "parameters": [
+          {
+            "name": "file",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": "The file's name, as GET files lists it. 400 with field file when it is missing or contains / or \\; 404 with field file when no file has this name."
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Opaque cursor from the previous response for this file. Omit on the first poll."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cursor envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrefsCursorEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/prefs/entry": {
+      "get": {
+        "operationId": "getPrefEntry",
+        "summary": "Get one entry, with its whole value.",
+        "description": "The same item as in entries, after the value policy, but never cut. 404 with field key when the file has no such key.",
+        "parameters": [
+          {
+            "name": "file",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": "The file's name, as GET files lists it. 400 with field file when it is missing or contains / or \\; 404 with field file when no file has this name."
+          },
+          {
+            "name": "key",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The key. It can be empty. 400 with field key when it is missing."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The entry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "item"
+                  ],
+                  "properties": {
+                    "item": {
+                      "$ref": "#/components/schemas/PrefEntry"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/prefs/edit": {
+      "post": {
+        "operationId": "editPref",
+        "summary": "Write one value, with its type.",
+        "description": "Puts the value with the type's setter and commits the file, so the response shows what the file holds. It adds the key, or replaces its value, also with a value of another type: then the app's getter of the old type throws a ClassCastException. The cursor moves when the value changes. A value that is masked for reading can still be written. 403 with code read_only and field file when the file is read-only. 400 with field key, type, or value when one is missing or the value is not of the type. 500 when the disk write fails: the instance's memory holds the value, and the app sees it until the process ends.",
+        "requestBody": {
+          "required": true,
+          "description": "The value to write.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file",
+                  "key",
+                  "type",
+                  "value"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "description": "The file's name, as GET files lists it. 400 with field file when it is missing or contains / or \\; 404 with field file when no file has this name."
+                  },
+                  "key": {
+                    "type": "string",
+                    "description": "The key. It can be empty."
+                  },
+                  "type": {
+                    "$ref": "#/components/schemas/PrefWriteType"
+                  },
+                  "value": {
+                    "description": "For string, a JSON string. For int and long, a whole number, or a string of one, in the type's range. For float, a number, or a string of one, in the range of a float, or \"NaN\", \"Infinity\", or \"-Infinity\". For boolean, true or false, or a string of one. For string_set, a JSON array of strings; a repeated string is kept once. null is not a value: POST delete removes a key.",
+                    "type": [
+                      "string",
+                      "number",
+                      "boolean",
+                      "array"
+                    ],
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The entry as the file now holds it, after the value policy.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "item"
+                  ],
+                  "properties": {
+                    "status": {
+                      "const": "ok"
+                    },
+                    "item": {
+                      "$ref": "#/components/schemas/PrefEntry"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/prefs/delete": {
+      "post": {
+        "operationId": "deletePref",
+        "summary": "Remove one key.",
+        "description": "Removes the key and commits the file. The cursor moves when the key was there. 403 with code read_only and field file when the file is read-only.",
+        "requestBody": {
+          "required": true,
+          "description": "The key to remove.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file",
+                  "key"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "description": "The file's name, as GET files lists it. 400 with field file when it is missing or contains / or \\; 404 with field file when no file has this name."
+                  },
+                  "key": {
+                    "type": "string",
+                    "description": "The key. It can be empty."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Removed, or not there.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "deleted"
+                  ],
+                  "properties": {
+                    "status": {
+                      "const": "ok"
+                    },
+                    "deleted": {
+                      "type": "boolean",
+                      "description": "Whether the file had the key."
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/prefs/clear": {
+      "post": {
+        "operationId": "clearPrefs",
+        "summary": "Remove every key of a file.",
+        "description": "Clears the file and commits it. The cursor moves when the file had a key, on every API level. 403 with code read_only and field file when the file is read-only. 400 with field confirm unless confirm is true.",
+        "requestBody": {
+          "required": true,
+          "description": "The file to clear.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file",
+                  "confirm"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "description": "The file's name, as GET files lists it. 400 with field file when it is missing or contains / or \\; 404 with field file when no file has this name."
+                  },
+                  "confirm": {
+                    "const": true,
+                    "description": "Must be true: clear removes every key of the file."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The file is empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "removed"
+                  ],
+                  "properties": {
+                    "status": {
+                      "const": "ok"
+                    },
+                    "removed": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "description": "How many keys the file had."
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "responses": {
+      "Error": {
+        "description": "Error envelope.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorEnvelope"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "ErrorEnvelope": {
+        "type": "object",
+        "required": [
+          "error",
+          "message"
+        ],
+        "properties": {
+          "error": {
+            "type": "string",
+            "enum": [
+              "bad_request",
+              "unauthorized",
+              "forbidden",
+              "not_found",
+              "method_not_allowed",
+              "payload_too_large",
+              "internal_error",
+              "unavailable",
+              "timeout"
+            ],
+            "description": "Machine error type, e.g. bad_request, not_found, timeout."
+          },
+          "message": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "field": {
+            "type": "string"
+          },
+          "hint": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ValuePolicy": {
+        "type": "string",
+        "enum": [
+          "visible",
+          "mask_sensitive",
+          "keys_only"
+        ],
+        "description": "What the tab shows of the values. visible: every value. mask_sensitive: every value but those of keys that look like they hold a secret. keys_only: no value."
+      },
+      "PrefsFile": {
+        "type": "object",
+        "required": [
+          "name",
+          "registered",
+          "policy",
+          "readOnly",
+          "encrypted",
+          "keyCount",
+          "cursor"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The file's name, as the app passes it to getSharedPreferences: the file on disk is shared_prefs/<name>.xml."
+          },
+          "registered": {
+            "type": "boolean",
+            "description": "true for a file that the app registered, false for one that discovery found."
+          },
+          "policy": {
+            "$ref": "#/components/schemas/ValuePolicy"
+          },
+          "readOnly": {
+            "type": "boolean",
+            "description": "Whether edit, delete, and clear answer 403."
+          },
+          "encrypted": {
+            "type": "boolean",
+            "description": "Whether the file on disk is encrypted: the app registered an EncryptedSharedPreferences, or the file has its keysets. A file read without its keys is keys_only and read-only."
+          },
+          "keyCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "cursor": {
+            "type": "string",
+            "description": "The file's cursor now. It is the cursor that entries returns, so a client can compare it with the one it polled with, to see that the file changed."
+          },
+          "error": {
+            "type": "string",
+            "description": "Only for a file that its instance can't read: why."
+          }
+        },
+        "additionalProperties": false
+      },
+      "PrefsCursorEnvelope": {
+        "type": "object",
+        "required": [
+          "cursor",
+          "status"
+        ],
+        "properties": {
+          "cursor": {
+            "type": "string",
+            "description": "Opaque cursor token. Echo it on the next poll of the same file."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "delta",
+              "unchanged",
+              "reset"
+            ]
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PrefEntry"
+            },
+            "description": "Every entry of the file, by key. Omitted for unchanged."
+          }
+        },
+        "additionalProperties": false
+      },
+      "PrefType": {
+        "type": "string",
+        "enum": [
+          "string",
+          "int",
+          "long",
+          "float",
+          "boolean",
+          "string_set",
+          "unknown"
+        ],
+        "description": "The type of a value, by the SharedPreferences getter that reads it; string_set is a Set<String>. unknown is a value that only a custom SharedPreferences implementation can hold, written as its text."
+      },
+      "PrefWriteType": {
+        "type": "string",
+        "enum": [
+          "string",
+          "int",
+          "long",
+          "float",
+          "boolean",
+          "string_set"
+        ],
+        "description": "The type to write the value with: the SharedPreferences setter that edit calls."
+      },
+      "PrefEntry": {
+        "type": "object",
+        "required": [
+          "key",
+          "type",
+          "bytes"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "type": {
+            "$ref": "#/components/schemas/PrefType"
+          },
+          "value": {
+            "description": "Absent when masked, and for an unknown value that is null. A string, a number, a boolean, or for string_set an array of strings, sorted. A float that is not finite is the string \"NaN\", \"Infinity\", or \"-Infinity\".",
+            "type": [
+              "string",
+              "number",
+              "boolean",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The size of the whole value: a string's UTF-8 bytes, the sum of those of a set's strings, or 4 for int and float, 8 for long, and 1 for boolean."
+          },
+          "masked": {
+            "const": true,
+            "description": "Only when the value policy leaves the value out."
+          },
+          "truncated": {
+            "const": true,
+            "description": "Only in entries, when the value was cut at 4096 characters. GET entry returns it whole."
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  }
+}

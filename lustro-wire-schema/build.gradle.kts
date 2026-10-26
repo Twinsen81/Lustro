@@ -1,7 +1,7 @@
 plugins {
     // Pure-JVM resource jar: no Kotlin, no Android. It only PACKAGES the wire
-    // protocol artifacts (JSON Schemas + the Network and Logs OpenAPI documents +
-    // golden fixtures) so tools and contract tests can resolve them as a published
+    // protocol artifacts (JSON Schemas + the Network, Logs, and Preferences OpenAPI
+    // documents + golden fixtures) so tools and contract tests can resolve them as a published
     // Maven dependency.
     `java-library`
     // The jar, a sources jar, and an empty Javadoc jar (there is no API to
@@ -20,6 +20,7 @@ java {
 //   - JSON Schemas + golden fixtures: wire-protocol/v1/
 //   - Network OpenAPI document:       lustro/src/main/assets/lustro/network.openapi.json
 //   - Logs OpenAPI document:          lustro-logs/src/main/assets/lustro/logs.openapi.json
+//   - Preferences OpenAPI document:   lustro-prefs/src/main/assets/lustro/prefs.openapi.json
 // We copy them into build/generated/wire-resources/lustro/wire/v1/ at build time
 // (NOT into committed src/) so the jar always reflects the current source of
 // truth and there is a single canonical copy in the repo. Packaged under the
@@ -31,6 +32,9 @@ val openApiFile =
 val logsOpenApiFile =
     rootProject.layout.projectDirectory
         .file("lustro-logs/src/main/assets/lustro/logs.openapi.json")
+val prefsOpenApiFile =
+    rootProject.layout.projectDirectory
+        .file("lustro-prefs/src/main/assets/lustro/prefs.openapi.json")
 
 // Root of the generated resource tree; the jar entries live under
 // <root>/lustro/wire/v1/... so they don't collide on a consumer classpath.
@@ -47,6 +51,7 @@ val syncWireResources =
         // The tabs' OpenAPI documents (they live under the runtime assets).
         from(openApiFile)
         from(logsOpenApiFile)
+        from(prefsOpenApiFile)
     }
 
 sourceSets {

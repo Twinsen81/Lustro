@@ -611,6 +611,71 @@ val lustro = Lustro.builder(application)
   So is a tag longer than about 88 bytes: logcat prints the first part of it, and the message after.
 - In `lustro-logs-noop`, the tab reads no logs.
 
+## Preferences
+
+The Preferences plugin reads and edits your app's SharedPreferences files over the API, and a
+poll sees the changes that the app makes. It is a pair of artifacts, split by variant as `lustro`
+is:
+
+```toml
+lustro-prefs      = { group = "io.github.twinsen81", name = "lustro-prefs",      version.ref = "lustro" }
+lustro-prefs-noop = { group = "io.github.twinsen81", name = "lustro-prefs-noop", version.ref = "lustro" }
+```
+
+```kotlin
+dependencies {
+    debugImplementation(libs.lustro.prefs)
+    releaseImplementation(libs.lustro.prefs.noop)
+}
+
+val lustro = Lustro.builder(application)
+    .addTab(NetworkDebugTab.create(senderClient = client))
+    .addTab(
+        PrefsDebugTab.create(
+            application,
+            files = listOf(
+                PrefsFile("settings", settingsPrefs, ValuePolicy.VISIBLE),
+                PrefsFile("session", encryptedPrefs, ValuePolicy.KEYS_ONLY, readOnly = true),
+            ),
+        ),
+    )
+    .build()
+```
+
+- **Registered files.** A `PrefsFile` has the file's name, as you pass it to
+  `getSharedPreferences`, the instance that the tab reads and edits, a value policy, and a
+  `readOnly` flag. The instance can be an `EncryptedSharedPreferences` that decrypts: then the
+  tab shows its plain values, as the policy lets it.
+- **Value policies.** `VISIBLE` shows every value. `MASK_SENSITIVE`, the default, leaves out the
+  value of a key that looks like it holds a secret, such as `auth_token`, `apiKey`, or `password`,
+  by the same key check as the Network tab's redaction (`SensitiveKeys.isSensitive`). `KEYS_ONLY`
+  leaves out every value. The keys, the types, and the sizes always show.
+- **Discovered files.** With `discover = true`, the default, the tab also shows the other files in
+  the app's `shared_prefs` directory, such as the files of your libraries. It opens each one with
+  `getSharedPreferences`, and the platform then keeps it in memory until the process ends. A
+  discovered file is `MASK_SENSITIVE` and read-only, because an edit to a library's file can break
+  that library; `discoveredReadOnly = false` makes the discovered files writable, except Lustro's
+  own `lustro_debug`, which holds the token. A file that has the keysets of
+  `EncryptedSharedPreferences`, read by a plain instance, shows its keys only and is always
+  read-only: an edit would write a plain value into the encrypted file.
+- **Live updates.** Each file has a cursor, which moves when a value changes, through the tab or
+  through the app. The tab sees the app's changes with an `OnSharedPreferenceChangeListener` from
+  `start()` to `stop()`, also while the app is in the background. Before API 30, `clear()` calls
+  no listener, so a clear by the app shows only with the next change to the file. Another process
+  that writes the file is not seen.
+- **Routes.** `GET /api/v1/prefs/files` lists the files with their policies and cursors.
+  `GET /api/v1/prefs/entries?file=` polls a file in the cursor envelope: every entry, by key, with
+  its `type`, its `value` unless the policy masks it, and its size in `bytes`. A value longer than
+  4096 characters is cut there, and `GET entry?file=&key=` returns it whole. `POST edit` writes
+  one typed value (`string`, `int`, `long`, `float`, `boolean`, or `string_set`), `POST delete`
+  removes a key, and `POST clear` (with `confirm: true`) empties a file. They commit the file, and
+  answer `403` for a read-only one. The `lustro` CLI reaches them with `lustro api`, for example
+  `lustro api GET prefs/entries --param file=settings`. See
+  [docs/AGENTS.md](docs/AGENTS.md#preferences-tab-operations) and
+  [`prefs.openapi.json`](lustro-prefs/src/main/assets/lustro/prefs.openapi.json).
+- **No console view yet.** The tab serves its API and stays out of the console's tab bar.
+- In `lustro-prefs-noop`, the tab reads no files.
+
 ## Security model
 
 Lustro deliberately surfaces app internals, so its defaults are conservative. See
@@ -771,9 +836,11 @@ Shared shapes: a uniform **error envelope** `{ error, message, code?, field?, hi
 end: its `delta` carries only the entries after the cursor. The schemas and the SemVer
 policy live in [`wire-protocol/v1/`](wire-protocol/v1/); the Network tab's contract is
 [`lustro/src/main/assets/lustro/network.openapi.json`](lustro/src/main/assets/lustro/network.openapi.json),
-and the Logs tab's is
+the Logs tab's is
 [`lustro-logs/src/main/assets/lustro/logs.openapi.json`](lustro-logs/src/main/assets/lustro/logs.openapi.json),
-with a version of its own.
+and the Preferences tab's is
+[`lustro-prefs/src/main/assets/lustro/prefs.openapi.json`](lustro-prefs/src/main/assets/lustro/prefs.openapi.json),
+each with a version of its own.
 
 For driving Lustro from agents, scripts, or the `lustro` CLI, see
 [docs/AGENTS.md](docs/AGENTS.md).
@@ -804,6 +871,8 @@ For driving Lustro from agents, scripts, or the `lustro` CLI, see
 | `:lustro-api` | `io.github.twinsen81:lustro-api` | Pure-Kotlin public SPI (`DebugTab`, `DebugRequest`/`DebugResponse`, `Headers`, `MediaType`, network seams). |
 | `:lustro-logs` | `io.github.twinsen81:lustro-logs` | The [Logs](#logs) plugin: the app's own logcat under `/api/v1/logs/`. |
 | `:lustro-logs-noop` | `io.github.twinsen81:lustro-logs-noop` | Release-safe no-op half of `:lustro-logs`. |
+| `:lustro-prefs` | `io.github.twinsen81:lustro-prefs` | The [Preferences](#preferences) plugin: the app's SharedPreferences under `/api/v1/prefs/`. |
+| `:lustro-prefs-noop` | `io.github.twinsen81:lustro-prefs-noop` | Release-safe no-op half of `:lustro-prefs`. |
 | `lustro-cli/` | `lustro-cli` (PyPI) | Python CLI that wraps the HTTP API, installing a `lustro` command; published alongside each release. |
 
 See also: [CONTRIBUTING.md](CONTRIBUTING.md) · [SECURITY.md](SECURITY.md) ·
