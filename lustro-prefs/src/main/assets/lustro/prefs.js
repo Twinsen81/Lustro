@@ -603,8 +603,10 @@
         var first = !loaded;
         loaded = true;
         if (!active || !byName[active]) {
+            var gone = active;
             var next = settings.activeFile && byName[settings.activeFile] ? settings.activeFile : order[0] || null;
             if (next !== active) openFile(next);
+            if (gone) window.debugToast('The file ' + gone + ' is no longer in the app' + (next ? ', so the tab shows ' + next : ''), 'info');
         }
         renderFiles();
         if (first) scrollTabIntoView();
@@ -632,8 +634,14 @@
     }
 
     function openFile(name) {
-        active = name;
         generation++;
+        // The rows go at once, also when a field in them has the focus, which defers a
+        // render. The browser fires the field's change as it goes; the change then
+        // finds an older generation on the rows, and writes nothing to this file.
+        pendingRender = false;
+        els.rows.innerHTML = '';
+        els.rows.dataset.generation = String(generation);
+        active = name;
         view = newView();
         saved.clear();
         changedKeys.clear();
@@ -760,6 +768,7 @@
             return;
         }
         pendingRender = false;
+        els.rows.dataset.generation = String(generation);
         var file = active ? byName[active] : null;
         if (!file || view.file !== active) {
             els.rows.innerHTML = '';
@@ -788,6 +797,7 @@
     }
 
     function onInlineChange(input) {
+        if (els.rows.dataset.generation !== String(generation)) return;
         var key = input.dataset.key;
         var kind = input.dataset.inline;
         var entry = view.byKey.get(key);
