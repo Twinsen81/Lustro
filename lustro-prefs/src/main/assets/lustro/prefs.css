@@ -1,0 +1,175 @@
+/* Preferences tab. Builds on the tokens and .dc-* components from shared.css:
+   every color here is a token or a color-mix of one, so both themes work. */
+
+.prefs { height: 100%; min-height: 0; display: flex; flex-direction: column; }
+
+/* ── The bar: refresh and auto-refresh ── */
+.prefs-bar {
+    flex: none;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 14px;
+    padding: 12px 22px;
+    background: var(--header);
+    border-bottom: 1px solid var(--border-soft);
+}
+.prefs-bar .dc-btn { padding: 7px 14px; font-size: 11.5px; }
+.prefs-auto { display: flex; align-items: center; gap: 9px; }
+.prefs-auto__label { font-size: 12px; color: var(--t3); cursor: pointer; }
+.prefs-interval { width: 96px; padding: 6px 10px; }
+.prefs-interval__unit { font-size: 12px; color: var(--t4); }
+
+/* ── The file tabs: connected .dc-tabs that scroll sideways when they don't fit ── */
+.prefs-files { height: auto; padding: 8px 18px 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
+/* A file name is an identifier: it keeps its case. */
+.prefs-file { flex: none; gap: 7px; padding: 9px 14px; font-size: 12px; letter-spacing: .02em; text-transform: none; }
+.prefs-file__lock { font-size: 11px; }
+.prefs-file__count { color: var(--t4); }
+.prefs-file.dc-tab--active .prefs-file__count { color: var(--accent-2); }
+
+/* ── The open file ── */
+.prefs-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.prefs-head {
+    flex: none;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px 16px;
+    padding: 18px 22px 14px;
+}
+.prefs-head__title { min-width: 0; }
+.prefs-name { margin: 0; font-size: 14px; font-weight: 600; letter-spacing: .02em; color: var(--t1); overflow-wrap: anywhere; }
+.prefs-facts { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.prefs-count { margin-right: 4px; font-size: 11.5px; color: var(--t4); }
+.prefs-head__actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex: 1; min-width: 280px; }
+.prefs-head__actions > .dc-btn { flex: none; padding: 8px 14px; font-size: 11.5px; }
+
+.prefs-search { flex: 1; max-width: 380px; min-width: 0; }
+.prefs-search__label { display: flex; flex: 1; align-items: center; gap: 8px; min-width: 0; cursor: text; }
+.prefs-search__icon { flex: none; color: var(--t4); }
+/* The clear and Values buttons: 24px hit targets that don't make the field taller. */
+.prefs-search__clear, .prefs-search__values { min-height: 24px; margin: -5px 0; }
+.prefs-search__clear { min-width: 24px; padding: 0 4px; font-size: 15px; line-height: 1; }
+.prefs-search__values { padding: 0 8px; }
+
+.prefs-banner {
+    flex: none;
+    padding: 9px 22px;
+    background: var(--danger-soft);
+    color: var(--danger);
+    border-top: 1px solid var(--border-soft);
+    font-size: 12px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}
+
+/* ── The table ── */
+.prefs-scroll { flex: 1; min-height: 0; overflow: auto; border-top: 1px solid var(--border); }
+.prefs-table { table-layout: fixed; }
+.prefs-table .dc-cell { vertical-align: middle; }
+.prefs-table .dc-th:first-child, .prefs-table .dc-cell:first-child { padding-left: 22px; }
+.prefs-table .dc-th:last-child, .prefs-table .dc-cell:last-child { padding-right: 22px; }
+.prefs-th--actions, .prefs-cell--actions { text-align: right; }
+.prefs-cell--key { font-size: 12.5px; line-height: 1.4; white-space: normal; overflow-wrap: anywhere; }
+.prefs-cell--value { padding-top: 6px; padding-bottom: 6px; }
+.prefs-cell--actions { text-overflow: clip; }
+.prefs-badge { white-space: nowrap; }
+
+/* A row that the app or the page changed lights up once. */
+.prefs-row--changed { animation: prefs-changed 1.5s ease-out; }
+@keyframes prefs-changed {
+    from { background-color: var(--accent-soft); }
+    to { background-color: transparent; }
+}
+
+/* The value: an editor in the row, or a box that opens the dialog. */
+.prefs-value-wrap { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.prefs-value {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    width: 100%;
+    max-width: 560px;
+    min-width: 0;
+    min-height: 32px;
+    padding: 7px 11px;
+    background: var(--field);
+    border: 1px solid var(--chip-border);
+    border-radius: var(--radius);
+    color: var(--t2);
+    font-family: inherit;
+    font-size: 12.5px;
+    text-align: left;
+    cursor: pointer;
+}
+.prefs-value:hover { border-color: var(--accent-border); color: var(--t1); }
+.prefs-value:focus-visible { outline: none; border-color: var(--accent); }
+.prefs-value__text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prefs-value__cut { flex: none; }
+.prefs-value__open { flex: none; margin-left: auto; padding-left: 8px; color: var(--t4); font-family: var(--font-ui); font-size: 12px; }
+.prefs-value:hover .prefs-value__open { color: var(--accent-2); }
+/* A value that the policy leaves out: a comment in the disabled shade. */
+.prefs-hidden { color: var(--t5); font-size: 12px; }
+.prefs-value--hidden { background: transparent; border-style: dashed; }
+.prefs-hidden-wrap { display: inline-flex; min-height: 32px; align-items: center; }
+
+.prefs-inline { width: 100%; max-width: 560px; padding: 7px 11px; }
+.prefs-inline .dc-input { font-size: 12.5px; }
+.prefs-bool { display: inline-flex; align-items: center; gap: 10px; min-height: 32px; }
+.prefs-bool__label { font-size: 12.5px; color: var(--t2); }
+
+.prefs-saved {
+    flex: none;
+    color: var(--live);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .04em;
+    animation: prefs-saved 1.6s ease-in forwards;
+}
+@keyframes prefs-saved {
+    0%, 60% { opacity: 1; }
+    100% { opacity: 0; }
+}
+
+/* The column resize handle, at the right edge of a header cell. */
+.prefs-resize { position: absolute; top: 0; right: 0; width: 6px; height: 100%; cursor: col-resize; }
+.prefs-resize:hover, .prefs-resize--dragging { box-shadow: inset -2px 0 0 var(--accent); }
+
+.prefs-empty, .prefs-none { padding: 40px; text-align: center; color: var(--t4); font-size: 12.5px; }
+
+/* ── The dialogs ── */
+.prefs-form__row { display: flex; flex-direction: column; gap: 7px; }
+.prefs-form__key { font-size: 13px; color: var(--t1); overflow-wrap: anywhere; }
+.prefs-form__hint { font-size: 11.5px; line-height: 1.5; }
+.prefs-textarea { min-height: 120px; font-family: var(--font-mono); }
+.prefs-preview { margin: 0; max-height: 236px; overflow: auto; }
+.prefs-note, .prefs-error { font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.prefs-note { color: var(--lvl-w); }
+.prefs-error { color: var(--danger); }
+.prefs-confirm__message { margin: 0; font-size: 12.5px; line-height: 1.6; color: var(--t2); overflow-wrap: anywhere; }
+
+/* The type of a new key: chips in the colors of the type badges. */
+.prefs-types { display: flex; flex-wrap: wrap; gap: 5px; }
+.prefs-type {
+    min-height: 30px;
+    padding: 6px 10px;
+    background: transparent;
+    border: 1px solid var(--chip-border);
+    border-radius: var(--radius);
+    color: var(--t3);
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    cursor: pointer;
+}
+.prefs-type:hover { color: var(--c); border-color: color-mix(in srgb, var(--c) 40%, transparent); }
+.prefs-type--on, .prefs-type--on:hover {
+    background: color-mix(in srgb, var(--c) 15%, transparent);
+    border-color: color-mix(in srgb, var(--c) 55%, transparent);
+    color: var(--c);
+}
+.prefs-type:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
