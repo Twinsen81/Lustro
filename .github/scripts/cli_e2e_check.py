@@ -25,6 +25,7 @@ from lustro_cli import wire
 
 OPENAPI = wire.load_openapi()
 LOGS_OPENAPI = wire.load_openapi("logs")
+PREFS_OPENAPI = wire.load_openapi("prefs")
 
 
 class CheckFailed(Exception):
@@ -115,6 +116,61 @@ def check_logs_text(text: str, rules: List[dict]) -> None:
     expect(bool(lines), "no line")
     for line in lines:
         expect(re.match(r"\d\d-\d\d \d\d:\d\d:\d\d\.\d{3} +\d+ +\d+ [EF] ", line) is not None, "not an E or F threadtime line: {!r}".format(line))
+
+
+def check_schema_prefs(text: str, rules: List[dict]) -> None:
+    expect(json.loads(text) == PREFS_OPENAPI, "the app serves a Preferences schema that differs from the CLI's copy")
+
+
+def _prefs(schema: Dict[str, Any]) -> Draft202012Validator:
+    return Draft202012Validator(dict(schema, components=PREFS_OPENAPI["components"]))
+
+
+def _prefs_envelope(text: str, status: str) -> Dict[str, Any]:
+    envelope = json.loads(text)
+    _prefs(PREFS_OPENAPI["components"]["schemas"]["PrefsCursorEnvelope"]).validate(envelope)
+    expect(envelope["status"] == status, "status {}".format(envelope["status"]))
+    return {item["key"]: item for item in envelope["items"]}
+
+
+def check_prefs_files(text: str, rules: List[dict]) -> None:
+    """The two files the sample registers come first, then the ones the tab finds on disk."""
+    files = json.loads(text)
+    ok = PREFS_OPENAPI["paths"]["/api/v1/prefs/files"]["get"]["responses"]["200"]
+    _prefs(ok["content"]["application/json"]["schema"]).validate(files)
+    by_name = {f["name"]: f for f in files["items"]}
+    expect([f["name"] for f in files["items"][:2]] == ["sample_settings", "sample_session"], "names {}".format(list(by_name)))
+    expected = {
+        "sample_settings": (True, "visible", False),
+        "sample_session": (True, "keys_only", True),
+        "sample_sdk_cache": (False, "mask_sensitive", True),
+    }
+    for name, shape in expected.items():
+        expect(name in by_name, "no file {} in {}".format(name, list(by_name)))
+        f = by_name[name]
+        expect((f["registered"], f["policy"], f["readOnly"]) == shape, "{}: {}".format(name, f))
+
+
+def check_prefs_reset(text: str, rules: List[dict]) -> None:
+    items = _prefs_envelope(text, "reset")
+    for key in ("username", "launch_count", "pinned_tags"):
+        expect(key in items and "value" in items[key], "no visible {} in {}".format(key, list(items)))
+
+
+def check_prefs_edit(text: str, rules: List[dict]) -> None:
+    result = json.loads(text)
+    ok = PREFS_OPENAPI["paths"]["/api/v1/prefs/edit"]["post"]["responses"]["200"]
+    _prefs(ok["content"]["application/json"]["schema"]).validate(result)
+    expect(result["item"] == {"key": "username", "type": "string", "value": "e2e", "bytes": 3}, "item {}".format(result["item"]))
+
+
+def check_prefs_delta(text: str, reset: Any) -> None:
+    """After the app counted a launch, the poll with the cursor from before it gets the file again."""
+    items = _prefs_envelope(text, "delta")
+    before = {item["key"]: item for item in reset["items"]}
+    expect(items["username"]["value"] == "e2e", "username {}".format(items["username"]))
+    expected = before["launch_count"]["value"] + 1
+    expect(items["launch_count"]["value"] == expected, "launch_count {}, not {}".format(items["launch_count"]["value"], expected))
 
 
 def check_sync(text: str, rules: List[dict]) -> None:
@@ -277,6 +333,11 @@ CHECKS: Dict[str, Callable[[str, List[dict]], None]] = {
     "logs-startup": check_logs_startup,
     "logs-delta": check_logs_delta,
     "logs-text": check_logs_text,
+    "schema-prefs": check_schema_prefs,
+    "prefs-files": check_prefs_files,
+    "prefs-reset": check_prefs_reset,
+    "prefs-edit": check_prefs_edit,
+    "prefs-delta": check_prefs_delta,
     "sync": check_sync,
     "rules": check_rules,
     "list": check_list,
