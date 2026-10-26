@@ -30,7 +30,8 @@ public class PrefsDebugTab private constructor() : DebugTab() {
          * @param context a context of the app.
          * @param files the files to show with a policy of their own.
          * @param discover whether to show the other files in the app's `shared_prefs` directory too.
-         * @param discoveredReadOnly whether the discovered files are read-only.
+         * @param discoveredReadOnly whether the discovered files are read-only;
+         *   Lustro's own file, `lustro_debug`, is read-only either way.
          * @throws IllegalArgumentException when two of [files] have the same name.
          *
          * No-op build: the tab keeps no context and opens no file. The names are

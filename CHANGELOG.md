@@ -22,7 +22,8 @@ see [DECISIONS.md](DECISIONS.md).
   `VISIBLE`, `MASK_SENSITIVE` (the default: the value of a key that looks
   like it holds a secret is left out), or `KEYS_ONLY`. With discovery on, the
   default, the tab also shows the other files in `shared_prefs`, masked by key
-  and read-only unless `discoveredReadOnly = false`. A file that has the
+  and read-only unless `discoveredReadOnly = false`; Lustro's own
+  `lustro_debug`, which holds the token, stays read-only. A file that has the
   keysets of `EncryptedSharedPreferences`, read by a plain instance, shows its
   keys only and is always read-only, so that no edit writes a plain value into
   it. `GET files` lists the files with their policies and cursors; `GET

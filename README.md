@@ -654,9 +654,10 @@ val lustro = Lustro.builder(application)
   the app's `shared_prefs` directory, such as the files of your libraries. It opens each one with
   `getSharedPreferences`, and the platform then keeps it in memory until the process ends. A
   discovered file is `MASK_SENSITIVE` and read-only, because an edit to a library's file can break
-  that library; `discoveredReadOnly = false` makes the discovered files writable. A file that has
-  the keysets of `EncryptedSharedPreferences`, read by a plain instance, shows its keys only and
-  is always read-only: an edit would write a plain value into the encrypted file.
+  that library; `discoveredReadOnly = false` makes the discovered files writable, except Lustro's
+  own `lustro_debug`, which holds the token. A file that has the keysets of
+  `EncryptedSharedPreferences`, read by a plain instance, shows its keys only and is always
+  read-only: an edit would write a plain value into the encrypted file.
 - **Live updates.** Each file has a cursor, which moves when a value changes, through the tab or
   through the app. The tab sees the app's changes with an `OnSharedPreferenceChangeListener` from
   `start()` to `stop()`, also while the app is in the background. Before API 30, `clear()` calls

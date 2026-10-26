@@ -85,7 +85,8 @@ public class PrefsDebugTab private constructor(private val registry: PrefsRegist
          *   `shared_prefs` directory too, such as the files of the app's
          *   libraries.
          * @param discoveredReadOnly whether the discovered files are read-only.
-         *   An edit to a library's file can break that library.
+         *   An edit to a library's file can break that library. Lustro's own
+         *   file, `lustro_debug`, which holds the token, is read-only either way.
          * @throws IllegalArgumentException when two of [files] have the same name.
          */
         @JvmStatic

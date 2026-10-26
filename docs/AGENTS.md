@@ -552,8 +552,9 @@ A wrong value is a `400` with `field: "value"`. An edit can give a key another t
 getter of the old type then throws `ClassCastException`. A masked value can still be written. All
 three mutations commit the file and move its cursor when they change it. A read-only file answers
 `403` with `code: "read_only"` and `field: "file"`: a file that the app registered with
-`readOnly = true`, a discovered file unless the app made them writable, and an encrypted file read
-plain. A `500` after a write means the disk write failed; the instance's memory holds the change.
+`readOnly = true`, a discovered file unless the app made them writable, Lustro's own
+`lustro_debug`, and an encrypted file read plain. A `500` after a write means the disk write
+failed; the instance's memory holds the change.
 
 **What moves a cursor.** The tab's own changes, at once, and the app's changes, through a
 listener, while Lustro is started. Before API 30, `clear()` calls no listener, so a clear by the

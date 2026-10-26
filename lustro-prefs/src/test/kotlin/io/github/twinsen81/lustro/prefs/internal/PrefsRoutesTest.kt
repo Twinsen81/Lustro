@@ -87,6 +87,15 @@ class PrefsRoutesTest {
     }
 
     @Test
+    fun `Lustro's own file stays read-only when discovered files are writable`() {
+        prefs("lustro_debug").edit().putString("lustro_token", "t0k3n").commit()
+        val routes = routes(discoveredReadOnly = false)
+        assertTrue(file(routes, "lustro_debug").getBoolean("readOnly"))
+        assertEquals(403, post(routes, "clear", """{"file":"lustro_debug","confirm":true}""").status)
+        assertEquals("t0k3n", prefs("lustro_debug").getString("lustro_token", null))
+    }
+
+    @Test
     fun `a discovered file that the app deletes and writes again is read from its new instance`() {
         val routes = routes(discoveredReadOnly = false)
         registry!!.start()

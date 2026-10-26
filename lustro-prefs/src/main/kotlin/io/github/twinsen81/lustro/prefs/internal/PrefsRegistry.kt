@@ -71,7 +71,7 @@ internal class PrefsRegistry(
         synchronized(lock) {
             val prefs = open(name)
             discovered[name]?.takeIf { it.prefs === prefs }
-                ?: PrefsSource(name, prefs, ValuePolicy.MASK_SENSITIVE, discoveredReadOnly, registered = false)
+                ?: PrefsSource(name, prefs, ValuePolicy.MASK_SENSITIVE, discoveredReadOnly || name == LUSTRO_FILE, registered = false)
                     .also { source ->
                         discovered.put(name, source)?.unlisten()
                         if (started) source.listen()
@@ -80,5 +80,9 @@ internal class PrefsRegistry(
 
     private companion object {
         const val XML = ".xml"
+
+        // Lustro's own file. The server checks its token on every request, so an edit
+        // or a clear of it would lock the client out.
+        const val LUSTRO_FILE = "lustro_debug"
     }
 }
