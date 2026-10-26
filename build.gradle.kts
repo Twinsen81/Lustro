@@ -79,6 +79,11 @@ facadeParity {
         noop = ":lustro-logs-noop",
         packages = listOf("io.github.twinsen81.lustro.logs"),
     )
+    pair(
+        runtime = ":lustro-prefs",
+        noop = ":lustro-prefs-noop",
+        packages = listOf("io.github.twinsen81.lustro.prefs"),
+    )
 }
 
 // Registers `checkDocsVersion`: the coordinates that README.md, llms.txt, and
