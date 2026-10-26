@@ -5,8 +5,9 @@ Realistic recorded responses for the Lustro HTTP wire protocol. They are the
 validate against these to prove they parse the exact shapes the server emits,
 and the fixtures themselves are validated against the JSON Schemas in the parent
 directory (`../*.schema.json`) and the OpenAPI components of the Network tab
-(`lustro/src/main/assets/lustro/network.openapi.json`) and the Logs tab
-(`lustro-logs/src/main/assets/lustro/logs.openapi.json`).
+(`lustro/src/main/assets/lustro/network.openapi.json`), the Logs tab
+(`lustro-logs/src/main/assets/lustro/logs.openapi.json`), and the Preferences
+tab (`lustro-prefs/src/main/assets/lustro/prefs.openapi.json`).
 
 These files are bundled into the `lustro-cli` wheel under
 `lustro_cli/wire/golden/`, so the installed CLI ships its own contract corpus
@@ -34,6 +35,10 @@ with no source checkout required.
 | `logs-reset.json` | `GET logs/entries` first poll (`status: reset`) | `stream-envelope.schema.json` + Logs OpenAPI `LogStreamEnvelope` |
 | `logs-delta.json` | `GET logs/entries` after new lines (`status: delta`) | `stream-envelope.schema.json` + Logs OpenAPI `LogStreamEnvelope` |
 | `logs-unchanged.json` | `GET logs/entries` no new line, capture paused (`status: unchanged`) | `stream-envelope.schema.json` + Logs OpenAPI `LogStreamEnvelope` |
+| `prefs-files.json` | `GET prefs/files` | Preferences OpenAPI `listPrefsFiles` 200 |
+| `prefs-reset.json` | `GET prefs/entries?file=settings` first poll (`status: reset`) | `cursor-envelope.schema.json` + Preferences OpenAPI `PrefsCursorEnvelope` |
+| `prefs-delta.json` | `GET prefs/entries?file=settings` after the app changed a value (`status: delta`) | `cursor-envelope.schema.json` + Preferences OpenAPI `PrefsCursorEnvelope` |
+| `prefs-unchanged.json` | `GET prefs/entries?file=settings` no change (`status: unchanged`) | `cursor-envelope.schema.json` + Preferences OpenAPI `PrefsCursorEnvelope` |
 
 ## Notes on the shapes
 
@@ -98,6 +103,19 @@ with no source checkout required.
   is a poll after `POST pause`: no new line, and `state.paused` is `true`. The
   fixtures model a device in UTC. A unit test in `:lustro-logs` checks that
   the route writes these fixtures, except the cursors, which are random.
+
+- **Preferences.** `prefs-files.json` lists four files: `settings` and
+  `session`, which the app registered, the second keys-only and read-only;
+  `sdk_cache`, which the tab found on disk, so it is masked and read-only; and
+  `secure_store`, a file with the keysets of `EncryptedSharedPreferences` that
+  a plain instance reads, so it is encrypted, keys-only, and read-only.
+  `prefs-reset.json` is the first poll of `settings`, a `mask_sensitive` file:
+  every entry, by key, one of each type, with `auth_token` masked.
+  `prefs-delta.json` is the next poll, after the app wrote `launch_count`: the
+  whole file again. `prefs-unchanged.json` is a poll with no change since. The
+  cursor of `settings` in the file list is the cursor of the first poll. A unit
+  test in `:lustro-prefs` checks that the routes write these fixtures, except
+  the cursors, which are random.
 
 When the server's emitted shapes change, update these fixtures in the same
 change that bumps the protocol version, and keep the schema validation green.

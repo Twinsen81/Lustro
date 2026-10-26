@@ -14,6 +14,39 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Added
 
+- **The Preferences plugin reads and edits the app's SharedPreferences.**
+  `lustro-prefs` and its release half `lustro-prefs-noop` add a tab,
+  registered with `PrefsDebugTab.create(context, files, discover,
+  discoveredReadOnly)`, under `/api/v1/prefs/`. The app registers its files
+  as `PrefsFile(name, prefs, policy, readOnly)`, where the value policy is
+  `VISIBLE`, `MASK_SENSITIVE` (the default: the value of a key that looks
+  like it holds a secret is left out), or `KEYS_ONLY`. With discovery on, the
+  default, the tab also shows the other files in `shared_prefs`, masked by key
+  and read-only unless `discoveredReadOnly = false`. A file that has the
+  keysets of `EncryptedSharedPreferences`, read by a plain instance, shows its
+  keys only and is always read-only, so that no edit writes a plain value into
+  it. `GET files` lists the files with their policies and cursors; `GET
+  entries?file=` polls a file in the cursor envelope, with each entry's `type`,
+  its `value` unless masked, and its size in `bytes`, and cuts a value at 4096
+  characters, with `truncated`; `GET entry?file=&key=` returns one value
+  whole. `POST edit` writes a typed value (`string`, `int`, `long`, `float`,
+  `boolean`, or `string_set` as a JSON array), `POST delete` removes a key, and
+  `POST clear` with `confirm: true` empties a file. They commit the file, so the
+  response shows what it holds, and answer an enveloped `403` with the code
+  `read_only` for a read-only file. A file's cursor moves with the tab's own
+  changes and, through an `OnSharedPreferenceChangeListener` from
+  `Lustro.start()` to `Lustro.stop()`, with the app's. Before API 30, a clear
+  by the app calls no listener, so it shows only with the next change. The tab
+  has no console view yet, so it stays out of the tab bar. Its schema,
+  `prefs.openapi.json`, has its own version, `1.0`. The sample registers one
+  visible file and one keys-only, read-only file, lets the tab find a third on
+  disk, and has a Preferences screen that shows the visible file live, with
+  buttons that change the files from the app. SECURITY.md says what a
+  decrypting `EncryptedSharedPreferences` and a LAN binding expose.
+- **`SensitiveKeys.isSensitive(name)` in `lustro-api`.** The key check of the
+  Network tab's default redactor is now public, so that a plugin tab, or a tab
+  of the app's own, masks the same names. `DefaultRedactor` uses it, with no
+  change to what it masks.
 - **The sample app has a home screen with one card per module.** Network,
   Logs, Feature flags, and Console each open a screen of their own; on the
   Network screen the 50 requests are chips in nine groups that open and close.
