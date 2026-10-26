@@ -87,6 +87,25 @@ class PrefsRoutesTest {
     }
 
     @Test
+    fun `a discovered file that the app deletes and writes again is read from its new instance`() {
+        val routes = routes(discoveredReadOnly = false)
+        registry!!.start()
+        val cursor = get(routes, "entries", "file" to "sdk_cache").getString("cursor")
+        assertTrue(app.deleteSharedPreferences("sdk_cache"))
+        prefs("sdk_cache").edit().putString("generation", "2").commit()
+
+        val reset = get(routes, "entries", "file" to "sdk_cache", "cursor" to cursor)
+        assertEquals("reset", reset.getString("status"))
+        assertEquals(listOf("generation"), keys(reset))
+
+        // An edit through the old instance would write the file's old values back over it.
+        assertEquals(200, post(routes, "edit", """{"file":"sdk_cache","key":"install_id","type":"string","value":"i-10"}""").status)
+        assertEquals(mapOf("generation" to "2", "install_id" to "i-10"), prefs("sdk_cache").all)
+        val onDisk = File(directory, "sdk_cache.xml").readText()
+        assertTrue(onDisk, "generation" in onDisk && "api_key" !in onDisk)
+    }
+
+    @Test
     fun `entries returns every entry by key, and nothing again until the file changes`() {
         val routes = routes(PrefsFile("settings", settings, ValuePolicy.VISIBLE))
         val reset = get(routes, "entries", "file" to "settings")

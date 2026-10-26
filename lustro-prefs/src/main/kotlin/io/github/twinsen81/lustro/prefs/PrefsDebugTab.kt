@@ -32,9 +32,11 @@ import java.io.File
  * with `Context.getSharedPreferences`, and the platform then keeps it in memory
  * until the process ends. A discovered file shows its values as
  * [ValuePolicy.MASK_SENSITIVE] does, and is read-only unless the app turns
- * that off. A file that has the keysets of `EncryptedSharedPreferences`, read
- * by a plain instance, shows its keys only and is always read-only: an edit
- * would write a plain value into the encrypted file.
+ * that off. When the app deletes a file with `Context.deleteSharedPreferences`
+ * and opens it again, the tab reads the new instance. A file that has the
+ * keysets of `EncryptedSharedPreferences`, read by a plain instance, shows its
+ * keys only and is always read-only: an edit would write a plain value into
+ * the encrypted file.
  *
  * Each file has a cursor, which moves when a value changes, through the tab or
  * through the app, so that a client polls a file and gets its entries again

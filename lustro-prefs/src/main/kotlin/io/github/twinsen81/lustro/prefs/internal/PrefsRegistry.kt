@@ -7,8 +7,8 @@ import java.io.File
 
 /**
  * The files of the Preferences tab: the registered ones, and, with a
- * [directory], the other files in it, which it opens with [open] the first
- * time it lists them. [open] returns the platform's instance of a file.
+ * [directory], the other files in it, which it opens with [open] each time
+ * it lists or finds them. [open] returns the platform's instance of a file.
  */
 internal class PrefsRegistry(
     files: List<PrefsFile>,
@@ -23,8 +23,8 @@ internal class PrefsRegistry(
 
     private val lock = Any()
 
-    // Guarded by lock. A discovered file stays here once opened, as the platform
-    // keeps its instance in memory, so that its sequence and epoch stay too.
+    // Guarded by lock. A discovered file stays here while the platform keeps the
+    // same instance of it, so that its sequence and epoch stay too.
     private val discovered = HashMap<String, PrefsSource>()
     private var started = false
 
@@ -63,12 +63,19 @@ internal class PrefsRegistry(
             .map { it.name.removeSuffix(XML) }
             .filter { it.isNotEmpty() && it !in registered }
 
+    // Context.deleteSharedPreferences drops the platform's instance, and the app then
+    // gets a new one. The old instance keeps what the file held before: the tab would
+    // show it, and an edit would write it back over the file. So a new instance gets a
+    // new source, whose new epoch makes a client read the file again.
     private fun discovered(name: String): PrefsSource =
         synchronized(lock) {
-            discovered.getOrPut(name) {
-                PrefsSource(name, open(name), ValuePolicy.MASK_SENSITIVE, discoveredReadOnly, registered = false)
-                    .also { if (started) it.listen() }
-            }
+            val prefs = open(name)
+            discovered[name]?.takeIf { it.prefs === prefs }
+                ?: PrefsSource(name, prefs, ValuePolicy.MASK_SENSITIVE, discoveredReadOnly, registered = false)
+                    .also { source ->
+                        discovered.put(name, source)?.unlisten()
+                        if (started) source.listen()
+                    }
         }
 
     private companion object {
