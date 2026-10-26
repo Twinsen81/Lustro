@@ -39,6 +39,17 @@ class PrefValuesTest {
     }
 
     @Test
+    fun `a whole number with a huge exponent is refused without writing out its digits`() {
+        val start = System.nanoTime()
+        rejects("long", "\"1e100000000\"", "\"-1e2147483647\"", "\"1e-100000000\"", "\"1e19\"")
+        rejects("int", "\"1e100000000\"")
+        assertTrue("took ${(System.nanoTime() - start) / 1_000_000} ms", System.nanoTime() - start < 1_000_000_000L)
+        assertEquals(0L, parse("long", "\"0e-100000000\""))
+        assertEquals(1_000_000_000_000_000_000L, parse("long", "\"1e18\""))
+        assertEquals(1L, parse("long", "\"100e-2\""))
+    }
+
+    @Test
     fun `a float is a finite number, or one of the names JSON has no number for`() {
         assertEquals(1.5f, parse("float", "1.5"))
         assertEquals(1.5f, parse("float", "\"1.5\""))

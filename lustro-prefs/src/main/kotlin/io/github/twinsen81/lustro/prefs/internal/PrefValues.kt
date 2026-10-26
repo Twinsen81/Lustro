@@ -48,6 +48,7 @@ internal object PrefValues {
     private const val LONG_BYTES = 8L
     private const val FLOAT_BYTES = 4L
     private const val BOOLEAN_BYTES = 1L
+    private const val LONG_DIGITS = 19
 
     private val NON_FINITE = mapOf("NaN" to Float.NaN, "Infinity" to Float.POSITIVE_INFINITY, "-Infinity" to Float.NEGATIVE_INFINITY)
 
@@ -177,12 +178,18 @@ internal object PrefValues {
                 else -> return null
             }
         // Through BigDecimal, so that 5.0 and 1e3 are whole, and a long past a double's precision stays exact.
+        val decimal = text.toBigDecimalOrNull() ?: return null
+        if (decimal.signum() == 0) return 0L
+        // The exact conversion writes out every digit, so a value such as 1e100000000 would take the
+        // app's CPU and heap. A long has at most 19 digits before the point, and a whole number has
+        // no more digits after it than the ones it was written with.
+        if (decimal.precision() - decimal.scale() > LONG_DIGITS || decimal.scale() > text.length) return null
         val whole =
             try {
-                text.toBigDecimalOrNull()?.toBigIntegerExact()
+                decimal.toBigIntegerExact()
             } catch (_: ArithmeticException) {
-                null
-            } ?: return null
+                return null
+            }
         return whole.takeIf { it >= BigInteger.valueOf(min) && it <= BigInteger.valueOf(max) }?.toLong()
     }
 
