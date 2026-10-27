@@ -763,8 +763,8 @@ Errors use the shared envelope; key statuses:
   read-only. `GET prefs/files` says which files are, and the app decides it in
   `PrefsDebugTab.create(...)`.
 - **`500` with `code: "open_failed"`** on a `sqlite/` route: the database did not open. The
-  message has the reason, such as a file that is not there yet, or the exception of the app's
-  function that returns the handle. `GET sqlite/databases` lists such a database with `error`.
+  message has the reason, such as a file that is not there yet, a handle that the app closed, or
+  the exception of the app's function that returns the handle. `GET sqlite/databases` lists such a database with `error`.
   **`500` with `code: "sqlite_error"`**: SQLite refused a statement, such as on a corrupt file or
   a view whose table is gone; the message is SQLite's.
 - **No log lines**: check `state.reader` in `GET logs/entries`: `failed` with `readerError` when

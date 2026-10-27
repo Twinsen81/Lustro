@@ -36,7 +36,7 @@ internal interface DbConnection : Closeable {
 internal class FrameworkSource(private val database: () -> SQLiteDatabase) : DbSource() {
     override val kind: String = "framework"
 
-    override fun open(): DbConnection = Live(database())
+    override fun open(): DbConnection = Live(database().also { check(it.isOpen) { CLOSED } })
 
     private class Live(private val db: SQLiteDatabase) : DbConnection {
         override val path: String? get() = filePath(db.path)
@@ -51,7 +51,7 @@ internal class FrameworkSource(private val database: () -> SQLiteDatabase) : DbS
 internal class SupportSource(private val database: () -> SupportSQLiteDatabase) : DbSource() {
     override val kind: String = "support"
 
-    override fun open(): DbConnection = Live(database())
+    override fun open(): DbConnection = Live(database().also { check(it.isOpen) { CLOSED } })
 
     private class Live(private val db: SupportSQLiteDatabase) : DbConnection {
         override val path: String? get() = filePath(db.path)
@@ -89,6 +89,9 @@ internal class FileSource(override val file: File) : DbSource() {
         val KEEP_FILES = DatabaseErrorHandler { }
     }
 }
+
+// A query on it would throw an IllegalStateException, which no route expects.
+private const val CLOSED = "the app closed the handle that it returns"
 
 // SQLiteDatabase names a database in memory ":memory:".
 private fun filePath(path: String?): String? = path?.takeUnless { it.isEmpty() || it == ":memory:" }

@@ -81,8 +81,16 @@ internal class DemoSqlite(context: Context, private val io: Executor) {
             } finally {
                 db.endTransaction()
             }
-            for (name in listOf(CATALOG_FILE, SDK_CACHE)) app.deleteDatabase(name)
-            seedFiles(app)
+            // In place, not by deleting the files: "Write for 10 s" can hold a connection to the
+            // catalog now, and SQLite would delete the -wal of a new file when that connection closes.
+            reseed(app.getDatabasePath(CATALOG_FILE), ::seedCatalog) { db ->
+                db.execSQL("DELETE FROM products")
+                insertProducts(db)
+            }
+            reseed(app.getDatabasePath(SDK_CACHE), ::seedSdkCache) { db ->
+                db.execSQL("DELETE FROM events")
+                insertEvents(db)
+            }
             done()
         }
 
@@ -191,15 +199,30 @@ internal class DemoSqlite(context: Context, private val io: Executor) {
             val db = SQLiteDatabase.openOrCreateDatabase(file, null)
             try {
                 db.enableWriteAheadLogging()
-                db.beginTransaction()
-                try {
-                    seed(db)
-                    db.setTransactionSuccessful()
-                } finally {
-                    db.endTransaction()
-                }
+                inTransaction(db, seed)
             } finally {
                 db.close()
+            }
+        }
+
+        // Writes the demo rows again in an existing file, or creates the file when it is not there.
+        private fun reseed(file: File, create: (SQLiteDatabase) -> Unit, rows: (SQLiteDatabase) -> Unit) {
+            if (!file.exists()) return createFile(file, create)
+            val db = SQLiteDatabase.openDatabase(file.path, null, SQLiteDatabase.OPEN_READWRITE or SQLiteDatabase.ENABLE_WRITE_AHEAD_LOGGING)
+            try {
+                inTransaction(db, rows)
+            } finally {
+                db.close()
+            }
+        }
+
+        private fun inTransaction(db: SQLiteDatabase, block: (SQLiteDatabase) -> Unit) {
+            db.beginTransaction()
+            try {
+                block(db)
+                db.setTransactionSuccessful()
+            } finally {
+                db.endTransaction()
             }
         }
 
@@ -252,21 +275,29 @@ internal class DemoSqlite(context: Context, private val io: Executor) {
 
         private fun seedCatalog(db: SQLiteDatabase) {
             db.execSQL("CREATE TABLE products (sku TEXT NOT NULL UNIQUE, name TEXT NOT NULL, price REAL NOT NULL, stock INTEGER NOT NULL)")
+            insertProducts(db)
+            db.version = 1
+        }
+
+        private fun insertProducts(db: SQLiteDatabase) {
             for (index in 1..PRODUCTS) {
                 db.execSQL(
                     "INSERT INTO products (sku, name, price, stock) VALUES (?, ?, ?, ?)",
                     arrayOf<Any>("SKU-%04d".format(index), "Product $index", index * 1.25, index % 40),
                 )
             }
-            db.version = 1
         }
 
         private fun seedSdkCache(db: SQLiteDatabase) {
             db.execSQL("CREATE TABLE events (id INTEGER PRIMARY KEY, name TEXT NOT NULL, payload TEXT, sent INTEGER NOT NULL DEFAULT 0)")
+            insertEvents(db)
+            db.version = 12
+        }
+
+        private fun insertEvents(db: SQLiteDatabase) {
             for (index in 1..30) {
                 db.execSQL("INSERT INTO events (name, payload) VALUES (?, ?)", arrayOf<Any>("screen_view", "{\"screen\":\"home\",\"n\":$index}"))
             }
-            db.version = 12
         }
 
         private fun count(db: SupportSQLiteDatabase, table: String): Long =

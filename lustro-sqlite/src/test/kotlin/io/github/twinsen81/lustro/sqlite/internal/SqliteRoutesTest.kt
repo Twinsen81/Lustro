@@ -92,11 +92,15 @@ class SqliteRoutesTest {
 
         val items = Fixtures.get(routes, "databases").json().getJSONArray("items")
 
-        assertTrue(items.getJSONObject(0).has("error"))
+        assertTrue(items.getJSONObject(0).getString("error").contains("closed"))
         assertTrue(items.getJSONObject(1).getString("error").contains("not ready"))
-        val tables = Fixtures.get(routes, "tables", "db" to "throws")
-        assertEquals(500, tables.status)
-        assertEquals("open_failed", tables.json().getString("code"))
+        for (db in listOf("closed", "throws")) {
+            for ((path, query) in listOf("tables" to emptyList(), "schema" to listOf("table" to "t"), "rows" to listOf("table" to "t"))) {
+                val response = Fixtures.get(routes, path, "db" to db, *query.toTypedArray())
+                assertEquals("$db $path", 500, response.status)
+                assertEquals("$db $path", "open_failed", response.json().getString("code"))
+            }
+        }
     }
 
     @Test
@@ -502,6 +506,7 @@ class SqliteRoutesTest {
     @Test
     fun `discovery asks about a file only when no registration stands for it, and never about a sidecar or a lock file`() {
         Fixtures.file(databases, "library.db")
+        Fixtures.file(databases, "other.db")
         Fixtures.file(databases, "registered-file.db")
         for (name in listOf("library.db-journal", "library.db-wal", "library.db-shm", "library.db-mj1A2B3C4D", "copy.lck", "sync.lock")) {
             File(databases, name).writeBytes(ByteArray(4096))
@@ -519,8 +524,12 @@ class SqliteRoutesTest {
         val names = registry.list().map { it.name }
 
         // app.db is the live handle's file: only the app's handle reads it.
-        assertEquals(listOf("library.db"), asked)
-        assertEquals(listOf("app", "named", "library.db"), names)
+        assertEquals(listOf("library.db", "other.db"), asked.sorted())
+        assertEquals(listOf("app", "named", "library.db", "other.db"), names)
+        // A request to one discovered database asks about its file only.
+        asked.clear()
+        assertEquals("other.db", registry.find("other.db")!!.name)
+        assertEquals(listOf("other.db"), asked)
     }
 
     @Test

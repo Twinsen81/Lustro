@@ -302,7 +302,7 @@ internal object DemoCatalog {
             DemoAction(
                 "Reset the demo databases",
                 chip = "Reset the data",
-                detail = "Writes the demo notes again, and the catalog and ${DemoSqlite.SDK_CACHE} files",
+                detail = "Writes the demo rows of the notes, the catalog, and ${DemoSqlite.SDK_CACHE} again",
                 badge = "⟲",
             ) { feedback ->
                 sqlite.reset({ feedback.ok("Wrote the demo databases again") }) { feedback.failed("Reset the data", it.message) }

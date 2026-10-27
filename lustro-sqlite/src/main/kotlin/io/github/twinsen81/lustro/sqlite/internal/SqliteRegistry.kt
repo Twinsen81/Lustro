@@ -34,12 +34,13 @@ internal class SqliteRegistry(
 
     fun list(): List<DbEntry> = registered + discovered()
 
-    fun find(name: String): DbEntry? = registered.firstOrNull { it.name == name } ?: discovered().firstOrNull { it.name == name }
+    fun find(name: String): DbEntry? = registered.firstOrNull { it.name == name } ?: discovered(name).firstOrNull()
 
-    private fun discovered(): List<DbEntry> {
+    // With a name, only the file of that name is asked about.
+    private fun discovered(name: String? = null): List<DbEntry> {
         val candidates =
             directory?.listFiles().orEmpty()
-                .filter { file -> file.isFile && !NOT_DATABASES.containsMatchIn(file.name) }
+                .filter { file -> file.isFile && (name == null || file.name == name) && !NOT_DATABASES.containsMatchIn(file.name) }
                 .map { it.absoluteFile.normalize() }
         if (candidates.isEmpty()) return emptyList()
         val names = registered.mapTo(HashSet()) { it.name }
@@ -59,7 +60,8 @@ internal class SqliteRegistry(
                 ?: try {
                     entry.source.open().use { it.path }?.let { File(it).absoluteFile.normalize() }
                 } catch (_: Exception) {
-                    // A database that does not open is not listed twice: the registration shows its error.
+                    // A handle that does not open names no file, so discovery can list its file too,
+                    // next to the registration, which shows the error.
                     null
                 }
         }
