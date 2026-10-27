@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import io.github.twinsen81.lustro.prefs.ValuePolicy
+import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -36,8 +37,7 @@ internal class DataStoreSource(
 
     // The data that the tab last saw, which stays from stop() to start(), so that a
     // change made between them moves the cursor when the tab listens again.
-    @Volatile
-    private var seen: Preferences? = null
+    private val seen = AtomicReference<Preferences?>(null)
 
     /**
      * Follows the store's data, which emits once now and again after each change.
@@ -64,8 +64,7 @@ internal class DataStoreSource(
         following =
             dataStore.data
                 .onEach { data ->
-                    val before = seen
-                    seen = data
+                    val before = seen.getAndSet(data)
                     if (before != null && before != data) changed()
                 }
                 // Without it, the failure would reach the app's uncaught exception handler.
@@ -80,19 +79,21 @@ internal class DataStoreSource(
             } catch (e: Exception) {
                 throw UnreadableFileException("Can't read the data store $name: $e", e)
             }
-        followAgain(data)
+        // The job starts to collect on another thread, so its first data can come after a change
+        // that the app made since this read. What a client was given is what the job compares
+        // with, until the job has data of its own.
+        seen.compareAndSet(null, data)
+        followAgain()
         return Contents(data.asMap().mapKeys { it.key.name }, encrypted = false, policy = policy, readOnly = readOnly)
     }
 
     // A store reads its file again after a failed read, such as an IOException or a migration
     // that threw, so a read can succeed after the store's data failed and ended the job. Without
-    // a new one, the app's changes would no longer move the cursor. The data that this read gave
-    // the client is what the new job compares with, when the job never saw any.
+    // a new one, the app's changes would no longer move the cursor.
     @Synchronized
-    private fun followAgain(data: Preferences) {
+    private fun followAgain() {
         val listening = scope ?: return
         if (following?.isActive == true) return
-        if (seen == null) seen = data
         follow(listening)
     }
 
