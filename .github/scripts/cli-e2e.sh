@@ -304,4 +304,41 @@ fi
 cat "$OUT/prefs-read-only.txt"
 grep -q "^error: 403 forbidden" "$OUT/prefs-read-only.txt"
 
+# The SQLite tab lists the sample's databases: the notes database through the
+# app's open handle, the catalog file, and the library-like file that discovery
+# finds. Pages follow the cursor, and a page reads each cell by its own type: a
+# long text is cut, a 3 MB blob is only its size, and a blob in a TEXT column
+# is a blob. A sort that is not a column is refused.
+step "lustro --json schema sqlite"
+lustro --json schema sqlite > "$OUT/schema-sqlite.json"
+check schema-sqlite < "$OUT/schema-sqlite.json"
+echo "matches the CLI's copy ($(wc -c < "$OUT/schema-sqlite.json") bytes)"
+
+adb shell am start -W --activity-single-top -n "$PACKAGE/.MainActivity" --es request "'Reset the demo databases'"
+sleep 3
+lustro_to sqlite-databases.json api GET sqlite/databases
+check sqlite-databases < "$OUT/sqlite-databases.json"
+
+lustro_to sqlite-tables.json api GET sqlite/tables --param db=notes
+check sqlite-tables < "$OUT/sqlite-tables.json"
+
+step "lustro api GET sqlite/rows: the first three pages of 500 notes"
+lustro --json api GET sqlite/rows --param db=notes --param table=notes --param limit=500 > "$OUT/sqlite-rows-1.json"
+next() { "$OUT/venv/bin/python" -c 'import json,sys; print(json.load(sys.stdin)["nextCursor"])' < "$1"; }
+lustro --json api GET sqlite/rows --param db=notes --param table=notes --param limit=500 --param "cursor=$(next "$OUT/sqlite-rows-1.json")" > "$OUT/sqlite-rows-2.json"
+lustro --json api GET sqlite/rows --param db=notes --param table=notes --param limit=500 --param "cursor=$(next "$OUT/sqlite-rows-2.json")" > "$OUT/sqlite-rows-3.json"
+check sqlite-rows-1 < "$OUT/sqlite-rows-1.json"
+check sqlite-rows-3 < "$OUT/sqlite-rows-3.json"
+
+lustro_to sqlite-imported.json --json api GET sqlite/rows --param db=notes --param table=notes --param "filter=Imported note"
+check sqlite-imported < "$OUT/sqlite-imported.json"
+
+step "lustro api GET sqlite/rows with a sort that is not a column"
+if lustro api GET sqlite/rows --param db=notes --param table=notes --param "sort=score; DROP TABLE notes" 2> "$OUT/sqlite-bad-sort.txt"; then
+  echo "error: the tab took the sort" >&2
+  exit 1
+fi
+cat "$OUT/sqlite-bad-sort.txt"
+grep -q "^error: 400 bad_request" "$OUT/sqlite-bad-sort.txt"
+
 step "The CLI end to end passed"

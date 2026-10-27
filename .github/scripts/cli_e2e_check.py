@@ -26,6 +26,7 @@ from lustro_cli import wire
 OPENAPI = wire.load_openapi()
 LOGS_OPENAPI = wire.load_openapi("logs")
 PREFS_OPENAPI = wire.load_openapi("prefs")
+SQLITE_OPENAPI = wire.load_openapi("sqlite")
 
 
 class CheckFailed(Exception):
@@ -171,6 +172,66 @@ def check_prefs_delta(text: str, reset: Any) -> None:
     expect(items["username"]["value"] == "e2e", "username {}".format(items["username"]))
     expected = before["launch_count"]["value"] + 1
     expect(items["launch_count"]["value"] == expected, "launch_count {}, not {}".format(items["launch_count"]["value"], expected))
+
+
+def check_schema_sqlite(text: str, rules: List[dict]) -> None:
+    expect(json.loads(text) == SQLITE_OPENAPI, "the app serves a SQLite schema that differs from the CLI's copy")
+
+
+def _sqlite(schema: Dict[str, Any]) -> Draft202012Validator:
+    return Draft202012Validator(dict(schema, components=SQLITE_OPENAPI["components"]))
+
+
+def _sqlite_route(route: str, text: str) -> Dict[str, Any]:
+    body = json.loads(text)
+    ok = SQLITE_OPENAPI["paths"]["/api/v1/sqlite/" + route]["get"]["responses"]["200"]
+    _sqlite(ok["content"]["application/json"]["schema"]).validate(body)
+    return body
+
+
+def check_sqlite_databases(text: str, rules: List[dict]) -> None:
+    """The two databases the sample registers come first, then the file that discovery finds."""
+    items = _sqlite_route("databases", text)["items"]
+    shapes = [(d["name"], d["registered"], d["source"], d["writable"], d["schemaVersion"]) for d in items]
+    expected = [
+        ("notes", True, "support", True, 3),
+        ("catalog", True, "file", False, 1),
+        ("sample_sdk_cache.db", False, "file", False, 12),
+    ]
+    expect(shapes == expected, "databases {}".format(shapes))
+
+
+def check_sqlite_tables(text: str, rules: List[dict]) -> None:
+    tables = {t["name"]: t for t in _sqlite_route("tables", text)["items"]}
+    expect(tables["notes"]["rowCount"] == 2001 and tables["notes"]["entity"] == "NoteEntity", "notes {}".format(tables.get("notes")))
+    expect(tables["pinned_notes"]["type"] == "view" and "rowCount" not in tables["pinned_notes"], "view {}".format(tables.get("pinned_notes")))
+    expect(tables["note_tags"]["hasRowId"] is False, "note_tags {}".format(tables.get("note_tags")))
+    expect(tables["android_metadata"]["internal"] and tables["sqlite_sequence"]["internal"], "internal flags")
+
+
+def _sqlite_rows(text: str) -> Dict[str, Any]:
+    return _sqlite_route("rows", text)
+
+
+def check_sqlite_rows_1(text: str, rules: List[dict]) -> None:
+    page = _sqlite_rows(text)
+    expect([row["rowid"] for row in page["items"]] == [str(i) for i in range(1, 501)], "the first page is notes 1 to 500")
+    expect(page["nextCursor"] is not None, "no nextCursor after the first page")
+    long = page["items"][99]["cells"]["body"]
+    expect(long.get("truncated") is True and len(long["value"]) == 4096 and long["length"] > 4096, "note 100's body {}".format(long.get("length")))
+
+
+def check_sqlite_rows_3(text: str, rules: List[dict]) -> None:
+    page = _sqlite_rows(text)
+    expect(page["items"][0]["rowid"] == "1001", "the third page starts at note {}".format(page["items"][0]["rowid"]))
+    attachment = page["items"][0]["cells"]["attachment"]
+    expect(attachment == {"type": "blob", "bytes": 3000000}, "note 1001's attachment {}".format(attachment))
+
+
+def check_sqlite_imported(text: str, rules: List[dict]) -> None:
+    items = _sqlite_rows(text)["items"]
+    expect(len(items) == 1, "{} rows match".format(len(items)))
+    expect(items[0]["cells"]["body"] == {"type": "blob", "bytes": 8}, "the imported body {}".format(items[0]["cells"]["body"]))
 
 
 def check_sync(text: str, rules: List[dict]) -> None:
@@ -338,6 +399,12 @@ CHECKS: Dict[str, Callable[[str, List[dict]], None]] = {
     "prefs-reset": check_prefs_reset,
     "prefs-edit": check_prefs_edit,
     "prefs-delta": check_prefs_delta,
+    "schema-sqlite": check_schema_sqlite,
+    "sqlite-databases": check_sqlite_databases,
+    "sqlite-tables": check_sqlite_tables,
+    "sqlite-rows-1": check_sqlite_rows_1,
+    "sqlite-rows-3": check_sqlite_rows_3,
+    "sqlite-imported": check_sqlite_imported,
     "sync": check_sync,
     "rules": check_rules,
     "list": check_list,
