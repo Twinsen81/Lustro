@@ -269,6 +269,46 @@ internal object DemoCatalog {
             },
         )
 
+    fun sqlite(sqlite: DemoSqlite): List<DemoAction> =
+        listOf(
+            DemoAction(
+                "Add a note",
+                detail = "Inserts a note into the ${DemoSqlite.NOTES} database through the app's open handle. Read the last page of notes again to see it",
+                badge = "+1",
+            ) { feedback ->
+                sqlite.addNote({ feedback.ok("Added note $it") }) { feedback.failed("Add a note", it.message) }
+            },
+            DemoAction(
+                "Write for 10 seconds",
+                chip = "Write for 10 s",
+                detail =
+                    "Adds a note and changes a product every 50 ms for 10 s. Page through the console meanwhile: " +
+                        "the slowest write shows whether a read held up the app",
+                badge = "10s",
+            ) { feedback ->
+                feedback.running("Writing for 10 s")
+                sqlite.writeForAWhile({ writes, slowest -> feedback.ok("$writes writes, the slowest took $slowest ms") }) {
+                    feedback.failed("Write for 10 s", it.message)
+                }
+            },
+            DemoAction(
+                "Restock the catalog",
+                chip = "Restock",
+                detail = "Changes ${DemoSqlite.CATALOG_FILE} through a connection of the app's own. The tab opens the file read-only for each request",
+                badge = "SKU",
+            ) { feedback ->
+                sqlite.restock({ feedback.ok("Restocked $it products") }) { feedback.failed("Restock the catalog", it.message) }
+            },
+            DemoAction(
+                "Reset the demo databases",
+                chip = "Reset the data",
+                detail = "Writes the demo notes again, and the catalog and ${DemoSqlite.SDK_CACHE} files",
+                badge = "⟲",
+            ) { feedback ->
+                sqlite.reset({ feedback.ok("Wrote the demo databases again") }) { feedback.failed("Reset the data", it.message) }
+            },
+        )
+
     fun prefs(prefs: DemoPrefs, dataStore: DemoDataStore): List<DemoAction> =
         listOf(
             DemoAction(

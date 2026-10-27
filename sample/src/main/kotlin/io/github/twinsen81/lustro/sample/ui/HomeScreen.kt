@@ -40,6 +40,7 @@ internal fun HomeScreen(viewModel: SampleViewModel, flags: List<SampleFlag>?, la
     val ticker by viewModel.ticker.collectAsState()
     val serverRunning by viewModel.serverRunning.collectAsState()
     val prefsKeys by viewModel.prefsValues.collectAsState()
+    val sqliteCounts by viewModel.sqliteCounts.collectAsState()
     val networkCount = viewModel.network.sumOf { it.actions.size }
     val modules = if (flags != null) MODULES_WITH_FLAGS else MODULES
 
@@ -86,6 +87,17 @@ internal fun HomeScreen(viewModel: SampleViewModel, flags: List<SampleFlag>?, la
             MetaText("${prefsKeys.size} keys in ${DemoPrefs.SETTINGS}")
             MetaText("·", palette.textFaint)
             MetaText("${viewModel.prefsActions.size} actions")
+        }
+        ModuleCard(
+            SampleIcons.Database,
+            Tone.VIOLET,
+            "SQLite",
+            "Databases, tables and rows, browsed from the console",
+            onClick = { onOpen(Screen.SQLITE) },
+        ) {
+            MetaText(sqliteCounts?.let { "${it.first} notes" } ?: "Opening…")
+            MetaText("·", palette.textFaint)
+            MetaText("${viewModel.sqliteActions.size} actions")
         }
         if (flags != null) {
             ModuleCard(SampleIcons.Flag, Tone.ORANGE, "Feature flags", "Change this app from the browser console", onClick = { onOpen(Screen.FLAGS) }) {
@@ -148,5 +160,5 @@ private fun ConsoleStrip(viewModel: SampleViewModel, running: Boolean, latest: M
     }
 }
 
-private const val MODULES = 4
-private const val MODULES_WITH_FLAGS = 5
+private const val MODULES = 5
+private const val MODULES_WITH_FLAGS = 6

@@ -49,8 +49,8 @@ android {
 
     // `baseline` is the app without Lustro, the control that
     // checkLustroKeepsAppVersions compares against. `withLustro` adds `lustro`,
-    // `lustro-logs`, and `lustro-prefs` to debug and their no-op halves to
-    // release, as README.md tells an app to.
+    // `lustro-logs`, `lustro-prefs`, and `lustro-sqlite` to debug and their no-op
+    // halves to release, as README.md tells an app to.
     flavorDimensions += "lustro"
     productFlavors {
         create("baseline") { dimension = "lustro" }
@@ -73,18 +73,20 @@ kotlin {
 
 // AGP creates the flavor-and-build-type configurations only once the variants
 // exist, so the Lustro artifacts are added when theirs appear: the runtime and the
-// Logs and Preferences plugins in debug, and their no-op halves in release.
+// Logs, Preferences, and SQLite plugins in debug, and their no-op halves in release.
 configurations.configureEach {
     when (name) {
         "withLustroDebugImplementation" -> {
             dependencies.add(project.dependencies.create("io.github.twinsen81:lustro:$lustroVersion"))
             dependencies.add(project.dependencies.create("io.github.twinsen81:lustro-logs:$lustroVersion"))
             dependencies.add(project.dependencies.create("io.github.twinsen81:lustro-prefs:$lustroVersion"))
+            dependencies.add(project.dependencies.create("io.github.twinsen81:lustro-sqlite:$lustroVersion"))
         }
         "withLustroReleaseImplementation" -> {
             dependencies.add(project.dependencies.create("io.github.twinsen81:lustro-noop:$lustroVersion"))
             dependencies.add(project.dependencies.create("io.github.twinsen81:lustro-logs-noop:$lustroVersion"))
             dependencies.add(project.dependencies.create("io.github.twinsen81:lustro-prefs-noop:$lustroVersion"))
+            dependencies.add(project.dependencies.create("io.github.twinsen81:lustro-sqlite-noop:$lustroVersion"))
         }
     }
 }

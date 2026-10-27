@@ -88,12 +88,18 @@ dependencies {
     // The Preferences plugin pair, split the same way.
     debugImplementation(project(":lustro-prefs"))
     releaseImplementation(project(":lustro-prefs-noop"))
+    // The SQLite plugin pair, split the same way.
+    debugImplementation(project(":lustro-sqlite"))
+    releaseImplementation(project(":lustro-sqlite-noop"))
 
     // A mainstream HTTP client whose default transport is java.net.HttpURLConnection
     // (not OkHttp). The demo fires a request through it to show that platform-HTTP
     // capture picks up traffic that never touches the app's OkHttpClient.
     implementation(libs.volley)
     implementation(libs.datastore.preferences)
+    // The demo notes database is opened through the SupportSQLiteOpenHelper that Room
+    // uses, so the SQLite tab reads it as it reads a Room database.
+    implementation(libs.sqlite.framework)
 
     // The sample's own UI. Lustro does not need Compose.
     implementation(platform(libs.compose.bom))

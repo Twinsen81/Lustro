@@ -13,6 +13,9 @@ import io.github.twinsen81.lustro.prefs.PrefsDataStore
 import io.github.twinsen81.lustro.prefs.PrefsDebugTab
 import io.github.twinsen81.lustro.prefs.PrefsFile
 import io.github.twinsen81.lustro.prefs.ValuePolicy
+import io.github.twinsen81.lustro.sqlite.SqliteDb
+import io.github.twinsen81.lustro.sqlite.SqliteDebugTab
+import io.github.twinsen81.lustro.sqlite.TableHint
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import kotlinx.coroutines.flow.StateFlow
@@ -31,8 +34,9 @@ import okhttp3.WebSocket
  * ever drift from the real `:lustro` runtime, ONE of the two variants fails to
  * compile. The release variant registers NO custom tab — [SampleFlagsTab] is a
  * debug-only `DebugTab` and does not exist in this source set. It registers the
- * no-op [LogsDebugTab] from `:lustro-logs-noop` and the no-op [PrefsDebugTab]
- * from `:lustro-prefs-noop`, which checks the plugin pairs' facades the same way. Everything here
+ * no-op [LogsDebugTab] from `:lustro-logs-noop`, the no-op [PrefsDebugTab]
+ * from `:lustro-prefs-noop`, and the no-op [SqliteDebugTab] from
+ * `:lustro-sqlite-noop`, which checks the plugin pairs' facades the same way. Everything here
  * is a no-op at runtime: nothing binds, nothing is captured, and
  * [Lustro.networkInterceptor] returns a pass-through interceptor.
  */
@@ -90,6 +94,22 @@ public object LustroBootstrap {
                                 ),
                             ),
                         dataStores = listOf(PrefsDataStore(DemoDataStore.APP_STATE, DemoDataStore.appState(app))),
+                    ),
+                )
+                // The no-op half of :lustro-sqlite, with the same databases as the
+                // debug bootstrap's: it opens none of them, and never calls the supplier.
+                .addTab(
+                    SqliteDebugTab.create(
+                        databases =
+                            listOf(
+                                SqliteDb.support(
+                                    DemoSqlite.NOTES,
+                                    writable = true,
+                                    tableHints = DemoSqlite.NOTES_HINTS.mapValues { (_, hint) -> TableHint(hint.first, hint.second) },
+                                ) { DemoSqlite.notes(app).writableDatabase },
+                                SqliteDb.file(DemoSqlite.CATALOG, app.getDatabasePath(DemoSqlite.CATALOG_FILE)),
+                            ),
+                        discoverFrom = app,
                     ),
                 )
                 .build()

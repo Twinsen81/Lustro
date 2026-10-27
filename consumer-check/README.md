@@ -14,12 +14,14 @@ floor that moves up there makes this build fail until the floor is a decision.
 
 ## What it checks
 
-- `assembleWithLustroDebug` builds the app with `lustro` and the Logs and
-  Preferences plugins, `lustro-logs` and `lustro-prefs`, which runs AGP's AAR
-  metadata check (`compileSdk`), and compiles the app's Kotlin against the
-  artifacts' metadata with the floor's compiler.
+- `assembleWithLustroDebug` builds the app with `lustro` and the Logs,
+  Preferences, and SQLite plugins, `lustro-logs`, `lustro-prefs`, and
+  `lustro-sqlite`, which runs AGP's AAR metadata check (`compileSdk`), and
+  compiles the app's Kotlin against the artifacts' metadata with the floor's
+  compiler. The app has no `androidx.sqlite`, which the SQLite plugin needs only
+  for a `SupportSQLiteDatabase`.
 - `assembleWithLustroRelease` builds it with `lustro-noop`, `lustro-logs-noop`,
-  `lustro-prefs-noop`, and R8.
+  `lustro-prefs-noop`, `lustro-sqlite-noop`, and R8.
 - `checkLustroKeepsAppVersions` resolves the compile and runtime classpaths of
   each `withLustro` variant and of the `baseline` flavor, the same app without
   Lustro, and fails on any module that is in both at different versions. It

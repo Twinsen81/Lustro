@@ -14,6 +14,9 @@ import io.github.twinsen81.lustro.prefs.PrefsDataStore
 import io.github.twinsen81.lustro.prefs.PrefsDebugTab
 import io.github.twinsen81.lustro.prefs.PrefsFile
 import io.github.twinsen81.lustro.prefs.ValuePolicy
+import io.github.twinsen81.lustro.sqlite.SqliteDb
+import io.github.twinsen81.lustro.sqlite.SqliteDebugTab
+import io.github.twinsen81.lustro.sqlite.TableHint
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import kotlinx.coroutines.flow.StateFlow
@@ -24,8 +27,8 @@ import okhttp3.WebSocket
  *
  * This file lives in `src/debug` and compiles against the REAL `:lustro`
  * runtime. It owns ALL Lustro registration for the sample: building [Lustro],
- * registering the built-in [NetworkDebugTab], the [LogsDebugTab] and
- * [PrefsDebugTab] plugins, and the app's custom [SampleFlagsTab], starting the
+ * registering the built-in [NetworkDebugTab], the [LogsDebugTab],
+ * [PrefsDebugTab], and [SqliteDebugTab] plugins, and the app's custom [SampleFlagsTab], starting the
  * server, and exposing the [networkInterceptor] for the app's OkHttp client.
  *
  * Because every Lustro/[io.github.twinsen81.lustro.DebugTab] reference is
@@ -129,6 +132,12 @@ public object LustroBootstrap {
                         dataStores = listOf(PrefsDataStore(DemoDataStore.APP_STATE, DemoDataStore.appState(app))),
                     ),
                 )
+                // The app's SQLite databases, from :lustro-sqlite: the notes database
+                // through the app's open handle, writable, with hints; the catalog as a
+                // file that the tab opens read-only; and, with discovery, the other
+                // database files on disk. The release bootstrap registers the no-op half
+                // from :lustro-sqlite-noop.
+                .addTab(sqliteTab(app))
                 // Custom, schema-backed tab. It is debug-only: it never appears in
                 // src/release, so the no-op variant has no Feature Flags tab.
                 .addTab(flags)
@@ -219,6 +228,20 @@ public object LustroBootstrap {
                     "A call to ${SampleCaptureFilter.ANALYTICS_HOST}. The capture filter skips this host. " +
                         "The host does not exist, so the call also fails.",
             ),
+        )
+
+    private fun sqliteTab(app: Application): SqliteDebugTab =
+        SqliteDebugTab.create(
+            databases =
+                listOf(
+                    SqliteDb.support(
+                        DemoSqlite.NOTES,
+                        writable = true,
+                        tableHints = DemoSqlite.NOTES_HINTS.mapValues { (_, hint) -> TableHint(hint.first, hint.second) },
+                    ) { DemoSqlite.notes(app).writableDatabase },
+                    SqliteDb.file(DemoSqlite.CATALOG, app.getDatabasePath(DemoSqlite.CATALOG_FILE)),
+                ),
+            discoverFrom = app,
         )
 
     private fun status(base: String, code: Int, meaning: String): DemoRequestSpec =
