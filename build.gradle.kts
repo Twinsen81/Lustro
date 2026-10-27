@@ -84,6 +84,11 @@ facadeParity {
         noop = ":lustro-prefs-noop",
         packages = listOf("io.github.twinsen81.lustro.prefs"),
     )
+    pair(
+        runtime = ":lustro-sqlite",
+        noop = ":lustro-sqlite-noop",
+        packages = listOf("io.github.twinsen81.lustro.sqlite"),
+    )
 }
 
 // Registers `checkDocsVersion`: the coordinates that README.md, llms.txt, and

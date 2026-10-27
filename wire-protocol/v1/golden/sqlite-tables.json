@@ -1,0 +1,57 @@
+{
+  "database": "app",
+  "writable": true,
+  "items": [
+    {
+      "name": "android_metadata",
+      "type": "table",
+      "internal": true,
+      "hasRowId": true,
+      "rowCount": 1
+    },
+    {
+      "name": "folders",
+      "type": "table",
+      "internal": false,
+      "hasRowId": true,
+      "rowCount": 1,
+      "entity": "FolderEntity"
+    },
+    {
+      "name": "note_tags",
+      "type": "table",
+      "internal": false,
+      "hasRowId": false,
+      "rowCount": 2
+    },
+    {
+      "name": "notes",
+      "type": "table",
+      "internal": false,
+      "hasRowId": true,
+      "rowCount": 4,
+      "entity": "NoteEntity",
+      "purpose": "A note that the user wrote, in a folder."
+    },
+    {
+      "name": "recent_notes",
+      "type": "view",
+      "internal": false,
+      "hasRowId": false
+    },
+    {
+      "name": "room_master_table",
+      "type": "table",
+      "internal": true,
+      "hasRowId": true,
+      "rowCount": 1
+    },
+    {
+      "name": "sqlite_sequence",
+      "type": "table",
+      "internal": true,
+      "hasRowId": true,
+      "rowCount": 2
+    }
+  ]
+}
