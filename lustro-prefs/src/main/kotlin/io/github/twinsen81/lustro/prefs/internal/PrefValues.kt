@@ -2,9 +2,15 @@ package io.github.twinsen81.lustro.prefs.internal
 
 import io.github.twinsen81.lustro.escapeForJson
 import java.math.BigInteger
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 import org.json.JSONArray
 
-/** The types a SharedPreferences value can have, by their names on the wire. */
+/**
+ * The types a value can have, by their names on the wire: the types of the
+ * SharedPreferences getters, and the double and the byte array of a
+ * Preferences DataStore.
+ */
 internal enum class PrefType(val wireName: String) {
     STRING("string"),
     INT("int"),
@@ -12,15 +18,14 @@ internal enum class PrefType(val wireName: String) {
     FLOAT("float"),
     BOOLEAN("boolean"),
     STRING_SET("string_set"),
+    DOUBLE("double"),
+    BYTES("bytes"),
 
-    /** A value that no SharedPreferences getter returns, which only a custom implementation can hold. */
+    /** A value that neither store returns, which only a custom SharedPreferences implementation can hold. */
     UNKNOWN("unknown"),
     ;
 
     companion object {
-        /** The types that `POST edit` writes. */
-        val EDITABLE: List<PrefType> = entries.filter { it != UNKNOWN }
-
         fun of(value: Any?): PrefType =
             when (value) {
                 is String -> STRING
@@ -29,10 +34,13 @@ internal enum class PrefType(val wireName: String) {
                 is Float -> FLOAT
                 is Boolean -> BOOLEAN
                 is Set<*> -> if (value.all { it is String }) STRING_SET else UNKNOWN
+                is Double -> DOUBLE
+                is ByteArray -> BYTES
                 else -> UNKNOWN
             }
 
-        fun forWireName(name: String): PrefType? = EDITABLE.firstOrNull { it.wireName == name }
+        /** The type named [name], which may still be one that a store can't write. */
+        fun forWireName(name: String): PrefType? = entries.firstOrNull { it.wireName == name && it != UNKNOWN }
     }
 }
 
@@ -41,16 +49,26 @@ internal class BadValueException(message: String) : Exception(message)
 
 /** How the Preferences routes write values to JSON and read them from it. */
 internal object PrefValues {
-    /** The most characters of a value that `GET entries` writes; a set counts the characters of all its strings. */
+    /**
+     * The most characters of a value that `GET entries` writes; a set counts the
+     * characters of all its strings, and a byte array those of its base64.
+     */
     const val MAX_VALUE_CHARS: Int = 4096
 
     private const val INT_BYTES = 4L
     private const val LONG_BYTES = 8L
     private const val FLOAT_BYTES = 4L
+    private const val DOUBLE_BYTES = 8L
     private const val BOOLEAN_BYTES = 1L
     private const val LONG_DIGITS = 19
 
-    private val NON_FINITE = mapOf("NaN" to Float.NaN, "Infinity" to Float.POSITIVE_INFINITY, "-Infinity" to Float.NEGATIVE_INFINITY)
+    // A base64 quantum: 4 characters for 3 bytes.
+    private const val BASE64_CHARS = 4
+
+    private val NON_FINITE = mapOf("NaN" to Double.NaN, "Infinity" to Double.POSITIVE_INFINITY, "-Infinity" to Double.NEGATIVE_INFINITY)
+
+    @OptIn(ExperimentalEncodingApi::class)
+    private val BASE64 = Base64.Default
 
     /**
      * Writes the item of [key]: its type, its value unless [masked], and its size.
@@ -72,7 +90,7 @@ internal object PrefValues {
 
     /**
      * The size of [value]: a string's UTF-8 bytes, the sum of those of a set's
-     * strings, and the size of a number or a boolean in memory.
+     * strings, a byte array's length, and the size of a number or a boolean in memory.
      */
     fun bytes(value: Any?): Long =
         when (value) {
@@ -81,16 +99,23 @@ internal object PrefValues {
             is Int -> INT_BYTES
             is Long -> LONG_BYTES
             is Float -> FLOAT_BYTES
+            is Double -> DOUBLE_BYTES
             is Boolean -> BOOLEAN_BYTES
             is Set<*> -> value.sumOf { utf8Length(it.toString()) }
+            is ByteArray -> value.size.toLong()
             else -> utf8Length(value.toString())
         }
 
+    /** Whether a write of [value] over [before] leaves the file as it was. */
+    fun same(before: Any?, value: Any?): Boolean =
+        if (before is ByteArray && value is ByteArray) before.contentEquals(value) else before == value
+
     /**
      * Reads [raw], the `value` of an edit, as a value of [type]. A number or a
-     * boolean can also come as a string, as a text field holds it; a float can
-     * also be `"NaN"`, `"Infinity"`, or `"-Infinity"`, which JSON has no number
-     * for. A string set is a JSON array of strings.
+     * boolean can also come as a string, as a text field holds it; a float and a
+     * double can also be `"NaN"`, `"Infinity"`, or `"-Infinity"`, which JSON has
+     * no number for. A string set is a JSON array of strings, and a byte array
+     * a base64 string.
      *
      * @throws BadValueException when [raw] isn't a value of [type].
      */
@@ -106,6 +131,9 @@ internal object PrefValues {
             PrefType.FLOAT ->
                 float(raw)
                     ?: throw BadValueException("value must be a number in the range of a float, or \"NaN\", \"Infinity\", or \"-Infinity\", for type float")
+            PrefType.DOUBLE ->
+                double(raw)
+                    ?: throw BadValueException("value must be a number in the range of a double, or \"NaN\", \"Infinity\", or \"-Infinity\", for type double")
             PrefType.BOOLEAN ->
                 when {
                     raw is Boolean -> raw
@@ -114,6 +142,7 @@ internal object PrefValues {
                     else -> throw BadValueException("value must be true or false for type boolean")
                 }
             PrefType.STRING_SET -> stringSet(raw)
+            PrefType.BYTES -> byteArray(raw)
             PrefType.UNKNOWN -> throw BadValueException("type unknown can't be written")
         }
 
@@ -124,15 +153,25 @@ internal object PrefValues {
                 append(value)
                 false
             }
-            PrefType.FLOAT -> {
-                val number = value as Float
+            PrefType.FLOAT, PrefType.DOUBLE -> {
+                val number = (value as Number).toDouble()
                 // JSON has no number for these, so they go as the strings that edit takes back.
-                if (number.isFinite()) append(number) else append('"').append(number).append('"')
+                if (number.isFinite()) append(value) else append('"').append(value).append('"')
                 false
             }
             PrefType.STRING_SET -> appendStringSet(value as Set<*>, maxChars)
+            PrefType.BYTES -> appendCappedBase64(value as ByteArray, maxChars)
             PrefType.STRING, PrefType.UNKNOWN -> appendCappedString(value.toString(), maxChars)
         }
+
+    // Cut at a whole quantum, so that what the client gets still decodes.
+    @OptIn(ExperimentalEncodingApi::class)
+    private fun StringBuilder.appendCappedBase64(value: ByteArray, maxChars: Int): Boolean {
+        val text = BASE64.encode(value)
+        val end = if (text.length <= maxChars) text.length else maxChars - maxChars % BASE64_CHARS
+        append('"').append(text, 0, end).append('"')
+        return end < text.length
+    }
 
     private fun StringBuilder.appendCappedString(text: String, maxChars: Int): Boolean {
         val end = cut(text, maxChars)
@@ -195,11 +234,28 @@ internal object PrefValues {
 
     private fun float(raw: Any): Float? =
         when (raw) {
-            is String -> raw.trim().let { text -> NON_FINITE[text] ?: text.toFloatOrNull()?.takeIf { it.isFinite() } }
+            is String -> raw.trim().let { text -> NON_FINITE[text]?.toFloat() ?: text.toFloatOrNull()?.takeIf { it.isFinite() } }
             // A number past the range of a float turns into an infinity.
             is Number -> raw.toFloat().takeIf { it.isFinite() }
             else -> null
         }
+
+    private fun double(raw: Any): Double? =
+        when (raw) {
+            is String -> raw.trim().let { text -> NON_FINITE[text] ?: text.toDoubleOrNull()?.takeIf { it.isFinite() } }
+            is Number -> raw.toDouble().takeIf { it.isFinite() }
+            else -> null
+        }
+
+    @OptIn(ExperimentalEncodingApi::class)
+    private fun byteArray(raw: Any): ByteArray {
+        val text = raw as? String ?: throw BadValueException("value must be a base64 string for type bytes")
+        return try {
+            BASE64.decode(text.filterNot { it.isWhitespace() })
+        } catch (_: IllegalArgumentException) {
+            throw BadValueException("value must be base64, such as \"AAEC/w==\", for type bytes")
+        }
+    }
 
     private fun stringSet(raw: Any): Set<String> {
         val array = raw as? JSONArray ?: throw BadValueException("value must be a JSON array of strings for type string_set")

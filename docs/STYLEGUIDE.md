@@ -50,8 +50,9 @@ Defined on `:root` (dark default) with light overrides under
 - **Semantic sets** (each themed for dark and light): `--method-get/post/put/
   patch/delete/head`, `--status-2xx/3xx/4xx/5xx`, `--lvl-v/d/i/w/e/f` (a
   log level; Fatal, `--lvl-f`, is a deeper red than Error),
-  `--type-string/boolean/int/long/float` (a SharedPreferences value's type; a
-  string set has the string color, and its label tells the two apart),
+  `--type-string/boolean/int/long/float` (a SharedPreferences or DataStore
+  value's type; a string set and bytes have the string color, and a double the
+  float color: their labels tell them apart),
   `--cat-sync/ai/config/media/auth/
   other/wiretap`, `--syn-key/str/num/bool/punc` (JSON highlighting).
 - **Row states**: `--row-selected`, `--row-zebra`, `--row-hover`, `--row-warn`,

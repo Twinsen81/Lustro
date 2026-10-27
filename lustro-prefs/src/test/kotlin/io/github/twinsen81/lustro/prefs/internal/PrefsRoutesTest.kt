@@ -262,7 +262,7 @@ class PrefsRoutesTest {
     @Test
     fun `an encrypted file read plain shows keys only and is read-only, even when registered writable`() {
         val raw = prefs("secure")
-        raw.edit().putString(PrefsSource.KEYSET_KEYS[0], "keyset").putString(PrefsSource.KEYSET_KEYS[1], "keyset").putString("AT3jx9", "AV9b").commit()
+        raw.edit().putString(SharedPrefsSource.KEYSET_KEYS[0], "keyset").putString(SharedPrefsSource.KEYSET_KEYS[1], "keyset").putString("AT3jx9", "AV9b").commit()
         val routes = routes(PrefsFile("secure", raw, ValuePolicy.VISIBLE))
         val file = file(routes, "secure")
         assertTrue(file.getBoolean("encrypted"))

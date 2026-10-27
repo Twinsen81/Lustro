@@ -24,6 +24,12 @@ nanohttpd = "2.3.1"
 androidxLifecycle = "2.4.1"
 # compileOnly in :lustro-api (CLASS-retention annotations), so not published.
 androidxAnnotation = "1.11.0"
+# compileOnly in :lustro-prefs and :lustro-prefs-noop, so not published: an app
+# that registers a Preferences DataStore brings its own. The oldest DataStore
+# release, and the coroutines that it depends on, so that every call the tab
+# makes exists in any app that has DataStore.
+datastoreFloor = "1.0.0"
+coroutinesFloor = "1.5.0"
 
 # Sample app only.
 volley = "1.2.1"
@@ -32,6 +38,9 @@ volley = "1.2.1"
 # holds them here.
 composeBom = "2025.07.00"
 activityCompose = "1.10.1"
+# The sample's Preferences DataStore. The prefs unit tests use it too, for the
+# byte array values that DataStore 1.1 added.
+datastore = "1.1.7"
 
 # Build / publishing tooling.
 detekt = "1.23.8"
@@ -54,6 +63,9 @@ okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhtt
 nanohttpd = { group = "org.nanohttpd", name = "nanohttpd", version.ref = "nanohttpd" }
 androidx-annotation = { group = "androidx.annotation", name = "annotation", version.ref = "androidxAnnotation" }
 androidx-lifecycle-process = { group = "androidx.lifecycle", name = "lifecycle-process", version.ref = "androidxLifecycle" }
+datastore-core-floor = { group = "androidx.datastore", name = "datastore-core", version.ref = "datastoreFloor" }
+datastore-preferences-core-floor = { group = "androidx.datastore", name = "datastore-preferences-core", version.ref = "datastoreFloor" }
+kotlinx-coroutines-core-floor = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "coroutinesFloor" }
 
 # Sample app only.
 volley = { group = "com.android.volley", name = "volley", version.ref = "volley" }
@@ -61,6 +73,8 @@ compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = 
 compose-foundation = { group = "androidx.compose.foundation", name = "foundation" }
 compose-material3 = { group = "androidx.compose.material3", name = "material3" }
 activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
+datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore" }
+datastore-preferences-core = { group = "androidx.datastore", name = "datastore-preferences-core", version.ref = "datastore" }
 
 # Test.
 okhttp-mockwebserver = { group = "com.squareup.okhttp3", name = "mockwebserver", version.ref = "okhttp" }

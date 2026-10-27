@@ -58,6 +58,7 @@ public class SampleApplication : Application() {
         Log.i("LustroSample", "Application.onCreate, before Lustro starts")
         // The demo files of the Preferences tab, on disk before the console lists them.
         DemoPrefs.seed(this)
+        DemoDataStore.seed(this)
         val interceptor = LustroBootstrap.start(this) { httpClient }
 
         httpClient = OkHttpClient.Builder().addInterceptor(interceptor).build()

@@ -88,7 +88,8 @@ keeps your newer one.
 | Kotlin | 2.0 | The artifacts carry Kotlin 2.0 metadata and need `kotlin-stdlib` 2.0.21 or newer. |
 | OkHttp | 4.12.0 | 4.x or 5.x. CI runs Lustro's tests against OkHttp 5 as well. |
 | `androidx.lifecycle` | 2.4.1 | `lifecycle-process` only, and only in `lustro`. |
-| `kotlinx.coroutines` | none | Lustro has no coroutines dependency. |
+| `kotlinx.coroutines` | none | Lustro has no coroutines dependency. `lustro-prefs` calls the app's own coroutines only for a registered DataStore. |
+| `androidx.datastore` | none | `compileOnly` in `lustro-prefs` and `lustro-prefs-noop`. A registered `PrefsDataStore` needs DataStore 1.0, and a `bytes` value 1.1. |
 
 `lustro` also brings NanoHTTPD 2.3.1, its embedded server. CI builds a small app in
 [`consumer-check/`](consumer-check/) with exactly these versions, and again on a current
@@ -613,9 +614,9 @@ val lustro = Lustro.builder(application)
 
 ## Preferences
 
-The Preferences plugin reads and edits your app's SharedPreferences files over the API, and a
-poll sees the changes that the app makes. It is a pair of artifacts, split by variant as `lustro`
-is:
+The Preferences plugin reads and edits your app's SharedPreferences files and Preferences
+DataStores over the API, and a poll sees the changes that the app makes. It is a pair of
+artifacts, split by variant as `lustro` is:
 
 ```toml
 lustro-prefs      = { group = "io.github.twinsen81", name = "lustro-prefs",      version.ref = "lustro" }
@@ -637,6 +638,7 @@ val lustro = Lustro.builder(application)
                 PrefsFile("settings", settingsPrefs, ValuePolicy.VISIBLE),
                 PrefsFile("session", encryptedPrefs, ValuePolicy.KEYS_ONLY, readOnly = true),
             ),
+            dataStores = listOf(PrefsDataStore("app_state", context.appStateDataStore)),
         ),
     )
     .build()
@@ -646,6 +648,13 @@ val lustro = Lustro.builder(application)
   `getSharedPreferences`, the instance that the tab reads and edits, a value policy, and a
   `readOnly` flag. The instance can be an `EncryptedSharedPreferences` that decrypts: then the
   tab shows its plain values, as the policy lets it.
+- **Registered data stores.** A `PrefsDataStore` has the store's name, as you pass it to
+  `preferencesDataStore`, the app's own `DataStore<Preferences>`, a value policy, and a `readOnly`
+  flag. The tab reads and writes through that instance, so the app sees an edit at once. DataStore
+  allows one instance for each file in a process, so the tab never opens one of its own. DataStore
+  is `compileOnly` in both artifacts: an app that registers no store needs no DataStore, and one
+  that does has DataStore 1.0 or newer. Besides the SharedPreferences types, a store holds
+  `double` values and, from DataStore 1.1, `bytes`.
 - **Value policies.** `VISIBLE` shows every value. `MASK_SENSITIVE`, the default, leaves out the
   value of a key that looks like it holds a secret, such as `auth_token`, `apiKey`, or `password`,
   by the same key check as the Network tab's redaction (`SensitiveKeys.isSensitive`). `KEYS_ONLY`
@@ -657,30 +666,39 @@ val lustro = Lustro.builder(application)
   that library; `discoveredReadOnly = false` makes the discovered files writable, except Lustro's
   own `lustro_debug`, which holds the token. A file that has the keysets of
   `EncryptedSharedPreferences`, read by a plain instance, shows its keys only and is always
-  read-only: an edit would write a plain value into the encrypted file.
+  read-only: an edit would write a plain value into the encrypted file. Discovery also finds the
+  other `.preferences_pb` files in `files/datastore`, such as the stores of your libraries. The
+  tab reads such a file itself, masked by key, and it is always read-only: the app's DataStore
+  keeps its data in memory, would not see an edit to the file, and would write over it.
 - **Live updates.** Each file has a cursor, which moves when a value changes, through the tab or
   through the app. The tab sees the app's changes with an `OnSharedPreferenceChangeListener` from
   `start()` to `stop()`, also while the app is in the background. Before API 30, `clear()` calls
   no listener, so a clear by the app shows only with the next change to the file. Another process
-  that writes the file is not seen.
-- **Routes.** `GET /api/v1/prefs/files` lists the files with their policies and cursors.
+  that writes the file is not seen. The tab follows a registered store's data over the same
+  period, and it sees a change to a discovered store when the file's bytes change, on the next
+  poll.
+- **Routes.** `GET /api/v1/prefs/files` lists the files with their stores, policies, and cursors.
+  A file's `store` is `shared_prefs` or `preferences_datastore`, and every other route takes it
+  next to `file`; without it, a route picks a SharedPreferences file.
   `GET /api/v1/prefs/entries?file=` polls a file in the cursor envelope: every entry, by key, with
   its `type`, its `value` unless the policy masks it, and its size in `bytes`. A value longer than
   4096 characters is cut there, and `GET entry?file=&key=` returns it whole. `POST edit` writes
-  one typed value (`string`, `int`, `long`, `float`, `boolean`, or `string_set`), `POST delete`
-  removes a key, and `POST clear` (with `confirm: true`) empties a file. They commit the file, and
-  answer `403` for a read-only one. The `lustro` CLI reaches them with `lustro api`, for example
+  one typed value (`string`, `int`, `long`, `float`, `boolean`, or `string_set`, and for a data
+  store also `double`, and `bytes` as base64), `POST delete` removes a key, and `POST clear`
+  (with `confirm: true`) empties a file. They return when the file on disk has the change, and
+  answer `403` for a read-only file. The `lustro` CLI reaches them with `lustro api`, for example
   `lustro api GET prefs/entries --param file=settings`. See
   [docs/AGENTS.md](docs/AGENTS.md#preferences-tab-operations) and
   [`prefs.openapi.json`](lustro-prefs/src/main/assets/lustro/prefs.openapi.json).
 - **In the console.** The **Preferences** tab shows each file as a tab, the fullest first, with
-  its policy, whether the app registered it or the tab found it, and whether it is read-only. A
+  its store (a data store's tab has a `DS` mark), its policy, whether the app registered it or the
+  tab found it, and whether it is read-only. A
   key search can also search the values. A boolean, an int, or a short string changes in its row;
   any other value opens a dialog, with an indented preview of a JSON string or a string set.
   **Add key**, **Delete**, and **Clear file** ask the routes, and are off, with the reason, for a
   read-only file. Auto-refresh, on by default every 3 s, shows the app's changes: a poll reads
   the file again only when its cursor moved.
-- In `lustro-prefs-noop`, the tab reads no files.
+- In `lustro-prefs-noop`, the tab reads no files and no data stores.
 
 ## Security model
 
@@ -877,7 +895,7 @@ For driving Lustro from agents, scripts, or the `lustro` CLI, see
 | `:lustro-api` | `io.github.twinsen81:lustro-api` | Pure-Kotlin public SPI (`DebugTab`, `DebugRequest`/`DebugResponse`, `Headers`, `MediaType`, network seams). |
 | `:lustro-logs` | `io.github.twinsen81:lustro-logs` | The [Logs](#logs) plugin: the app's own logcat under `/api/v1/logs/`. |
 | `:lustro-logs-noop` | `io.github.twinsen81:lustro-logs-noop` | Release-safe no-op half of `:lustro-logs`. |
-| `:lustro-prefs` | `io.github.twinsen81:lustro-prefs` | The [Preferences](#preferences) plugin: the app's SharedPreferences under `/api/v1/prefs/`. |
+| `:lustro-prefs` | `io.github.twinsen81:lustro-prefs` | The [Preferences](#preferences) plugin: the app's SharedPreferences and Preferences DataStores under `/api/v1/prefs/`. |
 | `:lustro-prefs-noop` | `io.github.twinsen81:lustro-prefs-noop` | Release-safe no-op half of `:lustro-prefs`. |
 | `lustro-cli/` | `lustro-cli` (PyPI) | Python CLI that wraps the HTTP API, installing a `lustro` command; published alongside each release. |
 

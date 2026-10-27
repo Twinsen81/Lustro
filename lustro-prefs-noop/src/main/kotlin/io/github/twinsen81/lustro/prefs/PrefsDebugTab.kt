@@ -27,11 +27,15 @@ public class PrefsDebugTab private constructor() : DebugTab() {
          * Creates a [PrefsDebugTab].
          *
          * @param context a context of the app.
-         * @param files the files to show with a policy of their own.
-         * @param discover whether to show the other files in the app's `shared_prefs` directory too.
-         * @param discoveredReadOnly whether the discovered files are read-only;
-         *   Lustro's own file, `lustro_debug`, is read-only either way.
-         * @throws IllegalArgumentException when two of [files] have the same name.
+         * @param files the SharedPreferences files to show with a policy of their own.
+         * @param dataStores the Preferences DataStores to show with a policy of their own.
+         * @param discover whether to show the other files in the app's
+         *   `shared_prefs` and `files/datastore` directories too.
+         * @param discoveredReadOnly whether the discovered SharedPreferences files
+         *   are read-only; Lustro's own file, `lustro_debug`, and a discovered
+         *   data store are read-only either way.
+         * @throws IllegalArgumentException when two of [files], or two of
+         *   [dataStores], have the same name.
          *
          * No-op build: the tab keeps no context and opens no file. The names are
          * only checked, so that a list the runtime rejects fails in release too.
@@ -42,11 +46,14 @@ public class PrefsDebugTab private constructor() : DebugTab() {
         public fun create(
             context: Context,
             files: List<PrefsFile> = emptyList(),
+            dataStores: List<PrefsDataStore> = emptyList(),
             discover: Boolean = true,
             discoveredReadOnly: Boolean = true,
         ): PrefsDebugTab {
             val names = HashSet<String>()
             for (file in files) require(names.add(file.name)) { "Two files are named \"${file.name}\"" }
+            val storeNames = HashSet<String>()
+            for (store in dataStores) require(storeNames.add(store.name)) { "Two data stores are named \"${store.name}\"" }
             return PrefsDebugTab()
         }
     }

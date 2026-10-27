@@ -93,6 +93,7 @@ dependencies {
     // (not OkHttp). The demo fires a request through it to show that platform-HTTP
     // capture picks up traffic that never touches the app's OkHttpClient.
     implementation(libs.volley)
+    implementation(libs.datastore.preferences)
 
     // The sample's own UI. Lustro does not need Compose.
     implementation(platform(libs.compose.bom))

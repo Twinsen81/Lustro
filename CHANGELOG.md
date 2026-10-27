@@ -14,6 +14,26 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Added
 
+- **The Preferences tab reads and edits Preferences DataStores.** The app
+  registers its stores with `PrefsDebugTab.create(context, files, dataStores)`,
+  each as `PrefsDataStore(name, dataStore, policy, readOnly)`, and the tab reads
+  and writes through the app's own instance, so the app sees an edit at once.
+  With discovery on, the tab also lists the other `.preferences_pb` files in
+  `files/datastore`, reads each one from its file, masked by key, and keeps it
+  read-only, because the app's DataStore keeps its data in memory and would
+  not see an edit to the file. `GET files` gives each file a `store`,
+  `shared_prefs` or `preferences_datastore`, and the other routes take `store`
+  next to `file`, with `shared_prefs` as the default. A store's values can also
+  be `double` and, from DataStore 1.1, `bytes`, which the routes write as padded
+  base64; `POST edit` writes both to a store and refuses them for a
+  SharedPreferences file. A registered store's cursor moves with its data from
+  `Lustro.start()` to `Lustro.stop()`, and a discovered one's when the bytes of
+  its file change. DataStore and coroutines are `compileOnly` in both
+  artifacts, so an app without DataStore needs neither. In the console, a
+  store's tab has a `DS` mark, the facts say which store a file is, and the
+  dialog offers Double and Bytes for a store. The sample registers one store,
+  lets the tab find a second on disk, and shows the registered one live on its
+  Preferences screen.
 - **The Preferences tab in the console.** The Preferences plugin's tab is now
   in the tab bar. Each file is a tab, the fullest first, and the open file
   shows its policy (values visible, sensitive values masked, or keys only),

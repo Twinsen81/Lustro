@@ -169,7 +169,7 @@ build, and that even in debug builds it stays bound to the local device.
   logcat allows an app without any permission.
 - **SharedPreferences values show as their policy lets them.** The Preferences
   plugin (`:lustro-prefs`) serves and edits the app's SharedPreferences files
-  under `/api/v1/prefs/`. A file's `ValuePolicy` decides what of its values a
+  and Preferences DataStores under `/api/v1/prefs/`. A file's `ValuePolicy` decides what of its values a
   client sees. The default, `MASK_SENSITIVE`, goes by the key's name only, with
   the same check as the network redaction, so a secret under a key such as
   `cache` or `blob` shows. A registered `EncryptedSharedPreferences` that
@@ -177,10 +177,11 @@ build, and that even in debug builds it stays bound to the local device.
   with `KEYS_ONLY` when its values must stay hidden. The files that the tab
   discovers on disk are masked by key and read-only by default, and a file that
   has the keysets of `EncryptedSharedPreferences`, read without its keys, shows
-  its keys only and is always read-only. Every other file can be changed: a
+  its keys only and is always read-only. A DataStore that the tab discovers is
+  always read-only. Every other file can be changed: a
   client with the token can edit, delete, and clear its values, such as a
   session or a feature switch, and so change what the app does. Register a file
-  with `readOnly = true` when no client may change it. With the default
+  or a data store with `readOnly = true` when no client may change it. With the default
   loopback binding this adds little, because `adb shell run-as` reads and
   writes the same files of a debuggable app. With `DebugConfig.bindAddress` set
   for LAN access, every client with the token can read and change them.
@@ -188,7 +189,8 @@ build, and that even in debug builds it stays bound to the local device.
   messages included, and log lines live only in bounded in-memory buffers and
   are lost when the process dies. The sole
   persisted state is user-authored mock rules. The Preferences tab writes to
-  disk only the app's own SharedPreferences files, when a client edits them.
+  disk only the app's own SharedPreferences files and the files of the
+  DataStores that the app registers, when a client edits them.
 - **Exceptions are contained.** Library exceptions do not escape into the host
   app; server-level errors are logged through `android.util.Log` at WARN.
 

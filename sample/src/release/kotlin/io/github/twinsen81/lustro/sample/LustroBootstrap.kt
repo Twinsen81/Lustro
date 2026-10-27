@@ -9,6 +9,7 @@ import io.github.twinsen81.lustro.LustroStatus
 import io.github.twinsen81.lustro.logs.LogsDebugTab
 import io.github.twinsen81.lustro.network.NetworkDebugTab
 import io.github.twinsen81.lustro.network.OkHttpSender
+import io.github.twinsen81.lustro.prefs.PrefsDataStore
 import io.github.twinsen81.lustro.prefs.PrefsDebugTab
 import io.github.twinsen81.lustro.prefs.PrefsFile
 import io.github.twinsen81.lustro.prefs.ValuePolicy
@@ -73,8 +74,8 @@ public object LustroBootstrap {
                 // The no-op half of :lustro-logs, with the same create() as the
                 // debug bootstrap's: it reads no logs.
                 .addTab(LogsDebugTab.create())
-                // The no-op half of :lustro-prefs, with the same files as the debug
-                // bootstrap's: it reads none of them.
+                // The no-op half of :lustro-prefs, with the same files and store as
+                // the debug bootstrap's: it reads none of them.
                 .addTab(
                     PrefsDebugTab.create(
                         app,
@@ -88,6 +89,7 @@ public object LustroBootstrap {
                                     readOnly = true,
                                 ),
                             ),
+                        dataStores = listOf(PrefsDataStore(DemoDataStore.APP_STATE, DemoDataStore.appState(app))),
                     ),
                 )
                 .build()

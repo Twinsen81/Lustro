@@ -3,11 +3,21 @@ package io.github.twinsen81.lustro.prefs.internal
 import android.app.Application
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import androidx.datastore.preferences.core.doublePreferencesKey
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.test.core.app.ApplicationProvider
 import io.github.twinsen81.lustro.DebugRequest
+import io.github.twinsen81.lustro.prefs.PrefsDataStore
 import io.github.twinsen81.lustro.prefs.PrefsFile
 import io.github.twinsen81.lustro.prefs.ValuePolicy
 import java.io.File
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.After
@@ -26,17 +36,23 @@ class PrefsGoldenTest {
     private val app = ApplicationProvider.getApplicationContext<Application>()
     private val settings = prefs("settings")
     private val session = prefs("session")
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val dataStores = File(app.dataDir, "files/datastore")
+    private val appState = PreferenceDataStoreFactory.create(scope = scope) { File(dataStores, "app_state.preferences_pb") }
     private val registry =
         PrefsRegistry(
             listOf(PrefsFile("settings", settings), PrefsFile("session", session, ValuePolicy.KEYS_ONLY, readOnly = true)),
             File(app.dataDir, "shared_prefs"),
             discoveredReadOnly = true,
+            listOf(PrefsDataStore("app_state", appState, ValuePolicy.VISIBLE)),
+            dataStores,
         ) { prefs(it) }
     private val routes = PrefsRoutes(registry)
 
     @After
     fun tearDown() {
         registry.stop()
+        scope.cancel()
     }
 
     @Test
@@ -53,10 +69,18 @@ class PrefsGoldenTest {
         session.edit().putString("session_id", "8f2c9a").putLong("expires_at", 1_792_423_340_010L).commit()
         prefs("sdk_cache").edit().putString("install_id", "c1d2e3").putString("api_key", "k-4f9a").putInt("config_version", 12).commit()
         prefs("secure_store").edit()
-            .putString(PrefsSource.KEYSET_KEYS[0], "12a8f0")
-            .putString(PrefsSource.KEYSET_KEYS[1], "12a8f1")
+            .putString(SharedPrefsSource.KEYSET_KEYS[0], "12a8f0")
+            .putString(SharedPrefsSource.KEYSET_KEYS[1], "12a8f1")
             .putString("ATAo8Y3vYQ", "AVvB9ZWQ")
             .commit()
+        runBlocking {
+            appState.edit {
+                it[stringPreferencesKey("theme")] = "dark"
+                it[doublePreferencesKey("zoom")] = 1.25
+            }
+            PreferenceDataStoreFactory.create(scope = scope) { File(dataStores, "sdk_state.preferences_pb") }
+                .edit { it[stringPreferencesKey("install_id")] = "c1d2e3" }
+        }
         registry.start()
 
         assertGolden(FILES, get("files"))

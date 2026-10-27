@@ -3,7 +3,7 @@
   "info": {
     "title": "Lustro Preferences debug tab",
     "version": "1.0",
-    "description": "The app's SharedPreferences files: the files that the app registers, each with a value policy and a read-only flag, and, with discovery on, the other files in its shared_prefs directory, which are read-only by default. A value policy says what the tab shows of the values: visible shows every value; mask_sensitive leaves out the value of a key that looks like it holds a secret, such as auth_token or password, as the Network tab's redaction finds them; keys_only leaves out every value. A file that has the keysets of EncryptedSharedPreferences, read by a plain instance, shows its keys only and is read-only. Each file has a cursor that moves when a value changes, through the tab or through the app. The tab sees the app's changes while Lustro is started; before API 30, a clear by the app shows only with the next change to the file. All routes are token-authenticated (Bearer header or HttpOnly cookie) and live under /api/v1/prefs. Errors use the shared error envelope."
+    "description": "The app's SharedPreferences files and Preferences DataStores: the ones that the app registers, each with a value policy and a read-only flag, and, with discovery on, the other files in its shared_prefs directory, which are read-only by default, and the other Preferences DataStore files in its files/datastore directory, which are always read-only. A file's store says which kind it is: shared_prefs or preferences_datastore. The tab reads and writes a registered DataStore through the app's own instance; it reads a discovered one from its .preferences_pb file, because the app's DataStore would not see an edit to the file. A value policy says what the tab shows of the values: visible shows every value; mask_sensitive leaves out the value of a key that looks like it holds a secret, such as auth_token or password, as the Network tab's redaction finds them; keys_only leaves out every value. A file that has the keysets of EncryptedSharedPreferences, read by a plain instance, shows its keys only and is read-only. Each file has a cursor that moves when a value changes, through the tab or through the app. The tab sees the app's changes to a registered file while Lustro is started; before API 30, a clear of a SharedPreferences file by the app shows only with the next change to the file. A discovered DataStore file's cursor moves when its bytes change. All routes are token-authenticated (Bearer header or HttpOnly cookie) and live under /api/v1/prefs. Errors use the shared error envelope."
   },
   "servers": [
     {
@@ -16,7 +16,7 @@
       "get": {
         "operationId": "listPrefsFiles",
         "summary": "List the files, with their policies and cursors.",
-        "description": "The registered files, in the order the app registered them, then the discovered files on disk, by name. Each one reads its file, to count the keys and to find an encrypted one. A file that its instance can't read, such as an EncryptedSharedPreferences whose key is gone, is listed with keyCount 0 and the reason in error.",
+        "description": "The registered SharedPreferences files and then the registered DataStores, in the order the app registered them, then the discovered SharedPreferences files and then the discovered DataStore files, each by name. Each one reads its file, to count the keys and to find an encrypted one. A file that can't be read, such as an EncryptedSharedPreferences whose key is gone, or a .preferences_pb file that is not a Preferences DataStore file, is listed with keyCount 0 and the reason in error.",
         "responses": {
           "200": {
             "description": "The files.",
@@ -59,8 +59,17 @@
       "get": {
         "operationId": "listPrefEntries",
         "summary": "Poll a file: every entry, after its value policy.",
-        "description": "A cursor envelope. The first poll (no cursor, or a cursor of another file or from before an app restart) gets status=reset with every entry of the file, by key. A poll with the returned cursor gets status=unchanged with no items while the file stays the same, and status=delta with every entry again after a change. A value longer than 4096 characters (for a string set, all its strings together) is cut, with truncated; GET entry returns it whole. 500 when the file's instance can't read it.",
+        "description": "A cursor envelope. The first poll (no cursor, or a cursor of another file or from before an app restart) gets status=reset with every entry of the file, by key. A poll with the returned cursor gets status=unchanged with no items while the file stays the same, and status=delta with every entry again after a change. A value longer than 4096 characters (for a string set, all its strings together; for bytes, their base64) is cut, with truncated; GET entry returns it whole. 500 when the file can't be read.",
         "parameters": [
+          {
+            "name": "store",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/PrefsStore"
+            },
+            "description": "The file's store, as GET files lists it. Without it, shared_prefs. 400 with field store when it is not one of the stores."
+          },
           {
             "name": "file",
             "in": "query",
@@ -69,7 +78,7 @@
               "type": "string",
               "minLength": 1
             },
-            "description": "The file's name, as GET files lists it. 400 with field file when it is missing or contains / or \\; 404 with field file when no file has this name."
+            "description": "The file's name, as GET files lists it. 400 with field file when it is missing or contains / or \\; 404 with field file when the store has no file of this name."
           },
           {
             "name": "cursor",
@@ -123,6 +132,15 @@
         "description": "The same item as in entries, after the value policy, but never cut. 404 with field key when the file has no such key.",
         "parameters": [
           {
+            "name": "store",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/PrefsStore"
+            },
+            "description": "The file's store, as GET files lists it. Without it, shared_prefs. 400 with field store when it is not one of the stores."
+          },
+          {
             "name": "file",
             "in": "query",
             "required": true,
@@ -130,7 +148,7 @@
               "type": "string",
               "minLength": 1
             },
-            "description": "The file's name, as GET files lists it. 400 with field file when it is missing or contains / or \\; 404 with field file when no file has this name."
+            "description": "The file's name, as GET files lists it. 400 with field file when it is missing or contains / or \\; 404 with field file when the store has no file of this name."
           },
           {
             "name": "key",
@@ -190,7 +208,7 @@
       "post": {
         "operationId": "editPref",
         "summary": "Write one value, with its type.",
-        "description": "Puts the value with the type's setter and commits the file, so the response shows what the file holds. It adds the key, or replaces its value, also with a value of another type: then the app's getter of the old type throws a ClassCastException. The cursor moves when the value changes. A value that is masked for reading can still be written. 403 with code read_only and field file when the file is read-only. 400 with field key, type, or value when one is missing or the value is not of the type. 500 when the disk write fails: the instance's memory holds the value, and the app sees it until the process ends.",
+        "description": "Puts the value with the type's setter and waits until the file on disk has it, so the response shows what the file holds: a SharedPreferences file commits, and a DataStore updates its data through the app's instance. It adds the key, or replaces its value, also with a value of another type: then the app's getter of the old type throws a ClassCastException. The cursor moves when the value changes. A value that is masked for reading can still be written. 403 with code read_only and field file when the file is read-only. 400 with field key, type, or value when one is missing or the value is not of the type, and with field type for a type that the file's store can't write. 500 when the write fails: for a SharedPreferences file, the instance's memory holds the value, and the app sees it until the process ends; a DataStore keeps what it had.",
         "requestBody": {
           "required": true,
           "description": "The value to write.",
@@ -205,9 +223,12 @@
                   "value"
                 ],
                 "properties": {
+                  "store": {
+                    "$ref": "#/components/schemas/PrefsStore"
+                  },
                   "file": {
                     "type": "string",
-                    "description": "The file's name, as GET files lists it. 400 with field file when it is missing or contains / or \\; 404 with field file when no file has this name."
+                    "description": "The file's name, as GET files lists it. 400 with field file when it is missing or contains / or \\; 404 with field file when the store has no file of this name."
                   },
                   "key": {
                     "type": "string",
@@ -217,7 +238,7 @@
                     "$ref": "#/components/schemas/PrefWriteType"
                   },
                   "value": {
-                    "description": "For string, a JSON string. For int and long, a whole number, or a string of one, in the type's range. For float, a number, or a string of one, in the range of a float, or \"NaN\", \"Infinity\", or \"-Infinity\". For boolean, true or false, or a string of one. For string_set, a JSON array of strings; a repeated string is kept once. null is not a value: POST delete removes a key.",
+                    "description": "For string, a JSON string. For int and long, a whole number, or a string of one, in the type's range. For float and double, a number, or a string of one, in the type's range, or \"NaN\", \"Infinity\", or \"-Infinity\". For boolean, true or false, or a string of one. For string_set, a JSON array of strings; a repeated string is kept once. For bytes, a padded base64 string (RFC 4648); white space in it is dropped. null is not a value: POST delete removes a key.",
                     "type": [
                       "string",
                       "number",
@@ -285,7 +306,7 @@
       "post": {
         "operationId": "deletePref",
         "summary": "Remove one key.",
-        "description": "Removes the key and commits the file. The cursor moves when the key was there. 403 with code read_only and field file when the file is read-only.",
+        "description": "Removes the key, and waits until the file on disk has the change. The cursor moves when the key was there. 403 with code read_only and field file when the file is read-only.",
         "requestBody": {
           "required": true,
           "description": "The key to remove.",
@@ -298,9 +319,12 @@
                   "key"
                 ],
                 "properties": {
+                  "store": {
+                    "$ref": "#/components/schemas/PrefsStore"
+                  },
                   "file": {
                     "type": "string",
-                    "description": "The file's name, as GET files lists it. 400 with field file when it is missing or contains / or \\; 404 with field file when no file has this name."
+                    "description": "The file's name, as GET files lists it. 400 with field file when it is missing or contains / or \\; 404 with field file when the store has no file of this name."
                   },
                   "key": {
                     "type": "string",
@@ -364,7 +388,7 @@
       "post": {
         "operationId": "clearPrefs",
         "summary": "Remove every key of a file.",
-        "description": "Clears the file and commits it. The cursor moves when the file had a key, on every API level. 403 with code read_only and field file when the file is read-only. 400 with field confirm unless confirm is true.",
+        "description": "Removes every key of the file, and waits until the file on disk has the change. The cursor moves when the file had a key, on every API level. 403 with code read_only and field file when the file is read-only. 400 with field confirm unless confirm is true.",
         "requestBody": {
           "required": true,
           "description": "The file to clear.",
@@ -377,9 +401,12 @@
                   "confirm"
                 ],
                 "properties": {
+                  "store": {
+                    "$ref": "#/components/schemas/PrefsStore"
+                  },
                   "file": {
                     "type": "string",
-                    "description": "The file's name, as GET files lists it. 400 with field file when it is missing or contains / or \\; 404 with field file when no file has this name."
+                    "description": "The file's name, as GET files lists it. 400 with field file when it is missing or contains / or \\; 404 with field file when the store has no file of this name."
                   },
                   "confirm": {
                     "const": true,
@@ -501,10 +528,19 @@
         ],
         "description": "What the tab shows of the values. visible: every value. mask_sensitive: every value but those of keys that look like they hold a secret. keys_only: no value."
       },
+      "PrefsStore": {
+        "type": "string",
+        "enum": [
+          "shared_prefs",
+          "preferences_datastore"
+        ],
+        "description": "The kind of file. shared_prefs: a SharedPreferences file, shared_prefs/<name>.xml. preferences_datastore: a Preferences DataStore, files/datastore/<name>.preferences_pb for a discovered one."
+      },
       "PrefsFile": {
         "type": "object",
         "required": [
           "name",
+          "store",
           "registered",
           "policy",
           "readOnly",
@@ -515,7 +551,10 @@
         "properties": {
           "name": {
             "type": "string",
-            "description": "The file's name, as the app passes it to getSharedPreferences: the file on disk is shared_prefs/<name>.xml."
+            "description": "The file's name, as the app passes it to getSharedPreferences or preferencesDataStore. With store, it picks the file in the other routes."
+          },
+          "store": {
+            "$ref": "#/components/schemas/PrefsStore"
           },
           "registered": {
             "type": "boolean",
@@ -526,11 +565,11 @@
           },
           "readOnly": {
             "type": "boolean",
-            "description": "Whether edit, delete, and clear answer 403."
+            "description": "Whether edit, delete, and clear answer 403. Always true for a discovered DataStore file."
           },
           "encrypted": {
             "type": "boolean",
-            "description": "Whether the file on disk is encrypted: the app registered an EncryptedSharedPreferences, or the file has its keysets. A file read without its keys is keys_only and read-only."
+            "description": "Whether the file on disk is encrypted: the app registered an EncryptedSharedPreferences, or the file has its keysets. A file read without its keys is keys_only and read-only. Always false for a DataStore."
           },
           "keyCount": {
             "type": "integer",
@@ -542,7 +581,7 @@
           },
           "error": {
             "type": "string",
-            "description": "Only for a file that its instance can't read: why."
+            "description": "Only for a file that can't be read: why."
           }
         },
         "additionalProperties": false
@@ -583,11 +622,13 @@
           "int",
           "long",
           "float",
+          "double",
           "boolean",
           "string_set",
+          "bytes",
           "unknown"
         ],
-        "description": "The type of a value, by the SharedPreferences getter that reads it; string_set is a Set<String>. unknown is a value that only a custom SharedPreferences implementation can hold, written as its text."
+        "description": "The type of a value: a SharedPreferences getter's, or for a Preferences DataStore also double and bytes (a byte array, DataStore 1.1 and newer). string_set is a Set<String>. unknown is a value that only a custom SharedPreferences implementation can hold, written as its text."
       },
       "PrefWriteType": {
         "type": "string",
@@ -596,10 +637,12 @@
           "int",
           "long",
           "float",
+          "double",
           "boolean",
-          "string_set"
+          "string_set",
+          "bytes"
         ],
-        "description": "The type to write the value with: the SharedPreferences setter that edit calls."
+        "description": "The type to write the value with. A shared_prefs file takes string, int, long, float, boolean, and string_set, its setters' types; a preferences_datastore file takes double and bytes too. A DataStore before 1.1 can't write bytes: the edit is then a 500."
       },
       "PrefEntry": {
         "type": "object",
@@ -616,7 +659,7 @@
             "$ref": "#/components/schemas/PrefType"
           },
           "value": {
-            "description": "Absent when masked, and for an unknown value that is null. A string, a number, a boolean, or for string_set an array of strings, sorted. A float that is not finite is the string \"NaN\", \"Infinity\", or \"-Infinity\".",
+            "description": "Absent when masked, and for an unknown value that is null. A string, a number, a boolean, or for string_set an array of strings, sorted. A float or a double that is not finite is the string \"NaN\", \"Infinity\", or \"-Infinity\". Bytes are a padded base64 string.",
             "type": [
               "string",
               "number",
@@ -630,7 +673,7 @@
           "bytes": {
             "type": "integer",
             "minimum": 0,
-            "description": "The size of the whole value: a string's UTF-8 bytes, the sum of those of a set's strings, or 4 for int and float, 8 for long, and 1 for boolean."
+            "description": "The size of the whole value: a string's UTF-8 bytes, the sum of those of a set's strings, a byte array's length, or 4 for int and float, 8 for long and double, and 1 for boolean."
           },
           "masked": {
             "const": true,
@@ -638,7 +681,7 @@
           },
           "truncated": {
             "const": true,
-            "description": "Only in entries, when the value was cut at 4096 characters. GET entry returns it whole."
+            "description": "Only in entries, when the value was cut at 4096 characters; bytes are cut at a whole base64 quantum, so the cut text still decodes. GET entry returns it whole."
           }
         },
         "additionalProperties": false

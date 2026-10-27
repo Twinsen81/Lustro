@@ -2,6 +2,7 @@
   "items": [
     {
       "name": "settings",
+      "store": "shared_prefs",
       "registered": true,
       "policy": "mask_sensitive",
       "readOnly": false,
@@ -11,6 +12,7 @@
     },
     {
       "name": "session",
+      "store": "shared_prefs",
       "registered": true,
       "policy": "keys_only",
       "readOnly": true,
@@ -19,7 +21,18 @@
       "cursor": "ODY5MjAzNTI4MzMxMjA4NzcyNzow"
     },
     {
+      "name": "app_state",
+      "store": "preferences_datastore",
+      "registered": true,
+      "policy": "visible",
+      "readOnly": false,
+      "encrypted": false,
+      "keyCount": 2,
+      "cursor": "NDIwMjM1ODU0NzI3NTk4MDQ5Mzow"
+    },
+    {
       "name": "sdk_cache",
+      "store": "shared_prefs",
       "registered": false,
       "policy": "mask_sensitive",
       "readOnly": true,
@@ -29,12 +42,23 @@
     },
     {
       "name": "secure_store",
+      "store": "shared_prefs",
       "registered": false,
       "policy": "keys_only",
       "readOnly": true,
       "encrypted": true,
       "keyCount": 3,
       "cursor": "MjU5NjI4ODQ4NDc1MDI1NjMyNTow"
+    },
+    {
+      "name": "sdk_state",
+      "store": "preferences_datastore",
+      "registered": false,
+      "policy": "mask_sensitive",
+      "readOnly": true,
+      "encrypted": false,
+      "keyCount": 1,
+      "cursor": "LTcwNzY1MzA0NjE2NzA4NzU0NjE6MA=="
     }
   ]
 }

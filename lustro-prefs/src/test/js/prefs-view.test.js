@@ -32,6 +32,10 @@ function file(fields) {
 
 const ctx = (fields) => Object.assign({ file: file(), lock: null, changed: new Set(), saved: new Map(), now: 0 }, fields);
 
+// A file of the golden GET files response, by its store and name.
+const listed = (name, store = 'shared_prefs') =>
+    golden('prefs-files.json').items.find((item) => item.name === name && item.store === store);
+
 // ── The cursor envelope ─────────────────────────────────────────
 
 test('a reset replaces the entries and keeps the cursor', () => {
@@ -131,33 +135,57 @@ test('the file tabs sort by key count, the fullest first, and a poll keeps their
     const files = golden('prefs-files.json').items;
 
     const order = prefs.prefsOrderFiles(files, null, false);
-    assert.deepStrictEqual(plain(order), ['settings', 'sdk_cache', 'secure_store', 'session']);
+    assert.deepStrictEqual(plain(order), [
+        'shared_prefs/settings', 'shared_prefs/sdk_cache', 'shared_prefs/secure_store',
+        'shared_prefs/session', 'preferences_datastore/app_state', 'preferences_datastore/sdk_state',
+    ]);
 
     const grown = files.map((f) => (f.name === 'session' ? Object.assign({}, f, { keyCount: 20 }) : f));
     assert.deepStrictEqual(plain(prefs.prefsOrderFiles(grown, order, false)), plain(order));
-    assert.deepStrictEqual(plain(prefs.prefsOrderFiles(grown, order, true)), ['session', 'settings', 'sdk_cache', 'secure_store']);
+    assert.deepStrictEqual(plain(prefs.prefsOrderFiles(grown, order, true)).slice(0, 2), ['shared_prefs/session', 'shared_prefs/settings']);
 
     const gone = files.filter((f) => f.name !== 'settings');
-    assert.deepStrictEqual(plain(prefs.prefsOrderFiles(gone, order, false)), ['sdk_cache', 'secure_store', 'session']);
+    assert.deepStrictEqual(plain(prefs.prefsOrderFiles(gone, order, false)), plain(order).slice(1));
+});
+
+test('a SharedPreferences file and a DataStore of the same name are two files', () => {
+    const shared = file({ name: 'app_state' });
+    const store = file({ name: 'app_state', store: 'preferences_datastore' });
+
+    assert.strictEqual(prefs.prefsFileId(shared), 'shared_prefs/app_state');
+    assert.strictEqual(prefs.prefsFileId(store), 'preferences_datastore/app_state');
+    // A file from before the stores is a SharedPreferences file.
+    assert.strictEqual(prefs.prefsFileId({ name: 'app_state' }), 'shared_prefs/app_state');
+    assert.match(prefs.prefsFileTabHtml(store, false), /data-file="preferences_datastore\/app_state"[^>]*title="app_state · Preferences DataStore · /);
+    assert.match(prefs.prefsFileTabHtml(store, false), /<span class="prefs-file__store">DS<\/span>app_state/);
+    assert.doesNotMatch(prefs.prefsFileTabHtml(shared, false), /prefs-file__store/);
+});
+
+test('a DataStore takes doubles and bytes too', () => {
+    assert.deepStrictEqual(plain(prefs.prefsWriteTypes(file())), ['string', 'int', 'long', 'float', 'boolean', 'string_set']);
+    assert.deepStrictEqual(
+        plain(prefs.prefsWriteTypes(file({ store: 'preferences_datastore' }))),
+        ['string', 'int', 'long', 'float', 'double', 'boolean', 'string_set', 'bytes'],
+    );
 });
 
 test('a read-only file says why it is read-only, and a writable one is not locked', () => {
-    const [settings, session, sdkCache, secureStore] = golden('prefs-files.json').items;
-
-    assert.strictEqual(prefs.prefsLockReason(settings), null);
-    assert.match(prefs.prefsLockReason(session), /registered this file as read-only/);
-    assert.match(prefs.prefsLockReason(sdkCache), /found this file on disk/);
-    assert.match(prefs.prefsLockReason(secureStore), /encrypted file/);
+    assert.strictEqual(prefs.prefsLockReason(listed('settings')), null);
+    assert.match(prefs.prefsLockReason(listed('session')), /registered this file as read-only/);
+    assert.match(prefs.prefsLockReason(listed('sdk_cache')), /found this file on disk/);
+    assert.match(prefs.prefsLockReason(listed('secure_store')), /encrypted file/);
     assert.match(prefs.prefsLockReason(file({ name: 'lustro_debug', registered: false, readOnly: true })), /token/);
     assert.match(prefs.prefsLockReason(file({ error: 'boom' })), /can't read this file: boom/);
+    assert.strictEqual(prefs.prefsLockReason(listed('app_state', 'preferences_datastore')), null);
+    assert.match(prefs.prefsLockReason(listed('sdk_state', 'preferences_datastore')), /keeps its values in memory.*PrefsDataStore/);
 });
 
-test('the facts show the origin, the policy, and the read-only flag', () => {
-    const [settings, session, , secureStore] = golden('prefs-files.json').items;
-
-    assert.match(prefs.prefsFactsHtml(settings, 7, 7), /7 keys.*Registered.*Sensitive values masked.*Writable/);
-    assert.match(prefs.prefsFactsHtml(session, 1, 2), /1 of 2 keys.*Registered.*Keys only.*Read-only/);
-    assert.match(prefs.prefsFactsHtml(secureStore, 3, 3), /Found on disk.*Keys only.*Encrypted.*Read-only/);
+test('the facts show the store, the origin, the policy, and the read-only flag', () => {
+    assert.match(prefs.prefsFactsHtml(listed('settings'), 7, 7), /7 keys.*SharedPreferences.*Registered.*Sensitive values masked.*Writable/);
+    assert.match(prefs.prefsFactsHtml(listed('session'), 1, 2), /1 of 2 keys.*Registered.*Keys only.*Read-only/);
+    assert.match(prefs.prefsFactsHtml(listed('secure_store'), 3, 3), /Found on disk.*Keys only.*Encrypted.*Read-only/);
+    assert.match(prefs.prefsFactsHtml(listed('app_state', 'preferences_datastore'), 2, 2), /DataStore.*Registered.*Values visible.*Writable/);
+    assert.match(prefs.prefsFactsHtml(listed('sdk_state', 'preferences_datastore'), 1, 1), /DataStore.*files\/datastore directory.*Found on disk.*Read-only/);
 });
 
 test('a file tab escapes the name and shows its count', () => {
@@ -210,7 +238,7 @@ test('a masked value shows as a comment with its size, never its value', () => {
 });
 
 test('in a read-only file, the row editors and Delete are off, with the reason', () => {
-    const session = golden('prefs-files.json').items[1];
+    const session = listed('session');
     const lock = prefs.prefsLockReason(session);
     const locked = ctx({ file: session, lock });
 
@@ -234,7 +262,16 @@ test('the type badge takes the color of its type, and a string set the string co
     assert.match(badge('int'), /--c: var\(--type-int\)">Int</);
     assert.match(badge('long'), /--c: var\(--type-long\)">Long</);
     assert.match(badge('string_set'), /--c: var\(--type-string\)">String set</);
+    assert.match(badge('double'), /--c: var\(--type-float\)">Double</);
+    assert.match(badge('bytes'), /--c: var\(--type-string\)">Bytes</);
     assert.match(badge('unknown'), /class="dc-badge prefs-badge">Unknown</);
+});
+
+test('a masked value of a type that the file can\'t write does not open the editor', () => {
+    const entry = { key: 'secret_ratio', type: 'double', bytes: 8, masked: true };
+
+    assert.doesNotMatch(prefs.prefsRowHtml(entry, ctx()), /data-action="openEdit"/);
+    assert.match(prefs.prefsRowHtml(entry, ctx({ file: file({ store: 'preferences_datastore' }) })), /data-action="openEdit"/);
 });
 
 test('a row saved a moment ago shows Saved, from where its flash was', () => {
@@ -298,6 +335,34 @@ test('a float takes a decimal number in its range, or NaN and the infinities', (
     // Java's parser takes these; the form does not.
     assert.ok(read('0x1p3').error);
     assert.ok(read('1f').error);
+});
+
+test('a double takes any finite number, or NaN and the infinities', () => {
+    const read = (text) => plain(prefs.prefsReadValue('double', text));
+
+    assert.deepStrictEqual(read('0.1'), { value: 0.1 });
+    assert.deepStrictEqual(read('1e300'), { value: 1e300 });
+    assert.deepStrictEqual(read('Infinity'), { value: 'Infinity' });
+    assert.match(read('1e309').error, /range of a double/);
+    assert.ok(read('0x1p3').error);
+    assert.ok(read('').error);
+});
+
+test('bytes are padded base64, and white space in them is dropped', () => {
+    const read = (text) => plain(prefs.prefsReadValue('bytes', text));
+
+    assert.deepStrictEqual(read('AAEC/w=='), { value: 'AAEC/w==' });
+    assert.deepStrictEqual(read(' AAEC\n/w== '), { value: 'AAEC/w==' });
+    assert.deepStrictEqual(read(''), { value: '' });
+    assert.match(read('AAEC/w').error, /padded base64/);
+    assert.ok(read('AA*=').error);
+});
+
+test('a whole double keeps its point, and bytes open as their base64', () => {
+    assert.deepStrictEqual(plain(prefs.prefsEditorFor('double', 2)), { control: 'input', text: '2.0' });
+    assert.deepStrictEqual(plain(prefs.prefsEditorFor('bytes', 'AAEC/w==')), { control: 'input', text: 'AAEC/w==' });
+    assert.strictEqual(prefs.prefsEditorFor('bytes', 'A'.repeat(120)).control, 'textarea');
+    assert.deepStrictEqual(plain(prefs.prefsEditorFor('double', null)), { control: 'input', text: '0' });
 });
 
 test('a boolean, a string, and a string set', () => {

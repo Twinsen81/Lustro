@@ -373,16 +373,21 @@ def test_the_prefs_routes_are_declared():
     paths = wire.load_openapi("prefs")["paths"]
     assert set(paths) == {"/api/v1/prefs/" + route for route in ("files", "entries", "entry", "edit", "delete", "clear")}
     entries = {p["name"]: p for p in paths["/api/v1/prefs/entries"]["get"]["parameters"]}
-    assert set(entries) == {"file", "cursor"} and entries["file"]["required"]
+    assert set(entries) == {"store", "file", "cursor"} and entries["file"]["required"]
+    # Without a store, a request names a SharedPreferences file, as before there were others.
+    assert not entries["store"]["required"]
     entry = {p["name"]: p for p in paths["/api/v1/prefs/entry"]["get"]["parameters"]}
-    assert set(entry) == {"file", "key"}
+    assert set(entry) == {"store", "file", "key"}
     for route, required in (("edit", ["file", "key", "type", "value"]), ("delete", ["file", "key"]), ("clear", ["file", "confirm"])):
         post = paths["/api/v1/prefs/" + route]["post"]
-        assert post["requestBody"]["content"]["application/json"]["schema"]["required"] == required
+        schema = post["requestBody"]["content"]["application/json"]["schema"]
+        assert schema["required"] == required
+        assert "store" in schema["properties"]
         # Every mutation answers 403 for a read-only file.
         assert "403" in post["responses"] and "read_only" in post["description"]
-    types = wire.load_openapi("prefs")["components"]["schemas"]["PrefWriteType"]["enum"]
-    assert types == ["string", "int", "long", "float", "boolean", "string_set"]
+    schemas = wire.load_openapi("prefs")["components"]["schemas"]
+    assert schemas["PrefsStore"]["enum"] == ["shared_prefs", "preferences_datastore"]
+    assert schemas["PrefWriteType"]["enum"] == ["string", "int", "long", "float", "double", "boolean", "string_set", "bytes"]
 
 
 def test_the_golden_prefs_files_show_every_policy():
@@ -394,6 +399,9 @@ def test_the_golden_prefs_files_show_every_policy():
     assert discovered and all(f["readOnly"] for f in discovered)
     encrypted = [f for f in files if f["encrypted"]]
     assert encrypted and all(f["policy"] == "keys_only" and f["readOnly"] for f in encrypted)
+    assert {f["store"] for f in files} == {"shared_prefs", "preferences_datastore"}
+    # The tab reads a DataStore that the app does not register from its file, and never writes it.
+    assert all(f["readOnly"] for f in discovered if f["store"] == "preferences_datastore")
     # The cursor of a file is the cursor its entries return.
     assert by_name["settings"]["cursor"] == wire.load_golden("prefs-reset.json")["cursor"]
 

@@ -1410,7 +1410,7 @@ def build_parser() -> argparse.ArgumentParser:
         "commands use, and print the response body: JSON as JSON, any other body as it is. A PATH without a "
         "leading / is relative to /api/v1/, so network/transactions is /api/v1/network/transactions. For an error "
         "response, it prints the error from the error envelope on stderr and exits 1. `lustro schema <tabId>` "
-        "prints the routes of a tab.",
+        "prints the OpenAPI document of a tab, which describes its routes.",
     )
     p_api.add_argument("method", type=_http_method, metavar="METHOD", help="GET, POST, or another HTTP method")
     p_api.add_argument("path", metavar="PATH", help="such as /api/v1/network/transactions or network/transactions")
