@@ -1,0 +1,82 @@
+{
+  "database": "app",
+  "table": "notes",
+  "type": "table",
+  "internal": false,
+  "hasRowId": true,
+  "rowCount": 4,
+  "sql": "CREATE TABLE notes (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, body TEXT, attachment BLOB, score REAL, created_at INTEGER NOT NULL, folder_id INTEGER REFERENCES folders(id) ON DELETE CASCADE)",
+  "entity": "NoteEntity",
+  "purpose": "A note that the user wrote, in a folder.",
+  "columns": [
+    {
+      "name": "id",
+      "type": "INTEGER",
+      "notNull": false,
+      "defaultValue": null,
+      "primaryKey": 1,
+      "generated": false
+    },
+    {
+      "name": "title",
+      "type": "TEXT",
+      "notNull": true,
+      "defaultValue": null,
+      "primaryKey": 0,
+      "generated": false
+    },
+    {
+      "name": "body",
+      "type": "TEXT",
+      "notNull": false,
+      "defaultValue": null,
+      "primaryKey": 0,
+      "generated": false
+    },
+    {
+      "name": "attachment",
+      "type": "BLOB",
+      "notNull": false,
+      "defaultValue": null,
+      "primaryKey": 0,
+      "generated": false
+    },
+    {
+      "name": "score",
+      "type": "REAL",
+      "notNull": false,
+      "defaultValue": null,
+      "primaryKey": 0,
+      "generated": false
+    },
+    {
+      "name": "created_at",
+      "type": "INTEGER",
+      "notNull": true,
+      "defaultValue": null,
+      "primaryKey": 0,
+      "generated": false
+    },
+    {
+      "name": "folder_id",
+      "type": "INTEGER",
+      "notNull": false,
+      "defaultValue": null,
+      "primaryKey": 0,
+      "generated": false
+    }
+  ],
+  "foreignKeys": [
+    {
+      "table": "folders",
+      "from": [
+        "folder_id"
+      ],
+      "to": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE"
+    }
+  ]
+}

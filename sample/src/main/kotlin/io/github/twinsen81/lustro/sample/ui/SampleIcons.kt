@@ -18,6 +18,8 @@ internal object SampleIcons {
     val Globe = lineIcon("globe", CIRCLE, "M3 12h18", "M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9", "M12 3c-2.5 2.6-3.8 5.6-3.8 9s1.3 6.4 3.8 9")
     val Lines = lineIcon("lines", "M5 7h14", "M5 12h10", "M5 17h12")
     val Sliders = lineIcon("sliders", "M4 7h9", "M17 7h3", "M15 5v4", "M4 17h3", "M11 17h9", "M9 15v4")
+    val Database =
+        lineIcon("database", "M4 6c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3z", "M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6", "M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3")
     val Flag = lineIcon("flag", "M6 21V4", "M6 4.5h11l-2.5 4.25L17 13H6")
     val Terminal = lineIcon("terminal", "M4 4.5h16a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-13a1 1 0 0 1 1-1z", "M7.5 9.5l3 2.5-3 2.5", "M13 15h4")
     val ChevronLeft = lineIcon("chevron-left", "M14.5 6.5L9 12l5.5 5.5")

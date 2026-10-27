@@ -4,9 +4,9 @@ Run from a source checkout:
 
     python -m lustro_cli.wire.sync
 
-This copies the canonical schemas, the OpenAPI documents of the Network, Logs, and
-Preferences tabs, and the golden fixtures into ``lustro_cli/wire/`` so the next wheel build
-bundles up-to-date copies. It is a development-time helper and is not needed at runtime.
+This copies the canonical schemas, the OpenAPI documents of the Network, Logs,
+Preferences, and SQLite tabs, and the golden fixtures into ``lustro_cli/wire/`` so
+the next wheel build bundles up-to-date copies. It is a development-time helper and is not needed at runtime.
 """
 
 from __future__ import annotations
@@ -36,10 +36,11 @@ def main() -> int:
     openapi = assets / "network.openapi.json"
     logs_openapi = _REPO_ROOT / "lustro-logs" / "src" / "main" / "assets" / "lustro" / "logs.openapi.json"
     prefs_openapi = _REPO_ROOT / "lustro-prefs" / "src" / "main" / "assets" / "lustro" / "prefs.openapi.json"
+    sqlite_openapi = _REPO_ROOT / "lustro-sqlite" / "src" / "main" / "assets" / "lustro" / "sqlite.openapi.json"
     served_schema = assets / "_schema.json"
     golden_src = wire_v1 / "golden"
 
-    sources = (openapi, logs_openapi, prefs_openapi, served_schema)
+    sources = (openapi, logs_openapi, prefs_openapi, sqlite_openapi, served_schema)
     if not wire_v1.is_dir() or not all(source.is_file() for source in sources):
         print(
             "error: cannot find repo sources (expected {} and {}). "
@@ -56,6 +57,7 @@ def main() -> int:
     shutil.copy2(openapi, _WIRE_DIR / "network.openapi.json")
     shutil.copy2(logs_openapi, _WIRE_DIR / "logs.openapi.json")
     shutil.copy2(prefs_openapi, _WIRE_DIR / "prefs.openapi.json")
+    shutil.copy2(sqlite_openapi, _WIRE_DIR / "sqlite.openapi.json")
     shutil.copy2(served_schema, _WIRE_DIR / "_schema.json")
     for fixture in sorted(golden_src.glob("*.json")):
         shutil.copy2(fixture, golden_dst / fixture.name)

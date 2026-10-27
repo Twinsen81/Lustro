@@ -59,6 +59,9 @@ public class SampleApplication : Application() {
         // The demo files of the Preferences tab, on disk before the console lists them.
         DemoPrefs.seed(this)
         DemoDataStore.seed(this)
+        // The two database files of the SQLite tab; the notes database writes its demo
+        // rows when it first opens.
+        DemoSqlite.seedFiles(this)
         val interceptor = LustroBootstrap.start(this) { httpClient }
 
         httpClient = OkHttpClient.Builder().addInterceptor(interceptor).build()

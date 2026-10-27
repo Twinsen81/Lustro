@@ -185,6 +185,21 @@ class DataStoreRoutesTest {
     }
 
     @Test
+    fun `an app change before the tab's first collection still moves the cursor of a client that read before it`() {
+        // The collection that follows the data starts on another thread; here it starts only after the change.
+        val late = LateStore(appState)
+        val routes = routes(PrefsDataStore("app_state", late))
+        registry!!.start()
+        val cursor = get(routes, "entries", "store" to STORE, "file" to "app_state").getString("cursor")
+
+        edit(appState) { it[intPreferencesKey("launch_count")] = 4 }
+        late.collect.countDown()
+
+        val delta = eventually { get(routes, "entries", "store" to STORE, "file" to "app_state", "cursor" to cursor) }
+        assertEquals(4, item(delta, "launch_count").getInt("value"))
+    }
+
+    @Test
     fun `after the store's data failed, a read that succeeds follows the data again`() {
         val flaky = FlakyStore(appState)
         val routes = routes(PrefsDataStore("app_state", flaky))
@@ -324,6 +339,20 @@ class DataStoreRoutesTest {
                     failed.countDown()
                     throw IOException("the disk is busy")
                 }
+                emitAll(store.data)
+            }
+
+        override suspend fun updateData(transform: suspend (t: Preferences) -> Preferences): Preferences = store.updateData(transform)
+    }
+
+    // A store whose data starts to emit on the dispatcher's threads only after collect opens: the
+    // tab's collection runs there, and a route's read on the calling thread is not held.
+    private class LateStore(private val store: DataStore<Preferences>) : DataStore<Preferences> {
+        val collect = CountDownLatch(1)
+
+        override val data: Flow<Preferences> =
+            flow {
+                if (Thread.currentThread().name.startsWith("DefaultDispatcher")) collect.await()
                 emitAll(store.data)
             }
 

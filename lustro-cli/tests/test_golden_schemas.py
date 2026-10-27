@@ -26,6 +26,7 @@ SHARED_SCHEMA_CASES = [
     ("prefs-reset.json", "cursor-envelope.schema.json"),
     ("prefs-delta.json", "cursor-envelope.schema.json"),
     ("prefs-unchanged.json", "cursor-envelope.schema.json"),
+    ("sqlite-rows.json", "pagination.schema.json"),
 ]
 
 
@@ -416,3 +417,78 @@ def test_a_golden_masked_entry_has_no_value_and_the_delta_has_the_whole_file():
     assert reset["cursor"] != delta["cursor"]
     unchanged = wire.load_golden("prefs-unchanged.json")
     assert "items" not in unchanged and unchanged["cursor"] == delta["cursor"]
+
+
+# ── SQLite tab ────────────────────────────────────────────────────────────────
+
+SQLITE_ROUTE_FIXTURES = (
+    ("databases", "sqlite-databases.json"),
+    ("tables", "sqlite-tables.json"),
+    ("schema", "sqlite-schema.json"),
+    ("rows", "sqlite-rows.json"),
+)
+
+
+@pytest.mark.parametrize("route, fixture", SQLITE_ROUTE_FIXTURES)
+def test_sqlite_fixture_matches_its_route(route, fixture):
+    sqlite = wire.load_openapi("sqlite")
+    _inline_validator(sqlite, "/api/v1/sqlite/" + route, "get", "200").validate(wire.load_golden(fixture))
+
+
+def test_the_sqlite_schema_is_valid_and_has_its_own_version():
+    sqlite = wire.load_openapi("sqlite")
+    assert sqlite["openapi"].startswith("3.1")
+    assert sqlite["info"]["version"] == "1.0"
+    for schema in sqlite["components"]["schemas"].values():
+        Draft202012Validator.check_schema(schema)
+    assert sqlite["components"]["schemas"]["ErrorEnvelope"] == wire.load_openapi()["components"]["schemas"]["ErrorEnvelope"]
+    # The rows page is the shared pagination envelope.
+    page = sqlite["components"]["schemas"]["SqliteRowsPage"]
+    pagination = wire.load_schema("pagination.schema.json")
+    assert page["required"] == pagination["required"] and page["additionalProperties"] is False
+
+
+def test_the_sqlite_routes_are_declared_and_only_read():
+    paths = wire.load_openapi("sqlite")["paths"]
+    assert set(paths) == {"/api/v1/sqlite/" + route for route, _ in SQLITE_ROUTE_FIXTURES}
+    assert all(set(path) == {"get"} for path in paths.values())
+    rows = {p["name"]: p for p in paths["/api/v1/sqlite/rows"]["get"]["parameters"]}
+    assert set(rows) == {"db", "table", "cursor", "limit", "filter", "sort", "dir"}
+    assert rows["db"]["required"] and rows["table"]["required"]
+    assert rows["limit"]["schema"] == {"type": "integer", "minimum": 1, "maximum": 500, "default": 50}
+    assert rows["dir"]["schema"]["enum"] == ["asc", "desc"]
+
+
+def test_the_golden_databases_list_the_registered_ones_first():
+    databases = wire.load_golden("sqlite-databases.json")["items"]
+    assert [d["registered"] for d in databases] == sorted((d["registered"] for d in databases), reverse=True)
+    assert {d["source"] for d in databases} == {"support", "file"}
+    # A file, registered or discovered, is never writable.
+    assert not any(d["writable"] for d in databases if d["source"] == "file")
+
+
+def test_the_golden_tables_flag_the_internal_ones():
+    tables = {t["name"]: t for t in wire.load_golden("sqlite-tables.json")["items"]}
+    assert all(tables[name]["internal"] for name in ("android_metadata", "room_master_table", "sqlite_sequence"))
+    assert not tables["notes"]["internal"] and tables["notes"]["entity"]
+    view = tables["recent_notes"]
+    assert view["type"] == "view" and "rowCount" not in view and view["hasRowId"] is False
+    assert tables["note_tags"]["hasRowId"] is False
+
+
+def test_a_golden_row_has_a_cell_for_each_column_in_order():
+    columns = [c["name"] for c in wire.load_golden("sqlite-schema.json")["columns"]]
+    page = wire.load_golden("sqlite-rows.json")
+    assert page["nextCursor"]
+    for row in page["items"]:
+        assert list(row["cells"]) == columns
+        assert isinstance(row["rowid"], str)
+    cells = [cell for row in page["items"] for cell in row["cells"].values()]
+    assert {c["type"] for c in cells} == {"null", "integer", "real", "text", "blob"}
+    for cell in cells:
+        if cell.get("truncated"):
+            assert len(cell["value"]) == 4096 < cell["length"]
+        if cell["type"] == "integer" and isinstance(cell["value"], str):
+            assert abs(int(cell["value"])) > 2**53 - 1
+    # A blob in a TEXT column is a blob, read by its size only.
+    assert any(row["cells"]["body"]["type"] == "blob" for row in page["items"])

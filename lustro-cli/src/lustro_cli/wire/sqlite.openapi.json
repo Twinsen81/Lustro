@@ -1,0 +1,786 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Lustro SQLite debug tab",
+    "version": "1.0",
+    "description": "The app's SQLite and Room databases: the ones that the app registers, and, when the app turns discovery on, the other database files in its databases directory. A registered database is the app's own open handle, a framework SQLiteDatabase or an androidx SupportSQLiteDatabase such as Room's, or a file that the tab opens read-only for each request; a discovered file is opened the same way. The routes here only read, and run only SQL that the tab builds: each database, table, and column that a client names is checked against the database's schema and quoted as an identifier, and a filter value is a bound parameter. A page of rows holds each cell with its storage class: at most 4096 characters of a text, with the whole length when it is cut, and only the size of a blob. Each read stops when the request times out, and the client then gets a 504. All routes are token-authenticated (Bearer header or HttpOnly cookie) and live under /api/v1/sqlite. Errors use the shared error envelope; a statement that SQLite refuses, such as one on a corrupt file, is a 500 with code sqlite_error and SQLite's message."
+  },
+  "servers": [
+    {
+      "url": "/",
+      "description": "The Lustro debug server (loopback by default)."
+    }
+  ],
+  "paths": {
+    "/api/v1/sqlite/databases": {
+      "get": {
+        "operationId": "listSqliteDatabases",
+        "summary": "List the databases.",
+        "description": "The registered databases, in the order the app registered them, then the discovered files, by name. Each one is opened, to read its schema version: Room opens its database here if the app has not yet. A database that does not open is listed with schemaVersion null and the reason in error.",
+        "responses": {
+          "200": {
+            "description": "The databases.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/SqliteDatabase"
+                      }
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          },
+          "504": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/sqlite/tables": {
+      "get": {
+        "operationId": "listSqliteTables",
+        "summary": "List the tables and views of a database.",
+        "description": "Every table and view in sqlite_master, by name, as SQLite sorts names without case. A table's rows are counted; a view's are not, because that runs the view's query. The tables that SQLite, Android, and Room keep for themselves, and the shadow tables of a full-text or R*Tree index, are listed with internal true, so that a view can hide them.",
+        "parameters": [
+          {
+            "name": "db",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": "The database's name, as GET databases lists it. 400 with field db when it is missing; 404 with field db when there is no database of this name; 500 with code open_failed and field db when the database does not open."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The tables and views.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "database",
+                    "writable",
+                    "items"
+                  ],
+                  "properties": {
+                    "database": {
+                      "type": "string",
+                      "description": "The database's name."
+                    },
+                    "writable": {
+                      "type": "boolean",
+                      "description": "As in GET databases."
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/SqliteTable"
+                      }
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          },
+          "504": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/sqlite/schema": {
+      "get": {
+        "operationId": "getSqliteSchema",
+        "summary": "Get the columns, foreign keys, and row count of a table or view.",
+        "description": "What PRAGMA table_xinfo (or table_info, before SQLite 3.26) and PRAGMA foreign_key_list say, the statement that created it, and its hint. Generated columns are included; the hidden columns of a virtual table are not. The columns are in their order in the table, which is the order of the cells in GET rows.",
+        "parameters": [
+          {
+            "name": "db",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": "The database's name, as GET databases lists it. 400 with field db when it is missing; 404 with field db when there is no database of this name; 500 with code open_failed and field db when the database does not open."
+          },
+          {
+            "name": "table",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": "The table's or view's name, as GET tables lists it. A name in another case finds it too, as in SQL. 400 with field table when it is missing; 404 with field table when the database has no table or view of this name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The schema.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SqliteSchema"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          },
+          "504": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/sqlite/rows": {
+      "get": {
+        "operationId": "listSqliteRows",
+        "summary": "Get a page of rows.",
+        "description": "A page of the rows of a table or view in the pagination envelope. Without a sort, a table's rows come in the order of their rowid, or of the primary key for a table WITHOUT ROWID; a view's in the order SQLite gives. A sort on a column also sorts by that key, so that rows with the same value keep their order from page to page. nextCursor is null on the last page; pass it as cursor for the next one. A cursor holds a place in the rows, so a page can start at another row when the rows change between two requests.",
+        "parameters": [
+          {
+            "name": "db",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": "The database's name, as GET databases lists it. 400 with field db when it is missing; 404 with field db when there is no database of this name; 500 with code open_failed and field db when the database does not open."
+          },
+          {
+            "name": "table",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": "The table's or view's name, as GET tables lists it. A name in another case finds it too, as in SQL. 400 with field table when it is missing; 404 with field table when the database has no table or view of this name."
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The nextCursor of the page before. Without it, the first page. 400 with field cursor when it is not a cursor that this route returned."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500,
+              "default": 50
+            },
+            "description": "The most rows in the page. 400 with field limit when it is not a whole number from 1 to 500."
+          },
+          {
+            "name": "filter",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Only the rows where a cell, as text, contains this text. Case does not matter for ASCII letters. % and _ are plain characters here. A blob never matches."
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The column to sort by, as GET schema names it, or rowid when the table has one and no column has that name. 400 with field sort when the table has no such column."
+          },
+          {
+            "name": "dir",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "default": "asc"
+            },
+            "description": "The sort's direction; without a sort, the direction of the rowid or the primary key. 400 with field dir when it is neither."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The page.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SqliteRowsPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          },
+          "504": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ErrorEnvelope": {
+        "type": "object",
+        "required": [
+          "error",
+          "message"
+        ],
+        "properties": {
+          "error": {
+            "type": "string",
+            "enum": [
+              "bad_request",
+              "unauthorized",
+              "forbidden",
+              "not_found",
+              "method_not_allowed",
+              "payload_too_large",
+              "internal_error",
+              "unavailable",
+              "timeout"
+            ],
+            "description": "Machine error type, e.g. bad_request, not_found, timeout."
+          },
+          "message": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "field": {
+            "type": "string"
+          },
+          "hint": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SqliteSource": {
+        "type": "string",
+        "enum": [
+          "framework",
+          "support",
+          "file"
+        ],
+        "description": "Where the tab reads the database: framework, the app's open SQLiteDatabase; support, the app's open SupportSQLiteDatabase, such as Room's; file, a connection that the tab opens read-only for each request."
+      },
+      "SqliteDatabase": {
+        "type": "object",
+        "required": [
+          "name",
+          "registered",
+          "source",
+          "writable",
+          "path",
+          "sizeBytes",
+          "schemaVersion"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The database's name: the name that the app registered, or the file's name for a discovered one. The other routes take it as db."
+          },
+          "registered": {
+            "type": "boolean",
+            "description": "true for a database that the app registered, false for a file that discovery found."
+          },
+          "source": {
+            "$ref": "#/components/schemas/SqliteSource"
+          },
+          "writable": {
+            "type": "boolean",
+            "description": "Whether the app lets a client change the database through the tab. The routes here never write. Always false for a file."
+          },
+          "path": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The database file, or null for a database in memory, and for a live handle that does not open."
+          },
+          "sizeBytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "The size of the database file, without its -wal file, or null when there is no file."
+          },
+          "schemaVersion": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "PRAGMA user_version, which Room and SQLiteOpenHelper set to the schema's version; null when the database does not open."
+          },
+          "error": {
+            "type": "string",
+            "description": "Only for a database that does not open: why."
+          }
+        },
+        "additionalProperties": false
+      },
+      "SqliteTableType": {
+        "type": "string",
+        "enum": [
+          "table",
+          "view"
+        ]
+      },
+      "SqliteTable": {
+        "type": "object",
+        "required": [
+          "name",
+          "type",
+          "internal"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "$ref": "#/components/schemas/SqliteTableType"
+          },
+          "internal": {
+            "type": "boolean",
+            "description": "Whether SQLite, Android, or Room keeps the table for itself (sqlite_*, android_metadata, room_master_table), or it is a shadow table of a full-text or R*Tree index."
+          },
+          "hasRowId": {
+            "type": "boolean",
+            "description": "Whether each row has a rowid, which GET rows returns. false for a view and for a table WITHOUT ROWID. Absent when the table can't be read."
+          },
+          "rowCount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many rows the table has. Absent for a view, and when the table can't be read."
+          },
+          "entity": {
+            "type": "string",
+            "description": "From the app's hint: the class that maps the table."
+          },
+          "purpose": {
+            "type": "string",
+            "description": "From the app's hint: what a row is."
+          },
+          "error": {
+            "type": "string",
+            "description": "Only for a table that can't be read, such as a virtual table whose module this SQLite does not have: why."
+          }
+        },
+        "additionalProperties": false
+      },
+      "SqliteColumn": {
+        "type": "object",
+        "required": [
+          "name",
+          "type",
+          "notNull",
+          "defaultValue",
+          "primaryKey",
+          "generated"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "description": "The declared type, as written in the table's statement; empty when it has none. SQLite stores a value of any type in any column, so a cell's own type is in GET rows."
+          },
+          "notNull": {
+            "type": "boolean"
+          },
+          "defaultValue": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The default, as SQL text, such as 0 or 'none'; null when there is none."
+          },
+          "primaryKey": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The column's place in the primary key, from 1, or 0 when it is not in it."
+          },
+          "generated": {
+            "type": "boolean",
+            "description": "Whether SQLite computes the column from the others: GENERATED ALWAYS AS, stored or virtual."
+          }
+        },
+        "additionalProperties": false
+      },
+      "SqliteForeignKey": {
+        "type": "object",
+        "required": [
+          "table",
+          "from",
+          "to",
+          "onUpdate",
+          "onDelete"
+        ],
+        "properties": {
+          "table": {
+            "type": "string",
+            "description": "The table that the key refers to."
+          },
+          "from": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The columns of this table, in order."
+          },
+          "to": {
+            "type": "array",
+            "items": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "description": "The columns of the other table, in the same order. null stands for the other table's primary key column."
+          },
+          "onUpdate": {
+            "type": "string",
+            "description": "Such as NO ACTION or CASCADE."
+          },
+          "onDelete": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SqliteSchema": {
+        "type": "object",
+        "required": [
+          "database",
+          "table",
+          "type",
+          "internal",
+          "hasRowId",
+          "rowCount",
+          "sql",
+          "columns",
+          "foreignKeys"
+        ],
+        "properties": {
+          "database": {
+            "type": "string"
+          },
+          "table": {
+            "type": "string",
+            "description": "The name as the database has it, which can differ in case from the one asked for."
+          },
+          "type": {
+            "$ref": "#/components/schemas/SqliteTableType"
+          },
+          "internal": {
+            "type": "boolean",
+            "description": "As in GET tables."
+          },
+          "hasRowId": {
+            "type": "boolean",
+            "description": "As in GET tables."
+          },
+          "rowCount": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "How many rows the table has; null for a view."
+          },
+          "sql": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The CREATE statement from sqlite_master."
+          },
+          "entity": {
+            "type": "string",
+            "description": "From the app's hint: the class that maps the table."
+          },
+          "purpose": {
+            "type": "string",
+            "description": "From the app's hint: what a row is."
+          },
+          "columns": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SqliteColumn"
+            }
+          },
+          "foreignKeys": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SqliteForeignKey"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "SqliteCell": {
+        "description": "A cell, by its own storage class, which typeof() gives: any column can hold any type, so the declared type does not say.",
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "const": "null"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "type",
+              "value"
+            ],
+            "properties": {
+              "type": {
+                "const": "integer"
+              },
+              "value": {
+                "type": [
+                  "integer",
+                  "string"
+                ],
+                "description": "A number; a string of its digits when it is beyond 2^53 - 1 either way, which a JavaScript number can't hold exactly."
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "type",
+              "value"
+            ],
+            "properties": {
+              "type": {
+                "const": "real"
+              },
+              "value": {
+                "type": [
+                  "number",
+                  "string"
+                ],
+                "description": "A number; the string Infinity or -Infinity for an infinity, which JSON has no number for."
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "type",
+              "value"
+            ],
+            "properties": {
+              "type": {
+                "const": "text"
+              },
+              "value": {
+                "type": "string",
+                "description": "The text, or its first 4096 characters when truncated is true."
+              },
+              "truncated": {
+                "const": true,
+                "description": "Present when the text is longer than 4096 characters."
+              },
+              "length": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "With truncated: the whole text's length, in characters."
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "type",
+              "bytes"
+            ],
+            "properties": {
+              "type": {
+                "const": "blob"
+              },
+              "bytes": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "The blob's size. Its bytes are not read."
+              }
+            },
+            "additionalProperties": false
+          }
+        ]
+      },
+      "SqliteRow": {
+        "type": "object",
+        "required": [
+          "cells"
+        ],
+        "properties": {
+          "rowid": {
+            "type": "string",
+            "pattern": "^-?[0-9]+$",
+            "description": "The row's rowid, as a string, so that a JavaScript client keeps every digit. Absent for a view and for a table WITHOUT ROWID."
+          },
+          "cells": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/SqliteCell"
+            },
+            "description": "Each column's cell, by the column's name, in the order of GET schema."
+          }
+        },
+        "additionalProperties": false
+      },
+      "SqliteRowsPage": {
+        "description": "The pagination envelope, with rows as its items.",
+        "type": "object",
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SqliteRow"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The cursor of the next page, or null when this is the last."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "responses": {
+      "Error": {
+        "description": "Error envelope.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorEnvelope"
+            }
+          }
+        }
+      }
+    }
+  }
+}

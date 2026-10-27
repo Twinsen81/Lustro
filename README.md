@@ -90,6 +90,7 @@ keeps your newer one.
 | `androidx.lifecycle` | 2.4.1 | `lifecycle-process` only, and only in `lustro`. |
 | `kotlinx.coroutines` | none | Lustro has no coroutines dependency. `lustro-prefs` calls the app's own coroutines only for a registered DataStore. |
 | `androidx.datastore` | none | `compileOnly` in `lustro-prefs` and `lustro-prefs-noop`. A registered `PrefsDataStore` needs DataStore 1.0, and a `bytes` value 1.1. |
+| `androidx.sqlite` | none | `compileOnly` in `lustro-sqlite` and `lustro-sqlite-noop`. A registered `SqliteDb.support` needs `androidx.sqlite` 2.0, which Room brings. |
 
 `lustro` also brings NanoHTTPD 2.3.1, its embedded server. CI builds a small app in
 [`consumer-check/`](consumer-check/) with exactly these versions, and again on a current
@@ -700,6 +701,96 @@ val lustro = Lustro.builder(application)
   the file again only when its cursor moved.
 - In `lustro-prefs-noop`, the tab reads no files and no data stores.
 
+## SQLite
+
+The SQLite plugin shows your app's SQLite and Room databases over the API: the tables and views,
+their schemas, and pages of rows, sorted and filtered. It is a pair of artifacts, split by
+variant as `lustro` is:
+
+```toml
+lustro-sqlite      = { group = "io.github.twinsen81", name = "lustro-sqlite",      version.ref = "lustro" }
+lustro-sqlite-noop = { group = "io.github.twinsen81", name = "lustro-sqlite-noop", version.ref = "lustro" }
+```
+
+```kotlin
+dependencies {
+    debugImplementation(libs.lustro.sqlite)
+    releaseImplementation(libs.lustro.sqlite.noop)
+}
+
+val lustro = Lustro.builder(application)
+    .addTab(NetworkDebugTab.create(senderClient = client))
+    .addTab(
+        SqliteDebugTab.create(
+            databases = listOf(
+                SqliteDb.support(
+                    "app",
+                    tableHints = mapOf("notes" to TableHint("NoteEntity", "A note that the user wrote.")),
+                ) { appDatabase.openHelper.writableDatabase },
+                SqliteDb.file("cache", application.getDatabasePath("cache.db")),
+            ),
+            discoverFrom = application,
+        ),
+    )
+    .build()
+```
+
+- **The app's open handle.** `SqliteDb.support` takes a function that returns the app's
+  `SupportSQLiteDatabase`: for Room, `roomDb.openHelper.writableDatabase`, which works for an
+  encrypted Room database too. `SqliteDb.framework` takes one that returns a framework
+  `SQLiteDatabase`, such as a `SQLiteOpenHelper`'s. The tab calls the function on a request's
+  thread for each read, reads through the app's connection pool, and never closes the handle.
+  Use a handle for each database that the app has open: a second connection that stays open to
+  the same file can conflict with the app's, mostly in WAL mode. `androidx.sqlite` is
+  `compileOnly` in both artifacts: an app that registers no `SupportSQLiteDatabase` needs none,
+  and Room brings it.
+- **A file.** `SqliteDb.file` takes a database file that the tab opens read-only for each
+  request, and closes after it, such as the database of a library. The engine refuses every
+  write on that connection, and in WAL mode it does not block the app's writer. A file in which
+  SQLite finds corruption is reported and left on disk, where the platform's default error
+  handler would delete it. In WAL mode,
+  SQLite can leave the empty `-wal` and `-shm` files of the database after the tab reads it.
+  The tab does not see the file of a live handle before it reads, so register each file once.
+  The tab opens a file with the platform's SQLite, which keeps the locks of the app's other
+  connections to it through that SQLite. Do not register a file that the app opens with another
+  copy of SQLite, such as Room's bundled driver or SQLCipher: on Android, closing any descriptor
+  of a file drops the process's POSIX locks on it, and only the SQLite that holds them works
+  around that. See [How To Corrupt An SQLite Database File](https://www.sqlite.org/howtocorrupt.html#_posix_advisory_locks_canceled_by_a_separate_thread_doing_close_).
+- **Discovery.** With `discoverFrom = context`, the tab also lists the other database files in the
+  app's `databases` directory, such as those of WorkManager and other libraries, by file name.
+  It lists the directory on each request, so it finds a file that the app creates later, and
+  leaves out a file that a registration stands for, SQLite's journal, WAL, and lock files, and a
+  file that is not a SQLite database. It asks the platform's SQLite about a file, and never
+  reads one itself, and it asks only about the files that no registration stands for. A
+  discovered file is read as a `SqliteDb.file`, so leave discovery off when the directory has a
+  database that the app opens with another copy of SQLite. Discovery is off by default.
+- **Hints and the writable flag.** `tableHints` gives a table the name of the class that maps it
+  and one line on what a row is, for an agent that reads the database without your code.
+  `writable` says whether a client may change the database through the tab; the routes in this
+  version only read, and a file is never writable.
+- **Only the SQL that the tab builds.** A client names a database, a table, and a column, and the
+  tab checks each name against the database's schema before it puts it in a statement, as a
+  quoted identifier. A filter value is a bound parameter. A page of rows reads each cell by its
+  own type, as SQLite stores any type in any column: at most 4096 characters of a text, with the
+  whole length when it is cut, and only the size of a blob, also of a blob in a `TEXT` column. A
+  blob of megabytes does not fill a page or the memory. Each read stops when the request times
+  out (`DebugConfig.requestTimeoutMs`, 30 s by default).
+- **Routes.** `GET /api/v1/sqlite/databases` lists the databases with their source, file, size,
+  and schema version (`PRAGMA user_version`). `GET tables?db=` lists the tables and views, with
+  the row count of each table, and flags the internal ones (`sqlite_*`, `android_metadata`,
+  `room_master_table`, and the shadow tables of a full-text index). `GET schema?db=&table=` gives
+  the columns, the foreign keys, the row count, the `CREATE` statement, and the hint.
+  `GET rows?db=&table=` returns a page in the pagination envelope `{ items, nextCursor }`: 50 rows
+  by default, `limit` up to 500, a `filter` text that any cell can contain, and a `sort` column
+  with `dir=asc|desc`. The `lustro` CLI reaches them with `lustro api`, for example
+  `lustro api GET sqlite/rows --param db=app --param table=notes --param sort=created_at --param dir=desc`.
+  See [docs/AGENTS.md](docs/AGENTS.md#sqlite-tab-operations) and
+  [`sqlite.openapi.json`](lustro-sqlite/src/main/assets/lustro/sqlite.openapi.json).
+- **No console view yet.** The tab serves its API and is not in the tab bar; `_meta` lists it.
+- **Every client with the token reads every registered database.** Register only the databases
+  that you want to show. See [SECURITY.md](SECURITY.md#sqlite-databases).
+- In `lustro-sqlite-noop`, the tab opens no database and never calls the functions.
+
 ## Security model
 
 Lustro deliberately surfaces app internals, so its defaults are conservative. See
@@ -862,8 +953,10 @@ policy live in [`wire-protocol/v1/`](wire-protocol/v1/); the Network tab's contr
 [`lustro/src/main/assets/lustro/network.openapi.json`](lustro/src/main/assets/lustro/network.openapi.json),
 the Logs tab's is
 [`lustro-logs/src/main/assets/lustro/logs.openapi.json`](lustro-logs/src/main/assets/lustro/logs.openapi.json),
-and the Preferences tab's is
+the Preferences tab's is
 [`lustro-prefs/src/main/assets/lustro/prefs.openapi.json`](lustro-prefs/src/main/assets/lustro/prefs.openapi.json),
+and the SQLite tab's is
+[`lustro-sqlite/src/main/assets/lustro/sqlite.openapi.json`](lustro-sqlite/src/main/assets/lustro/sqlite.openapi.json),
 each with a version of its own.
 
 For driving Lustro from agents, scripts, or the `lustro` CLI, see
@@ -897,6 +990,8 @@ For driving Lustro from agents, scripts, or the `lustro` CLI, see
 | `:lustro-logs-noop` | `io.github.twinsen81:lustro-logs-noop` | Release-safe no-op half of `:lustro-logs`. |
 | `:lustro-prefs` | `io.github.twinsen81:lustro-prefs` | The [Preferences](#preferences) plugin: the app's SharedPreferences and Preferences DataStores under `/api/v1/prefs/`. |
 | `:lustro-prefs-noop` | `io.github.twinsen81:lustro-prefs-noop` | Release-safe no-op half of `:lustro-prefs`. |
+| `:lustro-sqlite` | `io.github.twinsen81:lustro-sqlite` | The [SQLite](#sqlite) plugin: the app's SQLite and Room databases under `/api/v1/sqlite/`. |
+| `:lustro-sqlite-noop` | `io.github.twinsen81:lustro-sqlite-noop` | Release-safe no-op half of `:lustro-sqlite`. |
 | `lustro-cli/` | `lustro-cli` (PyPI) | Python CLI that wraps the HTTP API, installing a `lustro` command; published alongside each release. |
 
 See also: [CONTRIBUTING.md](CONTRIBUTING.md) · [SECURITY.md](SECURITY.md) ·

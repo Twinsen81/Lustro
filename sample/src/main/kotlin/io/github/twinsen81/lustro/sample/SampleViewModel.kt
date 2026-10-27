@@ -26,6 +26,7 @@ internal class SampleViewModel(application: Application) : AndroidViewModel(appl
     private val demoLogs = DemoLogs()
     private val demoPrefs = DemoPrefs(application)
     private val demoDataStore = DemoDataStore(application, viewModelScope)
+    private val demoSqlite = DemoSqlite(application, io)
 
     val events = EventLog()
 
@@ -85,6 +86,11 @@ internal class SampleViewModel(application: Application) : AndroidViewModel(appl
     /** The settings file as the app reads it: an edit from the console shows here. */
     val prefsValues: StateFlow<List<Pair<String, String>>> = demoPrefs.settingsValues
 
+    val sqliteActions: List<DemoAction> = DemoCatalog.sqlite(demoSqlite)
+
+    /** How many notes and products the app reads, after its last write. */
+    val sqliteCounts: StateFlow<Pair<Long, Long>?> = demoSqlite.rowCounts
+
     /** The registered DataStore as the app reads it: an edit from the console shows here too. */
     val dataStoreValues: StateFlow<List<Pair<String, String>>> = demoDataStore.appStateValues
 
@@ -110,10 +116,11 @@ internal class SampleViewModel(application: Application) : AndroidViewModel(appl
 
     /** Every action, by the label that the `request` launch extra names. */
     val byLabel: Map<String, DemoAction> =
-        (network.flatMap { it.actions } + logActions + prefsActions + listOf(stopServer, startServer, startSync, stopSync))
+        (network.flatMap { it.actions } + logActions + prefsActions + sqliteActions + listOf(stopServer, startServer, startSync, stopSync))
             .associateBy { it.label }
 
     init {
+        demoSqlite.refresh()
         flags?.let { source ->
             viewModelScope.launch {
                 var previous = source.value.associate { it.id to it.enabled }

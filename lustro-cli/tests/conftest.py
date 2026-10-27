@@ -26,6 +26,7 @@ GOLDEN_SCHEMA_FILES = {
     "prefs-reset.json": ("schema", "cursor-envelope.schema.json"),
     "prefs-delta.json": ("schema", "cursor-envelope.schema.json"),
     "prefs-unchanged.json": ("schema", "cursor-envelope.schema.json"),
+    "sqlite-rows.json": ("schema", "pagination.schema.json"),
 }
 
 # Golden fixtures validated against an OpenAPI component schema.

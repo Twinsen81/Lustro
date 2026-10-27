@@ -52,7 +52,8 @@ build, and that even in debug builds it stays bound to the local device.
   dependency graph; the shared `io.github.twinsen81:lustro-runtime` capability
   only prevents `:lustro` and `:lustro-noop` landing on the same configuration,
   and `lustro-logs-runtime` does the same for `:lustro-logs` and
-  `:lustro-logs-noop`.
+  `:lustro-logs-noop`, as `lustro-prefs-runtime` and `lustro-sqlite-runtime`
+  do for their pairs.
 - **Loopback-bound by default.** The server binds to `127.0.0.1` and is
   reachable only while the app is foregrounded; the socket is torn down on
   background after draining in-flight requests. LAN exposure is strictly opt-in
@@ -185,6 +186,8 @@ build, and that even in debug builds it stays bound to the local device.
   loopback binding this adds little, because `adb shell run-as` reads and
   writes the same files of a debuggable app. With `DebugConfig.bindAddress` set
   for LAN access, every client with the token can read and change them.
+- **A registered database shows all of its contents.** See
+  [SQLite databases](#sqlite-databases) below.
 - **Nothing persisted to disk except mock rules.** Captured traffic, WebSocket
   messages included, and log lines live only in bounded in-memory buffers and
   are lost when the process dies. The sole
@@ -193,6 +196,36 @@ build, and that even in debug builds it stays bound to the local device.
   DataStores that the app registers, when a client edits them.
 - **Exceptions are contained.** Library exceptions do not escape into the host
   app; server-level errors are logged through `android.util.Log` at WARN.
+
+### SQLite databases
+
+The SQLite plugin (`:lustro-sqlite`) serves the tables, schemas, and rows of the
+databases that the app registers, and with `discoverFrom` of every other
+database file in the app's `databases` directory, under `/api/v1/sqlite/`.
+
+- **Every client with the token reads every registered database, whole.** The
+  tab has no value policy: a column that holds a token, a password hash, or a
+  user's data shows as it is stored, and the schema of every table shows too.
+  The live handle of an encrypted database, such as a Room database that
+  SQLCipher opens, shows its plain contents. Register only the databases that a
+  client may read, and turn discovery on only when the libraries' databases may
+  show too. With the default loopback binding this adds little, because
+  `adb shell run-as` reads the same files of a debuggable app. With
+  `DebugConfig.bindAddress` set for LAN access, every client with the token can
+  read them.
+- **The routes only read, and run only the SQL that the tab builds.** A client
+  names a database, a table, and a column. The tab finds each name in the
+  database's own schema before it puts it in a statement, as a quoted
+  identifier, and a filter value is a bound parameter, so a request can't add
+  SQL of its own. A database file, registered or discovered, is opened with
+  `OPEN_READONLY` for one request, so the engine refuses a write there too, and
+  a file in which SQLite finds corruption is left on disk, not deleted. The
+  `writable` flag of a registration is reported only; no route of this version
+  writes.
+- **A read is bounded.** A page has at most 500 rows, a text cell at most 4096
+  characters, and a blob only its size, and each read stops at the request's
+  timeout, so that a request can't hold a lock that the app waits for, or fill
+  the app's memory.
 
 An external review of the auth, CSP, and capture implementation is part of the
 work remaining before the first public release (`0.1.0`), alongside the

@@ -30,6 +30,10 @@ androidxAnnotation = "1.11.0"
 # makes exists in any app that has DataStore.
 datastoreFloor = "1.0.0"
 coroutinesFloor = "1.5.0"
+# compileOnly in :lustro-sqlite and :lustro-sqlite-noop, so not published: an app
+# that registers a SupportSQLiteDatabase, such as Room's, brings its own. The
+# first androidx release has every call that the tab makes.
+sqliteFloor = "2.0.0"
 
 # Sample app only.
 volley = "1.2.1"
@@ -41,6 +45,9 @@ activityCompose = "1.10.1"
 # The sample's Preferences DataStore. The prefs unit tests use it too, for the
 # byte array values that DataStore 1.1 added.
 datastore = "1.1.7"
+# The sample's SupportSQLiteOpenHelper, the one Room uses, without Room. The
+# sqlite unit tests use it too, for a live SupportSQLiteDatabase.
+sqlite = "2.4.0"
 
 # Build / publishing tooling.
 detekt = "1.23.8"
@@ -66,6 +73,7 @@ androidx-lifecycle-process = { group = "androidx.lifecycle", name = "lifecycle-p
 datastore-core-floor = { group = "androidx.datastore", name = "datastore-core", version.ref = "datastoreFloor" }
 datastore-preferences-core-floor = { group = "androidx.datastore", name = "datastore-preferences-core", version.ref = "datastoreFloor" }
 kotlinx-coroutines-core-floor = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "coroutinesFloor" }
+sqlite-floor = { group = "androidx.sqlite", name = "sqlite", version.ref = "sqliteFloor" }
 
 # Sample app only.
 volley = { group = "com.android.volley", name = "volley", version.ref = "volley" }
@@ -75,6 +83,7 @@ compose-material3 = { group = "androidx.compose.material3", name = "material3" }
 activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
 datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore" }
 datastore-preferences-core = { group = "androidx.datastore", name = "datastore-preferences-core", version.ref = "datastore" }
+sqlite-framework = { group = "androidx.sqlite", name = "sqlite-framework", version.ref = "sqlite" }
 
 # Test.
 okhttp-mockwebserver = { group = "com.squareup.okhttp3", name = "mockwebserver", version.ref = "okhttp" }

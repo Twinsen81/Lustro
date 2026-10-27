@@ -25,7 +25,8 @@ This document is about using a running Lustro. To add Lustro to an app, follow t
   `lustro/src/main/assets/lustro/network.openapi.json`.
 - **Plugin tabs.** An app can also register plugin tabs, such as `logs`, the app's own logcat
   (see [Logs tab operations](#logs-tab-operations)), and `prefs`, the app's SharedPreferences
-  and Preferences DataStores (see [Preferences tab operations](#preferences-tab-operations)). `_meta` lists the ones the app registered,
+  and Preferences DataStores (see [Preferences tab operations](#preferences-tab-operations)), and `sqlite`, the app's SQLite and Room databases
+  (see [SQLite tab operations](#sqlite-tab-operations)). `_meta` lists the ones the app registered,
   and each plugin's `_schema` has a version of its own in `info.version`.
 
 ## Use the `lustro` CLI
@@ -576,6 +577,45 @@ discovered one when the bytes of its file change, on the next poll.
 A `file` that names no file is a `404`, and one with `/` or `\` a `400`, both with
 `field: "file"`; the tab never creates a file.
 
+## SQLite tab operations
+
+Base path `/api/v1/sqlite`, when the app registers the SQLite plugin
+(`SqliteDebugTab.create(databases, discoverFrom)`; without it, the routes are an enveloped
+`404 Unknown tab: sqlite`). The authoritative contract is
+`lustro-sqlite/src/main/assets/lustro/sqlite.openapi.json`, version `1.0`. The CLI has no
+`sqlite` commands: use `lustro api`. Every route only reads.
+
+| Operation | Route | Notes |
+| --- | --- | --- |
+| List the databases | `GET databases` | `{ items: [{ name, registered, source, writable, path, sizeBytes, schemaVersion, error? }] }`: the databases that the app registered, in its order, then the files that the tab found in the app's `databases` directory, by file name. `source` is `support` (the app's `SupportSQLiteDatabase`, such as Room's), `framework` (the app's `SQLiteDatabase`), or `file` (opened read-only for each request). `schemaVersion` is `PRAGMA user_version`; Room and `SQLiteOpenHelper` set it to the schema's version. `path` and `sizeBytes` are `null` for a database in memory; `sizeBytes` leaves out the `-wal` file. `error` says why a database does not open. |
+| List the tables | `GET tables?db=` | `{ database, writable, items: [{ name, type, internal, hasRowId, rowCount, entity?, purpose?, error? }] }`, by name. `type` is `table` or `view`. A view has no `rowCount`: counting runs its query. `internal` flags `sqlite_*`, `android_metadata`, `room_master_table`, and the shadow tables of a full-text or R*Tree index. `entity` and `purpose` are the app's hint. |
+| Read a schema | `GET schema?db=&table=` | `{ database, table, type, internal, hasRowId, rowCount, sql, entity?, purpose?, columns: [{ name, type, notNull, defaultValue, primaryKey, generated }], foreignKeys: [{ table, from, to, onUpdate, onDelete }] }`. `primaryKey` is the column's place in the key, from 1, or 0. `generated` is `true` for a column that SQLite computes (`GENERATED ALWAYS AS`). A key over several columns has them in order in `from` and `to`; a `null` in `to` stands for the other table's primary key. |
+| Read rows | `GET rows?db=&table=&limit=&cursor=&filter=&sort=&dir=` | Pagination envelope `{ items, nextCursor }`. 50 rows by default, `limit` 1 to 500. Pass `nextCursor` as `cursor` for the next page; it is `null` on the last one. |
+
+**A row.** `{ rowid?, cells: { <column>: cell } }`, with a cell for each column of `GET schema`,
+in its order. `rowid` is a string, so that a JavaScript client keeps every digit; a view and a
+table `WITHOUT ROWID` have none. SQLite stores any type in any column, so each cell says its
+own: `{ type: "null" }`, `{ type: "integer", value }`, `{ type: "real", value }`,
+`{ type: "text", value, truncated?, length? }`, or `{ type: "blob", bytes }`. An integer beyond
+2^53 - 1 either way is a string of its digits, and an infinite real the string `"Infinity"` or
+`"-Infinity"`. A text longer than 4096 characters is cut, with `truncated: true` and the whole
+`length` in characters. A blob is only its size, in any column, also in a `TEXT` one.
+
+**Order, sort, and filter.** Without `sort`, a table's rows come by `rowid`, or by the primary key
+for a table `WITHOUT ROWID`, and a view's as SQLite gives them; `dir=desc` turns the order
+around. `sort` names a column as `GET schema` does (another case finds it too), or `rowid` when
+the table has one and no column has that name; a sort also sorts by the row's key, so rows with
+the same value keep their order from page to page. `filter` keeps the rows where a cell, as text,
+contains the filter: `%` and `_` are plain characters, case does not matter for ASCII letters,
+and a blob never matches. A cursor holds a place in the rows: when the app adds or removes rows
+between two pages, the next page can repeat or skip a row.
+
+**What the tab runs.** Only statements that it builds: each `db`, `table`, and `sort` is checked
+against the database's schema and quoted, and the filter is a bound parameter. A `file` database
+is opened with `OPEN_READONLY` for one request and closed after it. `writable` is the app's
+choice for later write routes; no route writes in this version. Each read stops at the request
+timeout, and the client then gets a `504`.
+
 ## Common workflows
 
 **Mock a 500 for an endpoint**
@@ -671,6 +711,22 @@ The app reads the new value at its next `get`. Code that read the value before, 
 field, keeps the old one until the app reads it again; restart the app when in doubt
 (`adb shell am force-stop <package>`): the value is on disk.
 
+**Find a table and page through its rows**
+
+```bash
+lustro api GET sqlite/databases                              # names, sources, schema versions
+lustro api GET sqlite/tables --param db=app                  # tables, row counts, hints
+lustro api GET sqlite/schema --param db=app --param table=notes
+lustro api GET sqlite/rows --param db=app --param table=notes --param sort=created_at --param dir=desc --param limit=20 > page.json
+next=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["nextCursor"] or "")' < page.json)
+lustro api GET sqlite/rows --param db=app --param table=notes --param sort=created_at --param dir=desc --param limit=20 --param cursor="$next"
+lustro api GET sqlite/rows --param db=app --param table=notes --param filter=invoice
+```
+
+Keep the same `sort`, `dir`, `filter`, and `limit` from page to page: a cursor is a place in one
+order. To read a text cell whole, or a blob's bytes, use `adb shell run-as <package>` with the
+database file that `GET databases` names as `path`.
+
 **Atomically sync a rule set** (declarative — the resulting set equals exactly what you post):
 
 ```bash
@@ -699,11 +755,18 @@ Errors use the shared envelope; key statuses:
 - **`404 not_found`** — unknown route, missing transaction, a body that wasn't kept, or `send` with
   no sender configured. Also a WebSocket connection that the app cleared or evicted, and a message
   with no stored payload. Also every `logs/` route when the app did not register the Logs plugin
-  (`Unknown tab: logs`), and every `prefs/` route without the Preferences plugin
-  (`Unknown tab: prefs`).
+  (`Unknown tab: logs`), every `prefs/` route without the Preferences plugin
+  (`Unknown tab: prefs`), and every `sqlite/` route without the SQLite plugin
+  (`Unknown tab: sqlite`). On `sqlite/` routes, also a `db` that the tab does not list, and a
+  `table` that the database does not have, each with its `field`.
 - **`403 forbidden` with `code: "read_only"`** on `prefs/edit`, `delete`, or `clear`: the file is
   read-only. `GET prefs/files` says which files are, and the app decides it in
   `PrefsDebugTab.create(...)`.
+- **`500` with `code: "open_failed"`** on a `sqlite/` route: the database did not open. The
+  message has the reason, such as a file that is not there yet, a handle that the app closed, or
+  the exception of the app's function that returns the handle. `GET sqlite/databases` lists such a database with `error`.
+  **`500` with `code: "sqlite_error"`**: SQLite refused a statement, such as on a corrupt file or
+  a view whose table is gone; the message is SQLite's.
 - **No log lines**: check `state.reader` in `GET logs/entries`: `failed` with `readerError` when
   logcat could not run, `stopped` when Lustro is stopped, and `state.paused` when the capture is
   paused. Lines from other processes are never shown: the tab reads the app's own process only.
