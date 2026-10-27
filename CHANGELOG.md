@@ -14,6 +14,46 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Added
 
+- **The SQLite plugin: the app's SQLite and Room databases under
+  `/api/v1/sqlite`, with a no-op half.** `:lustro-sqlite` adds a tab,
+  `SqliteDebugTab.create(databases, discoverFrom)`, that reads the tables,
+  schemas, and rows of the databases that the app registers.
+  `SqliteDb.support(name) { roomDb.openHelper.writableDatabase }` registers a
+  Room database, or any `SupportSQLiteDatabase`, and `SqliteDb.framework` a
+  framework `SQLiteDatabase`: the tab reads through the app's open handle and
+  never closes it. `SqliteDb.file(name, file)` registers a file that the tab
+  opens with `OPEN_READONLY` for each request and closes after it, so that the
+  engine refuses every write and a WAL writer is not blocked. Each registration
+  has `tableHints`, an entity name and a purpose for each table, and a
+  `writable` flag that the routes report; a file is never writable, and no
+  route writes yet. With `discoverFrom = context`, the tab also lists the other
+  SQLite files in the app's `databases` directory, on each request, without
+  the files that a registration stands for. `create` refuses two databases
+  with one name, and two file databases with one file. `GET databases` lists
+  them with their source, file, size, and `PRAGMA user_version`; `GET tables`
+  lists the tables and views with row counts and hints, and flags the
+  internal ones; `GET schema` gives the columns, foreign keys, row count, and
+  `CREATE` statement; `GET rows` returns a page in the pagination envelope,
+  with `limit` (1 to 500, 50 by default), a `cursor`, a `filter` that any cell
+  can contain, and a `sort` column with `dir`. The tab runs only the SQL that
+  it builds: every name that a client sends is found in the database's schema
+  and quoted, and the filter is a bound parameter. Each cell has its own
+  storage class, so a blob in a `TEXT` column or in a column without a type is
+  a blob: a text is cut at 4096 characters with its whole length, and a blob is
+  only its size, read without its bytes. An integer beyond 2^53 - 1 is a
+  string, and a rowid is always one. Each read stops at the request timeout
+  through a `CancellationSignal`. `androidx.sqlite` is `compileOnly` in both
+  artifacts. The tab has no console view yet, so it stays out of the tab bar;
+  `_meta` lists it. `sqlite.openapi.json` has its own version, 1.0, and the
+  golden fixtures `sqlite-databases.json`, `sqlite-tables.json`,
+  `sqlite-schema.json`, and `sqlite-rows.json` are pinned to what the routes
+  write. The sample registers a notes database through the open helper that
+  Room uses, writable, with 2,000 notes, long texts, and a 3 MB blob, a catalog
+  file, and lets the tab find a third database on disk; its SQLite screen
+  writes to them while the console reads. On a physical device (API 37), the
+  app made 195 writes in 10 s, the slowest in 10 ms, while a client paged
+  through both databases.
+
 - **The Preferences tab reads and edits Preferences DataStores.** The app
   registers its stores with `PrefsDebugTab.create(context, files, dataStores)`,
   each as `PrefsDataStore(name, dataStore, policy, readOnly)`, and the tab reads

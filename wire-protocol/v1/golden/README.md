@@ -6,8 +6,9 @@ validate against these to prove they parse the exact shapes the server emits,
 and the fixtures themselves are validated against the JSON Schemas in the parent
 directory (`../*.schema.json`) and the OpenAPI components of the Network tab
 (`lustro/src/main/assets/lustro/network.openapi.json`), the Logs tab
-(`lustro-logs/src/main/assets/lustro/logs.openapi.json`), and the Preferences
-tab (`lustro-prefs/src/main/assets/lustro/prefs.openapi.json`).
+(`lustro-logs/src/main/assets/lustro/logs.openapi.json`), the Preferences
+tab (`lustro-prefs/src/main/assets/lustro/prefs.openapi.json`), and the SQLite
+tab (`lustro-sqlite/src/main/assets/lustro/sqlite.openapi.json`).
 
 These files are bundled into the `lustro-cli` wheel under
 `lustro_cli/wire/golden/`, so the installed CLI ships its own contract corpus
@@ -39,6 +40,10 @@ with no source checkout required.
 | `prefs-reset.json` | `GET prefs/entries?file=settings` first poll (`status: reset`) | `cursor-envelope.schema.json` + Preferences OpenAPI `PrefsCursorEnvelope` |
 | `prefs-delta.json` | `GET prefs/entries?file=settings` after the app changed a value (`status: delta`) | `cursor-envelope.schema.json` + Preferences OpenAPI `PrefsCursorEnvelope` |
 | `prefs-unchanged.json` | `GET prefs/entries?file=settings` no change (`status: unchanged`) | `cursor-envelope.schema.json` + Preferences OpenAPI `PrefsCursorEnvelope` |
+| `sqlite-databases.json` | `GET sqlite/databases` | SQLite OpenAPI `listSqliteDatabases` 200 |
+| `sqlite-tables.json` | `GET sqlite/tables?db=app` | SQLite OpenAPI `listSqliteTables` 200 |
+| `sqlite-schema.json` | `GET sqlite/schema?db=app&table=notes` | SQLite OpenAPI `SqliteSchema` |
+| `sqlite-rows.json` | `GET sqlite/rows?db=app&table=notes&limit=3&dir=desc` | `pagination.schema.json` + SQLite OpenAPI `SqliteRowsPage` |
 
 ## Notes on the shapes
 
@@ -116,6 +121,18 @@ with no source checkout required.
   cursor of `settings` in the file list is the cursor of the first poll. A unit
   test in `:lustro-prefs` checks that the routes write these fixtures, except
   the cursors, which are random.
+
+- **SQLite.** `sqlite-databases.json` lists `app`, a Room-like database that the
+  app registered through its open handle (`source: support`) and made
+  writable; `catalog`, a file that the app registered; and `sdk_cache.db`, a
+  file that discovery found. `sqlite-tables.json` lists the tables and views of
+  `app`, with the internal ones flagged and a view without a row count.
+  `sqlite-schema.json` is the schema of `notes`. `sqlite-rows.json` is the first
+  page of `notes` in descending order, with 3 rows and a `nextCursor`: a rowid
+  beyond 2^53 - 1, which is a string in a cell too, a blob in the `TEXT` column
+  `body`, a text cut at 4096 characters with its length, and a blob read by its
+  size. The paths and the sizes model a device. A unit test in `:lustro-sqlite`
+  checks that the routes write these fixtures, except the paths and the sizes.
 
 When the server's emitted shapes change, update these fixtures in the same
 change that bumps the protocol version, and keep the schema validation green.

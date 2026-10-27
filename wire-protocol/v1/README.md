@@ -176,11 +176,19 @@ with the core wire.
   has an epoch of its own, so a cursor of one file is foreign to another.
   `POST edit`, `POST delete`, and `POST clear` change a file and answer `403`
   with the code `read_only` for a read-only one.
+- **SQLite `1.0`** (`:lustro-sqlite`) - the app's SQLite and Room databases
+  under `/api/v1/sqlite/`, read only. `GET databases` lists them with their
+  source, file, size, and `schemaVersion`; `GET tables?db=` lists the tables
+  and views, and flags the internal ones; `GET schema?db=&table=` gives the
+  columns, foreign keys, and row count. `GET rows?db=&table=` returns a page in
+  the pagination envelope, with `limit`, `filter`, `sort`, and `dir`; each cell
+  is `{ type, ... }` by its own storage class, a text is cut at 4096
+  characters with its `length`, and a blob is only its `bytes`.
 
 ## Status
 
-The concrete schema files (`*.schema.json`), the Network, Logs, and Preferences
-OpenAPI documents, and the golden fixtures (`golden/`) are present: envelopes + tab
+The concrete schema files (`*.schema.json`), the Network, Logs, Preferences, and
+SQLite OpenAPI documents, and the golden fixtures (`golden/`) are present: envelopes + tab
 schemas, and the golden response corpus (CLI contract tests). See
 `SCHEMA_INDEX.md` for the full set. The golden fixtures are also vendored into
 the `lustro-cli` wheel under `lustro_cli/wire/` so the installed CLI ships its
