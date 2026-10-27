@@ -381,6 +381,30 @@ class SqliteRoutesTest {
     }
 
     @Test
+    fun `an older SQLite, which answers an unknown pragma with no columns, still gives the columns and the keys`() {
+        // SQLite before 3.26 does not know table_xinfo, and before 3.16 the foreign_key_list of a table
+        // without keys has no columns: both come back as a result without columns, as this pragma does.
+        val inner = FrameworkSource { live }.open()
+        val old =
+            object : DbConnection by inner {
+                override fun query(sql: String, args: Array<String>, signal: CancellationSignal) =
+                    inner.query(
+                        sql.replace("PRAGMA table_xinfo", "PRAGMA no_such_pragma").replace("PRAGMA foreign_key_list(\"folders\")", "PRAGMA no_such_pragma"),
+                        args,
+                        signal,
+                    )
+            }
+        val reader = SqliteReader(old, CancellationSignal())
+        val notes = reader.table("notes")!!
+        val folders = reader.table("folders")!!
+
+        assertEquals(listOf("id", "title", "body", "data", "mixed", "score", "folder_id"), reader.columns(notes).map { it.name })
+        assertEquals(listOf("folders"), reader.foreignKeys(notes).map { it.table })
+        assertEquals(2, reader.columns(folders).size)
+        assertEquals(emptyList<ForeignKey>(), reader.foreignKeys(folders))
+    }
+
+    @Test
     fun `a cancelled request stops its read with a 504`() {
         val request = DebugRequest("rows", "GET", mapOf("db" to listOf("app"), "table" to listOf("notes")))
         request.cancel()

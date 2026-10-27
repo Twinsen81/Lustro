@@ -76,7 +76,8 @@ internal class SqliteReader(private val connection: DbConnection, private val si
     /**
      * The columns, in their order in the table. `table_info` leaves out a generated column, so
      * `table_xinfo` (SQLite 3.26) comes first; an older SQLite ignores a pragma that it does not
-     * know and returns no rows. A virtual table's hidden columns stay out, as `table_info` has them.
+     * know and returns a result without columns. A virtual table's hidden columns stay out, as
+     * `table_info` has them.
      */
     fun columns(table: Table): List<Column> =
         columns("table_xinfo", table).filter { it.hidden != HIDDEN }.map { it.column }.ifEmpty { columns("table_info", table).map { it.column } }
@@ -85,6 +86,7 @@ internal class SqliteReader(private val connection: DbConnection, private val si
 
     private fun columns(pragma: String, table: Table): List<Info> =
         query("PRAGMA $pragma(${quote(table.name)})") { cursor ->
+            if (cursor.getColumnIndex("name") < 0) return@query emptyList()
             val name = cursor.getColumnIndexOrThrow("name")
             val type = cursor.getColumnIndexOrThrow("type")
             val notNull = cursor.getColumnIndexOrThrow("notnull")
@@ -110,6 +112,8 @@ internal class SqliteReader(private val connection: DbConnection, private val si
 
     fun foreignKeys(table: Table): List<ForeignKey> =
         query("PRAGMA foreign_key_list(${quote(table.name)})") { cursor ->
+            // Before SQLite 3.16 (API 24 to 25), the result of a table without foreign keys has no columns.
+            if (cursor.getColumnIndex("id") < 0) return@query emptyList()
             val id = cursor.getColumnIndexOrThrow("id")
             val seq = cursor.getColumnIndexOrThrow("seq")
             val parent = cursor.getColumnIndexOrThrow("table")

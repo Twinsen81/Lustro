@@ -54,7 +54,8 @@ see [DECISIONS.md](DECISIONS.md).
   file, and lets the tab find a third database on disk; its SQLite screen
   writes to them while the console reads. On a physical device (API 37), the
   app made 195 writes in 10 s, the slowest in 10 ms, while a client paged
-  through both databases.
+  through both databases, and on an API 24 emulator, with SQLite 3.9.2, 189
+  writes, the slowest in 10 ms.
 
 - **The Preferences tab reads and edits Preferences DataStores.** The app
   registers its stores with `PrefsDebugTab.create(context, files, dataStores)`,
