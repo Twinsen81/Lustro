@@ -1,6 +1,7 @@
 package io.github.twinsen81.lustro.sqlite.internal
 
 import android.database.Cursor
+import android.database.DatabaseErrorHandler
 import android.database.sqlite.SQLiteDatabase
 import android.os.CancellationSignal
 import androidx.sqlite.db.SimpleSQLiteQuery
@@ -72,7 +73,7 @@ internal class SupportSource(private val database: () -> SupportSQLiteDatabase) 
 internal class FileSource(override val file: File) : DbSource() {
     override val kind: String = "file"
 
-    override fun open(): DbConnection = Opened(SQLiteDatabase.openDatabase(file.path, null, SQLiteDatabase.OPEN_READONLY))
+    override fun open(): DbConnection = Opened(SQLiteDatabase.openDatabase(file.path, null, SQLiteDatabase.OPEN_READONLY, KEEP_FILES))
 
     private class Opened(private val db: SQLiteDatabase) : DbConnection {
         override val path: String? get() = filePath(db.path)
@@ -80,6 +81,12 @@ internal class FileSource(override val file: File) : DbSource() {
         override fun query(sql: String, args: Array<String>, signal: CancellationSignal): Cursor = db.rawQuery(sql, args, signal)
 
         override fun close() = db.close()
+    }
+
+    private companion object {
+        // The default handler deletes a database file in which SQLite finds corruption, also
+        // through a read-only connection. The tab reports the error and leaves the file to the app.
+        val KEEP_FILES = DatabaseErrorHandler { }
     }
 }
 

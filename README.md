@@ -746,7 +746,9 @@ val lustro = Lustro.builder(application)
   and Room brings it.
 - **A file.** `SqliteDb.file` takes a database file that the tab opens read-only for each
   request, and closes after it, such as the database of a library. The engine refuses every
-  write on that connection, and in WAL mode it does not block the app's writer. In WAL mode,
+  write on that connection, and in WAL mode it does not block the app's writer. A file in which
+  SQLite finds corruption is reported and left on disk, where the platform's default error
+  handler would delete it. In WAL mode,
   SQLite can leave the empty `-wal` and `-shm` files of the database after the tab reads it.
   The tab does not see the file of a live handle before it reads, so register each file once.
 - **Discovery.** With `discoverFrom = context`, the tab also lists the other database files in the

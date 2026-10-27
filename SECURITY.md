@@ -218,7 +218,8 @@ database file in the app's `databases` directory, under `/api/v1/sqlite/`.
   database's own schema before it puts it in a statement, as a quoted
   identifier, and a filter value is a bound parameter, so a request can't add
   SQL of its own. A database file, registered or discovered, is opened with
-  `OPEN_READONLY` for one request, so the engine refuses a write there too. The
+  `OPEN_READONLY` for one request, so the engine refuses a write there too, and
+  a file in which SQLite finds corruption is left on disk, not deleted. The
   `writable` flag of a registration is reported only; no route of this version
   writes.
 - **A read is bounded.** A page has at most 500 rows, a text cell at most 4096

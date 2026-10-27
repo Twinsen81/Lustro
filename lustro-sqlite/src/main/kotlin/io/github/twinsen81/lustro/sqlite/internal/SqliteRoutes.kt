@@ -88,14 +88,21 @@ internal class SqliteRoutes(private val registry: SqliteRegistry) {
                     append("{\"name\":\"").append(table.name.escapeForJson()).append('"')
                     append(",\"type\":\"").append(table.type).append('"')
                     append(",\"internal\":").append(SqliteReader.isInternal(table, tables))
+                    // Read before anything is written, so that a failed read leaves no field half written.
+                    var hasRowId: Boolean? = null
+                    var rowCount: Long? = null
+                    var error: String? = null
                     try {
-                        append(",\"hasRowId\":").append(reader.rowid(table, reader.columns(table)) != null)
+                        hasRowId = reader.rowid(table, reader.columns(table)) != null
                         // A view is not counted: that runs its query, which can be a slow one.
-                        if (!table.isView) append(",\"rowCount\":").append(reader.count(table))
+                        if (!table.isView) rowCount = reader.count(table)
                     } catch (e: SQLiteException) {
-                        // Such as a virtual table whose module this SQLite does not have.
-                        append(",\"error\":").appendString(e.message ?: e.javaClass.simpleName)
+                        // Such as a view on a table that is gone, or a virtual table whose module this SQLite does not have.
+                        error = e.message ?: e.javaClass.simpleName
                     }
+                    if (hasRowId != null) append(",\"hasRowId\":").append(hasRowId)
+                    if (rowCount != null) append(",\"rowCount\":").append(rowCount)
+                    if (error != null) append(",\"error\":").appendString(error)
                     appendHint(entry.hints[table.name])
                     append('}')
                 }
@@ -131,6 +138,7 @@ internal class SqliteRoutes(private val registry: SqliteRegistry) {
                     append(",\"notNull\":").append(column.notNull)
                     append(",\"defaultValue\":").appendString(column.defaultValue)
                     append(",\"primaryKey\":").append(column.primaryKey)
+                    append(",\"generated\":").append(column.generated)
                     append('}')
                 }
                 append("],\"foreignKeys\":[")

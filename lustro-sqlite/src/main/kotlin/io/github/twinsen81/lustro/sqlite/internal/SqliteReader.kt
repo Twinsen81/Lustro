@@ -14,8 +14,11 @@ internal class Table(val name: String, val type: String, val sql: String?) {
     }
 }
 
-/** A column, as `PRAGMA table_info` gives it. [primaryKey] is its place in the primary key, from 1, or 0. */
-internal class Column(val name: String, val type: String, val notNull: Boolean, val defaultValue: String?, val primaryKey: Int)
+/**
+ * A column, as `PRAGMA table_xinfo` gives it. [primaryKey] is its place in the primary key, from 1,
+ * or 0; [generated] is true for a generated column, which SQLite computes from the others.
+ */
+internal class Column(val name: String, val type: String, val notNull: Boolean, val defaultValue: String?, val primaryKey: Int, val generated: Boolean = false)
 
 /** A foreign key, with its columns in order. A `null` in [to] stands for the primary key of [table]. */
 internal class ForeignKey(val table: String, val from: List<String>, val to: List<String?>, val onUpdate: String, val onDelete: String)
@@ -70,17 +73,37 @@ internal class SqliteReader(private val connection: DbConnection, private val si
     fun table(name: String, tables: List<Table> = tables()): Table? =
         tables.firstOrNull { it.name == name } ?: tables.firstOrNull { it.name.equals(name, ignoreCase = true) }
 
+    /**
+     * The columns, in their order in the table. `table_info` leaves out a generated column, so
+     * `table_xinfo` (SQLite 3.26) comes first; an older SQLite ignores a pragma that it does not
+     * know and returns no rows. A virtual table's hidden columns stay out, as `table_info` has them.
+     */
     fun columns(table: Table): List<Column> =
-        query("PRAGMA table_info(${quote(table.name)})") { cursor ->
+        columns("table_xinfo", table).filter { it.hidden != HIDDEN }.map { it.column }.ifEmpty { columns("table_info", table).map { it.column } }
+
+    private class Info(val column: Column, val hidden: Int)
+
+    private fun columns(pragma: String, table: Table): List<Info> =
+        query("PRAGMA $pragma(${quote(table.name)})") { cursor ->
             val name = cursor.getColumnIndexOrThrow("name")
             val type = cursor.getColumnIndexOrThrow("type")
             val notNull = cursor.getColumnIndexOrThrow("notnull")
             val default = cursor.getColumnIndexOrThrow("dflt_value")
             val pk = cursor.getColumnIndexOrThrow("pk")
+            val hidden = cursor.getColumnIndex("hidden")
             buildList {
                 while (cursor.moveToNext()) {
-                    val column = cursor.getString(name)
-                    add(Column(column, cursor.getStringOrNull(type).orEmpty(), cursor.getInt(notNull) != 0, cursor.getStringOrNull(default), cursor.getInt(pk)))
+                    val kind = if (hidden < 0) 0 else cursor.getInt(hidden)
+                    val column =
+                        Column(
+                            cursor.getString(name),
+                            cursor.getStringOrNull(type).orEmpty(),
+                            cursor.getInt(notNull) != 0,
+                            cursor.getStringOrNull(default),
+                            cursor.getInt(pk),
+                            generated = kind == GENERATED_VIRTUAL || kind == GENERATED_STORED,
+                        )
+                    add(Info(column, kind))
                 }
             }
         }
@@ -211,6 +234,11 @@ internal class SqliteReader(private val connection: DbConnection, private val si
         private const val CELL_COLUMNS = 3
 
         private val ROWID_ALIASES = listOf("rowid", "_rowid_", "oid")
+
+        // The values of table_xinfo's hidden column: a virtual table's hidden column, and the two kinds of generated column.
+        private const val HIDDEN = 1
+        private const val GENERATED_VIRTUAL = 2
+        private const val GENERATED_STORED = 3
 
         // The tables that SQLite's own virtual table modules (FTS3, FTS4, FTS5, R*Tree) keep for one of theirs.
         private val SHADOW_SUFFIXES =

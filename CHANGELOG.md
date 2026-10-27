@@ -23,7 +23,9 @@ see [DECISIONS.md](DECISIONS.md).
   framework `SQLiteDatabase`: the tab reads through the app's open handle and
   never closes it. `SqliteDb.file(name, file)` registers a file that the tab
   opens with `OPEN_READONLY` for each request and closes after it, so that the
-  engine refuses every write and a WAL writer is not blocked. Each registration
+  engine refuses every write and a WAL writer is not blocked. A file in which
+  SQLite finds corruption is reported and left on disk, where the platform's
+  default error handler would delete it. Each registration
   has `tableHints`, an entity name and a purpose for each table, and a
   `writable` flag that the routes report; a file is never writable, and no
   route writes yet. With `discoverFrom = context`, the tab also lists the other
@@ -32,8 +34,8 @@ see [DECISIONS.md](DECISIONS.md).
   with one name, and two file databases with one file. `GET databases` lists
   them with their source, file, size, and `PRAGMA user_version`; `GET tables`
   lists the tables and views with row counts and hints, and flags the
-  internal ones; `GET schema` gives the columns, foreign keys, row count, and
-  `CREATE` statement; `GET rows` returns a page in the pagination envelope,
+  internal ones; `GET schema` gives the columns, generated ones too,
+  the foreign keys, the row count, and the `CREATE` statement; `GET rows` returns a page in the pagination envelope,
   with `limit` (1 to 500, 50 by default), a `cursor`, a `filter` that any cell
   can contain, and a `sort` column with `dir`. The tab runs only the SQL that
   it builds: every name that a client sends is found in the database's schema

@@ -14,49 +14,56 @@
       "type": "INTEGER",
       "notNull": false,
       "defaultValue": null,
-      "primaryKey": 1
+      "primaryKey": 1,
+      "generated": false
     },
     {
       "name": "title",
       "type": "TEXT",
       "notNull": true,
       "defaultValue": null,
-      "primaryKey": 0
+      "primaryKey": 0,
+      "generated": false
     },
     {
       "name": "body",
       "type": "TEXT",
       "notNull": false,
       "defaultValue": null,
-      "primaryKey": 0
+      "primaryKey": 0,
+      "generated": false
     },
     {
       "name": "attachment",
       "type": "BLOB",
       "notNull": false,
       "defaultValue": null,
-      "primaryKey": 0
+      "primaryKey": 0,
+      "generated": false
     },
     {
       "name": "score",
       "type": "REAL",
       "notNull": false,
       "defaultValue": null,
-      "primaryKey": 0
+      "primaryKey": 0,
+      "generated": false
     },
     {
       "name": "created_at",
       "type": "INTEGER",
       "notNull": true,
       "defaultValue": null,
-      "primaryKey": 0
+      "primaryKey": 0,
+      "generated": false
     },
     {
       "name": "folder_id",
       "type": "INTEGER",
       "notNull": false,
       "defaultValue": null,
-      "primaryKey": 0
+      "primaryKey": 0,
+      "generated": false
     }
   ],
   "foreignKeys": [

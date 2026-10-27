@@ -139,7 +139,7 @@
       "get": {
         "operationId": "getSqliteSchema",
         "summary": "Get the columns, foreign keys, and row count of a table or view.",
-        "description": "What PRAGMA table_info and PRAGMA foreign_key_list say, the statement that created it, and its hint. The columns are in their order in the table, which is the order of the cells in GET rows.",
+        "description": "What PRAGMA table_xinfo (or table_info, before SQLite 3.26) and PRAGMA foreign_key_list say, the statement that created it, and its hint. Generated columns are included; the hidden columns of a virtual table are not. The columns are in their order in the table, which is the order of the cells in GET rows.",
         "parameters": [
           {
             "name": "db",
@@ -479,7 +479,8 @@
           "type",
           "notNull",
           "defaultValue",
-          "primaryKey"
+          "primaryKey",
+          "generated"
         ],
         "properties": {
           "name": {
@@ -503,6 +504,10 @@
             "type": "integer",
             "minimum": 0,
             "description": "The column's place in the primary key, from 1, or 0 when it is not in it."
+          },
+          "generated": {
+            "type": "boolean",
+            "description": "Whether SQLite computes the column from the others: GENERATED ALWAYS AS, stored or virtual."
           }
         },
         "additionalProperties": false

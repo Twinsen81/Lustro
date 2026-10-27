@@ -328,6 +328,59 @@ class SqliteRoutesTest {
     }
 
     @Test
+    fun `a corrupt file is reported, and stays on disk`() {
+        val file = Fixtures.file(app.cacheDir, "corrupt.db", notes = 200)
+        // Pages of the notes table; the framework's default handler would delete the file for this.
+        java.io.RandomAccessFile(file, "rw").use {
+            it.seek(4096L * 3)
+            it.write(ByteArray(8192) { 0x5a })
+        }
+        val size = file.length()
+        val routes = routes(SqliteDb.file("corrupt", file))
+
+        val response = Fixtures.get(routes, "rows", "db" to "corrupt", "table" to "notes", "limit" to "500")
+
+        assertEquals(500, response.status)
+        assertEquals("sqlite_error", response.json().getString("code"))
+        assertTrue(file.exists())
+        assertEquals(size, file.length())
+    }
+
+    @Test
+    fun `a view on a table that is gone is listed with its error, in a response that is still JSON`() {
+        live.execSQL("CREATE TABLE gone (a)")
+        live.execSQL("CREATE VIEW orphan AS SELECT a FROM gone")
+        live.execSQL("DROP TABLE gone")
+
+        val tables = byName(Fixtures.get(routes, "tables", "db" to "app").json().getJSONArray("items"))
+
+        val orphan = tables.getValue("orphan")
+        assertTrue(orphan.getString("error"), orphan.getString("error").contains("gone"))
+        assertFalse(orphan.has("hasRowId"))
+        assertTrue(tables.getValue("notes").has("rowCount"))
+        val schema = Fixtures.get(routes, "schema", "db" to "app", "table" to "orphan")
+        assertEquals(500, schema.status)
+        assertEquals("sqlite_error", schema.json().getString("code"))
+    }
+
+    @Test
+    fun `a generated column is in the schema and the rows, and a filter and a sort take it`() {
+        live.execSQL("CREATE TABLE prices (net INTEGER, gross INTEGER GENERATED ALWAYS AS (net * 2) VIRTUAL, label TEXT AS ('sku-' || net) STORED)")
+        live.execSQL("INSERT INTO prices (net) VALUES (5), (21), (8)")
+
+        val columns = Fixtures.get(routes, "schema", "db" to "app", "table" to "prices").json().getJSONArray("columns")
+        assertEquals(listOf("net", "gross", "label"), (0 until columns.length()).map { columns.getJSONObject(it).getString("name") })
+        assertEquals(listOf(false, true, true), (0 until columns.length()).map { columns.getJSONObject(it).getBoolean("generated") })
+        val page = rows("table" to "prices", "sort" to "gross", "dir" to "desc")
+        assertEquals(listOf("2", "3", "1"), rowids(page))
+        assertEquals(42, page.getJSONArray("items").getJSONObject(0).getJSONObject("cells").getJSONObject("gross").getInt("value"))
+        assertEquals(listOf("2"), rowids(rows("table" to "prices", "filter" to "sku-21")))
+        // A full-text index's hidden columns stay out, as table_info has them.
+        val fts = Fixtures.get(routes, "schema", "db" to "app", "table" to "notes_fts").json().getJSONArray("columns")
+        assertEquals(listOf("title", "body"), (0 until fts.length()).map { fts.getJSONObject(it).getString("name") })
+    }
+
+    @Test
     fun `a cancelled request stops its read with a 504`() {
         val request = DebugRequest("rows", "GET", mapOf("db" to listOf("app"), "table" to listOf("notes")))
         request.cancel()
