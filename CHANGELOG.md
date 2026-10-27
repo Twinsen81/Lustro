@@ -30,7 +30,9 @@ see [DECISIONS.md](DECISIONS.md).
   `writable` flag that the routes report; a file is never writable, and no
   route writes yet. With `discoverFrom = context`, the tab also lists the other
   SQLite files in the app's `databases` directory, on each request, without
-  the files that a registration stands for. `create` refuses two databases
+  the files that a registration stands for, which it never opens, and asks
+  the platform's SQLite whether a file is a database, so that no descriptor of
+  the tab's own drops the app's SQLite locks. `create` refuses two databases
   with one name, and two file databases with one file. `GET databases` lists
   them with their source, file, size, and `PRAGMA user_version`; `GET tables`
   lists the tables and views with row counts and hints, and flags the

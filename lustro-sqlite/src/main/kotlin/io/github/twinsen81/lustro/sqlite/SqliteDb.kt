@@ -85,6 +85,13 @@ public class SqliteDb private constructor(
          * closes after it. The file can be in WAL mode, and the app or a library
          * can write to it while the tab reads it.
          *
+         * The tab opens the file with the platform's SQLite, which keeps the
+         * locks of the app's other connections to it through that SQLite. Do not
+         * register a file that the app opens with another copy of SQLite, such as
+         * Room's bundled driver or SQLCipher: the platform's SQLite does not know
+         * that copy's locks, and the close of the tab's connection drops them,
+         * so another process could then write the file at the same time.
+         *
          * @param file the database file, such as `context.getDatabasePath("cache.db")`.
          * @throws IllegalArgumentException when [file] is not an absolute path.
          */

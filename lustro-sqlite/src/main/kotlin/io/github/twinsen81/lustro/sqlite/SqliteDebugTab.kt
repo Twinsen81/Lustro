@@ -71,8 +71,11 @@ public class SqliteDebugTab private constructor(registry: SqliteRegistry) : Debu
          *   files in its `databases` directory too, read-only, or `null` to show
          *   only [databases]. The tab lists the directory on each request, so it
          *   also finds a file that the app creates later. It leaves out a file
-         *   that one of [databases] stands for, and a file that is not a SQLite
-         *   database.
+         *   that one of [databases] stands for, SQLite's journal, WAL, and lock
+         *   files, and a file that is not a SQLite database, which the platform's
+         *   SQLite finds out. Leave discovery off when the directory has a
+         *   database that the app opens with another copy of SQLite, as
+         *   [SqliteDb.file] says.
          * @throws IllegalArgumentException when two of [databases] have the
          *   same name, or two [SqliteDb.file] databases the same file. The tab
          *   does not know the file of a live handle before it reads, so it can't

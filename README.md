@@ -751,12 +751,19 @@ val lustro = Lustro.builder(application)
   handler would delete it. In WAL mode,
   SQLite can leave the empty `-wal` and `-shm` files of the database after the tab reads it.
   The tab does not see the file of a live handle before it reads, so register each file once.
+  The tab opens a file with the platform's SQLite, which keeps the locks of the app's other
+  connections to it through that SQLite. Do not register a file that the app opens with another
+  copy of SQLite, such as Room's bundled driver or SQLCipher: on Android, closing any descriptor
+  of a file drops the process's POSIX locks on it, and only the SQLite that holds them works
+  around that. See [How To Corrupt An SQLite Database File](https://www.sqlite.org/howtocorrupt.html#_posix_advisory_locks_canceled_by_a_separate_thread_doing_close_).
 - **Discovery.** With `discoverFrom = context`, the tab also lists the other database files in the
   app's `databases` directory, such as those of WorkManager and other libraries, by file name.
   It lists the directory on each request, so it finds a file that the app creates later, and
-  leaves out a file that a registration stands for, a `-wal`, `-shm`, or `-journal` file, and a
-  file that is not a SQLite database. A discovered file is read as a `SqliteDb.file`. Discovery
-  is off by default.
+  leaves out a file that a registration stands for, SQLite's journal, WAL, and lock files, and a
+  file that is not a SQLite database. It asks the platform's SQLite about a file, and never
+  reads one itself, and it asks only about the files that no registration stands for. A
+  discovered file is read as a `SqliteDb.file`, so leave discovery off when the directory has a
+  database that the app opens with another copy of SQLite. Discovery is off by default.
 - **Hints and the writable flag.** `tableHints` gives a table the name of the class that maps it
   and one line on what a row is, for an agent that reads the database without your code.
   `writable` says whether a client may change the database through the tab; the routes in this

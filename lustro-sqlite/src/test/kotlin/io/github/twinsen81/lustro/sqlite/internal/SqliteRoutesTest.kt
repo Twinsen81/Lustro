@@ -471,7 +471,8 @@ class SqliteRoutesTest {
         Fixtures.file(databases, "registered-file.db")
         // A sidecar is left out by its name, even with a database's header.
         File(databases, "gone.db-journal").writeBytes(library.readBytes())
-        File(databases, "notes.txt").writeText("not a database")
+        // Long enough to be asked about: SQLite answers that it is not a database, and the file stays.
+        val text = File(databases, "notes.txt").apply { writeText("not a database. ".repeat(20)) }
         File(databases, "empty.db").createNewFile()
         val routes =
             SqliteRoutes(
@@ -495,6 +496,31 @@ class SqliteRoutesTest {
         assertEquals(3, Fixtures.get(routes, "rows", "db" to "other.db", "table" to "notes").json().getJSONArray("items").length())
         assertEquals(404, Fixtures.get(routes, "tables", "db" to "app.db").status)
         assertEquals(404, Fixtures.get(routes, "tables", "db" to "notes.txt").status)
+        assertEquals(320, text.length())
+    }
+
+    @Test
+    fun `discovery asks about a file only when no registration stands for it, and never about a sidecar or a lock file`() {
+        Fixtures.file(databases, "library.db")
+        Fixtures.file(databases, "registered-file.db")
+        for (name in listOf("library.db-journal", "library.db-wal", "library.db-shm", "library.db-mj1A2B3C4D", "copy.lck", "sync.lock")) {
+            File(databases, name).writeBytes(ByteArray(4096))
+        }
+        val asked = mutableListOf<String>()
+        val registry =
+            SqliteRegistry(
+                listOf(SqliteDb.framework("app") { live }, SqliteDb.file("named", File(databases, "registered-file.db"))),
+                databases,
+            ) { file ->
+                asked += file.name
+                true
+            }
+
+        val names = registry.list().map { it.name }
+
+        // app.db is the live handle's file: only the app's handle reads it.
+        assertEquals(listOf("library.db"), asked)
+        assertEquals(listOf("app", "named", "library.db"), names)
     }
 
     @Test
