@@ -319,14 +319,44 @@ test('an edit sends only the changed values, and NULL as null', () => {
     assert.deepStrictEqual(plain(values), { score: 0.5, created_at: null, body: 'now a body' });
 });
 
-test('a number goes back as a number, but an integer past 2^53 as its digits', () => {
+test('a number goes back as a JSON number of its kind, an integer past 2^53 with every digit', () => {
+    const json = (text, original) => sqlite.sqliteJson(sqlite.sqliteEditValue(text, original));
     const integer = { type: 'integer', value: 3 };
-    assert.strictEqual(sqlite.sqliteEditValue('42', integer), 42);
-    assert.strictEqual(sqlite.sqliteEditValue('9007199254740995', integer), '9007199254740995');
-    assert.strictEqual(sqlite.sqliteEditValue('4.5', integer), '4.5');
-    assert.strictEqual(sqlite.sqliteEditValue('1e3', { type: 'real', value: 1 }), 1000);
-    assert.strictEqual(sqlite.sqliteEditValue('12', { type: 'text', value: 'x' }), '12');
-    assert.strictEqual(sqlite.sqliteEditValue('12', { type: 'null' }), '12');
+    const real = { type: 'real', value: 2.5 };
+    assert.strictEqual(json('42', integer), '42');
+    // As a string, it would be a text in a column without affinity.
+    assert.strictEqual(json('9007199254740995', integer), '9007199254740995');
+    assert.strictEqual(json('-0009223372036854775808', integer), '-9223372036854775808');
+    assert.strictEqual(json('4.5', integer), '4.5');
+    // A whole real keeps its point, so that SQLite stores 3.0 and not the integer 3.
+    assert.strictEqual(json('3', real), '3.0');
+    assert.strictEqual(json('1e3', real), '1000.0');
+    assert.strictEqual(json('1e21', real), '1e+21');
+    assert.strictEqual(json('0.25', real), '0.25');
+    // Only a number that was a number: a text and a NULL go back as typed.
+    assert.strictEqual(json('12', { type: 'text', value: 'x' }), '"12"');
+    assert.strictEqual(json('12', { type: 'null' }), '"12"');
+    assert.strictEqual(json('12 apples', integer), '"12 apples"');
+});
+
+test('a key past 2^53 goes as a JSON number, so it does not match a text key with the same digits', () => {
+    const schema = { database: 'app', table: 'big_keys', type: 'table', hasRowId: false,
+        columns: [{ name: 'k', type: '', primaryKey: 1 }, { name: 'v', type: '', primaryKey: 0 }] };
+    const body = (k) => sqlite.sqliteJson(Object.assign({ db: 'app', table: 'big_keys' }, sqlite.sqliteRowTarget({ cells: { k, v: { type: 'text', value: 'x' } } }, schema)));
+
+    assert.strictEqual(body({ type: 'integer', value: '9007199254740993' }), '{"db":"app","table":"big_keys","key":{"k":9007199254740993}}');
+    assert.strictEqual(body({ type: 'text', value: '9007199254740993' }), '{"db":"app","table":"big_keys","key":{"k":"9007199254740993"}}');
+    assert.strictEqual(body({ type: 'real', value: 3 }), '{"db":"app","table":"big_keys","key":{"k":3.0}}');
+    assert.strictEqual(sqlite.sqliteRowTarget({ cells: { k: { type: 'real', value: 'Infinity' } } }, schema), null);
+
+    const target = sqlite.sqliteRowTarget({ cells: { k: { type: 'integer', value: '9007199254740993' } } }, schema);
+    assert.strictEqual(sqlite.sqliteTargetLabel(target), 'k = 9007199254740993');
+});
+
+test('a request body is JSON.stringify\'s, but for an exact number', () => {
+    const body = { db: 'app', sql: 'SELECT "a\\b"\n', values: { a: null, b: 1.5, c: 'it\'s' }, skip: undefined };
+    assert.strictEqual(sqlite.sqliteJson(body), JSON.stringify(body));
+    assert.deepStrictEqual(JSON.parse(sqlite.sqliteJson(body)), JSON.parse(JSON.stringify(body)));
 });
 
 test('a cut text compares with its whole value, so an untouched one is not sent', () => {

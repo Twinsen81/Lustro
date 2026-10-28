@@ -3,6 +3,7 @@ package io.github.twinsen81.lustro.sqlite.internal
 import android.app.Application
 import android.database.sqlite.SQLiteDatabase
 import androidx.test.core.app.ApplicationProvider
+import io.github.twinsen81.lustro.DebugRequest
 import io.github.twinsen81.lustro.DebugResponse
 import io.github.twinsen81.lustro.sqlite.SqliteDb
 import io.github.twinsen81.lustro.sqlite.internal.Fixtures.json
@@ -86,6 +87,21 @@ class SqliteRowEditTest {
     }
 
     @Test
+    fun `a JSON number past 2^53 binds as that integer, in a key and in a value, so a column without affinity keeps its class`() {
+        live.execSQL("CREATE TABLE big_keys (k, v, n, PRIMARY KEY (k)) WITHOUT ROWID")
+        live.execSQL("INSERT INTO big_keys VALUES (9007199254740993, 'integer', 0), ('9007199254740993', 'text', 0), (9007199254740995, 'second', 0)")
+
+        // The bodies as the console writes them: the digits as a JSON number, and a whole real with its point.
+        ok(post("edit", """{"db":"app","table":"big_keys","key":{"k":9007199254740993},"values":{"v":"edited","n":9007199254740997}}"""))
+        ok(post("edit", """{"db":"app","table":"big_keys","key":{"k":"9007199254740993"},"values":{"n":3.0}}"""))
+        ok(post("delete", """{"db":"app","table":"big_keys","key":{"k":9007199254740995}}"""))
+
+        assertEquals(listOf("edited", "integer", "9007199254740997"), row("SELECT v, typeof(n), n FROM big_keys WHERE k = 9007199254740993"))
+        assertEquals(listOf("text", "real"), row("SELECT v, typeof(n) FROM big_keys WHERE k = '9007199254740993'"))
+        assertEquals(listOf("2"), row("SELECT COUNT(*) FROM big_keys"))
+    }
+
+    @Test
     fun `a row is named by rowid or by the whole primary key, and the values by the table's columns`() {
         assertField(400, "rowid", delete(JSONObject()))
         assertField(400, "rowid", delete(JSONObject().put("rowid", "1").put("key", JSONObject().put("id", 1))))
@@ -139,6 +155,8 @@ class SqliteRowEditTest {
     }
 
     private fun edit(body: JSONObject): DebugResponse = Fixtures.post(routes, "edit", defaults(body))
+
+    private fun post(path: String, body: String): DebugResponse = routes.handle(DebugRequest(path, "POST", body = body.toByteArray()))!!
 
     private fun delete(body: JSONObject): DebugResponse = Fixtures.post(routes, "delete", defaults(body))
 

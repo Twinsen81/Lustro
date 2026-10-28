@@ -101,9 +101,54 @@
         return columns;
     }
 
+    // ── Exact numbers in a request ──────────────────────────────
+
+    // A number that a JS number can't hold exactly, such as an integer past
+    // 2^53: the request writes its literal as a JSON number. Sent as a string,
+    // it would be a text to SQLite, which a column without affinity keeps, and
+    // which a key without affinity does not match.
+    function Exact(literal) {
+        this.literal = literal;
+    }
+
+    function exactValue(value) {
+        return value instanceof Exact ? value.literal : value;
+    }
+
+    // JSON.stringify, but an Exact is its literal.
+    function toJson(value) {
+        if (value instanceof Exact) return value.literal;
+        if (Array.isArray(value)) return '[' + value.map(toJson).join(',') + ']';
+        if (value && typeof value === 'object') {
+            return '{' + Object.keys(value).filter(function(name) { return value[name] !== undefined; })
+                .map(function(name) { return JSON.stringify(name) + ':' + toJson(value[name]); }).join(',') + '}';
+        }
+        return JSON.stringify(value);
+    }
+
+    // An integer's digits as a JSON number, which has no leading zeros: a JS
+    // number when it holds them exactly.
+    function integerJson(digits) {
+        var literal = String(digits).replace(/^(-?)0+(?=\d)/, '$1');
+        var number = Number(literal);
+        return Number.isSafeInteger(number) ? number : new Exact(literal);
+    }
+
+    // A real as a JSON number that SQLite binds as a real: a whole one keeps a
+    // point, which org.json reads as a double, so that 3 stays 3.0.
+    function realJson(number) {
+        var literal = String(number);
+        return /[.eE]/.test(literal) ? number : new Exact(literal + '.0');
+    }
+
+    // A cell as a JSON value of the same storage class, or undefined when a
+    // request can't carry it.
     function cellJson(cell) {
         if (!cell || cell.type === 'null') return null;
-        return cell.value;
+        if (cell.type === 'integer') return WHOLE.test(String(cell.value)) ? integerJson(cell.value) : undefined;
+        if (cell.type === 'real') return typeof cell.value === 'number' && isFinite(cell.value) ? realJson(cell.value) : undefined;
+        if (cell.type === 'text' && !cell.truncated) return String(cell.value);
+        return undefined;
     }
 
     // How POST edit and POST delete name the row: by its rowid, or by its
@@ -117,8 +162,9 @@
         var out = {};
         for (var i = 0; i < key.length; i++) {
             var cell = row.cells ? row.cells[key[i]] : null;
-            if (!cell || cell.type === 'blob' || cell.truncated) return null;
-            out[key[i]] = cellJson(cell);
+            var value = cellJson(cell);
+            if (value === undefined) return null;
+            out[key[i]] = value;
         }
         return { key: out };
     }
@@ -156,7 +202,7 @@
         if (target.rowid != null) return 'rowid ' + target.rowid;
         return Object.keys(target.key).map(function(name) {
             var value = target.key[name];
-            var text = value === null ? 'NULL' : typeof value === 'string' ? '\'' + value + '\'' : String(value);
+            var text = value === null ? 'NULL' : typeof value === 'string' ? '\'' + value + '\'' : String(exactValue(value));
             return name + ' = ' + text;
         }).join(', ');
     }
@@ -474,14 +520,14 @@
 
     // A value as POST edit binds it. The column's affinity converts a text, but
     // a column with none keeps one, so a number that was a number goes back as a
-    // number: an integer past 2^53 as its digits, which a JS number would change.
+    // number of its kind: an integer as an integer, with every digit past 2^53,
+    // and a real as a real, also a whole one.
     function editValue(text, original) {
-        if (original && original.type === 'integer' && WHOLE.test(text)) {
-            var whole = Number(text);
-            return Number.isSafeInteger(whole) ? whole : text;
-        }
-        if (original && original.type === 'real' && DECIMAL.test(text) && isFinite(Number(text))) return Number(text);
-        return text;
+        var numeric = original && (original.type === 'integer' || original.type === 'real');
+        if (!numeric || !DECIMAL.test(text) || !isFinite(Number(text))) return text;
+        if (original.type === 'integer' && WHOLE.test(text)) return integerJson(text);
+        var number = Number(text);
+        return original.type === 'real' ? realJson(number) : number;
     }
 
     // The values that an edit changes. Each field: { column, original, whole,
@@ -608,6 +654,7 @@
         return html;
     }
 
+    window.sqliteJson = toJson;
     window.sqliteQuote = quote;
     window.sqliteLiteral = literal;
     window.sqliteRowidAlias = rowidAlias;
@@ -731,7 +778,7 @@
         return request(path, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body)
+            body: toJson(body)
         });
     }
 
