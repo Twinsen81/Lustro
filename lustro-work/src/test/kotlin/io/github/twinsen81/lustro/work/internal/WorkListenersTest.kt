@@ -98,6 +98,17 @@ class WorkListenersTest {
     }
 
     @Test
+    fun `a listener that the app sets after configure replaces the tab's, and the state names that cause`() {
+        val source = WorkFixtures.source(app)
+        val builder = source.configure(Configuration.Builder())
+        builder.setExecutionEventListener(WorkFixtures.AppListeners())
+        WorkManagerTestInitHelper.initializeTestWorkManager(app, builder.setExecutor(androidx.work.testing.SynchronousExecutor()).build())
+        val state = get(WorkRoutes(source), "events").json().getJSONObject("state")
+        assertEquals("missing", state.getString("listeners"))
+        assertTrue(state.getString("reason").contains("after configure()"))
+    }
+
+    @Test
     fun `with the listeners installed through a real WorkManager, the state says installed`() {
         val source = WorkFixtures.source(app)
         WorkFixtures.initialize(app, source)

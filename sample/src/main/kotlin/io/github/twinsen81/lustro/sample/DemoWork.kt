@@ -1,17 +1,20 @@
 package io.github.twinsen81.lustro.sample
 
 import android.content.Context
+import android.database.sqlite.SQLiteConstraintException
 import android.util.Log
 import androidx.work.BackoffPolicy
 import androidx.work.Configuration
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.ExecutionEventListener
 import androidx.work.ExistingWorkPolicy
 import androidx.work.ExperimentalEventsApi
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequest
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.ScheduleEventListener
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.WorkQuery
@@ -119,11 +122,32 @@ internal class DemoWork(private val context: Context) {
 
         /** The app's own WorkManager configuration, before the bootstrap passes it to Lustro. */
         fun configuration(context: Context): Configuration.Builder {
-            val repository = metrics(context)
+            val listeners = MetricsListeners(metrics(context))
             return Configuration.Builder()
                 .setMinimumLoggingLevel(Log.INFO)
-                .setExecutionEventListener(repository)
-                .setScheduleEventListener(repository)
+                .setExecutionEventListener(listeners)
+                .setScheduleEventListener(listeners)
+        }
+    }
+}
+
+/**
+ * work-analytics' [repository] as the app's listeners, with one exception caught. In
+ * work-analytics 2.12.0, cancelling work while it runs ends the process: `onCancelled`
+ * closes the run's period, and `onStopped`, which comes after it, inserts the same period
+ * again and fails with a `SQLiteConstraintException` on WorkManager's thread. The console's
+ * `POST work/cancel` cancels running work as the app's own calls do, so the sample catches
+ * that exception; the period that `onCancelled` closed stays as it is.
+ */
+@OptIn(ExperimentalEventsApi::class, ExperimentalWorkMetricsApi::class)
+internal class MetricsListeners(private val repository: WorkMetricsInfoRepository) :
+    ExecutionEventListener by repository,
+    ScheduleEventListener by repository {
+    override suspend fun onStopped(stopReason: Int, workInfo: WorkInfo) {
+        try {
+            repository.onStopped(stopReason, workInfo)
+        } catch (e: SQLiteConstraintException) {
+            Log.w("LustroSample", "work-analytics could not record that ${workInfo.id} stopped", e)
         }
     }
 }

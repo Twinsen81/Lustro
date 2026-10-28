@@ -197,12 +197,12 @@ with the core wire.
   (`{ code, name }`), `output`, `progress`, `constraints`, and schedule.
   `GET items/{id}` gives one with its events. `GET events` polls the events of
   WorkManager's execution and schedule listeners in the stream envelope, each
-  `{ seq, at, type, id, workerClass, state, runAttempt, generation }` with the
+  `{ seq, at, type, id, workerClass, state, runAttempts, generation }` with the
   `result` and `output` of a `finished` event, the `stopReason` of a `stopped`
   one, and the `exception` of an `exception` one. `GET metrics` reads
   work-analytics, and answers `404` with the code `metrics_off` without it.
   `POST cancel` takes one of `id`, `name`, and `tag`, and `POST prune` deletes
-  finished work. Every list carries the tab's `state`, with `listeners`:
+  finished work. `items`, `items/{id}`, and `events` carry the tab's `state`, with `listeners`:
   `installed`, `missing`, or `unsupported`. Every route answers `503` with the
   code `work_unsupported` below WorkManager 2.12.0, and the routes that read
   work `503` with `work_not_initialized` until the app initializes WorkManager.

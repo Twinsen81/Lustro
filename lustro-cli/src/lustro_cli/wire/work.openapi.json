@@ -392,7 +392,7 @@
       "post": {
         "operationId": "cancelWork",
         "summary": "Cancel work by its id, its unique work name, or a tag.",
-        "description": "The body names exactly one of id, name, and tag, as WorkManager's cancelWorkById, cancelUniqueWork, and cancelAllWorkByTag take them. WorkManager stops the work that runs, leaves finished work as it is, and cancels the work that depends on the cancelled work. 400 with the field for any other key. 404 with the field when no work matches. 503 with code work_not_initialized while the app has not initialized WorkManager.",
+        "description": "The body names exactly one of id, name, and tag, as WorkManager's cancelWorkById, cancelUniqueWork, and cancelAllWorkByTag take them. WorkManager stops the work that runs, leaves finished work as it is, and cancels the work that depends on the cancelled work. In an app that sets a work-analytics 2.12.0 repository as its listeners, cancelling work that runs ends the app's process, through a bug of work-analytics, unless the app catches it, as the sample does. 400 with the field for any other key. 404 with the field when no work matches. 503 with code work_not_initialized while the app has not initialized WorkManager.",
         "requestBody": {
           "required": true,
           "content": {
@@ -900,7 +900,7 @@
           "id",
           "workerClass",
           "state",
-          "runAttempt",
+          "runAttempts",
           "generation"
         ],
         "properties": {
@@ -942,10 +942,10 @@
           "state": {
             "$ref": "#/components/schemas/WorkState"
           },
-          "runAttempt": {
+          "runAttempts": {
             "type": "integer",
             "minimum": 0,
-            "description": "WorkInfo.runAttemptCount at the event."
+            "description": "WorkInfo.runAttemptCount at the event, as runAttempts of an item."
           },
           "generation": {
             "type": "integer",

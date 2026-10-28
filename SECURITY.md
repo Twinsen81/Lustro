@@ -293,7 +293,10 @@ the events of each run under `/api/v1/work/`.
 - **Every client with the token can cancel work and prune finished work.**
   `POST cancel` cancels by id, unique name, or tag, and `POST prune` deletes the
   history of finished work, as the app's own calls to WorkManager would. Both
-  are `POST`, so the same-origin checks apply.
+  are `POST`, so the same-origin checks apply. In an app that sets a
+  work-analytics 2.12.0 repository as its listeners, cancelling work that runs
+  ends the app's process through a bug of work-analytics, as the app's own
+  cancel would, so a client with the token can stop such an app.
 - **The tab adds listeners to the app's WorkManager configuration.** Each one
   records the event and calls the listener that the app set, with the same
   arguments; recording never throws, and what the app's listener throws reaches

@@ -254,6 +254,23 @@ class WorkRoutesTest {
     }
 
     @Test
+    fun `an update of work is an updated event with the generation before it`() {
+        val request = delayed("u")
+        workManager.enqueue(request).result.get()
+        val update = OneTimeWorkRequestBuilder<StepWorker>().setId(request.id).setInitialDelay(2, TimeUnit.HOURS).addTag("u").build()
+        assertEquals(WorkManager.UpdateResult.APPLIED_IMMEDIATELY, workManager.updateWork(update).get())
+
+        val events = items(WorkFixtures.get(routes, "events", "type" to "updated"))
+        assertEquals(1, events.length())
+        val event = events.getJSONObject(0)
+        assertEquals(request.id.toString(), event.getString("id"))
+        assertEquals(1, event.getInt("generation"))
+        assertEquals(0, event.getInt("previousGeneration"))
+        assertEquals(0, event.getInt("runAttempts"))
+        assertTrue(listeners.seen.contains("updated ${request.id}"))
+    }
+
+    @Test
     fun `cancel takes an id, a unique name, or a tag, and counts the work that was not finished`() {
         val a = delayed("a")
         val b = delayed("b")
@@ -345,12 +362,13 @@ class WorkRoutesTest {
     fun `the state says when WorkManager runs with a Configuration that did not go through configure`() {
         val unused = WorkFixtures.source(app)
         assertEquals("missing", WorkRoutes(unused).let { WorkFixtures.get(it, "items").json() }.getJSONObject("state").getString("listeners"))
-        assertTrue(WorkFixtures.get(WorkRoutes(unused), "items").json().getJSONObject("state").getString("reason").contains("configure()"))
+        // The likely cause when the app's provider does call configure(): the default initializer.
+        assertTrue(WorkFixtures.get(WorkRoutes(unused), "items").json().getJSONObject("state").getString("reason").contains("WorkManagerInitializer"))
 
         unused.configure(androidx.work.Configuration.Builder())
         val state = WorkFixtures.get(WorkRoutes(unused), "items").json().getJSONObject("state")
         assertEquals("missing", state.getString("listeners"))
-        assertTrue(state.getString("reason").contains("another Configuration"))
+        assertTrue(state.getString("reason").contains("after configure()"))
     }
 
     private fun step(step: Int, fail: Boolean = false, tag: String? = null): OneTimeWorkRequest {

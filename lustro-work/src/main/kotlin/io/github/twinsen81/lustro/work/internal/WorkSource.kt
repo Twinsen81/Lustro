@@ -114,10 +114,13 @@ internal class WorkSource(
         const val UNSUPPORTED = "unsupported"
 
         const val NOT_CONFIGURED =
-            "The app's WorkManager Configuration does not go through WorkDebugTab.configure(), so the tab records no events: " +
-                "initialize WorkManager on demand and pass the Configuration.Builder through configure()"
+            "WorkManager runs with a Configuration that did not go through WorkDebugTab.configure(), so the tab records no events. " +
+                "If the app's Configuration.Provider calls configure(), WorkManagerInitializer is still in the manifest: it " +
+                "initializes WorkManager with a default Configuration at startup and never asks the provider. Remove it from " +
+                "the manifest, or call configure() where the app builds its Configuration"
         const val RUNS_ANOTHER =
-            "configure() set the tab's listeners on a Configuration.Builder, but WorkManager runs with another Configuration, " +
-                "such as the default one: remove WorkManagerInitializer from the manifest"
+            "configure() set the tab's listeners on a Configuration.Builder, but WorkManager runs with other listeners: the " +
+                "app set its own listener on the builder after configure(), or built another Configuration. Call configure() " +
+                "last, right before build(), on the Configuration that WorkManager gets"
     }
 }

@@ -57,7 +57,7 @@ internal class WorkEvents(private val maxBytes: Int, private val clock: () -> Lo
                     append(",\"workerClass\":")
                     WorkJson.appendNullable(this, workerClass)
                     append(",\"state\":\"").append(info.state.name).append('"')
-                    append(",\"runAttempt\":").append(info.runAttemptCount)
+                    append(",\"runAttempts\":").append(info.runAttemptCount)
                     append(",\"generation\":").append(info.generation)
                     details()
                     append('}')

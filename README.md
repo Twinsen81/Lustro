@@ -860,6 +860,8 @@ class App : Application(), Configuration.Provider {
 // src/debug and src/release, LustroBootstrap: the same code against lustro-work and lustro-work-noop
 private var work: WorkDebugTab? = null
 
+// WorkManager can ask for its configuration on another thread, before or after start(): one tab for both.
+@Synchronized
 private fun work(app: Application): WorkDebugTab =
     work ?: WorkDebugTab.create(app, uniqueNames = listOf("sync", "upload")).also { work = it }
 
@@ -900,12 +902,15 @@ fun start(app: Application) {
   `WorkDebugTab.create(app, metrics = repository, uniqueNames = ...)`. `GET metrics` then reads
   the enqueue, start, and finish times, durations, attempts, retries, and stop reasons of each
   run, kept 7 days by default. Lustro never depends on work-analytics: its POM pins
-  `work-runtime` to its own exact version.
+  `work-runtime` to its own exact version. **work-analytics 2.12.0 ends the app's process when work
+  is cancelled while it runs**, also from the console's `POST cancel`: its `onStopped` inserts the
+  period that `onCancelled` already closed, and throws `SQLiteConstraintException` on WorkManager's
+  thread. The sample's `MetricsListeners` wraps the repository and catches that exception.
 - **Unique names.** `WorkInfo` has no unique name, so the tab labels the work of the names in
   `uniqueNames`. `GET items?name=` finds the work of any name.
 - **The tab never initializes WorkManager.** Until your app calls `WorkManager.getInstance`, the
   routes that read work answer `503` with code `work_not_initialized`.
-- **When there are no events.** Every response's `state.listeners` is `installed`, `missing` when
+- **When there are no events.** The `state` of `items`, `items/{id}`, and `events` has `listeners`: `installed`, `missing` when
   your configuration did not go through `configure()` or WorkManager runs with another one (the
   default initializer is still in the manifest), or `unsupported` when your WorkManager has
   listener methods that this version of Lustro does not forward. `state.reason` says what to

@@ -41,7 +41,7 @@
       "id": "3f1c2a4e-8b9d-4e2f-a6c1-0d7e5b3a9f12",
       "workerClass": "io.github.twinsen81.lustro.work.internal.StepWorker",
       "state": "ENQUEUED",
-      "runAttempt": 0,
+      "runAttempts": 0,
       "generation": 0
     },
     {
@@ -51,7 +51,7 @@
       "id": "3f1c2a4e-8b9d-4e2f-a6c1-0d7e5b3a9f12",
       "workerClass": "io.github.twinsen81.lustro.work.internal.StepWorker",
       "state": "ENQUEUED",
-      "runAttempt": 0,
+      "runAttempts": 0,
       "generation": 0
     },
     {
@@ -61,7 +61,7 @@
       "id": "3f1c2a4e-8b9d-4e2f-a6c1-0d7e5b3a9f12",
       "workerClass": "io.github.twinsen81.lustro.work.internal.StepWorker",
       "state": "RUNNING",
-      "runAttempt": 1,
+      "runAttempts": 1,
       "generation": 0
     },
     {
@@ -71,7 +71,7 @@
       "id": "3f1c2a4e-8b9d-4e2f-a6c1-0d7e5b3a9f12",
       "workerClass": "io.github.twinsen81.lustro.work.internal.StepWorker",
       "state": "SUCCEEDED",
-      "runAttempt": 1,
+      "runAttempts": 1,
       "generation": 0,
       "result": "success",
       "output": {
