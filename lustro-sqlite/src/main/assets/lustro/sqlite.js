@@ -124,8 +124,9 @@
     }
 
     // The WHERE that finds the row again in POST query, or null when it can't.
+    // Without the schema, the page does not know which name the rowid has.
     function whereSql(row, schema) {
-        if (!row) return null;
+        if (!row || !schema) return null;
         if (row.rowid != null) {
             var alias = rowidAlias(columnNames(schema));
             return alias && WHOLE.test(String(row.rowid)) ? alias + ' = ' + row.rowid : null;
@@ -484,7 +485,9 @@
     }
 
     // The values that an edit changes. Each field: { column, original, whole,
-    // text, isNull, editable }, where whole is the whole text of a cut cell.
+    // initial, text, isNull, editable }, where whole is the whole text of a cut
+    // cell, and initial what the field showed when it opened: a text field
+    // turns a line break CR LF into LF, so an untouched text compares with that.
     function editChanges(fields) {
         var values = {};
         fields.forEach(function(field) {
@@ -494,7 +497,7 @@
                 if (!wasNull) values[field.column] = null;
                 return;
             }
-            var before = field.whole != null ? field.whole : cellText(field.original);
+            var before = field.initial != null ? field.initial : field.whole != null ? field.whole : cellText(field.original);
             if (wasNull || field.text !== before) values[field.column] = editValue(field.text, field.original);
         });
         return values;
@@ -676,15 +679,19 @@
     var rowsInFlight = false;
     var filterTimer = null;
     var resizing = false;
+    var gridPending = false;
     var editModal = null;
     var valueModal = null;
     var confirmModal = null;
     // The dialog's row: { db, table, row, schema, target, readOnly, fields, saving }.
     var edit = null;
     var valueText = null;
+    var valueGen = 0;
     var confirmAction = null;
     var running = false;
     var result = null;
+    // A change of the database starts a generation of results: an answer to a statement before it shows nothing.
+    var resultGen = 0;
 
     function storage() {
         try { return window.localStorage; } catch(e) { return null; }
@@ -781,6 +788,7 @@
             dbGen++;
             tables = [];
             clearTable();
+            clearResult();
         }
         if (name != null) {
             settings.db = name;
@@ -952,7 +960,7 @@
                 rowsSignature = signature;
                 rows = items;
                 if (!columns.length) columns = gridColumns(schema, rows[0]);
-                if (!resizing) renderGrid();
+                renderGrid();
             }
             renderPaging();
         }, function(f) {
@@ -1021,6 +1029,11 @@
     }
 
     function renderGrid() {
+        // A drag holds the grid's columns: the rows that came meanwhile show when it ends.
+        if (resizing) {
+            gridPending = true;
+            return;
+        }
         if (!activeTable || !columns.length) {
             els.grid.innerHTML = '';
             els.grid.style.width = '';
@@ -1173,6 +1186,10 @@
             handle.classList.remove('sqlite-resize--dragging');
             document.body.style.cursor = '';
             resizing = false;
+            if (gridPending) {
+                gridPending = false;
+                renderGrid();
+            }
             if (!moved) return;
             saveColumns();
             // The click that ends a drag would sort the column under the pointer.
@@ -1190,6 +1207,7 @@
     // ── The whole value of a cell ───────────────────────────────
 
     function showValue(title, meta, text) {
+        valueGen++;
         valueText = text;
         els.valueTitle.textContent = title;
         els.valueMeta.textContent = meta;
@@ -1220,14 +1238,16 @@
             return;
         }
         var db = activeDb;
+        var mine = valueGen;
+        var current = function() { return mine === valueGen && valueModal.isVisible(); };
         post('query', { db: db, sql: sql }).then(function(data) {
-            if (!valueModal.isVisible()) return;
+            if (!current()) return;
             var first = data.rows && data.rows[0] ? data.rows[0][0] : null;
             if (!first) return showValueError('The row is no longer in the table.');
             if (first.type !== 'text') return showValue(column.name, meta, cellText(first));
             showValue(column.name, meta, String(first.value));
         }, function(f) {
-            if (valueModal.isVisible()) showValueError(errorText(f));
+            if (current()) showValueError(errorText(f));
         });
     }
 
@@ -1247,6 +1267,7 @@
         els.editLock.textContent = lock ? '// ' + lock : '';
         els.editLock.hidden = !lock;
         els.editFields.innerHTML = fields.map(function(field, i) { return fieldHtml(field, i, edit.readOnly); }).join('');
+        fields.forEach(fillField);
         els.editError.hidden = true;
         els.editSave.hidden = edit.readOnly;
         els.editDelete.hidden = edit.readOnly;
@@ -1286,7 +1307,18 @@
             var index = state.fields.indexOf(field);
             var el = els.editFields.querySelector('[data-field="' + index + '"]');
             if (el) el.outerHTML = fieldHtml(field, index, state.readOnly);
+            fillField(field, index);
         });
+    }
+
+    // The HTML parser drops the first line break of a text area, so the field
+    // gets its text from .value, and keeps what it then shows.
+    function fillField(field, index) {
+        var input = fieldInput(index);
+        if (!input) return;
+        var text = field.whole != null ? field.whole : cellText(field.original);
+        input.value = text == null ? '' : text;
+        field.initial = input.value;
     }
 
     function fieldInput(index) {
@@ -1319,6 +1351,7 @@
                 column: field.column,
                 original: field.original,
                 whole: field.whole,
+                initial: field.initial,
                 text: input ? input.value : '',
                 isNull: !!button && button.getAttribute('aria-checked') === 'true',
                 editable: !edit.readOnly && !fieldLock(field, false) && !!input
@@ -1407,6 +1440,7 @@
             return;
         }
         setRunning(true);
+        var mine = ++resultGen;
         els.resultStatus.textContent = 'Running…';
         els.resultStatus.className = 'sqlite-result__status';
         var started = Date.now();
@@ -1416,13 +1450,14 @@
             storeSettings();
             renderRecent();
             if (req.route === 'exec') {
-                showExecResult(data, ms);
                 window.debugToast('Changed ' + plural(data.changes || 0, 'row', 'rows') + ' in ' + req.body.db, 'success');
                 if (req.body.db === activeDb) reloadAfterWrite();
-            } else {
+                if (mine === resultGen) showExecResult(data, ms);
+            } else if (mine === resultGen) {
                 showQueryResult(data, ms);
             }
         }, function(f) {
+            if (mine !== resultGen) return;
             var code = f.envelope && f.envelope.code;
             var hint = mode !== 'write' && code === 'read_only' && db && !dbLockReason(db)
                 ? 'The statement writes. Run as write sends it through the app\'s handle.'
@@ -1441,6 +1476,12 @@
         els.resultNote.hidden = true;
         els.resultScroll.hidden = true;
         result = null;
+    }
+
+    function clearResult() {
+        resultGen++;
+        result = null;
+        els.resultBlock.hidden = true;
     }
 
     // A statement that the page did not send.
@@ -1607,7 +1648,11 @@
         copyField: function(el) {
             var index = Number(el.dataset.field);
             var input = fieldInput(index);
-            if (input) window.debugCopyToClipboard(input.value);
+            var field = edit && edit.fields[index];
+            if (!input || !field) return;
+            // The value as stored, unless the user changed it: a field turns CR LF into LF.
+            var stored = field.whole != null ? field.whole : cellText(field.original);
+            window.debugCopyToClipboard(input.value === field.initial && stored != null ? stored : input.value);
         },
         saveEdit: saveEdit,
         closeEdit: function() { editModal.hide(); },

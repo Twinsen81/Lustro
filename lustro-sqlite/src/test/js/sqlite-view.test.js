@@ -475,3 +475,17 @@ test('the settings read what the page stored, and ignore what it did not', () =>
         db: null, lastTable: {}, view: 'rows', showInternal: false, autoRefresh: false, foundOpen: false, pins: {}, recent: [],
     });
 });
+
+test('before the schema comes, no row is named again: the page does not know the rowid\'s name', () => {
+    const [synced] = notesRows();
+    assert.strictEqual(sqlite.sqliteWhereSql(synced, null), null);
+    assert.strictEqual(sqlite.sqliteWholeValueSql('notes', ['body'], synced, null), null);
+});
+
+test('an untouched text compares with what its field showed, so a CR LF or a first line break is not rewritten', () => {
+    const field = (value, initial, text) => ({ column: 'body', original: { type: 'text', value }, whole: null, initial, text, isNull: false, editable: true });
+    // A text field turns CR LF into LF; the HTML parser would also drop a text area's first line break.
+    assert.deepStrictEqual(plain(sqlite.sqliteEditChanges([field('a\r\nb', 'a\nb', 'a\nb')])), {});
+    assert.deepStrictEqual(plain(sqlite.sqliteEditChanges([field('\nhello', '\nhello', '\nhello')])), {});
+    assert.deepStrictEqual(plain(sqlite.sqliteEditChanges([field('a\r\nb', 'a\nb', 'a\nc')])), { body: 'a\nc' });
+});
