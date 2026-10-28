@@ -525,7 +525,9 @@
     function editValue(text, original) {
         var numeric = original && (original.type === 'integer' || original.type === 'real');
         if (!numeric || !DECIMAL.test(text) || !isFinite(Number(text))) return text;
-        if (original.type === 'integer' && WHOLE.test(text)) return integerJson(text);
+        // A leading + is not part of the digits.
+        var digits = text.replace(/^\+/, '');
+        if (original.type === 'integer' && WHOLE.test(digits)) return integerJson(digits);
         var number = Number(text);
         return original.type === 'real' ? realJson(number) : number;
     }
@@ -714,6 +716,8 @@
     var rows = [];
     var rowsSignature = null;
     var rowsError = null;
+    // Whether a page of rows of the open table has come, also an empty one.
+    var rowsLoaded = false;
     var paging = newPaging();
     var filter = '';
     var sort = null;
@@ -943,6 +947,7 @@
         rows = [];
         rowsSignature = null;
         rowsError = null;
+        rowsLoaded = false;
         pageReset(paging);
         filter = '';
         sort = null;
@@ -964,6 +969,7 @@
         colState = columnState(allColumns, activeDb, name);
         renderTables();
         renderHead();
+        renderGrid();
         loadTable(false);
     }
 
@@ -977,11 +983,20 @@
         return request('schema?db=' + encodeURIComponent(activeDb) + '&table=' + encodeURIComponent(activeTable)).then(function(data) {
             if (gen !== tableGen) return;
             var before = JSON.stringify(columns);
+            var first = !schema;
             schema = data;
             columns = gridColumns(schema, rows[0]);
             renderHead();
-            if (JSON.stringify(columns) !== before) renderGrid();
+            // The first schema also decides the Actions column: a grid that the
+            // rows drew before it is drawn again, also with the same columns.
+            if (first || JSON.stringify(columns) !== before) renderGrid();
             renderPaging();
+            // An auto refresh reads the schema, not the tables, so the sidebar's count follows the schema's.
+            var table = findTable(activeTable);
+            if (table && schema.rowCount != null && table.rowCount !== schema.rowCount) {
+                table.rowCount = schema.rowCount;
+                renderTables();
+            }
         }, function(f) {
             if (gen !== tableGen) return;
             if (f.status === 404) loadTables(false);
@@ -999,6 +1014,7 @@
             var items = data && Array.isArray(data.items) ? data.items : [];
             // The app removed the rows of this page: show the page before.
             if (!items.length && pageBack(paging)) return loadRows(quiet);
+            rowsLoaded = true;
             paging.next = data.nextCursor || null;
             rowsError = null;
             hideBanner();
@@ -1084,7 +1100,7 @@
         if (!activeTable || !columns.length) {
             els.grid.innerHTML = '';
             els.grid.style.width = '';
-            var message = !activeDb ? '' : !activeTable ? '// select a table' : rowsError ? '' : '// reading the rows…';
+            var message = emptyMessage();
             els.empty.textContent = message;
             els.empty.hidden = !message;
             renderColumnsButton();
@@ -1099,10 +1115,19 @@
             }).join('') + '</tbody>';
         els.grid.innerHTML = html;
         applyTableWidth(actions);
-        var empty = !rows.length && !rowsError;
-        els.empty.textContent = empty ? (filter ? '// no row has a cell that contains "' + filter + '"' : '// the table is empty') : '';
-        els.empty.hidden = !empty;
+        var note = emptyMessage();
+        els.empty.textContent = note;
+        els.empty.hidden = !note;
         renderColumnsButton();
+    }
+
+    // What the grid says in place of rows: none have come yet, none are in the table, or none match.
+    function emptyMessage() {
+        if (!activeDb) return '';
+        if (!activeTable) return '// select a table';
+        if (rowsError || rows.length) return '';
+        if (!rowsLoaded) return '// reading the rows…';
+        return filter ? '// no row has a cell that contains "' + filter + '"' : '// the table is empty';
     }
 
     function applyTableWidth(actions) {
@@ -1425,6 +1450,8 @@
             if (state.gen === tableGen) reloadAfterWrite();
         }, function(f) {
             if (edit === state) setEditError(errorText(f));
+            // The row is gone already: the grid shows the table as it is now.
+            if (f.status === 404 && state.gen === tableGen) reloadAfterWrite();
         }).then(function() {
             state.saving = false;
             els.editSave.disabled = false;
@@ -1449,6 +1476,8 @@
                 if (gen === tableGen) reloadAfterWrite();
             }, function(f) {
                 window.debugToast(errorText(f), 'error');
+                // The row is gone already: the grid shows the table as it is now.
+                if (f.status === 404 && gen === tableGen) reloadAfterWrite();
             });
         });
     }

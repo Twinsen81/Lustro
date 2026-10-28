@@ -327,6 +327,9 @@ test('a number goes back as a JSON number of its kind, an integer past 2^53 with
     // As a string, it would be a text in a column without affinity.
     assert.strictEqual(json('9007199254740995', integer), '9007199254740995');
     assert.strictEqual(json('-0009223372036854775808', integer), '-9223372036854775808');
+    // A leading + is not part of the digits: the number does not go through a JS number.
+    assert.strictEqual(json('+9007199254740993', integer), '9007199254740993');
+    assert.strictEqual(json('+42', integer), '42');
     assert.strictEqual(json('4.5', integer), '4.5');
     // A whole real keeps its point, so that SQLite stores 3.0 and not the integer 3.
     assert.strictEqual(json('3', real), '3.0');
