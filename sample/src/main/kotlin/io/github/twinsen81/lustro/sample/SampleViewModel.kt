@@ -8,6 +8,8 @@ import android.os.Looper
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import java.util.concurrent.Executors
+import androidx.work.WorkInfo
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -27,6 +29,7 @@ internal class SampleViewModel(application: Application) : AndroidViewModel(appl
     private val demoPrefs = DemoPrefs(application)
     private val demoDataStore = DemoDataStore(application, viewModelScope)
     private val demoSqlite = DemoSqlite(application, io)
+    private val demoWork = DemoWork(application)
 
     val events = EventLog()
 
@@ -91,6 +94,11 @@ internal class SampleViewModel(application: Application) : AndroidViewModel(appl
     /** How many notes and products the app reads, after its last write. */
     val sqliteCounts: StateFlow<Pair<Long, Long>?> = demoSqlite.rowCounts
 
+    val workActions: List<DemoAction> = DemoCatalog.work(demoWork)
+
+    /** How many work requests WorkManager has in each state. */
+    val workCounts: Flow<Map<WorkInfo.State, Int>> = demoWork.counts
+
     /** The registered DataStore as the app reads it: an edit from the console shows here too. */
     val dataStoreValues: StateFlow<List<Pair<String, String>>> = demoDataStore.appStateValues
 
@@ -116,7 +124,7 @@ internal class SampleViewModel(application: Application) : AndroidViewModel(appl
 
     /** Every action, by the label that the `request` launch extra names. */
     val byLabel: Map<String, DemoAction> =
-        (network.flatMap { it.actions } + logActions + prefsActions + sqliteActions + listOf(stopServer, startServer, startSync, stopSync))
+        (network.flatMap { it.actions } + logActions + prefsActions + sqliteActions + workActions + listOf(stopServer, startServer, startSync, stopSync))
             .associateBy { it.label }
 
     init {

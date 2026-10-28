@@ -2,6 +2,9 @@ package io.github.twinsen81.lustro.sample
 
 import android.app.Application
 import android.content.Context
+import androidx.work.Configuration
+import androidx.work.ExperimentalEventsApi
+import androidx.work.analytics.ExperimentalWorkMetricsApi
 import io.github.twinsen81.lustro.DebugConfig
 import io.github.twinsen81.lustro.ExperimentalPlatformCapture
 import io.github.twinsen81.lustro.Lustro
@@ -17,6 +20,7 @@ import io.github.twinsen81.lustro.prefs.ValuePolicy
 import io.github.twinsen81.lustro.sqlite.SqliteDb
 import io.github.twinsen81.lustro.sqlite.SqliteDebugTab
 import io.github.twinsen81.lustro.sqlite.TableHint
+import io.github.twinsen81.lustro.work.WorkDebugTab
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import kotlinx.coroutines.flow.StateFlow
@@ -28,8 +32,9 @@ import okhttp3.WebSocket
  * This file lives in `src/debug` and compiles against the REAL `:lustro`
  * runtime. It owns ALL Lustro registration for the sample: building [Lustro],
  * registering the built-in [NetworkDebugTab], the [LogsDebugTab],
- * [PrefsDebugTab], and [SqliteDebugTab] plugins, and the app's custom [SampleFlagsTab], starting the
- * server, and exposing the [networkInterceptor] for the app's OkHttp client.
+ * [PrefsDebugTab], [SqliteDebugTab], and [WorkDebugTab] plugins, and the app's custom [SampleFlagsTab], starting the
+ * server, and exposing the [networkInterceptor] for the app's OkHttp client and
+ * the [workManagerConfiguration] for its WorkManager.
  *
  * Because every Lustro/[io.github.twinsen81.lustro.DebugTab] reference is
  * confined to `src/debug`, the published `LustroDebugUsageInRelease` lint check
@@ -53,6 +58,9 @@ public object LustroBootstrap {
 
     @Volatile
     private var running = false
+
+    @Volatile
+    private var workTab: WorkDebugTab? = null
 
     /**
      * Builds and starts Lustro for the debug variant, then returns the OkHttp
@@ -138,6 +146,12 @@ public object LustroBootstrap {
                 // database files on disk. The release bootstrap registers the no-op half
                 // from :lustro-sqlite-noop.
                 .addTab(sqliteTab(app))
+                // The app's WorkManager work, from :lustro-work, with the events that its
+                // listeners record and the history of work-analytics. The app's
+                // Configuration.Provider passes its configuration through
+                // workManagerConfiguration(). The release bootstrap registers the no-op
+                // half from :lustro-work-noop.
+                .addTab(workTab(app))
                 // Custom, schema-backed tab. It is debug-only: it never appears in
                 // src/release, so the no-op variant has no Feature Flags tab.
                 .addTab(flags)
@@ -153,6 +167,15 @@ public object LustroBootstrap {
         android.util.Log.i("LustroSample", "Lustro start() returned $status")
         return captured
     }
+
+    /**
+     * Passes the app's WorkManager configuration through the WorkManager tab, which
+     * sets its event listeners on [builder] in front of the app's own, and returns
+     * [builder]. [SampleApplication] calls it from its `Configuration.Provider`, whose
+     * getter WorkManager may call before or after [start], so the tab is created on
+     * the first call of either.
+     */
+    public fun workManagerConfiguration(app: Application, builder: Configuration.Builder): Configuration.Builder = workTab(app).configure(builder)
 
     /**
      * Returns the factory the app creates its WebSockets with, so their messages
@@ -243,6 +266,14 @@ public object LustroBootstrap {
                 ),
             discoverFrom = app,
         )
+
+    // The unique names of the demo work, so the tab labels it; and work-analytics'
+    // repository, which the app also sets as its own WorkManager listeners.
+    @OptIn(ExperimentalEventsApi::class, ExperimentalWorkMetricsApi::class)
+    private fun workTab(app: Application): WorkDebugTab =
+        workTab ?: synchronized(this) {
+            workTab ?: WorkDebugTab.create(app, metrics = DemoWork.metrics(app), uniqueNames = DemoWork.UNIQUE_NAMES).also { workTab = it }
+        }
 
     private fun status(base: String, code: Int, meaning: String): DemoRequestSpec =
         DemoRequestSpec("GET /status/$code", "GET", "$base/status/$code", detail = "The server answers $code $meaning")
