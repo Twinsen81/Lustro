@@ -25,8 +25,9 @@ This document is about using a running Lustro. To add Lustro to an app, follow t
   `lustro/src/main/assets/lustro/network.openapi.json`.
 - **Plugin tabs.** An app can also register plugin tabs, such as `logs`, the app's own logcat
   (see [Logs tab operations](#logs-tab-operations)), and `prefs`, the app's SharedPreferences
-  and Preferences DataStores (see [Preferences tab operations](#preferences-tab-operations)), and `sqlite`, the app's SQLite and Room databases
-  (see [SQLite tab operations](#sqlite-tab-operations)). `_meta` lists the ones the app registered,
+  and Preferences DataStores (see [Preferences tab operations](#preferences-tab-operations)), `sqlite`, the app's SQLite and Room databases
+  (see [SQLite tab operations](#sqlite-tab-operations)), and `work`, the app's WorkManager work and
+  the events of each run (see [WorkManager tab operations](#workmanager-tab-operations)). `_meta` lists the ones the app registered,
   and each plugin's `_schema` has a version of its own in `info.version`.
 
 ## Use the `lustro` CLI
@@ -670,6 +671,75 @@ on the app's connection. So when the app has the keys on, `exec`, `edit`, and `d
 violation: `400` with `code: "sqlite_error"`. A violation that the database had before does not
 count.
 
+## WorkManager tab operations
+
+Base path `/api/v1/work`, when the app registers the WorkManager plugin
+(`WorkDebugTab.create(context, uniqueNames)`, or `create(context, metrics, uniqueNames)` with a
+work-analytics repository; without it, the routes are an enveloped `404 Unknown tab: work`). The
+authoritative contract is `lustro-work/src/main/assets/lustro/work.openapi.json`, version `1.0`.
+The CLI has no `work` commands: use `lustro api`. Only `POST cancel` and `POST prune` change
+anything. The app needs WorkManager 2.12.0 or newer: with an older one, every route is a `503`
+with `code: "work_unsupported"`.
+
+| Operation | Route | Notes |
+| --- | --- | --- |
+| Poll the work | `GET items?cursor=&state=&tag=&class=&name=` | Cursor envelope: every work request that WorkManager has, as `WorkInfo` has it now, in WorkManager's order. The cursor stands for the list's content, so a poll with it is `unchanged` until any item changes, then `delta` with the whole list. `state` takes one or more states, comma-separated (`FAILED,CANCELLED`); `class` the worker's full or simple class name; `name` any unique work name. `state` is the tab's state on every response (see below). |
+| Read one work request | `GET items/{id}` | `{ item, events, metrics?, state }`: the item, the events that the buffer holds of it, oldest first, and with work-analytics its periods. `item` is `null` after WorkManager deleted the work (a prune) while the tab still has its events; `404` with `field: "id"` when neither has it. |
+| Poll the events | `GET events?cursor=&id=&class=&type=&limit=` | Stream envelope over the events that the tab's listeners recorded. The first poll gets `reset` with the last `limit` events (default 500, at most 5000) that pass the filters; a poll with the cursor gets `delta` with the events after it, oldest first, in pages of `limit`, with `dropped` for events that the buffer evicted first, or `unchanged`. `type` takes one or more event types, comma-separated. |
+| Read the history | `GET metrics?id=&tag=&class=&state=&from=&to=` | `{ items: [period] }` from work-analytics, oldest first by enqueue time; `from` and `to` are enqueue times in epoch ms. `404` with `code: "metrics_off"` when the app passed no repository. |
+| Cancel | `POST cancel` `{ id }` or `{ name }` or `{ tag }` | Exactly one key: `WorkManager.cancelWorkById`, `cancelUniqueWork`, or `cancelAllWorkByTag`. Returns `{ status: "ok", cancelled }`, the number of matched requests that were not finished; finished work stays as it is, and the work that depends on cancelled work is cancelled too, uncounted. `404` with the key as `field` when nothing matches. |
+| Prune | `POST prune` | `WorkManager.pruneWork()`: deletes finished work that no unfinished work depends on. Returns `{ status: "ok", pruned }`. The events stay in the buffer. |
+
+**A work item.** `{ id, workerClass, state, tags, uniqueName?, runAttempts, generation,
+stopReason: { code, name }, output, progress, constraints, initialDelayMillis, periodicity?,
+nextScheduleTimeMillis? }`. `state` is a `WorkInfo.State` name: `ENQUEUED`, `RUNNING`,
+`SUCCEEDED`, `FAILED`, `BLOCKED` (waiting for the work before it in a chain), or `CANCELLED`.
+`tags` includes the worker's class name, which WorkManager adds. `uniqueName` is there only for a
+name that the app registered, or the one that `name=` asked for: `WorkInfo` does not have it.
+`stopReason.name` is the `WorkInfo.STOP_REASON_*` constant without the prefix: `NOT_STOPPED`
+when the work never stopped, `UNKNOWN` when WorkManager does not know why, as after the app's
+process died. `output` and `progress` are `Data` as JSON: a long beyond 2^53 - 1 and a NaN or an
+infinity are strings. Periodic work loses its output when its period ends, so read a run's output
+from its `finished` event. `nextScheduleTimeMillis` is left out when there is no next run.
+
+**An event.** `{ seq, at, type, id, workerClass, state, runAttempt, generation }` and what the
+type adds: `finished` has `result` (`success`, `failure`, or `retry`) and `output`; `stopped` has
+`stopReason`; `exception` has `exception: { type, message?, stackTrace, truncated? }`, the stack
+trace at most 16384 characters; `updated` has `previousGeneration`. `state` and `runAttempt` are
+the work's at the event. The schedule listener gives `enqueued`, `unblocked` (the work before it
+in a chain finished), `updated`, `cancelled`, and `prerequisiteFailed` (the work before it failed
+or was cancelled, so this work fails without a run); the execution listener gives `started`,
+`stopped`, `finished`, and `exception`. A worker that throws ends its run with `exception`, not
+`finished`. A `finished` with `retry` leaves the work `ENQUEUED`, as does the end of a period of
+periodic work.
+
+**A period.** `{ id, generation, workerClass, tags, state, enqueueTimeMillis?, unblockTimeMillis?,
+firstStartTimeMillis?, finishTimeMillis?, workerDurationMillis?, totalRuntimeMillis?, runAttempts,
+explicitRetries, stopReasons: [{ code, name, count }] }`, one run of one-time work or one period of
+periodic work. `state` is a `WorkMetricsInfo.State` name (`ENQUEUED_BLOCKED`, `ENQUEUED_PENDING`,
+`RUNNING`, `SUCCEEDED`, `FAILED`, `CANCELLED`, `OBSOLETE_UPDATED`). A time that work-analytics
+has not seen yet is left out. work-analytics keeps periods 7 days by default, also of the runs of
+earlier processes.
+
+**The tab's state.** Every `items` and `events` response, and `items/{id}`, has `state:
+{ listeners, reason?, initialized, metrics, uniqueNames, bufferBytes }`. `listeners` is
+`installed` when WorkManager runs with the tab's listeners; `missing` when the app's
+configuration did not go through `WorkDebugTab.configure()` or WorkManager runs with another one,
+such as the default initializer's; `unsupported` when the app's WorkManager has listener methods
+that this version of the tab does not forward. Then `reason` says what to change, and `events` is
+empty. `initialized` is `false` until the app calls `WorkManager.getInstance`: the tab never
+initializes WorkManager, so until then `items`, `items/{id}`, `cancel`, and `prune` answer `503`
+with `code: "work_not_initialized"`.
+
+**Events live on the heap.** The tab records events from the moment WorkManager starts, in the
+app's process, and keeps the newest ones in a buffer of `bufferBytes` (1 MiB by default). The
+server answers only while the app is in the foreground. When the system starts the app in the
+background to run a worker and stops the process before you open the app, the events of that run
+are gone: the item still has the state, `runAttempts`, the last `stopReason`, and the output, the
+history has the run's times, and logcat has the exception (`lustro api GET logs/entries --param
+tag=WM-WorkerWrapper` while the Logs plugin is registered and the process lives, or `adb logcat`).
+A new process starts a new stream: a cursor from before gets a `reset`.
+
 ## Common workflows
 
 **Mock a 500 for an endpoint**
@@ -803,6 +873,29 @@ curl -s -X POST "$BASE/api/v1/network/rules/_/sync" \
        {"id":"b","urlPattern":"/b","statusCode":404,"responseBody":"{}"}]'
 ```
 
+**Wait for a worker to finish, and see why it failed**
+
+```bash
+# The work of one unique name, and its state now
+lustro --json api GET work/items --param name=sync
+# Follow the events of the run: poll with the cursor until a finished or exception event comes
+lustro --json api GET work/events --param type=finished,exception,stopped,prerequisiteFailed
+lustro --json api GET work/events --param cursor=<cursor> --param type=finished,exception,stopped,prerequisiteFailed
+# Everything the tab has about one work request: its item, its events, and with work-analytics its runs
+lustro --json api GET work/items/<id>
+```
+
+A `finished` event with `result: "failure"` has the worker's `output`; an `exception` event has the
+stack trace; `prerequisiteFailed` says that the work before it in a chain failed, so look at that
+work. When there are no events, read `state.listeners` and `state.reason` first.
+
+**Cancel work and clear the finished history**
+
+```bash
+lustro --json api POST work/cancel --body '{"name":"sync"}'
+lustro --json api POST work/prune
+```
+
 ## Failure modes
 
 Errors use the shared envelope; key statuses:
@@ -823,8 +916,9 @@ Errors use the shared envelope; key statuses:
   no sender configured. Also a WebSocket connection that the app cleared or evicted, and a message
   with no stored payload. Also every `logs/` route when the app did not register the Logs plugin
   (`Unknown tab: logs`), every `prefs/` route without the Preferences plugin
-  (`Unknown tab: prefs`), and every `sqlite/` route without the SQLite plugin
-  (`Unknown tab: sqlite`). On `sqlite/` routes, also a `db` that the tab does not list, and a
+  (`Unknown tab: prefs`), every `sqlite/` route without the SQLite plugin
+  (`Unknown tab: sqlite`), and every `work/` route without the WorkManager plugin
+  (`Unknown tab: work`). On `sqlite/` routes, also a `db` that the tab does not list, and a
   `table` that the database does not have, each with its `field`.
 - **`403 forbidden` with `code: "read_only"`** on `prefs/edit`, `delete`, or `clear`: the file is
   read-only. `GET prefs/files` says which files are, and the app decides it in
@@ -846,6 +940,11 @@ Errors use the shared envelope; key statuses:
   **`500` with `code: "sqlite_error"`**: SQLite refused a statement that the tab built, such as on
   a corrupt file or a view whose table is gone, or a client's statement failed on the file or the
   device; the message is SQLite's.
+- **`503` on a `work/` route:** `code: "work_unsupported"` when the app's WorkManager is older
+  than 2.12.0 or missing; `code: "work_not_initialized"` on `items`, `items/{id}`, `cancel`, and
+  `prune` until the app initializes WorkManager. `404` with `code: "metrics_off"` on
+  `work/metrics` when the app passed no work-analytics repository. **No work events:** check
+  `state.listeners` and `state.reason` (see [WorkManager tab operations](#workmanager-tab-operations)).
 - **No log lines**: check `state.reader` in `GET logs/entries`: `failed` with `readerError` when
   logcat could not run, `stopped` when Lustro is stopped, and `state.paused` when the capture is
   paused. Lines from other processes are never shown: the tab reads the app's own process only.

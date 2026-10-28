@@ -52,8 +52,8 @@ build, and that even in debug builds it stays bound to the local device.
   dependency graph; the shared `io.github.twinsen81:lustro-runtime` capability
   only prevents `:lustro` and `:lustro-noop` landing on the same configuration,
   and `lustro-logs-runtime` does the same for `:lustro-logs` and
-  `:lustro-logs-noop`, as `lustro-prefs-runtime` and `lustro-sqlite-runtime`
-  do for their pairs.
+  `:lustro-logs-noop`, as `lustro-prefs-runtime`, `lustro-sqlite-runtime`, and
+  `lustro-work-runtime` do for their pairs.
 - **Loopback-bound by default.** The server binds to `127.0.0.1` and is
   reachable only while the app is foregrounded; the socket is torn down on
   background after draining in-flight requests. LAN exposure is strictly opt-in
@@ -188,9 +188,11 @@ build, and that even in debug builds it stays bound to the local device.
   for LAN access, every client with the token can read and change them.
 - **A registered database shows all of its contents.** See
   [SQLite databases](#sqlite-databases) below.
+- **The WorkManager tab shows the output and the exceptions of the app's work,
+  and cancels and prunes it.** See [WorkManager work](#workmanager-work) below.
 - **Nothing persisted to disk except mock rules.** Captured traffic, WebSocket
   messages included, and log lines live only in bounded in-memory buffers and
-  are lost when the process dies. The sole
+  are lost when the process dies, as are the WorkManager tab's events. The sole
   persisted state is user-authored mock rules. The Preferences tab writes to
   disk only the app's own SharedPreferences files and the files of the
   DataStores that the app registers, when a client edits them.
@@ -273,6 +275,33 @@ database file in the app's `databases` directory, under `/api/v1/sqlite/`.
 An external review of the auth, CSP, and capture implementation is part of the
 work remaining before the first public release (`0.1.0`), alongside the
 publishing items listed in `CHANGELOG.md`.
+
+### WorkManager work
+
+The WorkManager plugin (`:lustro-work`) serves the app's WorkManager work and
+the events of each run under `/api/v1/work/`.
+
+- **Every client with the token reads the output, the progress, and the
+  exceptions of the app's work.** A worker's output data can hold a user's data,
+  such as an id or a server's answer, and an exception's message and stack trace
+  can hold what the worker was working on. The tab has no value policy for them.
+  It never reads a work's input data, which WorkManager's public API does not
+  give. With the default loopback binding this adds little, because
+  `adb shell run-as` reads WorkManager's database of a debuggable app, and
+  `adb logcat` shows a worker's exception. With `DebugConfig.bindAddress` set for
+  LAN access, every client with the token can read them.
+- **Every client with the token can cancel work and prune finished work.**
+  `POST cancel` cancels by id, unique name, or tag, and `POST prune` deletes the
+  history of finished work, as the app's own calls to WorkManager would. Both
+  are `POST`, so the same-origin checks apply.
+- **The tab adds listeners to the app's WorkManager configuration.** Each one
+  records the event and calls the listener that the app set, with the same
+  arguments; recording never throws, and what the app's listener throws reaches
+  WorkManager as without the tab. The events stay on the heap, in a bounded
+  buffer, and end with the process. The tab never initializes WorkManager.
+- **Release builds get none of it.** `lustro-work-noop`'s `configure()` returns
+  the app's builder as it is, so release WorkManager runs the app's own
+  configuration. Neither artifact depends on WorkManager at runtime.
 
 ## NanoHTTPD Vendor-Patch Process
 
