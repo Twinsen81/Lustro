@@ -32,8 +32,8 @@ internal fun SqliteScreen(viewModel: SampleViewModel, latest: Map<String, Action
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
             ScreenHeader(
                 "SQLite",
-                "The SQLite tab reads these databases over the API: the tables, their schemas, and pages of rows, sorted and filtered. " +
-                    "The app keeps writing while the console reads.",
+                "The console's SQLite tab browses these databases: the tables, their schemas, and pages of rows, sorted and filtered. " +
+                    "It edits the rows of the notes database and runs your own SQL. The app keeps writing while the console reads.",
             )
             SampleCard(Modifier.padding(horizontal = ScreenPadding)) {
                 Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
