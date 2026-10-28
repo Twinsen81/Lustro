@@ -776,7 +776,9 @@ val lustro = Lustro.builder(application)
   each cell by its own type, as SQLite stores any type in any column: at most 4096 characters of
   a text, with the whole length when it is cut, and only the size of a blob, also of a blob in a
   `TEXT` column. A blob of megabytes does not fill a page or the memory. Each read stops when the
-  request times out (`DebugConfig.requestTimeoutMs`, 30 s by default).
+  request times out (`DebugConfig.requestTimeoutMs`, 30 s by default). On a file database that
+  is not in WAL mode, a statement also stops after 2 s: the app's writes wait for the lock of the
+  tab's connection, and Android fails a write that waited 2.5 s.
 - **A client's statement reads through a read-only connection.** `POST query` runs it on a
   connection that SQLite opens with `OPEN_READONLY` to the database's file, for one request, and
   never on the app's handle, on which Android's `rawQuery` would run a `DELETE` too. SQLite

@@ -618,7 +618,11 @@ between two pages, the next page can repeat or skip a row.
 **What the GET routes run.** Only statements that the tab builds: each `db`, `table`, and `sort`
 is checked against the database's schema and quoted, and the filter is a bound parameter. A
 `file` database is opened with `OPEN_READONLY` for one request and closed after it. Each read
-stops at the request timeout, and the client then gets a `504`.
+stops at the request timeout, and the client then gets a `504`. On a `file` database, registered
+or discovered, that is not in WAL mode, a statement also stops after 2 s (`504`,
+`code: "read_limit"`), because the app's writes wait for the lock of the tab's connection, and
+Android fails a write that waited 2.5 s with `SQLITE_BUSY`. A database through the app's handle
+has no such limit: there a read and the app's writes share the app's connection pool.
 
 **`POST query` is read-only for every database, and SQLite enforces it.** The statement runs on a
 connection that SQLite opens with `OPEN_READONLY` to the database's file, for this request only,
@@ -824,8 +828,9 @@ Errors use the shared envelope; key statuses:
   SQLite can't run, such as a syntax error or a broken constraint; `code: "query_unavailable"` for
   a database that has no file for `query` to open read-only; `code: "row_too_big"` for a row that
   does not fit Android's cursor window, about 2 MB: read the value in parts with `substr()`.
-  **`504` with `code: "read_limit"`** on `query`: the database is not in WAL mode, and the
-  statement ran for 2 s.
+  **`504` with `code: "read_limit"`** on `query`, and on a `GET` route of a `file` database:
+  the database is not in WAL mode, and a statement ran for 2 s. Read less in one statement: a
+  `LIMIT`, a `WHERE` that an index serves, or a smaller page without a filter.
 - **`500` with `code: "open_failed"`** on a `sqlite/` route: the database did not open. The
   message has the reason, such as a file that is not there yet, a handle that the app closed, or
   the exception of the app's function that returns the handle. `GET sqlite/databases` lists such a database with `error`.

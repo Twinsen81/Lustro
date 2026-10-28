@@ -20,7 +20,9 @@ import org.json.JSONException
 import org.json.JSONObject
 
 /** The routes of the SQLite tab, under `/api/v1/sqlite/`. */
-internal class SqliteRoutes(private val registry: SqliteRegistry, private val console: SqliteQuery = SqliteQuery()) {
+internal class SqliteRoutes(private val registry: SqliteRegistry, private val limit: ReadLimit = ReadLimit()) {
+    private val console = SqliteQuery(limit)
+
     fun handle(request: DebugRequest): DebugResponse? {
         val expected = METHODS[request.path] ?: return null
         if (request.method.uppercase() != expected) {
@@ -118,7 +120,7 @@ internal class SqliteRoutes(private val registry: SqliteRegistry, private val co
                 try {
                     open(entry).use { connection ->
                         path = connection.path
-                        version = SqliteReader(connection, signal).userVersion()
+                        version = reader(connection, signal).userVersion()
                     }
                 } catch (e: RouteException) {
                     error = e.message
@@ -379,7 +381,11 @@ internal class SqliteRoutes(private val registry: SqliteRegistry, private val co
     private fun noTable(entry: DbEntry, name: String): RouteException =
         RouteException("The database ${entry.name} has no table or view named $name", status = 404, field = "table")
 
-    private fun <T> read(entry: DbEntry, signal: CancellationSignal, block: (SqliteReader) -> T): T = open(entry).use { block(SqliteReader(it, signal)) }
+    private fun <T> read(entry: DbEntry, signal: CancellationSignal, block: (SqliteReader) -> T): T = open(entry).use { block(reader(it, signal)) }
+
+    // A connection that the tab opened itself has the limit out of WAL mode; the app's handle has none.
+    private fun reader(connection: DbConnection, signal: CancellationSignal): SqliteReader =
+        SqliteReader(connection, signal, limit.takeIf { it.applies(connection, signal) })
 
     private fun open(entry: DbEntry): DbConnection = open(entry.name) { entry.source.open() }
 

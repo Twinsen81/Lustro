@@ -56,9 +56,10 @@ internal class Page(val rows: List<Row>, val nextOffset: Long?)
 /**
  * The statements that the routes run. Every identifier in them comes from the
  * database's own schema, quoted, and every value from a client is a bound
- * parameter, so a request can't change what a statement does.
+ * parameter, so a request can't change what a statement does. With a [limit],
+ * each statement stops when it holds its lock for too long.
  */
-internal class SqliteReader(private val connection: DbConnection, private val signal: CancellationSignal) {
+internal class SqliteReader(private val connection: DbConnection, private val signal: CancellationSignal, private val limit: ReadLimit? = null) {
     fun userVersion(): Int = query("PRAGMA user_version") { if (it.moveToFirst()) it.getInt(0) else 0 }
 
     /** The tables and views, by name, as SQLite sorts names without case. */
@@ -228,7 +229,9 @@ internal class SqliteReader(private val connection: DbConnection, private val si
         return Row(rowid, cells)
     }
 
-    private fun <T> query(sql: String, args: Array<String> = emptyArray(), read: (Cursor) -> T): T = connection.query(sql, args, signal).use(read)
+    private fun <T> query(sql: String, args: Array<String> = emptyArray(), read: (Cursor) -> T): T =
+        limit?.statement(signal, field = null) { statement -> connection.query(sql, args, statement).use(read) }
+            ?: connection.query(sql, args, signal).use(read)
 
     companion object {
         /** The most characters of a text value that a page of rows holds. */

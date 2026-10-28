@@ -130,6 +130,8 @@ class SqliteConsoleTest {
 
                 override fun platformSqlite(): Boolean = true
 
+                override val separate: Boolean = true
+
                 override fun close() = Unit
             }
 
@@ -296,7 +298,7 @@ class SqliteConsoleTest {
 
     @Test
     fun `a WAL database has no limit but the request's timeout`() {
-        val routes = SqliteRoutes(SqliteRegistry(listOf(SqliteDb.framework("app") { live }), directory = null), SqliteQuery(rollbackLimitMs = 1))
+        val routes = SqliteRoutes(SqliteRegistry(listOf(SqliteDb.framework("app") { live }), directory = null), ReadLimit(1))
 
         assertEquals(200, Fixtures.post(routes, "query", body("app", "WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM n WHERE x < 200000) SELECT count(*) FROM n, notes")).status)
     }

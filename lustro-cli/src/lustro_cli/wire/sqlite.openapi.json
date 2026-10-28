@@ -3,7 +3,7 @@
   "info": {
     "title": "Lustro SQLite debug tab",
     "version": "1.0",
-    "description": "The app's SQLite and Room databases: the ones that the app registers, and, when the app turns discovery on, the other database files in its databases directory. A registered database is the app's own open handle, a framework SQLiteDatabase or an androidx SupportSQLiteDatabase such as Room's, or a file that the tab opens read-only for each request; a discovered file is opened the same way. The GET routes run only SQL that the tab builds: each database, table, and column that a client names is checked against the database's schema and quoted as an identifier, and a filter value is a bound parameter. A page of rows holds each cell with its storage class: at most 4096 characters of a text, with the whole length when it is cut, and only the size of a blob. POST query runs a client's statement on a connection that SQLite opens read-only for the request, so SQLite refuses every write. POST exec, edit, and delete write through the app's handle, only to a database that the app registers with writable = true, and answer 403 with code read_only for any other. Both query and exec refuse BEGIN, COMMIT, END, ROLLBACK, SAVEPOINT, RELEASE, ATTACH, DETACH, and VACUUM before they run; exec also refuses every PRAGMA, and query the pragmas that set a value for the whole process. Each read stops when the request times out, and the client then gets a 504. All routes are token-authenticated (Bearer header or HttpOnly cookie) and live under /api/v1/sqlite. Errors use the shared error envelope; a statement that SQLite refuses in a GET route, such as one on a corrupt file, is a 500 with code sqlite_error and SQLite's message."
+    "description": "The app's SQLite and Room databases: the ones that the app registers, and, when the app turns discovery on, the other database files in its databases directory. A registered database is the app's own open handle, a framework SQLiteDatabase or an androidx SupportSQLiteDatabase such as Room's, or a file that the tab opens read-only for each request; a discovered file is opened the same way. The GET routes run only SQL that the tab builds: each database, table, and column that a client names is checked against the database's schema and quoted as an identifier, and a filter value is a bound parameter. A page of rows holds each cell with its storage class: at most 4096 characters of a text, with the whole length when it is cut, and only the size of a blob. POST query runs a client's statement on a connection that SQLite opens read-only for the request, so SQLite refuses every write. POST exec, edit, and delete write through the app's handle, only to a database that the app registers with writable = true, and answer 403 with code read_only for any other. Both query and exec refuse BEGIN, COMMIT, END, ROLLBACK, SAVEPOINT, RELEASE, ATTACH, DETACH, and VACUUM before they run; exec also refuses every PRAGMA, and query the pragmas that set a value for the whole process. Each read stops when the request times out, and the client then gets a 504. On a connection that the tab opens itself (a file database, registered or discovered, and every POST query), a database out of WAL mode makes the app's writes wait for the tab's lock, and Android's SQLite fails a write that waited 2.5 s: there a statement stops after 2 s, with a 504 with code read_limit. All routes are token-authenticated (Bearer header or HttpOnly cookie) and live under /api/v1/sqlite. Errors use the shared error envelope; a statement that SQLite refuses in a GET route, such as one on a corrupt file, is a 500 with code sqlite_error and SQLite's message."
   },
   "servers": [
     {
@@ -62,7 +62,7 @@
       "get": {
         "operationId": "listSqliteTables",
         "summary": "List the tables and views of a database.",
-        "description": "Every table and view in sqlite_master, by name, as SQLite sorts names without case. A table's rows are counted; a view's are not, because that runs the view's query. The tables that SQLite, Android, and Room keep for themselves, and the shadow tables of a full-text or R*Tree index, are listed with internal true, so that a view can hide them.",
+        "description": "Every table and view in sqlite_master, by name, as SQLite sorts names without case. A table's rows are counted; a view's are not, because that runs the view's query. The tables that SQLite, Android, and Room keep for themselves, and the shadow tables of a full-text or R*Tree index, are listed with internal true, so that a view can hide them. On a file database that is not in WAL mode, a statement stops after 2 s: 504 with code read_limit.",
         "parameters": [
           {
             "name": "db",
@@ -139,7 +139,7 @@
       "get": {
         "operationId": "getSqliteSchema",
         "summary": "Get the columns, foreign keys, and row count of a table or view.",
-        "description": "What PRAGMA table_xinfo (or table_info, before SQLite 3.26) and PRAGMA foreign_key_list say, the statement that created it, and its hint. Generated columns are included; the hidden columns of a virtual table are not. The columns are in their order in the table, which is the order of the cells in GET rows.",
+        "description": "What PRAGMA table_xinfo (or table_info, before SQLite 3.26) and PRAGMA foreign_key_list say, the statement that created it, and its hint. Generated columns are included; the hidden columns of a virtual table are not. The columns are in their order in the table, which is the order of the cells in GET rows. On a file database that is not in WAL mode, a statement stops after 2 s: 504 with code read_limit.",
         "parameters": [
           {
             "name": "db",
@@ -204,7 +204,7 @@
       "get": {
         "operationId": "listSqliteRows",
         "summary": "Get a page of rows.",
-        "description": "A page of the rows of a table or view in the pagination envelope. Without a sort, a table's rows come in the order of their rowid, or of the primary key for a table WITHOUT ROWID; a view's in the order SQLite gives. A sort on a column also sorts by that key, so that rows with the same value keep their order from page to page. nextCursor is null on the last page; pass it as cursor for the next one. A cursor holds a place in the rows, so a page can start at another row when the rows change between two requests.",
+        "description": "A page of the rows of a table or view in the pagination envelope. Without a sort, a table's rows come in the order of their rowid, or of the primary key for a table WITHOUT ROWID; a view's in the order SQLite gives. A sort on a column also sorts by that key, so that rows with the same value keep their order from page to page. nextCursor is null on the last page; pass it as cursor for the next one. A cursor holds a place in the rows, so a page can start at another row when the rows change between two requests. On a file database that is not in WAL mode, a statement stops after 2 s: 504 with code read_limit.",
         "parameters": [
           {
             "name": "db",

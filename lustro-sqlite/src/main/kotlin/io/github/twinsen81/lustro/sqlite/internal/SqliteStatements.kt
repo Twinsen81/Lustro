@@ -121,7 +121,7 @@ internal object SqliteStatements {
 
     private const val NON_ASCII = 0x80
 
-    private const val BYTE_ORDER_MARK = '﻿'
+    private const val BYTE_ORDER_MARK = '\uFEFF'
 
     // The characters that SQLite's tokenizer takes as white space: ASCII's, and a byte order mark
     // anywhere between two tokens.

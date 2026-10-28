@@ -38,6 +38,12 @@ internal interface DbConnection : Closeable {
      * connections. Two copies of SQLite in one process do not see each other's locks.
      */
     fun platformSqlite(): Boolean
+
+    /**
+     * Whether the tab opened the connection next to the app's own. A read on it takes a lock on
+     * the file, which the app's writer waits for, outside the app's connection pool.
+     */
+    val separate: Boolean
 }
 
 /**
@@ -73,6 +79,8 @@ internal class FrameworkSource(private val database: () -> SQLiteDatabase) : DbS
         override fun query(sql: String, args: Array<String>, signal: CancellationSignal): Cursor = db.rawQuery(sql, args, signal)
 
         override fun platformSqlite(): Boolean = true
+
+        override val separate: Boolean = false
 
         override fun <T> transaction(block: () -> T): T {
             db.beginTransactionNonExclusive()
@@ -111,6 +119,8 @@ internal class SupportSource(private val database: () -> SupportSQLiteDatabase) 
         // another copy of SQLite, such as SQLCipher's. The two answer these the same way only when
         // they are the same build.
         override fun platformSqlite(): Boolean = fingerprint { db.query(it) } == PLATFORM_FINGERPRINT
+
+        override val separate: Boolean = false
 
         override fun <T> transaction(block: () -> T): T {
             db.beginTransactionNonExclusive()
@@ -162,6 +172,8 @@ internal class FileSource(override val file: File) : DbSource() {
         override fun query(sql: String, args: Array<String>, signal: CancellationSignal): Cursor = db.rawQuery(sql, args, signal)
 
         override fun platformSqlite(): Boolean = true
+
+        override val separate: Boolean = true
 
         override fun close() = db.close()
     }

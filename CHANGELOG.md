@@ -24,8 +24,9 @@ see [DECISIONS.md](DECISIONS.md).
   when their texts pass 4 Mi characters, with `truncated`; a text comes whole,
   and a blob is its size. A database in memory, and a live handle on another
   copy of SQLite than the platform's, take no `query`. Out of WAL mode, a
-  statement stops after 2 s, because the app's writes wait for its lock and
-  Android fails a write that waited 2.5 s. `POST exec` runs a statement on the
+  statement on a connection that the tab opens itself stops after 2 s, in
+  `query` and in the routes that browse a file database, because the app's
+  writes wait for its lock and Android fails a write that waited 2.5 s. `POST exec` runs a statement on the
   app's handle and returns the rows that it changed; `POST edit` and
   `POST delete` change or delete one row, by its rowid or by its primary key,
   and only when exactly one row matches. The three run in a transaction of

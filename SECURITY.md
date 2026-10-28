@@ -255,9 +255,12 @@ database file in the app's `databases` directory, under `/api/v1/sqlite/`.
   characters, and a blob only its size. A `query` result has at most 1000
   rows, and fewer when their texts pass 4 Mi characters. Each read stops at
   the request's timeout, so that a request can't hold a lock that the app
-  waits for, or fill the app's memory. Out of WAL mode, a reader's lock makes
-  the app's writer wait, and Android's SQLite fails a write that waited 2.5 s,
-  so a `query` there stops after 2 s.
+  waits for, or fill the app's memory. Out of WAL mode, a reader's lock on a
+  connection of its own makes the app's writer wait, and Android's SQLite fails
+  a write that waited 2.5 s. So on a connection that the tab opens itself, for
+  every `query` and for the routes that browse a file database, a statement
+  there stops after 2 s. Through the app's own handle, a read waits in the
+  app's connection pool, which has no such time limit.
 
 An external review of the auth, CSP, and capture implementation is part of the
 work remaining before the first public release (`0.1.0`), alongside the
