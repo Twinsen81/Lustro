@@ -2,6 +2,9 @@ package io.github.twinsen81.lustro.sample
 
 import android.app.Application
 import android.content.Context
+import androidx.work.Configuration
+import androidx.work.ExperimentalEventsApi
+import androidx.work.analytics.ExperimentalWorkMetricsApi
 import io.github.twinsen81.lustro.DebugConfig
 import io.github.twinsen81.lustro.ExperimentalPlatformCapture
 import io.github.twinsen81.lustro.Lustro
@@ -16,6 +19,7 @@ import io.github.twinsen81.lustro.prefs.ValuePolicy
 import io.github.twinsen81.lustro.sqlite.SqliteDb
 import io.github.twinsen81.lustro.sqlite.SqliteDebugTab
 import io.github.twinsen81.lustro.sqlite.TableHint
+import io.github.twinsen81.lustro.work.WorkDebugTab
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import kotlinx.coroutines.flow.StateFlow
@@ -35,10 +39,12 @@ import okhttp3.WebSocket
  * compile. The release variant registers NO custom tab — [SampleFlagsTab] is a
  * debug-only `DebugTab` and does not exist in this source set. It registers the
  * no-op [LogsDebugTab] from `:lustro-logs-noop`, the no-op [PrefsDebugTab]
- * from `:lustro-prefs-noop`, and the no-op [SqliteDebugTab] from
- * `:lustro-sqlite-noop`, which checks the plugin pairs' facades the same way. Everything here
- * is a no-op at runtime: nothing binds, nothing is captured, and
- * [Lustro.networkInterceptor] returns a pass-through interceptor.
+ * from `:lustro-prefs-noop`, the no-op [SqliteDebugTab] from
+ * `:lustro-sqlite-noop`, and the no-op [WorkDebugTab] from `:lustro-work-noop`, which checks
+ * the plugin pairs' facades the same way. Everything here
+ * is a no-op at runtime: nothing binds, nothing is captured,
+ * [Lustro.networkInterceptor] returns a pass-through interceptor, and
+ * [workManagerConfiguration] returns the app's WorkManager configuration as it is.
  */
 // This src/release stub deliberately calls the Lustro API against :lustro-noop to
 // drive the cross-variant facade-parity gate. No suppression is needed: the check
@@ -46,6 +52,9 @@ import okhttp3.WebSocket
 public object LustroBootstrap {
     @Volatile
     private var lustro: Lustro? = null
+
+    @Volatile
+    private var workTab: WorkDebugTab? = null
 
     /**
      * No-op equivalent of the debug bootstrap. Builds Lustro against the no-op
@@ -112,6 +121,9 @@ public object LustroBootstrap {
                         discoverFrom = app,
                     ),
                 )
+                // The no-op half of :lustro-work, created as the debug bootstrap creates
+                // it: it reads no work, and its configure() returns the builder.
+                .addTab(workTab(app))
                 .build()
 
         val interceptor = instance.networkInterceptor()
@@ -120,6 +132,9 @@ public object LustroBootstrap {
         android.util.Log.i("LustroSample", "Lustro start() returned $status")
         return interceptor
     }
+
+    /** No-op equivalent of the debug bootstrap's: the no-op tab returns [builder] as it is. */
+    public fun workManagerConfiguration(app: Application, builder: Configuration.Builder): Configuration.Builder = workTab(app).configure(builder)
 
     /**
      * No-op equivalent of the debug bootstrap's factory: the no-op facade
@@ -138,6 +153,12 @@ public object LustroBootstrap {
     }
 
     internal fun extraDemoRequests(base: String): List<DemoRequestSpec> = emptyList()
+
+    @OptIn(ExperimentalEventsApi::class, ExperimentalWorkMetricsApi::class)
+    private fun workTab(app: Application): WorkDebugTab =
+        workTab ?: synchronized(this) {
+            workTab ?: WorkDebugTab.create(app, metrics = DemoWork.metrics(app), uniqueNames = DemoWork.UNIQUE_NAMES).also { workTab = it }
+        }
 
     /** False in this variant: there is no server, so the app hides its controls. */
     internal const val CONSOLE_AVAILABLE: Boolean = false

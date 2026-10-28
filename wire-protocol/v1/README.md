@@ -190,11 +190,27 @@ with the core wire.
   and answer `403` with the code `read_only` for any other. Both `query` and
   `exec` refuse transaction statements, `ATTACH`, `DETACH`, and `VACUUM` with
   the code `statement_refused`, and `exec` also every `PRAGMA`.
+- **WorkManager `1.0`** (`:lustro-work`) - the app's WorkManager work under
+  `/api/v1/work/`. `GET items` polls every work request in the cursor envelope,
+  whose cursor stands for the list's content, with `state`, `tag`, `class`, and
+  `name` filters; an item has its `state`, `tags`, `runAttempts`, `stopReason`
+  (`{ code, name }`), `output`, `progress`, `constraints`, and schedule.
+  `GET items/{id}` gives one with its events. `GET events` polls the events of
+  WorkManager's execution and schedule listeners in the stream envelope, each
+  `{ seq, at, type, id, workerClass, state, runAttempts, generation }` with the
+  `result` and `output` of a `finished` event, the `stopReason` of a `stopped`
+  one, and the `exception` of an `exception` one. `GET metrics` reads
+  work-analytics, and answers `404` with the code `metrics_off` without it.
+  `POST cancel` takes one of `id`, `name`, and `tag`, and `POST prune` deletes
+  finished work. `items`, `items/{id}`, and `events` carry the tab's `state`, with `listeners`:
+  `installed`, `missing`, or `unsupported`. Every route answers `503` with the
+  code `work_unsupported` below WorkManager 2.12.0, and the routes that read
+  work `503` with `work_not_initialized` until the app initializes WorkManager.
 
 ## Status
 
-The concrete schema files (`*.schema.json`), the Network, Logs, Preferences, and
-SQLite OpenAPI documents, and the golden fixtures (`golden/`) are present: envelopes + tab
+The concrete schema files (`*.schema.json`), the Network, Logs, Preferences,
+SQLite, and WorkManager OpenAPI documents, and the golden fixtures (`golden/`) are present: envelopes + tab
 schemas, and the golden response corpus (CLI contract tests). See
 `SCHEMA_INDEX.md` for the full set. The golden fixtures are also vendored into
 the `lustro-cli` wheel under `lustro_cli/wire/` so the installed CLI ships its

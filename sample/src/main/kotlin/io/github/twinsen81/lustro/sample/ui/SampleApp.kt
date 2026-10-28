@@ -82,6 +82,7 @@ internal fun SampleApp(viewModel: SampleViewModel, systemBars: @Composable (dark
                             Screen.LOGS -> LogsScreen(viewModel, latest, back)
                             Screen.PREFS -> PrefsScreen(viewModel, latest, back)
                             Screen.SQLITE -> SqliteScreen(viewModel, latest, back)
+                            Screen.WORK -> WorkScreen(viewModel, latest, back)
                             Screen.FLAGS -> FlagsScreen(viewModel, flags.orEmpty(), back)
                             Screen.CONSOLE -> ConsoleScreen(viewModel, latest, back)
                         }

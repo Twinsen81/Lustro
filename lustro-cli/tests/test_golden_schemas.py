@@ -532,3 +532,76 @@ def test_a_golden_query_result_has_a_cell_for_each_column_in_order():
     assert ids[0] == {"type": "integer", "value": "9007199254740993"}
     assert {cell["type"] for row in result["rows"] for cell in row} == {"null", "integer", "real", "text", "blob"}
     assert wire.load_golden("sqlite-exec.json") == {"status": "ok", "changes": 2}
+
+
+# ── WorkManager tab ───────────────────────────────────────────────────────────
+
+WORK_ROUTES = ("items", "items/{id}", "events", "metrics", "cancel", "prune")
+
+
+def test_the_work_schema_is_valid_and_has_its_own_version():
+    work = wire.load_openapi("work")
+    assert work["openapi"].startswith("3.1")
+    assert work["info"]["version"] == "1.0"
+    for schema in work["components"]["schemas"].values():
+        Draft202012Validator.check_schema(schema)
+    assert work["components"]["schemas"]["ErrorEnvelope"] == wire.load_openapi()["components"]["schemas"]["ErrorEnvelope"]
+
+
+def test_the_work_routes_are_declared_and_only_cancel_and_prune_change_anything():
+    paths = wire.load_openapi("work")["paths"]
+    assert set(paths) == {"/api/v1/work/" + route for route in WORK_ROUTES}
+    for route in WORK_ROUTES:
+        expected = {"post"} if route in ("cancel", "prune") else {"get"}
+        assert set(paths["/api/v1/work/" + route]) == expected, route
+    events = {p["name"]: p for p in paths["/api/v1/work/events"]["get"]["parameters"]}
+    assert set(events) == {"cursor", "id", "class", "type", "limit"}
+    assert events["limit"]["schema"] == {"type": "integer", "minimum": 1, "maximum": 5000, "default": 500}
+    items = {p["name"] for p in paths["/api/v1/work/items"]["get"]["parameters"]}
+    assert items == {"cursor", "state", "tag", "class", "name"}
+
+
+@pytest.mark.parametrize(
+    "fixture, envelope, component",
+    [
+        ("work-items.json", "cursor-envelope.schema.json", "WorkCursorEnvelope"),
+        ("work-events.json", "stream-envelope.schema.json", "WorkStreamEnvelope"),
+    ],
+)
+def test_work_list_fixtures_match_the_shared_envelope_and_their_component(fixture, envelope, component):
+    instance = wire.load_golden(fixture)
+    Draft202012Validator(wire.load_schema(envelope)).validate(instance)
+    _component_validator(wire.load_openapi("work"), component).validate(instance)
+
+
+@pytest.mark.parametrize("route, fixture", [("items/{id}", "work-item.json"), ("metrics", "work-metrics.json")])
+def test_work_fixture_matches_its_route(route, fixture):
+    _inline_validator(wire.load_openapi("work"), "/api/v1/work/" + route, "get", "200").validate(wire.load_golden(fixture))
+
+
+def test_the_golden_work_events_carry_what_each_type_adds():
+    events = wire.load_golden("work-events.json")["items"]
+    assert [e["seq"] for e in events] == sorted(e["seq"] for e in events)
+    by_type = {}
+    for event in events:
+        by_type.setdefault(event["type"], []).append(event)
+    assert {e["result"] for e in by_type["finished"]} == {"success", "retry"}
+    assert all("output" in e for e in by_type["finished"])
+    thrown = by_type["exception"][0]
+    assert thrown["state"] == "FAILED" and thrown["exception"]["stackTrace"].startswith(thrown["exception"]["type"])
+    # Only finished has a result, only exception an exception.
+    assert all("result" not in e for e in events if e["type"] != "finished")
+    assert all("exception" not in e for e in events if e["type"] != "exception")
+
+
+def test_the_golden_work_items_label_a_registered_unique_name_and_keep_periodic_schedules():
+    golden = wire.load_golden("work-items.json")
+    items = {i["id"]: i for i in golden["items"]}
+    named = [i for i in items.values() if "uniqueName" in i]
+    assert [i["uniqueName"] for i in named] == golden["state"]["uniqueNames"]
+    periodic = [i for i in items.values() if "periodicity" in i]
+    assert periodic and all("nextScheduleTimeMillis" in i for i in periodic)
+    # Finished work has no next run.
+    assert all("nextScheduleTimeMillis" not in i for i in items.values() if i["state"] in ("SUCCEEDED", "FAILED", "CANCELLED"))
+    # A long beyond what JavaScript holds exactly is a string.
+    assert any(isinstance(v, str) and v.isdigit() for i in items.values() for v in i["output"].values())

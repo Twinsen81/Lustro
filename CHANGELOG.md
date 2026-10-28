@@ -14,6 +14,40 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Added
 
+- **The WorkManager plugin: the app's work, the events of each run, and cancel
+  and prune under `/api/v1/work`, with a no-op half.** `:lustro-work` adds a
+  tab, `WorkDebugTab.create(context, uniqueNames)`, for an app on WorkManager
+  2.12.0 or newer. The app initializes WorkManager on demand and passes its
+  `Configuration.Builder` through `tab.configure(builder)`, which sets the
+  execution and schedule listeners that 2.12.0 added: each records the event
+  and then calls the listener that the app set before, so a work-analytics
+  repository keeps recording. `GET items` polls every work request in the
+  cursor envelope, with its state, tags, attempts, stop reason, output,
+  progress, constraints, and schedule, filtered by state, tag, worker class,
+  and unique name; `WorkInfo` has no unique name, so the tab labels the work of
+  the names that the app registers. `GET events` polls the events in the
+  stream envelope (enqueued, unblocked, updated, cancelled, prerequisite
+  failed, started, stopped, finished, and exception), with the result and
+  output of a run, the stop reason, and the stack trace of what a worker
+  threw, recorded from `Lustro.start()` to `Lustro.stop()` into a buffer of
+  1 MiB on the heap by default. `GET items/{id}` gives
+  one work request with its events, also after a prune. With
+  `create(context, metrics = repository)`, `GET metrics` reads the history of
+  work-analytics. `POST cancel` cancels by id, unique name, or tag, and
+  `POST prune` deletes finished work. Each response's `state` says whether the
+  listeners are installed, and why not. The tab never initializes WorkManager,
+  and answers 503 until the app does. `work-runtime` and `work-analytics` are
+  `compileOnly` in both artifacts, so neither adds nor raises a WorkManager
+  version, and without WorkManager 2.12.0 every route answers 503 and
+  `configure()` returns the builder unchanged. The tab has no console view yet,
+  so it is not in the tab bar; `_meta` lists it. `work.openapi.json` has its own
+  version, 1.0, and the golden fixtures `work-items.json`, `work-item.json`,
+  `work-events.json`, and `work-metrics.json` are pinned to what the routes
+  write. The sample initializes WorkManager on demand with work-analytics, and
+  its WorkManager screen enqueues a periodic sync, a chain, a failing chain, a
+  retrying upload, a worker that throws, a delayed worker, and work that waits
+  for Wi-Fi. The consumer check builds an app with WorkManager 2.12.0 and the
+  pair, on the oldest supported toolchain.
 - **The SQLite tab has a console view, so it is in the tab bar.** The
   sidebar lists the databases in the order that the app registers them, and
   the databases that the tab found on disk in a group that opens, each with

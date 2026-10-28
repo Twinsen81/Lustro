@@ -2,6 +2,7 @@ package io.github.twinsen81.lustro.sample
 
 import android.app.Application
 import android.util.Log
+import androidx.work.Configuration
 import okhttp3.OkHttpClient
 import okhttp3.WebSocket
 
@@ -21,12 +22,20 @@ internal const val CONSOLE_PORT: Int = 8080
  * - `src/release/.../LustroBootstrap.kt` has the SAME signatures but builds the
  *   `:lustro-noop` facade and returns a pass-through interceptor.
  *
+ * The app initializes WorkManager on demand, as a `Configuration.Provider`, and
+ * its manifest removes WorkManager's default initializer, so that its
+ * configuration goes through the bootstrap: the debug one adds the WorkManager
+ * tab's listeners, and the release one returns it as it is.
+ *
  * Crucially, this file mentions NO Lustro type — every Lustro/`DebugTab`
  * reference is confined to the variant-split `src/debug` bootstrap. That is why
  * the published `LustroDebugUsageInRelease` lint check is clean for the sample
  * WITHOUT being disabled: there is nothing to flag in `src/main`.
  */
-public class SampleApplication : Application() {
+public class SampleApplication : Application(), Configuration.Provider {
+    override val workManagerConfiguration: Configuration
+        get() = LustroBootstrap.workManagerConfiguration(this, DemoWork.configuration(this)).build()
+
     /**
      * The app's OkHttp client, with the Lustro interceptor installed. In the
      * debug variant its traffic is captured and shown in the Network tab; in the

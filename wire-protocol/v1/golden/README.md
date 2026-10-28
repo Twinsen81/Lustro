@@ -7,8 +7,9 @@ and the fixtures themselves are validated against the JSON Schemas in the parent
 directory (`../*.schema.json`) and the OpenAPI components of the Network tab
 (`lustro/src/main/assets/lustro/network.openapi.json`), the Logs tab
 (`lustro-logs/src/main/assets/lustro/logs.openapi.json`), the Preferences
-tab (`lustro-prefs/src/main/assets/lustro/prefs.openapi.json`), and the SQLite
-tab (`lustro-sqlite/src/main/assets/lustro/sqlite.openapi.json`).
+tab (`lustro-prefs/src/main/assets/lustro/prefs.openapi.json`), the SQLite
+tab (`lustro-sqlite/src/main/assets/lustro/sqlite.openapi.json`), and the
+WorkManager tab (`lustro-work/src/main/assets/lustro/work.openapi.json`).
 
 These files are bundled into the `lustro-cli` wheel under
 `lustro_cli/wire/golden/`, so the installed CLI ships its own contract corpus
@@ -46,6 +47,10 @@ with no source checkout required.
 | `sqlite-rows.json` | `GET sqlite/rows?db=app&table=notes&limit=3&dir=desc` | `pagination.schema.json` + SQLite OpenAPI `SqliteRowsPage` |
 | `sqlite-query.json` | `POST sqlite/query` with a `SELECT` on `app` | SQLite OpenAPI `SqliteQueryResult` |
 | `sqlite-exec.json` | `POST sqlite/exec` with an `UPDATE` on `app` | SQLite OpenAPI `SqliteExecResult` |
+| `work-items.json` | `GET work/items` first poll (`status: reset`) | `cursor-envelope.schema.json` + WorkManager OpenAPI `WorkCursorEnvelope` |
+| `work-item.json` | `GET work/items/{id}` | WorkManager OpenAPI `getWork` 200 |
+| `work-events.json` | `GET work/events?limit=12` first poll (`status: reset`) | `stream-envelope.schema.json` + WorkManager OpenAPI `WorkStreamEnvelope` |
+| `work-metrics.json` | `GET work/metrics?class=StepWorker` | WorkManager OpenAPI `listWorkMetrics` 200 |
 
 ## Notes on the shapes
 
@@ -140,6 +145,21 @@ with no source checkout required.
   `UPDATE notes SET score = 5 WHERE folder_id = 1`, which changed 2 rows. The
   paths and the sizes model a device. A unit test in `:lustro-sqlite` checks
   that the routes write these fixtures, except the paths and the sizes.
+
+- **WorkManager.** The app registered the unique name `sync` and passed a
+  work-analytics repository. `work-items.json` lists four work requests: `sync`,
+  which succeeded with an output that has a long beyond 2^53 - 1 (a string), a
+  double, and a string array; `cleanup`, periodic work that waits for an
+  unmetered network and a battery that is not low, with its next run;
+  an upload that asked for a retry, `ENQUEUED` with its next run; and a worker
+  that threw, `FAILED`. `work-item.json` is `sync` with its four events and its
+  period in work-analytics. `work-events.json` is the last 12 events: the
+  `finished` events with `success` and `retry`, and an `exception` event with a
+  stack trace. `work-metrics.json` is the history of the `StepWorker` class: the
+  succeeded period of `sync` and the pending one of `cleanup`. A unit test in
+  `:lustro-work` checks that the routes write these fixtures, except the
+  cursors, the stack trace, and the times of work-analytics, which come from
+  the clock.
 
 When the server's emitted shapes change, update these fixtures in the same
 change that bumps the protocol version, and keep the schema validation green.

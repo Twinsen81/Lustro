@@ -91,6 +91,7 @@ keeps your newer one.
 | `kotlinx.coroutines` | none | Lustro has no coroutines dependency. `lustro-prefs` calls the app's own coroutines only for a registered DataStore. |
 | `androidx.datastore` | none | `compileOnly` in `lustro-prefs` and `lustro-prefs-noop`. A registered `PrefsDataStore` needs DataStore 1.0, and a `bytes` value 1.1. |
 | `androidx.sqlite` | none | `compileOnly` in `lustro-sqlite` and `lustro-sqlite-noop`. A registered `SqliteDb.support` needs `androidx.sqlite` 2.0, which Room brings. |
+| `androidx.work` | none | `compileOnly` in `lustro-work` and `lustro-work-noop`. The WorkManager tab needs `work-runtime` 2.12.0, and its history `work-analytics` 2.12.0. |
 
 `lustro` also brings NanoHTTPD 2.3.1, its embedded server. CI builds a small app in
 [`consumer-check/`](consumer-check/) with exactly these versions, and again on a current
@@ -824,6 +825,116 @@ val lustro = Lustro.builder(application)
   Register only the databases that you want to show. See [SECURITY.md](SECURITY.md#sqlite-databases).
 - In `lustro-sqlite-noop`, the tab opens no database and never calls the functions.
 
+## WorkManager
+
+The WorkManager plugin shows your app's WorkManager work over the API: every work request with
+its state, tags, attempts, output, progress, constraints, and schedule, and the events of each
+run, with the result and its output, the stop reason, and what a worker threw. With
+work-analytics, it also shows the times and attempts of the runs of earlier processes. It cancels
+work and prunes finished work. It needs WorkManager 2.12.0 or newer, and is a pair of artifacts,
+split by variant as `lustro` is:
+
+```toml
+lustro-work      = { group = "io.github.twinsen81", name = "lustro-work",      version.ref = "lustro" }
+lustro-work-noop = { group = "io.github.twinsen81", name = "lustro-work-noop", version.ref = "lustro" }
+```
+
+The events come from the listeners that WorkManager 2.12 added to its `Configuration`, so your
+app's configuration goes through the tab. Initialize WorkManager on demand: implement
+`Configuration.Provider` (or call `WorkManager.initialize`), remove `WorkManagerInitializer` from
+the manifest, and pass the builder through a function of your variant-split bootstrap, so that
+`src/main` names no Lustro type:
+
+```kotlin
+dependencies {
+    debugImplementation(libs.lustro.work)
+    releaseImplementation(libs.lustro.work.noop)
+}
+
+// src/main
+class App : Application(), Configuration.Provider {
+    override val workManagerConfiguration: Configuration
+        get() = LustroBootstrap.workManagerConfiguration(this, Configuration.Builder().setWorkerFactory(workerFactory)).build()
+}
+
+// src/debug and src/release, LustroBootstrap: the same code against lustro-work and lustro-work-noop
+private var work: WorkDebugTab? = null
+
+// WorkManager can ask for its configuration on another thread, before or after start(): one tab for both.
+@Synchronized
+private fun work(app: Application): WorkDebugTab =
+    work ?: WorkDebugTab.create(app, uniqueNames = listOf("sync", "upload")).also { work = it }
+
+fun workManagerConfiguration(app: Application, builder: Configuration.Builder): Configuration.Builder =
+    work(app).configure(builder)
+
+fun start(app: Application) {
+    Lustro.builder(app).addTab(work(app)).build().start()
+}
+```
+
+```xml
+<provider
+    android:name="androidx.startup.InitializationProvider"
+    android:authorities="${applicationId}.androidx-startup"
+    tools:node="merge">
+    <meta-data
+        android:name="androidx.work.WorkManagerInitializer"
+        android:value="androidx.startup"
+        tools:node="remove" />
+</provider>
+```
+
+- **Your listeners keep working.** `configure()` sets the tab's execution and schedule listeners
+  on the builder and returns it. Each one records the event and then calls the listener that you
+  set before, with the same arguments, so call `configure()` last. What your listener throws
+  reaches WorkManager as without the tab. The listener API is `@ExperimentalEventsApi`; the
+  opt-in stays inside `lustro-work`.
+- **Events live on the heap.** The tab records the events from `start()` to `stop()`, also while
+  the app is in the background, and keeps at most `bufferBytes` of them (default 1 MiB, by the
+  size of their JSON on the heap). Its listeners forward to yours either way. The events end
+  with the process: when the system starts your app in the background to run a worker and stops
+  it before you open the app, the events of that run are lost. The work's state, attempts, last
+  stop reason, and output stay in WorkManager's snapshot, and a worker's exception is in logcat
+  (`WM-WorkerWrapper`).
+- **History on disk with work-analytics.** If your app uses `androidx.work:work-analytics`, set its
+  `WorkMetricsInfoRepository` as both of your listeners, and pass it to the tab with
+  `WorkDebugTab.create(app, metrics = repository, uniqueNames = ...)`. `GET metrics` then reads
+  the enqueue, start, and finish times, durations, attempts, retries, and stop reasons of each
+  run, kept 7 days by default. Lustro never depends on work-analytics: its POM pins
+  `work-runtime` to its own exact version. **work-analytics 2.12.0 ends the app's process when work
+  is cancelled while it runs**, also from the console's `POST cancel`: its `onStopped` inserts the
+  period that `onCancelled` already closed, and throws `SQLiteConstraintException` on WorkManager's
+  thread. The sample's `MetricsListeners` wraps the repository and catches that exception.
+- **Unique names.** `WorkInfo` has no unique name, so the tab labels the work of the names in
+  `uniqueNames`. `GET items?name=` finds the work of any name.
+- **The tab never initializes WorkManager.** Until your app calls `WorkManager.getInstance`, the
+  routes that read work answer `503` with code `work_not_initialized`.
+- **When there are no events.** The `state` of `items`, `items/{id}`, and `events` has `listeners`: `installed`, `missing` when
+  your configuration did not go through `configure()` or WorkManager runs with another one (the
+  default initializer is still in the manifest), or `unsupported` when your WorkManager has
+  listener methods that this version of Lustro does not forward. `state.reason` says what to
+  change. Without WorkManager 2.12.0 or newer, every route answers `503` with code
+  `work_unsupported`, and `configure()` returns the builder as it is.
+- **Routes.** `GET /api/v1/work/items` polls the work in the cursor envelope, with `state`, `tag`,
+  `class`, and `name` filters; `GET items/{id}` gives one work request with its events and history;
+  `GET events` polls the events in the stream envelope, with `id`, `class`, and `type` filters;
+  `GET metrics` reads work-analytics; `POST cancel` cancels work by `id`, `name`, or `tag`; and
+  `POST prune` deletes finished work, as `WorkManager.pruneWork()` does. The `lustro` CLI reaches
+  them with `lustro api`, for example `lustro api GET work/events --param type=finished,exception`.
+  See [docs/AGENTS.md](docs/AGENTS.md#workmanager-tab-operations) and
+  [`work.openapi.json`](lustro-work/src/main/assets/lustro/work.openapi.json).
+- **Not in the tab bar yet.** The tab has no console view yet: it serves its routes, and `_meta`
+  lists it.
+- **Not shown:** the chain graph and a work's input data, which WorkManager's public API does
+  not have (the SQLite tab can read WorkManager's database as a file:
+  `SqliteDb.file("workmanager", File(app.noBackupFilesDir, "androidx.work.workdb"))`, but its
+  schema changes between releases), and the place in your code that enqueued the work: the
+  listeners run on WorkManager's own threads.
+- **Every client with the token can cancel and prune your work.** Output data and exceptions can
+  hold user data. See [SECURITY.md](SECURITY.md#workmanager-work).
+- In `lustro-work-noop`, `configure()` returns the builder as it is, and the tab reads nothing.
+
 ## Security model
 
 Lustro deliberately surfaces app internals, so its defaults are conservative. See
@@ -988,8 +1099,10 @@ the Logs tab's is
 [`lustro-logs/src/main/assets/lustro/logs.openapi.json`](lustro-logs/src/main/assets/lustro/logs.openapi.json),
 the Preferences tab's is
 [`lustro-prefs/src/main/assets/lustro/prefs.openapi.json`](lustro-prefs/src/main/assets/lustro/prefs.openapi.json),
-and the SQLite tab's is
+the SQLite tab's is
 [`lustro-sqlite/src/main/assets/lustro/sqlite.openapi.json`](lustro-sqlite/src/main/assets/lustro/sqlite.openapi.json),
+and the WorkManager tab's is
+[`lustro-work/src/main/assets/lustro/work.openapi.json`](lustro-work/src/main/assets/lustro/work.openapi.json),
 each with a version of its own.
 
 For driving Lustro from agents, scripts, or the `lustro` CLI, see
@@ -1025,6 +1138,8 @@ For driving Lustro from agents, scripts, or the `lustro` CLI, see
 | `:lustro-prefs-noop` | `io.github.twinsen81:lustro-prefs-noop` | Release-safe no-op half of `:lustro-prefs`. |
 | `:lustro-sqlite` | `io.github.twinsen81:lustro-sqlite` | The [SQLite](#sqlite) plugin: the app's SQLite and Room databases under `/api/v1/sqlite/`. |
 | `:lustro-sqlite-noop` | `io.github.twinsen81:lustro-sqlite-noop` | Release-safe no-op half of `:lustro-sqlite`. |
+| `:lustro-work` | `io.github.twinsen81:lustro-work` | The [WorkManager](#workmanager) plugin: the app's WorkManager work, its events, and cancel and prune under `/api/v1/work/`. |
+| `:lustro-work-noop` | `io.github.twinsen81:lustro-work-noop` | Release-safe no-op half of `:lustro-work`. |
 | `lustro-cli/` | `lustro-cli` (PyPI) | Python CLI that wraps the HTTP API, installing a `lustro` command; published alongside each release. |
 
 See also: [CONTRIBUTING.md](CONTRIBUTING.md) · [SECURITY.md](SECURITY.md) ·

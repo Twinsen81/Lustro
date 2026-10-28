@@ -118,9 +118,14 @@ sets the device to stay awake while it charges. CI runs both on API 24, 35, and
 - **`:lustro-sqlite`** and **`:lustro-sqlite-noop`**: the SQLite plugin pair,
   the app's SQLite and Room databases under `/api/v1/sqlite/` and its
   release-safe no-op half.
+- **`:lustro-work`** and **`:lustro-work-noop`**: the WorkManager plugin pair,
+  the app's WorkManager work and the events of each run under `/api/v1/work/`,
+  and its release-safe no-op half. Its unit tests run on the newest WorkManager
+  of the catalog (`work`), while the modules compile against the floor
+  (`workFloor`).
 - **`:sample`** — demo app and public-API regression target; debug uses
-  `:lustro`, `:lustro-logs`, `:lustro-prefs`, and `:lustro-sqlite`, release
-  uses their no-op halves.
+  `:lustro`, `:lustro-logs`, `:lustro-prefs`, `:lustro-sqlite`, and
+  `:lustro-work`, release uses their no-op halves.
 - **`:lustro-cli`** — the Python CLI that drives Lustro over the HTTP API.
 - **`build-logic/`**: an included build with the convention plugins that the
   published modules apply, so their build files hold only what is their own:

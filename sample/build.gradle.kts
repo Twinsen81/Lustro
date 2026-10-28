@@ -91,6 +91,9 @@ dependencies {
     // The SQLite plugin pair, split the same way.
     debugImplementation(project(":lustro-sqlite"))
     releaseImplementation(project(":lustro-sqlite-noop"))
+    // The WorkManager plugin pair, split the same way.
+    debugImplementation(project(":lustro-work"))
+    releaseImplementation(project(":lustro-work-noop"))
 
     // A mainstream HTTP client whose default transport is java.net.HttpURLConnection
     // (not OkHttp). The demo fires a request through it to show that platform-HTTP
@@ -100,6 +103,9 @@ dependencies {
     // The demo notes database is opened through the SupportSQLiteOpenHelper that Room
     // uses, so the SQLite tab reads it as it reads a Room database.
     implementation(libs.sqlite.framework)
+    // The demo work of the WorkManager tab, with the history that work-analytics keeps.
+    implementation(libs.work.runtime)
+    implementation(libs.work.analytics)
 
     // The sample's own UI. Lustro does not need Compose.
     implementation(platform(libs.compose.bom))

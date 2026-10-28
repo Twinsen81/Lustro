@@ -2,6 +2,7 @@ package io.github.twinsen81.lustro.consumercheck
 
 import android.app.Application
 import android.util.Log
+import androidx.work.Configuration
 import io.github.twinsen81.lustro.Lustro
 import io.github.twinsen81.lustro.LustroStatus
 import io.github.twinsen81.lustro.logs.LogsDebugTab
@@ -9,15 +10,20 @@ import io.github.twinsen81.lustro.network.NetworkDebugTab
 import io.github.twinsen81.lustro.prefs.PrefsDebugTab
 import io.github.twinsen81.lustro.sqlite.SqliteDb
 import io.github.twinsen81.lustro.sqlite.SqliteDebugTab
+import io.github.twinsen81.lustro.work.WorkDebugTab
 import okhttp3.OkHttpClient
 
 /**
  * The app with Lustro, wired as the quick start in README.md does it. It compiles
- * against `lustro`, `lustro-logs`, `lustro-prefs`, and `lustro-sqlite` in debug
- * and against their no-op halves in release, so every facade is checked from the
- * floor's Kotlin. The app has no androidx.sqlite: it registers a database file.
+ * against `lustro`, `lustro-logs`, `lustro-prefs`, `lustro-sqlite`, and
+ * `lustro-work` in debug and against their no-op halves in release, so every
+ * facade is checked from the floor's Kotlin. The app has no androidx.sqlite: it
+ * registers a database file. It has WorkManager but no work-analytics.
  */
 object LustroSetup {
+    @Volatile
+    private var work: WorkDebugTab? = null
+
     fun start(app: Application, client: OkHttpClient): Clients {
         val lustro =
             Lustro.builder(app)
@@ -25,6 +31,7 @@ object LustroSetup {
                 .addTab(LogsDebugTab.create())
                 .addTab(PrefsDebugTab.create(app))
                 .addTab(SqliteDebugTab.create(listOf(SqliteDb.file("app", app.getDatabasePath("app.db"))), discoverFrom = app))
+                .addTab(work(app))
                 .build()
         val httpClient = client.newBuilder().addInterceptor(lustro.networkInterceptor()).build()
         val status: LustroStatus = lustro.start()
@@ -32,4 +39,10 @@ object LustroSetup {
         lustro.networkCaptureSink()
         return Clients(httpClient, lustro.webSocketFactory(httpClient))
     }
+
+    /** Called by the app's Configuration.Provider, before or after [start]. */
+    fun workManagerConfiguration(app: Application, builder: Configuration.Builder): Configuration.Builder = work(app).configure(builder)
+
+    private fun work(app: Application): WorkDebugTab =
+        work ?: synchronized(this) { work ?: WorkDebugTab.create(app, uniqueNames = listOf("sync")).also { work = it } }
 }

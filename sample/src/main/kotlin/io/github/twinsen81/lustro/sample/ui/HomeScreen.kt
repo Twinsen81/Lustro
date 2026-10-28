@@ -41,6 +41,7 @@ internal fun HomeScreen(viewModel: SampleViewModel, flags: List<SampleFlag>?, la
     val serverRunning by viewModel.serverRunning.collectAsState()
     val prefsKeys by viewModel.prefsValues.collectAsState()
     val sqliteCounts by viewModel.sqliteCounts.collectAsState()
+    val workCounts by viewModel.workCounts.collectAsState(initial = null)
     val networkCount = viewModel.network.sumOf { it.actions.size }
     val modules = if (flags != null) MODULES_WITH_FLAGS else MODULES
 
@@ -98,6 +99,17 @@ internal fun HomeScreen(viewModel: SampleViewModel, flags: List<SampleFlag>?, la
             MetaText(sqliteCounts?.let { "${it.first} notes" } ?: "Opening…")
             MetaText("·", palette.textFaint)
             MetaText("${viewModel.sqliteActions.size} actions")
+        }
+        ModuleCard(
+            SampleIcons.Clock,
+            Tone.ORANGE,
+            "WorkManager",
+            "Background work, its runs and failures, seen from the console",
+            onClick = { onOpen(Screen.WORK) },
+        ) {
+            MetaText(workCounts?.let { "${it.values.sum()} work requests" } ?: "Opening…")
+            MetaText("·", palette.textFaint)
+            MetaText("${viewModel.workActions.size} actions")
         }
         if (flags != null) {
             ModuleCard(SampleIcons.Flag, Tone.ORANGE, "Feature flags", "Change this app from the browser console", onClick = { onOpen(Screen.FLAGS) }) {
@@ -160,5 +172,5 @@ private fun ConsoleStrip(viewModel: SampleViewModel, running: Boolean, latest: M
     }
 }
 
-private const val MODULES = 5
-private const val MODULES_WITH_FLAGS = 6
+private const val MODULES = 6
+private const val MODULES_WITH_FLAGS = 7

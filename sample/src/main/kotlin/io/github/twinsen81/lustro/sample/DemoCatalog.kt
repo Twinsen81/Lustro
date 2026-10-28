@@ -309,6 +309,47 @@ internal object DemoCatalog {
             },
         )
 
+    fun work(work: DemoWork): List<DemoAction> =
+        listOf(
+            DemoAction(
+                "Enqueue the demo work",
+                chip = "Enqueue the demo work",
+                detail =
+                    "A periodic sync, a chain of three steps, a chain whose second step fails, an upload that retries twice, " +
+                        "and a worker that throws. The tab lists them and records the events of each run",
+                badge = "9",
+            ) {
+                it.ok("Enqueued ${work.enqueueAll()} work requests")
+            },
+            DemoAction(
+                "Enqueue a delayed worker",
+                chip = "Delayed, 20 s",
+                detail = "Starts after 20 s and runs for 15 s. Send the app to the background, or stop its process, to see what the tab keeps",
+                badge = "20s",
+            ) {
+                work.enqueueDelayed()
+                it.ok("${DemoWork.DELAYED} starts in 20 s")
+            },
+            DemoAction(
+                "Enqueue work that waits for Wi-Fi",
+                chip = "Waits for Wi-Fi",
+                detail = "Needs Wi-Fi and a charger, so it stays enqueued. Cancel it from the console with POST work/cancel",
+                badge = "⏸",
+            ) {
+                work.enqueueConstrained()
+                it.ok("${DemoWork.CONSTRAINED} waits for Wi-Fi and a charger")
+            },
+            DemoAction(
+                "Cancel the periodic sync",
+                chip = "Cancel the sync",
+                detail = "The app cancels ${DemoWork.PERIODIC}. The tab records a cancelled event",
+                badge = "✕",
+            ) {
+                work.cancelPeriodic()
+                it.ok("Cancelled ${DemoWork.PERIODIC}")
+            },
+        )
+
     fun prefs(prefs: DemoPrefs, dataStore: DemoDataStore): List<DemoAction> =
         listOf(
             DemoAction(

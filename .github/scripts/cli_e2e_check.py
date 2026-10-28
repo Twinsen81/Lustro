@@ -27,6 +27,7 @@ OPENAPI = wire.load_openapi()
 LOGS_OPENAPI = wire.load_openapi("logs")
 PREFS_OPENAPI = wire.load_openapi("prefs")
 SQLITE_OPENAPI = wire.load_openapi("sqlite")
+WORK_OPENAPI = wire.load_openapi("work")
 
 
 class CheckFailed(Exception):
@@ -190,15 +191,20 @@ def _sqlite_route(route: str, text: str, method: str = "get") -> Dict[str, Any]:
 
 
 def check_sqlite_databases(text: str, rules: List[dict]) -> None:
-    """The two databases the sample registers come first, then the file that discovery finds."""
+    """The two databases the sample registers come first, then the files that discovery finds, by name:
+    the library-like file, and work-analytics' database once WorkManager has started."""
     items = _sqlite_route("databases", text)["items"]
     shapes = [(d["name"], d["registered"], d["source"], d["writable"], d["schemaVersion"]) for d in items]
-    expected = [
+    registered = [
         ("notes", True, "support", True, 3),
         ("catalog", True, "file", False, 1),
-        ("sample_sdk_cache.db", False, "file", False, 12),
     ]
-    expect(shapes == expected, "databases {}".format(shapes))
+    found = shapes[len(registered):]
+    expect(shapes[: len(registered)] == registered, "databases {}".format(shapes))
+    expect(("sample_sdk_cache.db", False, "file", False, 12) in found, "databases {}".format(shapes))
+    expect({name for name, *_ in found} <= {"sample_sdk_cache.db", "androidx.work.analytics.workmetricsdb"}, "databases {}".format(shapes))
+    expect([name for name, *_ in found] == sorted(name for name, *_ in found), "the found databases are not by name: {}".format(shapes))
+    expect(all(not registered_ and source == "file" and not writable for _, registered_, source, writable, _ in found), "databases {}".format(shapes))
 
 
 def check_sqlite_tables(text: str, rules: List[dict]) -> None:
@@ -244,6 +250,50 @@ def check_sqlite_query(text: str, rules: List[dict]) -> None:
 def check_sqlite_exec(text: str, rules: List[dict]) -> None:
     result = _sqlite_route("exec", text, "post")
     expect(result == {"status": "ok", "changes": 1}, "exec {}".format(result))
+
+
+def check_schema_work(text: str, rules: List[dict]) -> None:
+    expect(json.loads(text) == WORK_OPENAPI, "the app serves a WorkManager schema that differs from the CLI's copy")
+
+
+def _work(component: str, text: str) -> Dict[str, Any]:
+    body = json.loads(text)
+    Draft202012Validator(dict(WORK_OPENAPI["components"]["schemas"][component], components=WORK_OPENAPI["components"])).validate(body)
+    return body
+
+
+def check_work_items(text: str, rules: List[dict]) -> None:
+    """The sample's demo work, labelled with the unique names that it registers."""
+    body = _work("WorkCursorEnvelope", text)
+    shared("cursor-envelope.schema.json").validate(body)
+    state = body["state"]
+    expect(state["listeners"] == "installed" and state["metrics"], "state {}".format(state))
+    by_name: Dict[str, List[str]] = {}
+    for item in body["items"]:
+        by_name.setdefault(item.get("uniqueName", "-"), []).append(item["state"])
+    expect(by_name.get("demo-chain") == ["SUCCEEDED"] * 3, "demo-chain {}".format(by_name.get("demo-chain")))
+    expect(sorted(by_name.get("demo-chain-failing", [])) == ["FAILED", "FAILED", "SUCCEEDED"], "demo-chain-failing {}".format(by_name.get("demo-chain-failing")))
+    expect(by_name.get("demo-throwing") == ["FAILED"], "demo-throwing {}".format(by_name.get("demo-throwing")))
+    expect(by_name.get("demo-periodic") == ["ENQUEUED"], "demo-periodic {}".format(by_name.get("demo-periodic")))
+
+
+def check_work_events(text: str, rules: List[dict]) -> None:
+    """A run's result and output, a failed chain step, and what a worker threw."""
+    body = _work("WorkStreamEnvelope", text)
+    shared("stream-envelope.schema.json").validate(body)
+    events = body["items"]
+    kinds = {(e["type"], e.get("result")) for e in events}
+    for kind in (("finished", "success"), ("finished", "failure"), ("finished", "retry"), ("prerequisiteFailed", None), ("exception", None)):
+        expect(kind in kinds, "no {} event in {}".format(kind, sorted(kinds, key=str)))
+    thrown = next(e for e in events if e["type"] == "exception")
+    expect("the journal store is corrupt" in thrown["exception"]["message"] and "CrashingWorker.doWork" in thrown["exception"]["stackTrace"], "exception {}".format(thrown["exception"]))
+    failed = next(e for e in events if e.get("result") == "failure")
+    expect(failed["output"].get("reason", "").endswith("failed on purpose"), "the failed step's output {}".format(failed["output"]))
+
+
+def check_work_cancel(text: str, rules: List[dict]) -> None:
+    body = json.loads(text)
+    expect(body == {"status": "ok", "cancelled": 1}, "cancel {}".format(body))
 
 
 def check_sync(text: str, rules: List[dict]) -> None:
@@ -417,6 +467,10 @@ CHECKS: Dict[str, Callable[[str, List[dict]], None]] = {
     "sqlite-rows-1": check_sqlite_rows_1,
     "sqlite-rows-3": check_sqlite_rows_3,
     "sqlite-imported": check_sqlite_imported,
+    "schema-work": check_schema_work,
+    "work-items": check_work_items,
+    "work-events": check_work_events,
+    "work-cancel": check_work_cancel,
     "sqlite-query": check_sqlite_query,
     "sqlite-exec": check_sqlite_exec,
     "sync": check_sync,

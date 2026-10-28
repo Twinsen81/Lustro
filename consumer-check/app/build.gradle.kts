@@ -49,8 +49,8 @@ android {
 
     // `baseline` is the app without Lustro, the control that
     // checkLustroKeepsAppVersions compares against. `withLustro` adds `lustro`,
-    // `lustro-logs`, `lustro-prefs`, and `lustro-sqlite` to debug and their no-op
-    // halves to release, as README.md tells an app to.
+    // `lustro-logs`, `lustro-prefs`, `lustro-sqlite`, and `lustro-work` to debug and
+    // their no-op halves to release, as README.md tells an app to.
     flavorDimensions += "lustro"
     productFlavors {
         create("baseline") { dimension = "lustro" }
@@ -73,7 +73,8 @@ kotlin {
 
 // AGP creates the flavor-and-build-type configurations only once the variants
 // exist, so the Lustro artifacts are added when theirs appear: the runtime and the
-// Logs, Preferences, and SQLite plugins in debug, and their no-op halves in release.
+// Logs, Preferences, SQLite, and WorkManager plugins in debug, and their no-op
+// halves in release.
 configurations.configureEach {
     when (name) {
         "withLustroDebugImplementation" -> {
@@ -81,12 +82,14 @@ configurations.configureEach {
             dependencies.add(project.dependencies.create("io.github.twinsen81:lustro-logs:$lustroVersion"))
             dependencies.add(project.dependencies.create("io.github.twinsen81:lustro-prefs:$lustroVersion"))
             dependencies.add(project.dependencies.create("io.github.twinsen81:lustro-sqlite:$lustroVersion"))
+            dependencies.add(project.dependencies.create("io.github.twinsen81:lustro-work:$lustroVersion"))
         }
         "withLustroReleaseImplementation" -> {
             dependencies.add(project.dependencies.create("io.github.twinsen81:lustro-noop:$lustroVersion"))
             dependencies.add(project.dependencies.create("io.github.twinsen81:lustro-logs-noop:$lustroVersion"))
             dependencies.add(project.dependencies.create("io.github.twinsen81:lustro-prefs-noop:$lustroVersion"))
             dependencies.add(project.dependencies.create("io.github.twinsen81:lustro-sqlite-noop:$lustroVersion"))
+            dependencies.add(project.dependencies.create("io.github.twinsen81:lustro-work-noop:$lustroVersion"))
         }
     }
 }
@@ -99,6 +102,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:${property("lifecycleVersion")}")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:${property("coroutinesVersion")}")
     implementation("androidx.annotation:annotation:${property("annotationVersion")}")
+    implementation("androidx.work:work-runtime:${property("workVersion")}")
     property("extraDependencies").split(',').map { it.trim() }.filter { it.isNotEmpty() }.forEach {
         implementation(it)
     }
