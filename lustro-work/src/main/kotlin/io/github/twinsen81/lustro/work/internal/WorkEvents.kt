@@ -32,15 +32,20 @@ internal class WorkEvents(private val maxBytes: Int, private val clock: () -> Lo
 
     val epoch: Long = Random.nextLong()
 
+    /** Whether [record] keeps events: from `Lustro.start()` to `Lustro.stop()`. */
+    @Volatile
+    var recording: Boolean = false
+
     @Volatile
     private var failed = false
 
     /**
-     * Adds an event of [type] for [info]; [details] writes the members that the type
-     * adds, each after a comma. Runs on WorkManager's event dispatcher, so it never
-     * throws: a failure is logged once and the event is lost.
+     * Adds an event of [type] for [info] while [recording]; [details] writes the
+     * members that the type adds, each after a comma. Runs on WorkManager's event
+     * dispatcher, so it never throws: a failure is logged once and the event is lost.
      */
     fun record(type: String, info: WorkInfo, details: StringBuilder.() -> Unit = {}) {
+        if (!recording) return
         try {
             val id = info.id.toString()
             val workerClass = info.workerClassName

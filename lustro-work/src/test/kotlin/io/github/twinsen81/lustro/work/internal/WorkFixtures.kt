@@ -32,7 +32,8 @@ internal object WorkFixtures {
         clock: () -> Long = { NOW },
         initialized: (() -> WorkManager?)? = null,
     ): WorkSource {
-        val events = WorkEvents(bufferBytes, clock)
+        // As after Lustro.start(), which turns recording on.
+        val events = WorkEvents(bufferBytes, clock).apply { recording = true }
         return if (initialized == null) {
             WorkSource(context, uniqueNames, events, metrics, unsupported, bufferBytes)
         } else {

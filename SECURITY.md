@@ -297,8 +297,10 @@ the events of each run under `/api/v1/work/`.
 - **The tab adds listeners to the app's WorkManager configuration.** Each one
   records the event and calls the listener that the app set, with the same
   arguments; recording never throws, and what the app's listener throws reaches
-  WorkManager as without the tab. The events stay on the heap, in a bounded
-  buffer, and end with the process. The tab never initializes WorkManager.
+  WorkManager as without the tab. The tab records only from `Lustro.start()` to
+  `Lustro.stop()`, so it records nothing in a build that the runtime guard
+  disables. The events stay on the heap, in a bounded buffer, and end with the
+  process. The tab never initializes WorkManager.
 - **Release builds get none of it.** `lustro-work-noop`'s `configure()` returns
   the app's builder as it is, so release WorkManager runs the app's own
   configuration. Neither artifact depends on WorkManager at runtime.

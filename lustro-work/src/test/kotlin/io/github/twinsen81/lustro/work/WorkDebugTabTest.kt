@@ -3,7 +3,13 @@ package io.github.twinsen81.lustro.work
 import android.app.Application
 import androidx.test.core.app.ApplicationProvider
 import androidx.work.Configuration
+import androidx.work.WorkInfo
+import io.github.twinsen81.lustro.DebugRequest
+import io.github.twinsen81.lustro.work.internal.WorkFixtures
 import io.github.twinsen81.lustro.work.internal.WorkSupport
+import java.util.UUID
+import kotlinx.coroutines.runBlocking
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -23,6 +29,22 @@ class WorkDebugTabTest {
         assertEquals("work", tab.id)
         assertFalse(tab.showInTabBar)
         assertEquals("", tab.renderContent())
+    }
+
+    @Test
+    fun `the tab records events only between onStart and onStop, and forwards to the app's listener always`() {
+        val tab = WorkDebugTab.create(app)
+        val listeners = WorkFixtures.AppListeners()
+        val listener = tab.configure(Configuration.Builder().setExecutionEventListener(listeners)).build().getExecutionEventListener()!!
+        val info = WorkInfo(UUID.randomUUID(), WorkInfo.State.RUNNING, emptySet())
+        runBlocking { listener.onStarted(info) }
+        tab.onStart()
+        runBlocking { listener.onStarted(info) }
+        tab.onStop()
+        runBlocking { listener.onStarted(info) }
+        assertEquals(3, listeners.seen.size)
+        val events = JSONObject(String(tab.handle(DebugRequest("events", "GET"))!!.body))
+        assertEquals(1, events.getJSONArray("items").length())
     }
 
     @Test

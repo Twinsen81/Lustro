@@ -29,7 +29,8 @@ see [DECISIONS.md](DECISIONS.md).
   stream envelope (enqueued, unblocked, updated, cancelled, prerequisite
   failed, started, stopped, finished, and exception), with the result and
   output of a run, the stop reason, and the stack trace of what a worker
-  threw, from a buffer of 1 MiB on the heap by default. `GET items/{id}` gives
+  threw, recorded from `Lustro.start()` to `Lustro.stop()` into a buffer of
+  1 MiB on the heap by default. `GET items/{id}` gives
   one work request with its events, also after a prune. With
   `create(context, metrics = repository)`, `GET metrics` reads the history of
   work-analytics. `POST cancel` cancels by id, unique name, or tag, and

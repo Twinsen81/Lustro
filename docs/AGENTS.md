@@ -731,8 +731,9 @@ empty. `initialized` is `false` until the app calls `WorkManager.getInstance`: t
 initializes WorkManager, so until then `items`, `items/{id}`, `cancel`, and `prune` answer `503`
 with `code: "work_not_initialized"`.
 
-**Events live on the heap.** The tab records events from the moment WorkManager starts, in the
-app's process, and keeps the newest ones in a buffer of `bufferBytes` (1 MiB by default). The
+**Events live on the heap.** The tab records events in the app's process from `Lustro.start()`
+to `Lustro.stop()`, also in the background, and keeps the newest ones in a buffer of
+`bufferBytes` (1 MiB by default). The
 server answers only while the app is in the foreground. When the system starts the app in the
 background to run a worker and stops the process before you open the app, the events of that run
 are gone: the item still has the state, `runAttempts`, the last `stopReason`, and the output, the

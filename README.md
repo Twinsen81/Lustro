@@ -888,8 +888,9 @@ fun start(app: Application) {
   set before, with the same arguments, so call `configure()` last. What your listener throws
   reaches WorkManager as without the tab. The listener API is `@ExperimentalEventsApi`; the
   opt-in stays inside `lustro-work`.
-- **Events live on the heap.** The tab keeps the events from the moment WorkManager starts, at
-  most `bufferBytes` of them (default 1 MiB, by the size of their JSON on the heap). They end
+- **Events live on the heap.** The tab records the events from `start()` to `stop()`, also while
+  the app is in the background, and keeps at most `bufferBytes` of them (default 1 MiB, by the
+  size of their JSON on the heap). Its listeners forward to yours either way. The events end
   with the process: when the system starts your app in the background to run a worker and stops
   it before you open the app, the events of that run are lost. The work's state, attempts, last
   stop reason, and output stay in WorkManager's snapshot, and a worker's exception is in logcat

@@ -43,12 +43,14 @@ import io.github.twinsen81.lustro.work.internal.WorkSupport
  * `WorkInfo` does not have it. It asks for the WorkManager instance only after
  * the app has initialized it, so it never changes when WorkManager starts.
  *
- * The events of each run (enqueued, unblocked, updated, cancelled, prerequisite
- * failed, started, stopped, finished, and exception), with the result, its
- * output, the stop reason, and the exception's stack trace, are kept on the
- * heap, in a buffer of `bufferBytes`, from the moment WorkManager starts. They
- * end with the process: the events of a process that the system started in the
- * background and stopped before a client asked are lost. With a
+ * The tab records the events of each run (enqueued, unblocked, updated,
+ * cancelled, prerequisite failed, started, stopped, finished, and exception),
+ * with the result, its output, the stop reason, and the exception's stack trace,
+ * from `Lustro.start()` to `Lustro.stop()`, also while the app is in the
+ * background, and keeps them on the heap, in a buffer of `bufferBytes`. They end
+ * with the process: the events of a process that the system started in the
+ * background and stopped before a client asked are lost. Its listeners forward
+ * to the app's whether the tab records or not. With a
  * `WorkMetricsInfoRepository` of work-analytics, which keeps the times and
  * attempts of each run on disk, the tab also shows that history.
  *
@@ -72,6 +74,16 @@ public class WorkDebugTab private constructor(private val source: WorkSource) : 
 
     /** Serves the routes under `/api/v1/work/`; the static `work.openapi.json` describes them. */
     override fun handle(request: DebugRequest): DebugResponse? = routes.handle(request)
+
+    /** Starts recording the events of the listeners that [configure] set. */
+    override fun onStart() {
+        source.events.recording = true
+    }
+
+    /** Stops recording. The buffer keeps its events, and the listeners keep forwarding to the app's. */
+    override fun onStop() {
+        source.events.recording = false
+    }
 
     /**
      * Sets the tab's event listeners on [builder] and returns it, for the app to

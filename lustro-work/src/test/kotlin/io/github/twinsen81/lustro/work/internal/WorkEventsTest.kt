@@ -18,7 +18,7 @@ import org.robolectric.RobolectricTestRunner
 class WorkEventsTest {
     @Test
     fun `the oldest events go when the buffer is over its budget, and a delta counts them as dropped`() {
-        val events = WorkEvents(maxBytes = 2_000) { WorkFixtures.NOW }
+        val events = WorkEvents(maxBytes = 2_000) { WorkFixtures.NOW }.apply { recording = true }
         repeat(3) { events.record("started", info()) }
         val cursor = CursorCodec.encode(1, events.epoch)
         repeat(20) { events.record("started", info()) }
@@ -35,8 +35,19 @@ class WorkEventsTest {
     }
 
     @Test
+    fun `before Lustro starts and after it stops, the buffer keeps no events`() {
+        val events = WorkEvents(maxBytes = 1024) { WorkFixtures.NOW }
+        events.record("started", info())
+        events.recording = true
+        events.record("started", info())
+        events.recording = false
+        events.record("finished", info())
+        assertEquals(1, events.snapshot(null).total)
+    }
+
+    @Test
     fun `the newest event stays even when it alone is over the budget`() {
-        val events = WorkEvents(maxBytes = 10) { WorkFixtures.NOW }
+        val events = WorkEvents(maxBytes = 10) { WorkFixtures.NOW }.apply { recording = true }
         events.record("started", info())
         events.record("finished", info())
         assertEquals(1, events.snapshot(null).retained)
@@ -44,7 +55,7 @@ class WorkEventsTest {
 
     @Test
     fun `a stack trace beyond the limit is cut and says so`() {
-        val events = WorkEvents(maxBytes = 1024 * 1024) { WorkFixtures.NOW }
+        val events = WorkEvents(maxBytes = 1024 * 1024) { WorkFixtures.NOW }.apply { recording = true }
         val deep = deepException(2_000)
         events.record("exception", info()) {
             append(",\"exception\":")
