@@ -429,10 +429,25 @@ SQLITE_ROUTE_FIXTURES = (
 )
 
 
+SQLITE_POST_FIXTURES = (
+    ("query", "sqlite-query.json"),
+    ("exec", "sqlite-exec.json"),
+)
+
+# The routes that write, and answer 403 for a database that is not writable.
+SQLITE_WRITE_ROUTES = ("exec", "edit", "delete")
+
+
 @pytest.mark.parametrize("route, fixture", SQLITE_ROUTE_FIXTURES)
 def test_sqlite_fixture_matches_its_route(route, fixture):
     sqlite = wire.load_openapi("sqlite")
     _inline_validator(sqlite, "/api/v1/sqlite/" + route, "get", "200").validate(wire.load_golden(fixture))
+
+
+@pytest.mark.parametrize("route, fixture", SQLITE_POST_FIXTURES)
+def test_sqlite_post_fixture_matches_its_route(route, fixture):
+    sqlite = wire.load_openapi("sqlite")
+    _inline_validator(sqlite, "/api/v1/sqlite/" + route, "post", "200").validate(wire.load_golden(fixture))
 
 
 def test_the_sqlite_schema_is_valid_and_has_its_own_version():
@@ -448,10 +463,24 @@ def test_the_sqlite_schema_is_valid_and_has_its_own_version():
     assert page["required"] == pagination["required"] and page["additionalProperties"] is False
 
 
-def test_the_sqlite_routes_are_declared_and_only_read():
+def test_the_sqlite_routes_are_declared_and_only_the_post_ones_take_sql_or_write():
     paths = wire.load_openapi("sqlite")["paths"]
-    assert set(paths) == {"/api/v1/sqlite/" + route for route, _ in SQLITE_ROUTE_FIXTURES}
-    assert all(set(path) == {"get"} for path in paths.values())
+    reads = {"/api/v1/sqlite/" + route for route, _ in SQLITE_ROUTE_FIXTURES}
+    posts = {"/api/v1/sqlite/" + route for route in ("query",) + SQLITE_WRITE_ROUTES}
+    assert set(paths) == reads | posts
+    # A browser can send a cross-origin GET without an Origin header, so no GET takes SQL or writes.
+    assert all(set(paths[path]) == {"get"} for path in reads)
+    assert all(set(paths[path]) == {"post"} for path in posts)
+    for route, required in (("query", ["db", "sql"]), ("exec", ["db", "sql"]), ("edit", ["db", "table", "values"]), ("delete", ["db", "table"])):
+        post = paths["/api/v1/sqlite/" + route]["post"]
+        assert post["requestBody"]["content"]["application/json"]["schema"]["required"] == required
+        assert "statement_refused" in post["description"] or route in ("edit", "delete")
+    for route in SQLITE_WRITE_ROUTES:
+        post = paths["/api/v1/sqlite/" + route]["post"]
+        db = post["requestBody"]["content"]["application/json"]["schema"]["properties"]["db"]
+        assert "403" in post["responses"] and "read_only" in db["description"]
+    # query is read-only for every database, so it has no writable gate, and SQLite's refusal is its 403.
+    assert "read_only" in paths["/api/v1/sqlite/query"]["post"]["description"]
     rows = {p["name"]: p for p in paths["/api/v1/sqlite/rows"]["get"]["parameters"]}
     assert set(rows) == {"db", "table", "cursor", "limit", "filter", "sort", "dir"}
     assert rows["db"]["required"] and rows["table"]["required"]
@@ -492,3 +521,14 @@ def test_a_golden_row_has_a_cell_for_each_column_in_order():
             assert abs(int(cell["value"])) > 2**53 - 1
     # A blob in a TEXT column is a blob, read by its size only.
     assert any(row["cells"]["body"]["type"] == "blob" for row in page["items"])
+
+
+def test_a_golden_query_result_has_a_cell_for_each_column_in_order():
+    result = wire.load_golden("sqlite-query.json")
+    assert result["truncated"] is False
+    assert all(len(row) == len(result["columns"]) for row in result["rows"])
+    ids = [row[result["columns"].index("id")] for row in result["rows"]]
+    # The same cells as a page of rows: a big integer is a string, and a blob is its size.
+    assert ids[0] == {"type": "integer", "value": "9007199254740993"}
+    assert {cell["type"] for row in result["rows"] for cell in row} == {"null", "integer", "real", "text", "blob"}
+    assert wire.load_golden("sqlite-exec.json") == {"status": "ok", "changes": 2}

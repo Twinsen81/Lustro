@@ -341,4 +341,35 @@ fi
 cat "$OUT/sqlite-bad-sort.txt"
 grep -q "^error: 400 bad_request" "$OUT/sqlite-bad-sort.txt"
 
+# POST query runs a client's statement read-only: SQLite refuses a DELETE there.
+# POST exec writes to the writable notes database only, and both routes refuse a
+# BEGIN, which would leave a transaction on a worker thread of the server.
+lustro_to sqlite-query.json --json api POST sqlite/query --body '{"db":"notes","sql":"SELECT count(*) AS notes, max(length(body)) AS longest FROM notes"}'
+check sqlite-query < "$OUT/sqlite-query.json"
+
+step "lustro api POST sqlite/query with a DELETE"
+if lustro api POST sqlite/query --body '{"db":"notes","sql":"WITH x AS (SELECT 1) DELETE FROM notes"}' 2> "$OUT/sqlite-query-delete.txt"; then
+  echo "error: query took the DELETE" >&2
+  exit 1
+fi
+cat "$OUT/sqlite-query-delete.txt"
+grep -q "^error: 403 forbidden" "$OUT/sqlite-query-delete.txt"
+
+step "lustro api POST sqlite/exec with a BEGIN, and to the read-only catalog"
+if lustro api POST sqlite/exec --body '{"db":"notes","sql":"/* x */ BEGIN"}' 2> "$OUT/sqlite-exec-begin.txt"; then
+  echo "error: exec took the BEGIN" >&2
+  exit 1
+fi
+cat "$OUT/sqlite-exec-begin.txt"
+grep -q "^error: 400 bad_request" "$OUT/sqlite-exec-begin.txt"
+if lustro api POST sqlite/exec --body '{"db":"catalog","sql":"DELETE FROM products"}' 2> "$OUT/sqlite-exec-catalog.txt"; then
+  echo "error: exec wrote to the read-only catalog" >&2
+  exit 1
+fi
+cat "$OUT/sqlite-exec-catalog.txt"
+grep -q "^error: 403 forbidden" "$OUT/sqlite-exec-catalog.txt"
+
+lustro_to sqlite-exec.json --json api POST sqlite/exec --body '{"db":"notes","sql":"UPDATE notes SET title = '"'"'Renamed by exec'"'"' WHERE id = 1"}'
+check sqlite-exec < "$OUT/sqlite-exec.json"
+
 step "The CLI end to end passed"

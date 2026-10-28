@@ -182,9 +182,9 @@ def _sqlite(schema: Dict[str, Any]) -> Draft202012Validator:
     return Draft202012Validator(dict(schema, components=SQLITE_OPENAPI["components"]))
 
 
-def _sqlite_route(route: str, text: str) -> Dict[str, Any]:
+def _sqlite_route(route: str, text: str, method: str = "get") -> Dict[str, Any]:
     body = json.loads(text)
-    ok = SQLITE_OPENAPI["paths"]["/api/v1/sqlite/" + route]["get"]["responses"]["200"]
+    ok = SQLITE_OPENAPI["paths"]["/api/v1/sqlite/" + route][method]["responses"]["200"]
     _sqlite(ok["content"]["application/json"]["schema"]).validate(body)
     return body
 
@@ -232,6 +232,18 @@ def check_sqlite_imported(text: str, rules: List[dict]) -> None:
     items = _sqlite_rows(text)["items"]
     expect(len(items) == 1, "{} rows match".format(len(items)))
     expect(items[0]["cells"]["body"] == {"type": "blob", "bytes": 8}, "the imported body {}".format(items[0]["cells"]["body"]))
+
+
+def check_sqlite_query(text: str, rules: List[dict]) -> None:
+    result = _sqlite_route("query", text, "post")
+    expect(result["columns"] == ["notes", "longest"], "columns {}".format(result["columns"]))
+    expect(result["rows"][0][0] == {"type": "integer", "value": 2001}, "the notes {}".format(result["rows"][0][0]))
+    expect(result["rows"][0][1]["value"] > 4096, "the longest body {}".format(result["rows"][0][1]))
+
+
+def check_sqlite_exec(text: str, rules: List[dict]) -> None:
+    result = _sqlite_route("exec", text, "post")
+    expect(result == {"status": "ok", "changes": 1}, "exec {}".format(result))
 
 
 def check_sync(text: str, rules: List[dict]) -> None:
@@ -405,6 +417,8 @@ CHECKS: Dict[str, Callable[[str, List[dict]], None]] = {
     "sqlite-rows-1": check_sqlite_rows_1,
     "sqlite-rows-3": check_sqlite_rows_3,
     "sqlite-imported": check_sqlite_imported,
+    "sqlite-query": check_sqlite_query,
+    "sqlite-exec": check_sqlite_exec,
     "sync": check_sync,
     "rules": check_rules,
     "list": check_list,

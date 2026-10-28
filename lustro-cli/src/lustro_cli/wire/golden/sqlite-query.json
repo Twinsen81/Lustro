@@ -1,0 +1,95 @@
+{
+  "database": "app",
+  "columns": [
+    "id",
+    "title",
+    "attachment",
+    "score",
+    "body_chars"
+  ],
+  "rows": [
+    [
+      {
+        "type": "integer",
+        "value": "9007199254740993"
+      },
+      {
+        "type": "text",
+        "value": "Synced"
+      },
+      {
+        "type": "null"
+      },
+      {
+        "type": "real",
+        "value": 0.25
+      },
+      {
+        "type": "null"
+      }
+    ],
+    [
+      {
+        "type": "integer",
+        "value": 3
+      },
+      {
+        "type": "text",
+        "value": "Imported"
+      },
+      {
+        "type": "null"
+      },
+      {
+        "type": "null"
+      },
+      {
+        "type": "integer",
+        "value": 4
+      }
+    ],
+    [
+      {
+        "type": "integer",
+        "value": 2
+      },
+      {
+        "type": "text",
+        "value": "Trip plan"
+      },
+      {
+        "type": "blob",
+        "bytes": 20480
+      },
+      {
+        "type": "null"
+      },
+      {
+        "type": "integer",
+        "value": 4377
+      }
+    ],
+    [
+      {
+        "type": "integer",
+        "value": 1
+      },
+      {
+        "type": "text",
+        "value": "Groceries"
+      },
+      {
+        "type": "null"
+      },
+      {
+        "type": "real",
+        "value": 4.5
+      },
+      {
+        "type": "integer",
+        "value": 10
+      }
+    ]
+  ],
+  "truncated": false
+}
