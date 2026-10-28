@@ -401,6 +401,52 @@ class SqliteConsoleTest {
     }
 
     @Test
+    fun `exec drops and renames a table with a TEMP trigger, as Room keeps on the tables that it observes, but not the trigger alone`() {
+        onPrimary {
+            live.execSQL("CREATE TABLE observed (a)")
+            live.execSQL("CREATE TEMP TRIGGER observed_insert AFTER INSERT ON observed BEGIN SELECT 1; END")
+            live.execSQL("CREATE TEMP TRIGGER notes_insert AFTER INSERT ON notes BEGIN SELECT 1; END")
+        }
+
+        // SQLite rewrites the trigger with the table, and drops it with the table.
+        assertEquals(200, exec("ALTER TABLE observed RENAME TO renamed").status)
+        assertEquals(200, exec("ALTER TABLE renamed ADD COLUMN b").status)
+        assertEquals(200, exec("DROP TABLE renamed").status)
+        assertError(400, "statement_refused", exec("DROP TRIGGER temp.notes_insert"))
+
+        assertEquals(listOf("notes_insert"), onPrimary { strings("SELECT name FROM sqlite_temp_master") })
+        assertFalse(tables().contains("renamed"))
+    }
+
+    @Test
+    fun `a write that breaks a deferred foreign key is refused before its commit, which would leave the transaction open`() {
+        live.execSQL("CREATE TABLE parent (id INTEGER PRIMARY KEY)")
+        live.execSQL("CREATE TABLE child (id INTEGER PRIMARY KEY, parent_id INTEGER REFERENCES parent(id) DEFERRABLE INITIALLY DEFERRED)")
+        // A violation from before, which the app wrote with the keys off, fails no commit.
+        live.execSQL("INSERT INTO child VALUES (1, 77)")
+        live.setForeignKeyConstraintsEnabled(true)
+
+        val response = exec("INSERT INTO child VALUES (2, 99)")
+
+        assertError(400, "sqlite_error", response)
+        assertTrue(response.json().getString("message"), response.json().getString("message").contains("FOREIGN KEY"))
+        assertEquals(1, count("child"))
+        // The app's next write commits: another connection sees it, and the app can start a transaction.
+        live.execSQL("INSERT INTO parent VALUES (5)")
+        SQLiteDatabase.openDatabase(live.path, null, SQLiteDatabase.OPEN_READONLY).use { other ->
+            assertEquals(1, other.rawQuery("SELECT count(*) FROM parent WHERE id = 5", null).use { it.moveToFirst(); it.getInt(0) })
+        }
+        live.beginTransaction()
+        live.endTransaction()
+        assertEquals(1, changes(exec("INSERT INTO child VALUES (3, 5)")))
+        assertEquals(1, changes(exec("UPDATE child SET parent_id = 5 WHERE id = 1")))
+        val edit = Fixtures.post(routes, "edit", JSONObject().put("db", "app").put("table", "child").put("rowid", "3").put("values", JSONObject().put("parent_id", 98)))
+        assertError(400, "sqlite_error", edit)
+        assertEquals("values", edit.json().getString("field"))
+        assertEquals(listOf("5"), onPrimary { strings("SELECT parent_id FROM child WHERE id = 3") })
+    }
+
+    @Test
     fun `a failed exec changes nothing and leaves no transaction`() {
         val response = exec("INSERT INTO folders (id, name) VALUES (1, 'taken')")
 
@@ -448,6 +494,18 @@ class SqliteConsoleTest {
         assertEquals(listOf("ONE", "TWO"), helper.readableDatabase.query("SELECT name FROM items ORDER BY id").use { c -> buildList { while (c.moveToNext()) add(c.getString(0)) } })
         helper.close()
     }
+
+    // On the primary connection, where exec runs and the app's DDL goes: a transaction holds it.
+    private fun <T> onPrimary(block: () -> T): T {
+        live.beginTransactionNonExclusive()
+        try {
+            return block().also { live.setTransactionSuccessful() }
+        } finally {
+            live.endTransaction()
+        }
+    }
+
+    private fun strings(sql: String): List<String> = live.rawQuery(sql, null).use { c -> buildList { while (c.moveToNext()) add(c.getString(0)) } }
 
     private fun assertAppWritesOnAnotherThread() {
         val writer = Thread { live.execSQL("INSERT INTO notes (title) VALUES ('from the app')") }

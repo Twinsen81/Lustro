@@ -105,6 +105,26 @@ class ReadLimitTest {
     }
 
     @Test
+    fun `a count that the limit stops leaves the table without a count, and the other tables are listed`() {
+        val file = Fixtures.file(databases, "slow.db")
+        SQLiteDatabase.openDatabase(file.path, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            // A full-text table whose content is an endless view: a count of it never ends.
+            db.execSQL("CREATE VIEW endless AS WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM n) SELECT x AS rowid, 'a' AS body FROM n")
+            db.execSQL("CREATE VIRTUAL TABLE big USING fts4(content=\"endless\", body)")
+        }
+        val routes = SqliteRoutes(SqliteRegistry(listOf(SqliteDb.file("slow", file)), directory = null), ReadLimit(limitMs = 300))
+
+        val response = Fixtures.get(routes, "tables", "db" to "slow")
+
+        assertEquals(200, response.status)
+        val items = response.json().getJSONArray("items")
+        val tables = (0 until items.length()).associate { items.getJSONObject(it).getString("name") to items.getJSONObject(it) }
+        assertFalse(tables.getValue("big").has("rowCount"))
+        assertTrue(tables.getValue("big").getString("error").contains("300 ms"))
+        assertEquals(3, tables.getValue("notes").getInt("rowCount"))
+    }
+
+    @Test
     fun `a read through the app's handle has no limit but the request's timeout`() {
         val file = Fixtures.file(databases, "live.db")
         val live = SQLiteDatabase.openDatabase(file.path, null, SQLiteDatabase.OPEN_READWRITE)

@@ -230,8 +230,11 @@ internal class SqliteReader(private val connection: DbConnection, private val si
     }
 
     private fun <T> query(sql: String, args: Array<String> = emptyArray(), read: (Cursor) -> T): T =
-        limit?.statement(signal, field = null) { statement -> connection.query(sql, args, statement).use(read) }
-            ?: connection.query(sql, args, signal).use(read)
+        if (limit == null) {
+            connection.query(sql, args, signal).use(read)
+        } else {
+            limit.statement(signal, field = null) { statement -> connection.query(sql, args, statement).use(read) }
+        }
 
     companion object {
         /** The most characters of a text value that a page of rows holds. */

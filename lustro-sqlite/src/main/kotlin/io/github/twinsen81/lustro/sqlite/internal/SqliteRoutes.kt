@@ -165,6 +165,9 @@ internal class SqliteRoutes(private val registry: SqliteRegistry, private val li
                     } catch (e: SQLiteException) {
                         // Such as a view on a table that is gone, or a virtual table whose module this SQLite does not have.
                         error = e.message ?: e.javaClass.simpleName
+                    } catch (e: RouteException) {
+                        // A count that the read limit stopped: the other tables are still listed.
+                        error = e.message
                     }
                     if (hasRowId != null) append(",\"hasRowId\":").append(hasRowId)
                     if (rowCount != null) append(",\"rowCount\":").append(rowCount)

@@ -1,5 +1,6 @@
 package io.github.twinsen81.lustro.sqlite.internal
 
+import android.database.sqlite.SQLiteConstraintException
 import android.os.CancellationSignal
 import android.os.OperationCanceledException
 import io.github.twinsen81.lustro.DebugRequest
@@ -28,8 +29,7 @@ internal class SqliteWriter(private val connection: LiveConnection, private val 
             // changes() keeps the count of the connection's last INSERT, UPDATE, or DELETE, which can
             // be an earlier statement's: it is this one's only when this one changed a row.
             val changes = if (connection.long("SELECT total_changes()") != before) connection.long("SELECT changes()") else 0L
-            // A TEMP table, view, or trigger belongs to the connection, which the app goes on using.
-            if (tempSchema() != temp) {
+            if (changedTemp(temp, tempSchema())) {
                 throw RouteException(
                     "exec does not create or drop TEMP tables, views, indexes, or triggers: they would stay on the app's connection",
                     code = "statement_refused",
@@ -68,15 +68,61 @@ internal class SqliteWriter(private val connection: LiveConnection, private val 
         connection.transaction {
             // The transaction can start late, when the app holds the write lock.
             checkWaited()
-            block().also { checkWaited() }
+            val violations = deferredViolations()
+            block().also {
+                if (violations != null) checkDeferredKeys(violations)
+                checkWaited()
+            }
+        }
+
+    // A TEMP table, view, index, or trigger belongs to the connection, which the app goes on using:
+    // the statement may neither add one nor drop one. SQLite drops a TEMP trigger with its table,
+    // such as one that Room keeps on a table that it observes, and rewrites it when the table is renamed.
+    private fun changedTemp(before: List<TempObject>, after: List<TempObject>): Boolean {
+        val added = after.any { new -> before.none { it.type == new.type && it.name == new.name } }
+        val removed = before.filter { old -> after.none { it.type == old.type && it.name == old.name } }
+        return added || removed.any { it.type != "trigger" || exists(it.table) }
+    }
+
+    private fun exists(table: String): Boolean =
+        connection.long("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = ? COLLATE NOCASE", arrayOf(table)) > 0 ||
+            connection.long("SELECT count(*) FROM sqlite_temp_master WHERE type = 'table' AND name = ? COLLATE NOCASE", arrayOf(table)) > 0
+
+    /**
+     * The foreign key violations that the database has before the statement, when a deferred key
+     * can fail the commit, or `null`. SQLite checks a deferred key at COMMIT, and a COMMIT that
+     * fails keeps the transaction open; Android then gives the connection back to the pool with it,
+     * and the app's later writes go into a transaction that never commits.
+     */
+    private fun deferredViolations(): Set<String>? {
+        if (connection.long("PRAGMA foreign_keys") == 0L) return null
+        val deferred =
+            connection.long("PRAGMA defer_foreign_keys") != 0L ||
+                connection.long("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND sql LIKE '%DEFERRED%'") > 0
+        return if (deferred) violations() else null
+    }
+
+    // A violation that was there before the statement does not fail the commit, nor does one that it fixed.
+    private fun checkDeferredKeys(before: Set<String>) {
+        val added = violations() - before
+        if (added.isNotEmpty()) {
+            throw SQLiteConstraintException("FOREIGN KEY constraint failed: a deferred foreign key of ${added.first().substringBefore(' ')} has no parent row")
+        }
+    }
+
+    private fun violations(): Set<String> =
+        connection.query("PRAGMA foreign_key_check", emptyArray(), CancellationSignal()).use { cursor ->
+            buildSet { while (cursor.moveToNext()) add((0 until cursor.columnCount).joinToString(" ") { cursor.getString(it).orEmpty() }) }
         }
 
     private fun checkWaited() {
         if (request.isCancelled) throw OperationCanceledException()
     }
 
-    private fun tempSchema(): List<String> =
-        connection.query("SELECT type, name, sql FROM sqlite_temp_master ORDER BY type, name", emptyArray(), CancellationSignal()).use { cursor ->
-            buildList { while (cursor.moveToNext()) add("${cursor.getString(0)} ${cursor.getString(1)} ${cursor.getString(2)}") }
+    private class TempObject(val type: String, val name: String, val table: String)
+
+    private fun tempSchema(): List<TempObject> =
+        connection.query("SELECT type, name, tbl_name FROM sqlite_temp_master", emptyArray(), CancellationSignal()).use { cursor ->
+            buildList { while (cursor.moveToNext()) add(TempObject(cursor.getString(0), cursor.getString(1), cursor.getString(2))) }
         }
 }

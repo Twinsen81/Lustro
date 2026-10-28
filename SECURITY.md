@@ -249,8 +249,12 @@ database file in the app's `databases` directory, under `/api/v1/sqlite/`.
   the statement's first keyword past comments, white space (a byte order mark
   too), empty statements, and `EXPLAIN`, as SQLite's tokenizer does; SQLite runs only the first
   statement of a text. `exec` also rolls back a statement that creates or
-  drops a `TEMP` object, which would stay on the app's connection. Each write
-  runs in a transaction of its own, which ends before the request does.
+  drops a `TEMP` object, which would stay on the app's connection, but for a
+  `TEMP` trigger that SQLite drops or rewrites with its table. Each write runs
+  in a transaction of its own, which ends before the request does, and a write
+  that breaks a deferred foreign key is rolled back before its commit: a
+  failed commit would keep the transaction open on the app's connection, and
+  the app's later writes would never commit.
 - **A read is bounded.** A page has at most 500 rows, a text cell at most 4096
   characters, and a blob only its size. A `query` result has at most 1000
   rows, and fewer when their texts pass 4 Mi characters. Each read stops at

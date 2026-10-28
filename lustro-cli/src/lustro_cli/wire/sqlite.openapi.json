@@ -62,7 +62,7 @@
       "get": {
         "operationId": "listSqliteTables",
         "summary": "List the tables and views of a database.",
-        "description": "Every table and view in sqlite_master, by name, as SQLite sorts names without case. A table's rows are counted; a view's are not, because that runs the view's query. The tables that SQLite, Android, and Room keep for themselves, and the shadow tables of a full-text or R*Tree index, are listed with internal true, so that a view can hide them. On a file database that is not in WAL mode, a statement stops after 2 s: 504 with code read_limit.",
+        "description": "Every table and view in sqlite_master, by name, as SQLite sorts names without case. A table's rows are counted; a view's are not, because that runs the view's query. The tables that SQLite, Android, and Room keep for themselves, and the shadow tables of a full-text or R*Tree index, are listed with internal true, so that a view can hide them. On a file database that is not in WAL mode, a statement stops after 2 s: a table whose count stops is listed without rowCount, with the reason in error, and another statement that stops is a 504 with code read_limit.",
         "parameters": [
           {
             "name": "db",
@@ -392,7 +392,7 @@
       "post": {
         "operationId": "execSqliteStatement",
         "summary": "Run a statement that writes.",
-        "description": "Runs a client's statement through the app's handle of a writable database, in a transaction of its own that takes the write lock, and commits it. The statement must return no rows: a SELECT is for POST query. The statements that query refuses are refused here too, and every PRAGMA also, because a pragma can change a setting of the app's connection, such as foreign_keys or query_only: 400 with code statement_refused and field sql. A statement that creates or drops a TEMP table, view, index, or trigger, which would stay on the app's connection, is rolled back, with the same error. A statement that SQLite refuses, such as one that breaks a constraint, is rolled back: 400 with code sqlite_error and SQLite's message. SQLite can't stop a write at the request's timeout: the statement runs to its end and is then rolled back. Only a timeout during the commit itself can leave the change committed, so read the data again after a 504 before sending the write again. Room's observers see the change at the app's next write through Room.",
+        "description": "Runs a client's statement through the app's handle of a writable database, in a transaction of its own that takes the write lock, and commits it. The statement must return no rows: a SELECT is for POST query. The statements that query refuses are refused here too, and every PRAGMA also, because a pragma can change a setting of the app's connection, such as foreign_keys or query_only: 400 with code statement_refused and field sql. A statement that creates or drops a TEMP table, view, index, or trigger, which would stay on the app's connection, is rolled back, with the same error; a TEMP trigger that SQLite drops or rewrites with its table, such as Room's on a table that it observes, does not count. When the app has the foreign keys on, a statement that breaks a deferred foreign key (DEFERRABLE INITIALLY DEFERRED) is rolled back before the commit, with 400 and code sqlite_error: SQLite checks such a key at COMMIT, and a COMMIT that fails would keep the transaction open on the app's connection. A statement that SQLite refuses, such as one that breaks a constraint, is rolled back: 400 with code sqlite_error and SQLite's message. SQLite can't stop a write at the request's timeout: the statement runs to its end and is then rolled back. Only a timeout during the commit itself can leave the change committed, so read the data again after a 504 before sending the write again. Room's observers see the change at the app's next write through Room.",
         "requestBody": {
           "required": true,
           "description": "The database and the statement.",
@@ -462,7 +462,7 @@
       "post": {
         "operationId": "editSqliteRow",
         "summary": "Change one row.",
-        "description": "Sets the values of one row of a table, through the app's handle of a writable database, in a transaction of its own. 400 with field values when values is missing or empty, names a column that the table does not have or a generated one, or has a value that is not a string, a number, or null. The row must be the only one with its rowid or key: 404 with the field rowid or key when no row has it, and 400 with that field when more than one row has it, which a NULL in a primary key column allows. The change is rolled back when SQLite refuses it, such as for a constraint: 400 with code sqlite_error. The tab finds each name in the table's schema and binds each value, as in the GET routes.",
+        "description": "Sets the values of one row of a table, through the app's handle of a writable database, in a transaction of its own. 400 with field values when values is missing or empty, names a column that the table does not have or a generated one, or has a value that is not a string, a number, or null. The row must be the only one with its rowid or key: 404 with the field rowid or key when no row has it, and 400 with that field when more than one row has it, which a NULL in a primary key column allows. The change is rolled back when SQLite refuses it, such as for a constraint, also a deferred foreign key, which the tab checks before the commit: 400 with code sqlite_error. The tab finds each name in the table's schema and binds each value, as in the GET routes.",
         "requestBody": {
           "required": true,
           "description": "The row, and the values to set.",
@@ -556,7 +556,7 @@
       "post": {
         "operationId": "deleteSqliteRow",
         "summary": "Delete one row.",
-        "description": "Deletes one row of a table, through the app's handle of a writable database, in a transaction of its own. The row must be the only one with its rowid or key: 404 with the field rowid or key when no row has it, and 400 with that field when more than one row has it, which a NULL in a primary key column allows. The change is rolled back when SQLite refuses it, such as for a constraint: 400 with code sqlite_error. The tab finds each name in the table's schema and binds each value, as in the GET routes.",
+        "description": "Deletes one row of a table, through the app's handle of a writable database, in a transaction of its own. The row must be the only one with its rowid or key: 404 with the field rowid or key when no row has it, and 400 with that field when more than one row has it, which a NULL in a primary key column allows. The change is rolled back when SQLite refuses it, such as for a constraint, also a deferred foreign key, which the tab checks before the commit: 400 with code sqlite_error. The tab finds each name in the table's schema and binds each value, as in the GET routes.",
         "requestBody": {
           "required": true,
           "description": "The row.",

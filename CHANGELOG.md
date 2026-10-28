@@ -36,7 +36,11 @@ see [DECISIONS.md](DECISIONS.md).
   `exec` every `PRAGMA`, so that no request leaves a transaction or a setting on
   the app's connection; `query` refuses the pragmas that set a value for the
   whole process, such as `hard_heap_limit`; `exec` also rolls back a statement
-  that creates or drops a `TEMP` object. Robolectric tests with native SQLite cover each of
+  that creates or drops a `TEMP` object, but for a `TEMP` trigger that SQLite
+  drops or rewrites with its table, as Room keeps on the tables it observes.
+  A write that breaks a deferred foreign key is rolled back before its commit,
+  which would fail and keep the transaction open on the app's connection.
+  Robolectric tests with native SQLite cover each of
   these, a request through the server's worker threads, and an app write while
   a query runs. The golden fixtures `sqlite-query.json` and `sqlite-exec.json`
   are pinned to what the routes write. On an API 24 emulator, with SQLite

@@ -658,8 +658,17 @@ connection, or of every connection of the app, `ATTACH` changes the connection's
 `VACUUM INTO` writes a file. The tab finds the statement's first keyword past comments, white space (a byte order
 mark too, as SQLite reads it), empty statements, and `EXPLAIN`, and answers `400` with `code: "statement_refused"`. `exec` also rolls
 back, with the same error, a statement that creates or drops a `TEMP` table, view, index, or
-trigger, which would stay on the app's connection. SQLite runs only the first statement of `sql`
+trigger, which would stay on the app's connection. A `TEMP` trigger that SQLite drops or rewrites
+with its table, such as one that Room keeps on a table that it observes, does not count, so
+`DROP TABLE` and `ALTER TABLE` work there. SQLite runs only the first statement of `sql`
 and ignores the rest: send one statement for each request.
+
+**A deferred foreign key.** SQLite checks a `DEFERRABLE INITIALLY DEFERRED` key (Room's
+`@ForeignKey(deferred = true)`) at the commit, and a commit that fails keeps the transaction open
+on the app's connection. So when the app has the keys on, `exec`, `edit`, and `delete` compare
+`PRAGMA foreign_key_check` before and after the statement, and roll back a statement that adds a
+violation: `400` with `code: "sqlite_error"`. A violation that the database had before does not
+count.
 
 ## Common workflows
 
