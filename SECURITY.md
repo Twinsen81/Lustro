@@ -255,6 +255,10 @@ database file in the app's `databases` directory, under `/api/v1/sqlite/`.
   that breaks a deferred foreign key is rolled back before its commit: a
   failed commit would keep the transaction open on the app's connection, and
   the app's later writes would never commit.
+- **The console shows a value as text.** The SQLite tab escapes every name and
+  every value that it draws, in the grid, the row dialog, and the results of a
+  statement, so a cell that holds HTML shows as text and can't run script
+  under the console's origin.
 - **A read is bounded.** A page has at most 500 rows, a text cell at most 4096
   characters, and a blob only its size. A `query` result has at most 1000
   rows, and fewer when their texts pass 4 Mi characters. Each read stops at

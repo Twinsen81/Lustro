@@ -7,6 +7,7 @@ import io.github.twinsen81.lustro.DebugTab
 import io.github.twinsen81.lustro.sqlite.internal.FileSource
 import io.github.twinsen81.lustro.sqlite.internal.SqliteRegistry
 import io.github.twinsen81.lustro.sqlite.internal.SqliteRoutes
+import io.github.twinsen81.lustro.sqlite.internal.SqliteView
 import java.io.File
 
 /**
@@ -54,17 +55,21 @@ import java.io.File
  * every writable one: register only the databases that you want to show, and
  * make writable only those that a client may change.
  *
- * The tab has no console view yet: it serves its API, and stays out of the tab
- * bar. `GET /api/v1/sqlite/_schema` describes its routes.
+ * In the console, the tab lists the databases and their tables, and shows a
+ * page of rows, which a client sorts, filters, and pages through, with a row
+ * editor for a writable database and a console for a client's own statements.
+ * `GET /api/v1/sqlite/_schema` describes its routes.
  */
 public class SqliteDebugTab private constructor(registry: SqliteRegistry) : DebugTab() {
     override val id: String = "sqlite"
     override val title: String = "SQLite"
     override val icon: String = "🗄️"
     override val order: Int = 40
-    override val showInTabBar: Boolean = false
 
     private val routes = SqliteRoutes(registry)
+
+    /** The view's static shell; `sqlite.js` and `sqlite.css` in the assets fill and style it. */
+    override fun renderContent(): String = SqliteView.HTML
 
     /** Serves the routes under `/api/v1/sqlite/`; the static `sqlite.openapi.json` describes them. */
     override fun handle(request: DebugRequest): DebugResponse? = routes.handle(request)

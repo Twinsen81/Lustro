@@ -14,6 +14,47 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Added
 
+- **The SQLite tab has a console view, so it is in the tab bar.** The
+  sidebar lists the databases in the order that the app registers them, and
+  the databases that the tab found on disk in a group that opens, each with
+  its source, its size, `PRAGMA user_version`, and a writable or read-only
+  tag. Below them are the tables of the open database, with their row counts
+  and hints, a filter, **Show internal (N)**, and a ★ that pins a table to the
+  top of its database. The rows view shows a page of 50 rows: **Prev** and
+  **Next** page through them, and the page keeps the cursors of the pages
+  before, because `GET rows` gives only the next one. A filter, sent 300 ms
+  after the last key, finds the rows in which a cell contains a text; a click
+  on a header sorts ascending, descending, then in the table's order; a
+  right-click on a header or the **Columns** menu hides a column, and the last
+  one that shows stays. Columns resize, and the browser keeps the hidden
+  columns and the widths for each database and table. A cell shows its own
+  type: a number in the number color, `NULL`, a blob as its size, and a cut
+  text with its whole length; a click on a cut text reads it whole with
+  `POST query`, which finds the row by its rowid or its primary key. A click on
+  a row opens it in a dialog, with a `NULL` toggle and a copy button for each
+  column, which reads a cut text whole before it can change. In a writable
+  database the dialog saves the changed values with `POST edit`, a number as a
+  JSON number of its kind, an integer past 2^53 with every digit and a whole
+  real with its point, and a key past 2^53 as a number too, so that it does
+  not match a text key with the same digits. **Delete**, there and in each
+  row, asks first; in any other, the dialog is read-only and says why.
+  **Auto refresh** reads the page again every 2 s, but not while a dialog is
+  open or the SQL view shows. The SQL view sends a statement to `POST query`,
+  also with Cmd or Ctrl+Enter, and **Run as write**, which shows only for a
+  writable database, sends it to `POST exec`, then reloads the rows. It shows
+  the result as a table, with the `truncated` flag and each blob's size, and
+  for a refused statement the error envelope: its status, type, code, and
+  message. The browser keeps the last 10 statements. Every color is a token
+  of the design system, in both themes. Node tests cover the cursor stack, the
+  column state of each table, where a statement goes, the SQL and the bodies
+  that name a row, and the edited values. Verified on a physical device
+  (API 37), with the console in Chrome, in the dark and the light theme:
+  browse, sort, filter, page forward and back, hide and show columns, resize a
+  column, edit and delete a row of the writable notes database, edit a row of
+  a table `WITHOUT ROWID` by its key, the read-only catalog's dialog, a read
+  and a write in the console, a write that `query` refuses, a refused
+  `BEGIN`, and an app write that auto refresh showed in about 1 s.
+
 - **The SQLite plugin runs a client's statements, read-only, and writes to the
   databases that the app makes writable.** `POST query` takes `{ db, sql }`
   and runs the statement on a connection that SQLite opens with
@@ -81,8 +122,7 @@ see [DECISIONS.md](DECISIONS.md).
   only its size, read without its bytes. An integer beyond 2^53 - 1 is a
   string, and a rowid is always one. Each read stops at the request timeout
   through a `CancellationSignal`. `androidx.sqlite` is `compileOnly` in both
-  artifacts. The tab has no console view yet, so it stays out of the tab bar;
-  `_meta` lists it. `sqlite.openapi.json` has its own version, 1.0, and the
+  artifacts. `_meta` lists the tab. `sqlite.openapi.json` has its own version, 1.0, and the
   golden fixtures `sqlite-databases.json`, `sqlite-tables.json`,
   `sqlite-schema.json`, and `sqlite-rows.json` are pinned to what the routes
   write. The sample registers a notes database through the open helper that

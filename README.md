@@ -809,7 +809,17 @@ val lustro = Lustro.builder(application)
   or `lustro api POST sqlite/query --body '{"db":"app","sql":"SELECT count(*) FROM notes"}'`.
   See [docs/AGENTS.md](docs/AGENTS.md#sqlite-tab-operations) and
   [`sqlite.openapi.json`](lustro-sqlite/src/main/assets/lustro/sqlite.openapi.json).
-- **No console view yet.** The tab serves its API and is not in the tab bar; `_meta` lists it.
+- **In the console.** The **SQLite** tab lists the databases in the app's order, with the found
+  ones in a group of their own, and each one's tables, with a filter, the internal tables behind
+  **Show internal**, and a ★ to pin a table to the top. A table's rows show a page at a time:
+  **Prev** and **Next** page through them, a filter finds the rows in which a cell contains a
+  text, a click on a header sorts ascending, descending, then not, and a right-click or the
+  **Columns** menu hides a column. Your browser keeps the hidden columns and the widths for each
+  table. A cut text opens whole, read with `query`. A click on a row opens it, to edit, set a
+  column to `NULL`, or delete the row in a writable database, and to read and copy in any other.
+  **Auto refresh** reads the page again every 2 s. The **SQL** view runs a statement with
+  `query`; **Run as write**, only for a writable database, sends it to `exec`. A refused
+  statement shows the route's error.
 - **Every client with the token reads every registered database, and writes every writable one.**
   Register only the databases that you want to show. See [SECURITY.md](SECURITY.md#sqlite-databases).
 - In `lustro-sqlite-noop`, the tab opens no database and never calls the functions.

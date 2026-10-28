@@ -148,7 +148,7 @@ class SqliteDebugTabServerTest {
     }
 
     @Test
-    fun `the schema is served, _meta lists the tab, and the tab bar does not`() {
+    fun `the schema is served, and _meta lists the tab`() {
         val schema = get("_schema")
         assertEquals(200, schema.code)
         val paths = JSONObject(schema.body!!.string()).getJSONObject("paths")
@@ -157,8 +157,18 @@ class SqliteDebugTabServerTest {
 
         val meta = http.newCall(Request.Builder().url("$root/api/v1/_meta").header("Authorization", "Bearer $TOKEN").build()).execute()
         assertTrue(meta.body!!.string().contains("\"sqlite\""))
-        val page = http.newCall(Request.Builder().url("$root/").build()).execute()
-        assertFalse(page.body!!.string().contains("href=\"/tab/sqlite\""))
+    }
+
+    @Test
+    fun `the tab is in the tab bar, and serves its view with its script and styles`() {
+        val page = http.newCall(Request.Builder().url("$root/tab/sqlite").build()).execute()
+        assertTrue(page.body!!.string().contains("<a href=\"/tab/sqlite\" class=\"dc-nav__item dc-nav__item--active\">"))
+
+        val view = get("_view")
+        assertEquals(200, view.code)
+        assertTrue(view.body!!.string().contains("<table class=\"dc-table sqlite-grid\" id=\"sqlite-grid\"></table>"))
+        assertTrue(get("_view.js").body!!.string().contains("window.sqliteConsoleRequest"))
+        assertTrue(get("_view.css").body!!.string().contains(".sqlite-grid"))
     }
 
     private fun get(path: String): Response =
