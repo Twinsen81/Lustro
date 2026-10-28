@@ -48,11 +48,11 @@ class SqliteDebugTabTest {
     }
 
     @Test
-    fun `the tab is API-only, under the id sqlite, and creating it opens nothing`() {
+    fun `the tab is in the tab bar, under the id sqlite, with its view, and creating it opens nothing`() {
         val tab = SqliteDebugTab.create(listOf(SqliteDb.framework("app", database = unused), SqliteDb.file("cache", File("/data/cache.db"))))
 
         assertEquals("sqlite", tab.id)
-        assertFalse(tab.showInTabBar)
-        assertEquals("", tab.renderContent())
+        assertTrue(tab.showInTabBar)
+        assertTrue(tab.renderContent().contains("id=\"sqlite-root\""))
     }
 }
