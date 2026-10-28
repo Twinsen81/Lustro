@@ -704,8 +704,9 @@ val lustro = Lustro.builder(application)
 ## SQLite
 
 The SQLite plugin shows your app's SQLite and Room databases over the API: the tables and views,
-their schemas, and pages of rows, sorted and filtered. It is a pair of artifacts, split by
-variant as `lustro` is:
+their schemas, and pages of rows, sorted and filtered. It runs a client's own statements, read
+only, on every database, and changes the rows of the databases that you make writable. It is a
+pair of artifacts, split by variant as `lustro` is:
 
 ```toml
 lustro-sqlite      = { group = "io.github.twinsen81", name = "lustro-sqlite",      version.ref = "lustro" }
@@ -725,6 +726,7 @@ val lustro = Lustro.builder(application)
             databases = listOf(
                 SqliteDb.support(
                     "app",
+                    writable = true,
                     tableHints = mapOf("notes" to TableHint("NoteEntity", "A note that the user wrote.")),
                 ) { appDatabase.openHelper.writableDatabase },
                 SqliteDb.file("cache", application.getDatabasePath("cache.db")),
@@ -766,15 +768,30 @@ val lustro = Lustro.builder(application)
   database that the app opens with another copy of SQLite. Discovery is off by default.
 - **Hints and the writable flag.** `tableHints` gives a table the name of the class that maps it
   and one line on what a row is, for an agent that reads the database without your code.
-  `writable` says whether a client may change the database through the tab; the routes in this
-  version only read, and a file is never writable.
-- **Only the SQL that the tab builds.** A client names a database, a table, and a column, and the
-  tab checks each name against the database's schema before it puts it in a statement, as a
-  quoted identifier. A filter value is a bound parameter. A page of rows reads each cell by its
-  own type, as SQLite stores any type in any column: at most 4096 characters of a text, with the
-  whole length when it is cut, and only the size of a blob, also of a blob in a `TEXT` column. A
-  blob of megabytes does not fill a page or the memory. Each read stops when the request times
-  out (`DebugConfig.requestTimeoutMs`, 30 s by default).
+  `writable`, `false` by default, says whether a client may change the database through the tab.
+  A file is never writable.
+- **Browsing runs only the SQL that the tab builds.** A client names a database, a table, and a
+  column, and the tab checks each name against the database's schema before it puts it in a
+  statement, as a quoted identifier. A filter value is a bound parameter. A page of rows reads
+  each cell by its own type, as SQLite stores any type in any column: at most 4096 characters of
+  a text, with the whole length when it is cut, and only the size of a blob, also of a blob in a
+  `TEXT` column. A blob of megabytes does not fill a page or the memory. Each read stops when the
+  request times out (`DebugConfig.requestTimeoutMs`, 30 s by default).
+- **A client's statement reads through a read-only connection.** `POST query` runs it on a
+  connection that SQLite opens with `OPEN_READONLY` to the database's file, for one request, and
+  never on the app's handle, on which Android's `rawQuery` would run a `DELETE` too. SQLite
+  refuses every write there, for every database. A result has at most 1000 rows, with each text
+  whole. A database in memory, and a live handle on another copy of SQLite than the platform's,
+  such as SQLCipher's, take no `query`: browse them with `GET rows`. On a database that is not in
+  WAL mode, a statement stops after 2 s, because the app's writes wait for its lock, and Android
+  fails a write that waited 2.5 s.
+- **Writes are opt-in for each database.** `POST exec` runs a statement that writes, and
+  `POST edit` and `POST delete` change or delete one row by its rowid or primary key, through the
+  app's handle, in a transaction of their own, and only on a `writable` database: any other
+  answers 403. Both `query` and `exec` refuse the statements that would leave a transaction or a
+  setting on the app's connection (`BEGIN`, `SAVEPOINT`, and the other transaction statements,
+  `ATTACH`, `DETACH`, `VACUUM`, and, in `exec`, every `PRAGMA`). Room's observers see a change
+  that the tab makes at the app's next write through Room.
 - **Routes.** `GET /api/v1/sqlite/databases` lists the databases with their source, file, size,
   and schema version (`PRAGMA user_version`). `GET tables?db=` lists the tables and views, with
   the row count of each table, and flags the internal ones (`sqlite_*`, `android_metadata`,
@@ -782,13 +799,16 @@ val lustro = Lustro.builder(application)
   the columns, the foreign keys, the row count, the `CREATE` statement, and the hint.
   `GET rows?db=&table=` returns a page in the pagination envelope `{ items, nextCursor }`: 50 rows
   by default, `limit` up to 500, a `filter` text that any cell can contain, and a `sort` column
-  with `dir=asc|desc`. The `lustro` CLI reaches them with `lustro api`, for example
-  `lustro api GET sqlite/rows --param db=app --param table=notes --param sort=created_at --param dir=desc`.
+  with `dir=asc|desc`. `POST query` and `POST exec` take `{ db, sql }`, and `POST edit` and
+  `POST delete` take `{ db, table, rowid }` or `{ db, table, key }`, with `values` for an edit.
+  The `lustro` CLI reaches them with `lustro api`, for example
+  `lustro api GET sqlite/rows --param db=app --param table=notes --param sort=created_at --param dir=desc`
+  or `lustro api POST sqlite/query --body '{"db":"app","sql":"SELECT count(*) FROM notes"}'`.
   See [docs/AGENTS.md](docs/AGENTS.md#sqlite-tab-operations) and
   [`sqlite.openapi.json`](lustro-sqlite/src/main/assets/lustro/sqlite.openapi.json).
 - **No console view yet.** The tab serves its API and is not in the tab bar; `_meta` lists it.
-- **Every client with the token reads every registered database.** Register only the databases
-  that you want to show. See [SECURITY.md](SECURITY.md#sqlite-databases).
+- **Every client with the token reads every registered database, and writes every writable one.**
+  Register only the databases that you want to show. See [SECURITY.md](SECURITY.md#sqlite-databases).
 - In `lustro-sqlite-noop`, the tab opens no database and never calls the functions.
 
 ## Security model

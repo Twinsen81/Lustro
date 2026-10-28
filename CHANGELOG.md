@@ -14,6 +14,35 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Added
 
+- **The SQLite plugin runs a client's statements, read-only, and writes to the
+  databases that the app makes writable.** `POST query` takes `{ db, sql }`
+  and runs the statement on a connection that SQLite opens with
+  `OPEN_READONLY` to the database's file, for one request, never on the app's
+  handle, where Android's `rawQuery` would run a `DELETE` too. A write, also
+  inside a `WITH` or as `PRAGMA user_version(9)`, is a 403 with code
+  `read_only` and changes nothing. A result has at most 1000 rows, and fewer
+  when their texts pass 4 Mi characters, with `truncated`; a text comes whole,
+  and a blob is its size. A database in memory, and a live handle on another
+  copy of SQLite than the platform's, take no `query`. Out of WAL mode, a
+  statement stops after 2 s, because the app's writes wait for its lock and
+  Android fails a write that waited 2.5 s. `POST exec` runs a statement on the
+  app's handle and returns the rows that it changed; `POST edit` and
+  `POST delete` change or delete one row, by its rowid or by its primary key,
+  and only when exactly one row matches. The three run in a transaction of
+  their own, and answer 403 for a database that is not `writable`. Both
+  `query` and `exec` refuse `BEGIN`, `COMMIT`, `END`, `ROLLBACK`, `SAVEPOINT`,
+  `RELEASE`, `ATTACH`, `DETACH`, and `VACUUM`, also after comments and `;`, and
+  `exec` every `PRAGMA`, so that no request leaves a transaction or a setting on
+  the app's connection; `exec` also rolls back a statement that creates or
+  drops a `TEMP` object. Robolectric tests with native SQLite cover each of
+  these, a request through the server's worker threads, and an app write while
+  a query runs. The golden fixtures `sqlite-query.json` and `sqlite-exec.json`
+  are pinned to what the routes write. On an API 24 emulator, with SQLite
+  3.9.2, and on a physical device (API 37), `OPEN_READONLY` on the sample's
+  live WAL database works, each write through `query` answers 403 and changes
+  nothing, and the app made 184 and 194 writes in 10 s, the slowest in 15 ms
+  and 6 ms, while queries ran.
+
 - **The SQLite plugin: the app's SQLite and Room databases under
   `/api/v1/sqlite`, with a no-op half.** `:lustro-sqlite` adds a tab,
   `SqliteDebugTab.create(databases, discoverFrom)`, that reads the tables,
@@ -27,8 +56,7 @@ see [DECISIONS.md](DECISIONS.md).
   SQLite finds corruption is reported and left on disk, where the platform's
   default error handler would delete it. Each registration
   has `tableHints`, an entity name and a purpose for each table, and a
-  `writable` flag that the routes report; a file is never writable, and no
-  route writes yet. With `discoverFrom = context`, the tab also lists the other
+  `writable` flag; a file is never writable. With `discoverFrom = context`, the tab also lists the other
   SQLite files in the app's `databases` directory, on each request, without
   the files that a registration stands for, which it never opens, and asks
   the platform's SQLite whether a file is a database, so that no descriptor of

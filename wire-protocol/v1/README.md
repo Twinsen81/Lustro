@@ -177,13 +177,19 @@ with the core wire.
   `POST edit`, `POST delete`, and `POST clear` change a file and answer `403`
   with the code `read_only` for a read-only one.
 - **SQLite `1.0`** (`:lustro-sqlite`) - the app's SQLite and Room databases
-  under `/api/v1/sqlite/`, read only. `GET databases` lists them with their
+  under `/api/v1/sqlite/`. `GET databases` lists them with their
   source, file, size, and `schemaVersion`; `GET tables?db=` lists the tables
   and views, and flags the internal ones; `GET schema?db=&table=` gives the
   columns, foreign keys, and row count. `GET rows?db=&table=` returns a page in
   the pagination envelope, with `limit`, `filter`, `sort`, and `dir`; each cell
   is `{ type, ... }` by its own storage class, a text is cut at 4096
-  characters with its `length`, and a blob is only its `bytes`.
+  characters with its `length`, and a blob is only its `bytes`. `POST query`
+  runs a client's statement on a connection that SQLite opens read-only, and
+  returns `{ columns, rows, truncated }`. `POST exec`, `POST edit`, and
+  `POST delete` write through the app's handle, only to a `writable` database,
+  and answer `403` with the code `read_only` for any other. Both `query` and
+  `exec` refuse transaction statements, `ATTACH`, `DETACH`, and `VACUUM` with
+  the code `statement_refused`, and `exec` also every `PRAGMA`.
 
 ## Status
 

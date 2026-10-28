@@ -583,7 +583,8 @@ Base path `/api/v1/sqlite`, when the app registers the SQLite plugin
 (`SqliteDebugTab.create(databases, discoverFrom)`; without it, the routes are an enveloped
 `404 Unknown tab: sqlite`). The authoritative contract is
 `lustro-sqlite/src/main/assets/lustro/sqlite.openapi.json`, version `1.0`. The CLI has no
-`sqlite` commands: use `lustro api`. Every route only reads.
+`sqlite` commands: use `lustro api`. The `GET` routes and `POST query` only read. `POST exec`,
+`edit`, and `delete` write, and only to a database that `GET databases` lists as `writable`.
 
 | Operation | Route | Notes |
 | --- | --- | --- |
@@ -591,6 +592,10 @@ Base path `/api/v1/sqlite`, when the app registers the SQLite plugin
 | List the tables | `GET tables?db=` | `{ database, writable, items: [{ name, type, internal, hasRowId, rowCount, entity?, purpose?, error? }] }`, by name. `type` is `table` or `view`. A view has no `rowCount`: counting runs its query. `internal` flags `sqlite_*`, `android_metadata`, `room_master_table`, and the shadow tables of a full-text or R*Tree index. `entity` and `purpose` are the app's hint. |
 | Read a schema | `GET schema?db=&table=` | `{ database, table, type, internal, hasRowId, rowCount, sql, entity?, purpose?, columns: [{ name, type, notNull, defaultValue, primaryKey, generated }], foreignKeys: [{ table, from, to, onUpdate, onDelete }] }`. `primaryKey` is the column's place in the key, from 1, or 0. `generated` is `true` for a column that SQLite computes (`GENERATED ALWAYS AS`). A key over several columns has them in order in `from` and `to`; a `null` in `to` stands for the other table's primary key. |
 | Read rows | `GET rows?db=&table=&limit=&cursor=&filter=&sort=&dir=` | Pagination envelope `{ items, nextCursor }`. 50 rows by default, `limit` 1 to 500. Pass `nextCursor` as `cursor` for the next page; it is `null` on the last one. |
+| Run a statement that reads | `POST query` `{ db, sql }` | `{ database, columns, rows: [[cell]], truncated }`: a row is an array of cells in the order of `columns`, which can repeat a name. At most 1000 rows, and fewer when their texts pass 4 Mi characters in all; `truncated` says that rows were left out. A text comes whole; a blob is its size. |
+| Run a statement that writes | `POST exec` `{ db, sql }` | `{ status: "ok", changes }`: the rows that the statement inserted, updated, or deleted, without those of triggers and foreign key actions. Writable databases only. |
+| Change one row | `POST edit` `{ db, table, rowid \| key, values }` | `{ status: "ok" }`. `values` maps columns to a string, a number, or `null`. Writable databases only. |
+| Delete one row | `POST delete` `{ db, table, rowid \| key }` | `{ status: "ok" }`. Writable databases only. |
 
 **A row.** `{ rowid?, cells: { <column>: cell } }`, with a cell for each column of `GET schema`,
 in its order. `rowid` is a string, so that a JavaScript client keeps every digit; a view and a
@@ -610,11 +615,44 @@ contains the filter: `%` and `_` are plain characters, case does not matter for 
 and a blob never matches. A cursor holds a place in the rows: when the app adds or removes rows
 between two pages, the next page can repeat or skip a row.
 
-**What the tab runs.** Only statements that it builds: each `db`, `table`, and `sort` is checked
-against the database's schema and quoted, and the filter is a bound parameter. A `file` database
-is opened with `OPEN_READONLY` for one request and closed after it. `writable` is the app's
-choice for later write routes; no route writes in this version. Each read stops at the request
-timeout, and the client then gets a `504`.
+**What the GET routes run.** Only statements that the tab builds: each `db`, `table`, and `sort`
+is checked against the database's schema and quoted, and the filter is a bound parameter. A
+`file` database is opened with `OPEN_READONLY` for one request and closed after it. Each read
+stops at the request timeout, and the client then gets a `504`.
+
+**`POST query` is read-only for every database, and SQLite enforces it.** The statement runs on a
+connection that SQLite opens with `OPEN_READONLY` to the database's file, for this request only,
+never on the app's handle. A statement that writes, also one inside a `WITH`, or a pragma that
+sets a value such as `PRAGMA user_version(9)`, is a `403` with `code: "read_only"` and changes
+nothing. A pragma that reads works: `PRAGMA user_version`, `SELECT * FROM pragma_table_info('notes')`.
+A database in memory, and a live handle on another copy of SQLite (such as SQLCipher's), take no
+`query`: `400` with `code: "query_unavailable"`; read them with `GET rows`. Android's cursor steps
+through the whole result once to count it, so put a `LIMIT` on a statement over a large table. On
+a database that is not in WAL mode, a statement stops after 2 s (`504`, `code: "read_limit"`),
+because a longer read would make the app's writes fail with `SQLITE_BUSY`.
+
+**`POST exec`, `edit`, and `delete` write through the app's handle,** in a transaction of their
+own, and only to a database that the app registers with `writable = true`: any other answers
+`403` with `code: "read_only"` and `field: "db"`, whatever the rest of the body is. `exec` takes
+a statement that returns no rows; a `SELECT` is for `query`. `edit` and `delete` name one row by
+`rowid` (as `GET rows` gives it) or by `key`, an object with each primary key column of the table
+and its value; a table `WITHOUT ROWID` takes `key` only. The row must be the only one that
+matches: `404` when none does, `400` when more than one does. A value binds by its JSON type, and
+the column's type converts a text, so `"42"` in an `INTEGER` column is stored as 42; a blob is
+written with `exec` and a blob literal such as `x'00ff'`. A write that SQLite refuses, such as for
+a constraint, is rolled back. SQLite can't stop a write at the request timeout: it runs to its
+end and is then rolled back, so after a `504` nothing has changed. Room's observers, such as a
+`Flow` of a DAO, see the change at the app's next write through Room.
+
+**The statements that both routes refuse.** `BEGIN`, `COMMIT`, `END`, `ROLLBACK`, `SAVEPOINT`,
+`RELEASE`, `ATTACH`, `DETACH`, and `VACUUM`, and in `exec` also every `PRAGMA`: a transaction
+would stay open on a pooled request thread and block the app's writes, a pragma would change a
+setting of the app's connection, `ATTACH` changes the connection's databases, and `VACUUM INTO`
+writes a file. The tab finds the statement's first keyword past comments, white space, empty
+statements, and `EXPLAIN`, and answers `400` with `code: "statement_refused"`. `exec` also rolls
+back, with the same error, a statement that creates or drops a `TEMP` table, view, index, or
+trigger, which would stay on the app's connection. SQLite runs only the first statement of `sql`
+and ignores the rest: send one statement for each request.
 
 ## Common workflows
 
@@ -724,8 +762,21 @@ lustro api GET sqlite/rows --param db=app --param table=notes --param filter=inv
 ```
 
 Keep the same `sort`, `dir`, `filter`, and `limit` from page to page: a cursor is a place in one
-order. To read a text cell whole, or a blob's bytes, use `adb shell run-as <package>` with the
-database file that `GET databases` names as `path`.
+order. To read a text cell whole, use `POST query`. To read a blob's bytes, use
+`adb shell run-as <package>` with the database file that `GET databases` names as `path`.
+
+**Read with a statement of your own, and change a row**
+
+```bash
+lustro api POST sqlite/query --body '{"db":"app","sql":"SELECT folder_id, count(*) FROM notes GROUP BY folder_id"}'
+lustro api POST sqlite/query --body '{"db":"app","sql":"SELECT body FROM notes WHERE id = 42"}'   # the whole text
+lustro api POST sqlite/query --body '{"db":"app","sql":"PRAGMA index_list(notes)"}'
+lustro api POST sqlite/edit --body '{"db":"app","table":"notes","rowid":"42","values":{"title":"Renamed","score":null}}'
+lustro api POST sqlite/delete --body '{"db":"app","table":"note_tags","key":{"note_id":42,"tag":"old"}}'
+lustro api POST sqlite/exec --body '{"db":"app","sql":"UPDATE notes SET pinned = 0 WHERE pinned = 1"}'   # {"status":"ok","changes":3}
+```
+
+`query` reads every database; the three that write need a `writable` one.
 
 **Atomically sync a rule set** (declarative — the resulting set equals exactly what you post):
 
@@ -761,12 +812,23 @@ Errors use the shared envelope; key statuses:
   `table` that the database does not have, each with its `field`.
 - **`403 forbidden` with `code: "read_only"`** on `prefs/edit`, `delete`, or `clear`: the file is
   read-only. `GET prefs/files` says which files are, and the app decides it in
-  `PrefsDebugTab.create(...)`.
+  `PrefsDebugTab.create(...)`. On `sqlite/exec`, `edit`, or `delete`, with `field: "db"`: the
+  database is not writable (`GET sqlite/databases` says which are; the app decides it in
+  `SqliteDb`). On `sqlite/query`, with `field: "sql"`: SQLite refused a write, because `query`
+  only reads.
+- **`400 bad_request` on `sqlite/query` or `exec`:** `code: "statement_refused"` for a statement
+  that the tab does not run (see above); `code: "sqlite_error"` with SQLite's message for one that
+  SQLite can't run, such as a syntax error or a broken constraint; `code: "query_unavailable"` for
+  a database that has no file for `query` to open read-only; `code: "row_too_big"` for a row that
+  does not fit Android's cursor window, about 2 MB: read the value in parts with `substr()`.
+  **`504` with `code: "read_limit"`** on `query`: the database is not in WAL mode, and the
+  statement ran for 2 s.
 - **`500` with `code: "open_failed"`** on a `sqlite/` route: the database did not open. The
   message has the reason, such as a file that is not there yet, a handle that the app closed, or
   the exception of the app's function that returns the handle. `GET sqlite/databases` lists such a database with `error`.
-  **`500` with `code: "sqlite_error"`**: SQLite refused a statement, such as on a corrupt file or
-  a view whose table is gone; the message is SQLite's.
+  **`500` with `code: "sqlite_error"`**: SQLite refused a statement that the tab built, such as on
+  a corrupt file or a view whose table is gone, or a client's statement failed on the file or the
+  device; the message is SQLite's.
 - **No log lines**: check `state.reader` in `GET logs/entries`: `failed` with `readerError` when
   logcat could not run, `stopped` when Lustro is stopped, and `state.paused` when the capture is
   paused. Lines from other processes are never shown: the tab reads the app's own process only.
