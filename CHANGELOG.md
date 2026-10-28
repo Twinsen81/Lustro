@@ -33,8 +33,9 @@ see [DECISIONS.md](DECISIONS.md).
   `query` and `exec` refuse `BEGIN`, `COMMIT`, `END`, `ROLLBACK`, `SAVEPOINT`,
   `RELEASE`, `ATTACH`, `DETACH`, and `VACUUM`, also after comments and `;`, and
   `exec` every `PRAGMA`, so that no request leaves a transaction or a setting on
-  the app's connection; `exec` also rolls back a statement that creates or
-  drops a `TEMP` object. Robolectric tests with native SQLite cover each of
+  the app's connection; `query` refuses the pragmas that set a value for the
+  whole process, such as `hard_heap_limit`; `exec` also rolls back a statement
+  that creates or drops a `TEMP` object. Robolectric tests with native SQLite cover each of
   these, a request through the server's worker threads, and an app write while
   a query runs. The golden fixtures `sqlite-query.json` and `sqlite-exec.json`
   are pinned to what the routes write. On an API 24 emulator, with SQLite

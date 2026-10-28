@@ -239,13 +239,15 @@ database file in the app's `databases` directory, under `/api/v1/sqlite/`.
   database writable only when the clients may change it.
 - **No request leaves state on a connection that the app shares.** Both
   `query` and `exec` refuse `BEGIN`, `COMMIT`, `END`, `ROLLBACK`, `SAVEPOINT`,
-  `RELEASE`, `ATTACH`, `DETACH`, and `VACUUM` before they run, and `exec` every
-  `PRAGMA` too. A `BEGIN` would leave a transaction open on a pooled request
+  `RELEASE`, `ATTACH`, `DETACH`, and `VACUUM` before they run, `exec` every
+  `PRAGMA` too, and `query` the pragmas that set a value for every connection of
+  the process, such as `hard_heap_limit`, which would make the app's own
+  statements fail. A `BEGIN` would leave a transaction open on a pooled request
   thread, which blocks the app's writes; a pragma such as `query_only` or
   `foreign_keys` would change the app's connection; `ATTACH` changes its
   databases, and `ATTACH` and `VACUUM INTO` can create files. The check finds
-  the statement's first keyword past comments, white space, empty statements,
-  and `EXPLAIN`, as SQLite's tokenizer does; SQLite runs only the first
+  the statement's first keyword past comments, white space (a byte order mark
+  too), empty statements, and `EXPLAIN`, as SQLite's tokenizer does; SQLite runs only the first
   statement of a text. `exec` also rolls back a statement that creates or
   drops a `TEMP` object, which would stay on the app's connection. Each write
   runs in a transaction of its own, which ends before the request does.

@@ -641,15 +641,18 @@ matches: `404` when none does, `400` when more than one does. A value binds by i
 the column's type converts a text, so `"42"` in an `INTEGER` column is stored as 42; a blob is
 written with `exec` and a blob literal such as `x'00ff'`. A write that SQLite refuses, such as for
 a constraint, is rolled back. SQLite can't stop a write at the request timeout: it runs to its
-end and is then rolled back, so after a `504` nothing has changed. Room's observers, such as a
+end and is then rolled back. Only a timeout during the commit itself can leave the change
+committed, so read the data again after a `504` before you send a write again. Room's observers, such as a
 `Flow` of a DAO, see the change at the app's next write through Room.
 
 **The statements that both routes refuse.** `BEGIN`, `COMMIT`, `END`, `ROLLBACK`, `SAVEPOINT`,
-`RELEASE`, `ATTACH`, `DETACH`, and `VACUUM`, and in `exec` also every `PRAGMA`: a transaction
-would stay open on a pooled request thread and block the app's writes, a pragma would change a
-setting of the app's connection, `ATTACH` changes the connection's databases, and `VACUUM INTO`
-writes a file. The tab finds the statement's first keyword past comments, white space, empty
-statements, and `EXPLAIN`, and answers `400` with `code: "statement_refused"`. `exec` also rolls
+`RELEASE`, `ATTACH`, `DETACH`, and `VACUUM`, in `exec` also every `PRAGMA`, and in `query` the
+pragmas that set a value for the whole process (`hard_heap_limit`, `soft_heap_limit`,
+`temp_store_directory`, `data_store_directory`): a transaction would stay open on a pooled
+request thread and block the app's writes, a pragma would change a setting of the app's
+connection, or of every connection of the app, `ATTACH` changes the connection's databases, and
+`VACUUM INTO` writes a file. The tab finds the statement's first keyword past comments, white space (a byte order
+mark too, as SQLite reads it), empty statements, and `EXPLAIN`, and answers `400` with `code: "statement_refused"`. `exec` also rolls
 back, with the same error, a statement that creates or drops a `TEMP` table, view, index, or
 trigger, which would stay on the app's connection. SQLite runs only the first statement of `sql`
 and ignores the rest: send one statement for each request.

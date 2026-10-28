@@ -49,6 +49,32 @@ class SqliteStatementsTest {
     }
 
     @Test
+    fun `a byte order mark, which SQLite takes as white space, does not hide a keyword`() {
+        for (sql in listOf("\uFEFFBEGIN", "BEGIN\uFEFF", "\uFEFF\uFEFF;\uFEFFSAVEPOINT s", "EXPLAIN\uFEFFBEGIN", "/* x */\uFEFFATTACH 'x.db' AS x")) {
+            assertNotNull(sql, SqliteStatements.refusal(sql, exec = false))
+        }
+        assertNotNull(SqliteStatements.refusal("\uFEFFPRAGMA query_only = ON", exec = true))
+        assertFalse(SqliteStatements.hasStatement("\uFEFF ;\uFEFF"))
+    }
+
+    @Test
+    fun `query refuses the pragmas that set a value for every connection of the process, by any form of their name`() {
+        val global =
+            listOf(
+                "PRAGMA hard_heap_limit = 1", "pragma HARD_HEAP_LIMIT(1)", "PRAGMA main.hard_heap_limit = 1", "PRAGMA main . \"hard_heap_limit\" = 1",
+                "PRAGMA [soft_heap_limit] = 1", "PRAGMA `soft_heap_limit`(1)", "PRAGMA 'temp_store_directory' = '/x'", "PRAGMA /* x */ data_store_directory = '/x'",
+                "EXPLAIN PRAGMA hard_heap_limit = 1", "\uFEFFPRAGMA\uFEFFhard_heap_limit = 1", "PRAGMA hard_heap_limit",
+            )
+        for (sql in global) assertNotNull(sql, SqliteStatements.refusal(sql, exec = false))
+        // A name that the tab can't read is refused; SQLite would refuse it too.
+        assertNotNull(SqliteStatements.refusal("PRAGMA (1)", exec = false))
+        assertNotNull(SqliteStatements.refusal("PRAGMA \"open", exec = false))
+        for (sql in listOf("PRAGMA user_version", "PRAGMA table_info(notes)", "PRAGMA main.table_info('notes')", "PRAGMA \"index_list\"(notes)", "PRAGMA hard_heap_limit_x")) {
+            assertNull(sql, SqliteStatements.refusal(sql, exec = false))
+        }
+    }
+
+    @Test
     fun `the other statements go to SQLite, also those that only look like a refused one`() {
         val allowed =
             listOf(

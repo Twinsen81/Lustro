@@ -177,6 +177,26 @@ class SqliteConsoleTest {
     }
 
     @Test
+    fun `a query can't set the process's heap limit, which every connection of the app shares`() {
+        val response = query("PRAGMA main.\"hard_heap_limit\" = 1")
+
+        assertError(400, "statement_refused", response)
+        // A limit of 1 byte would make this write fail with SQLITE_NOMEM, as every later open of a connection.
+        live.execSQL("INSERT INTO notes (id, title, body) VALUES (4, 'after the pragma', ?)", arrayOf("x".repeat(100_000)))
+        assertEquals(4, count("notes"))
+    }
+
+    @Test
+    fun `a byte order mark before a refused statement does not let it run on the app's connection`() {
+        assertError(400, "statement_refused", exec("\uFEFFPRAGMA query_only = ON"))
+        assertError(400, "statement_refused", exec("BEGIN\uFEFF"))
+
+        assertFalse(live.inTransaction())
+        live.execSQL("INSERT INTO notes (id, title) VALUES (4, 'still writable')")
+        assertAppWritesOnAnotherThread()
+    }
+
+    @Test
     fun `PRAGMA query_only off in a query turns no write on, there or on the app's connection`() {
         assertEquals(200, query("PRAGMA query_only = OFF").status)
         assertEquals(200, query("PRAGMA query_only(1)").status)

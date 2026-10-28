@@ -11,8 +11,9 @@ internal class RowTarget(val table: Table, val where: String, val args: Array<An
 /**
  * The writes of `POST exec`, `edit`, and `delete`, on the app's own handle of a
  * writable database. Each runs in a transaction of its own, which commits only
- * while the runtime still waits for the request: a client that got a 504 knows
- * that nothing changed.
+ * while the runtime still waits for the request: SQLite can't stop a write at
+ * the timeout, so a statement that outlives it is rolled back when it ends. Only
+ * a timeout during the commit itself leaves the outcome to the commit.
  */
 internal class SqliteWriter(private val connection: LiveConnection, private val request: DebugRequest) {
     /**

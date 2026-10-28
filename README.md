@@ -790,7 +790,8 @@ val lustro = Lustro.builder(application)
   app's handle, in a transaction of their own, and only on a `writable` database: any other
   answers 403. Both `query` and `exec` refuse the statements that would leave a transaction or a
   setting on the app's connection (`BEGIN`, `SAVEPOINT`, and the other transaction statements,
-  `ATTACH`, `DETACH`, `VACUUM`, and, in `exec`, every `PRAGMA`). Room's observers see a change
+  `ATTACH`, `DETACH`, `VACUUM`, and, in `exec`, every `PRAGMA`), and `query` refuses the pragmas
+  that set a value for the whole process, such as `hard_heap_limit`. Room's observers see a change
   that the tab makes at the app's next write through Room.
 - **Routes.** `GET /api/v1/sqlite/databases` lists the databases with their source, file, size,
   and schema version (`PRAGMA user_version`). `GET tables?db=` lists the tables and views, with
