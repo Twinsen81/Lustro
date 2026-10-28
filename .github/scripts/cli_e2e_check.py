@@ -191,15 +191,20 @@ def _sqlite_route(route: str, text: str, method: str = "get") -> Dict[str, Any]:
 
 
 def check_sqlite_databases(text: str, rules: List[dict]) -> None:
-    """The two databases the sample registers come first, then the file that discovery finds."""
+    """The two databases the sample registers come first, then the files that discovery finds, by name:
+    the library-like file, and work-analytics' database once WorkManager has started."""
     items = _sqlite_route("databases", text)["items"]
     shapes = [(d["name"], d["registered"], d["source"], d["writable"], d["schemaVersion"]) for d in items]
-    expected = [
+    registered = [
         ("notes", True, "support", True, 3),
         ("catalog", True, "file", False, 1),
-        ("sample_sdk_cache.db", False, "file", False, 12),
     ]
-    expect(shapes == expected, "databases {}".format(shapes))
+    found = shapes[len(registered):]
+    expect(shapes[: len(registered)] == registered, "databases {}".format(shapes))
+    expect(("sample_sdk_cache.db", False, "file", False, 12) in found, "databases {}".format(shapes))
+    expect({name for name, *_ in found} <= {"sample_sdk_cache.db", "androidx.work.analytics.workmetricsdb"}, "databases {}".format(shapes))
+    expect([name for name, *_ in found] == sorted(name for name, *_ in found), "the found databases are not by name: {}".format(shapes))
+    expect(all(not registered_ and source == "file" and not writable for _, registered_, source, writable, _ in found), "databases {}".format(shapes))
 
 
 def check_sqlite_tables(text: str, rules: List[dict]) -> None:
