@@ -1,0 +1,208 @@
+/* SQLite tab. Builds on the tokens and .dc-* components from shared.css:
+   every color here is a token or a color-mix of one, so both themes work. */
+
+.sqlite { height: 100%; min-height: 0; display: flex; flex-direction: column; }
+.sqlite-split { flex: 1; min-height: 0; }
+
+/* Buttons that are list items, menu items, or a checkbox with its label: no native look.
+   :where() keeps the reset below the rules of the components, such as --active. */
+:where(.sqlite button.dc-listitem, .sqlite button.dc-menu__item, .sqlite button.dc-menu__head,
+       .sqlite button.sqlite-group, .sqlite button.sqlite-check, .sqlite button.sqlite-recent__item) {
+    width: 100%;
+    background: none;
+    border: none;
+    font-family: inherit;
+    text-align: left;
+    color: inherit;
+}
+
+/* A .dc-check with its label, such as Show internal and NULL. */
+.sqlite-check {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 24px;
+    padding: 0;
+    font-size: 11.5px;
+    color: var(--t3);
+    cursor: pointer;
+}
+.sqlite-check:hover { color: var(--t1); }
+.sqlite-check:disabled { color: var(--t5); cursor: not-allowed; }
+.sqlite-check:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-sm); }
+
+/* ── The sidebar: databases, then their tables ── */
+.sqlite-side { width: 320px; min-width: 220px; flex: none; background: var(--header); }
+.sqlite-side__head { flex: none; padding: 16px 18px 10px; }
+.sqlite-dbs { flex: none; max-height: 40%; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; padding: 0 10px 12px; border-bottom: 1px solid var(--border-soft); }
+.sqlite-db { flex-direction: column; align-items: stretch; gap: 4px; padding: 9px 11px; }
+.sqlite-db:focus-visible, .sqlite-table:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.sqlite-db__line { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.sqlite-db .dc-listitem__name { font-size: 12.5px; font-weight: 600; color: var(--t1); }
+.sqlite-db__meta { font-size: 11px; color: var(--t4); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sqlite-db--error { cursor: not-allowed; }
+.sqlite-db--error:hover { background: transparent; }
+.sqlite-db--error .dc-listitem__name { color: var(--t4); }
+.sqlite-db--error .sqlite-db__meta { color: var(--danger); white-space: normal; }
+
+/* The found databases: a group that opens. */
+.sqlite-group {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-height: 30px;
+    margin-top: 6px;
+    padding: 6px 4px;
+    font-size: 11px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--t3);
+    cursor: pointer;
+}
+.sqlite-group:hover { color: var(--t1); }
+.sqlite-group__caret { width: 10px; color: var(--t4); }
+.sqlite-group__items { display: flex; flex-direction: column; gap: 4px; padding-left: 12px; }
+
+.sqlite-side__tools { flex: none; display: flex; flex-direction: column; gap: 9px; padding: 12px 18px 10px; }
+.sqlite-search { min-width: 0; }
+.sqlite-search__icon { flex: none; color: var(--t4); }
+.sqlite-search__label { display: flex; align-items: center; cursor: text; }
+.sqlite-tables { flex: 1; min-height: 0; overflow-y: auto; padding: 0 10px 12px; }
+.sqlite-table .dc-listitem__name { font-size: 12px; }
+.sqlite-table--internal .dc-listitem__name { color: var(--t4); font-style: italic; }
+.sqlite-table.dc-listitem--active .dc-listitem__name { color: var(--t1); }
+.sqlite-table.dc-listitem--active .dc-listitem__count { color: var(--accent-2); }
+/* The pin: a 24px hit target that doesn't make the row taller. */
+.sqlite-star { min-width: 24px; min-height: 24px; margin: -6px -4px -6px -6px; padding: 0; background: none; border: none; font-family: var(--font-ui); }
+.sqlite-star:hover { color: var(--star); }
+.sqlite-star:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: var(--radius-sm); }
+.sqlite-side__empty { padding: 18px 8px; font-size: 12px; color: var(--t4); }
+
+/* ── The main pane ── */
+.sqlite-main { flex: 1; min-width: 360px; background: var(--bg); }
+.sqlite-main--none > :not(.sqlite-none) { display: none; }
+.sqlite-head {
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px 16px;
+    padding: 16px 22px 0;
+}
+.sqlite-head__title { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 10px; min-width: 0; }
+.sqlite-head__db { font-size: 13px; color: var(--t3); }
+.sqlite-head__table { margin: 0; font-size: 14px; font-weight: 600; color: var(--accent-2); overflow-wrap: anywhere; }
+.sqlite-head__facts { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.sqlite-head__count { margin-right: 4px; font-size: 12px; color: var(--t4); }
+.sqlite-head__hint { max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px; color: var(--t4); }
+
+/* ── The rows ── */
+.sqlite-rows { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+/* Above the grid, so that the Columns menu covers the rows. */
+.sqlite-bar { flex: none; position: relative; z-index: 20; display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 14px 22px 12px; }
+.sqlite-search--rows { flex: 1; min-width: 240px; }
+.sqlite-search__clear { min-width: 24px; min-height: 24px; margin: -5px 0; padding: 0 4px; font-size: 15px; line-height: 1; }
+.sqlite-bar .dc-btn { padding: 8px 13px; font-size: 11.5px; }
+.sqlite-menu { min-width: 220px; }
+.sqlite-menu__label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sqlite-menu__locked { color: var(--t4); cursor: not-allowed; }
+.sqlite-auto { display: flex; align-items: center; gap: 9px; }
+.sqlite-auto__label { font-size: 11.5px; color: var(--t3); cursor: pointer; white-space: nowrap; }
+
+.sqlite-paging { flex: none; display: flex; align-items: center; gap: 12px; padding: 0 22px 12px; }
+.sqlite-range { font-size: 11.5px; color: var(--t3); white-space: nowrap; }
+.sqlite-paging .dc-btn { min-height: 30px; }
+
+.sqlite-banner, .sqlite-error {
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--danger);
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+}
+.sqlite-banner { flex: none; padding: 9px 22px; background: var(--danger-soft); border-top: 1px solid var(--border-soft); }
+.sqlite-error { display: flex; flex-direction: column; gap: 6px; padding: 11px 14px; background: var(--danger-soft); border: 1px solid var(--danger-border); border-radius: var(--radius); }
+.sqlite-error__head { font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
+.sqlite-error .dc-comment { white-space: normal; }
+
+.sqlite-scroll { flex: 1; min-height: 0; overflow: auto; border-top: 1px solid var(--border); }
+.sqlite-empty, .sqlite-none { padding: 40px 22px; text-align: center; font-size: 12.5px; color: var(--t4); }
+.sqlite-none { flex: 1; }
+
+/* ── The grid: fixed column widths, which the user resizes ── */
+.sqlite-grid { table-layout: fixed; }
+.sqlite-grid--result { width: max-content; min-width: 100%; }
+/* .dc-th--sortable is a flex box, for div rows; in a <table>, a header stays a cell. */
+.sqlite-grid .dc-th { display: table-cell; position: sticky; vertical-align: middle; }
+.sqlite-th { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.sqlite-th__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; text-transform: none; letter-spacing: .02em; font-size: 11px; }
+.sqlite-th--rowid { color: var(--t5); }
+.sqlite-grid .dc-th:first-child, .sqlite-grid .dc-cell:first-child { padding-left: 22px; }
+.sqlite-grid .dc-th:last-child, .sqlite-grid .dc-cell:last-child { padding-right: 22px; }
+.sqlite-resize { position: absolute; top: 0; right: 0; width: 7px; height: 100%; cursor: col-resize; }
+.sqlite-resize:hover, .sqlite-resize--dragging { background: var(--accent-border); }
+.sqlite-row { cursor: pointer; }
+.sqlite-row:focus-within { background: var(--row-selected); }
+.sqlite-cell--cut .sqlite-tag--cut { margin-right: 7px; cursor: pointer; }
+.sqlite-cell--cut:hover .sqlite-tag--cut { border-color: var(--accent-border); }
+.sqlite-tag--blob { color: var(--t3); }
+.sqlite-th--actions, .sqlite-cell--actions { text-align: right; text-overflow: clip; }
+.sqlite-cell--actions { padding-top: 5px; padding-bottom: 5px; }
+
+/* ── The console ── */
+.sqlite-sql { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 18px; padding: 16px 22px 22px; overflow: auto; }
+.sqlite-sql__block { display: flex; flex-direction: column; gap: 8px; }
+.sqlite-sql__input { min-height: 104px; font-size: 13px; line-height: 1.6; }
+.sqlite-sql__actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.sqlite-sql__actions .dc-btn { padding: 8px 18px; font-size: 11.5px; }
+.sqlite-sql__hint { font-size: 11.5px; }
+
+.sqlite-recent { display: flex; flex-direction: column; gap: 5px; }
+.sqlite-recent__item {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    min-height: 32px;
+    padding: 7px 12px;
+    background: var(--field);
+    border: 1px solid var(--row-border);
+    border-radius: var(--radius);
+    cursor: pointer;
+}
+.sqlite-recent__item:hover { border-color: var(--chip-border); }
+.sqlite-recent__mark { color: var(--accent); font-size: 12px; }
+.sqlite-recent__sql { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--t2); }
+
+.sqlite-result { flex: 1; min-height: 0; }
+.sqlite-result__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.sqlite-result__status { font-size: 11.5px; color: var(--t4); }
+.sqlite-result__status--ok { color: var(--live); }
+.sqlite-result__status--error { color: var(--danger); }
+.sqlite-result__scroll { max-height: 60vh; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius); }
+.sqlite-result__scroll .dc-th:first-child, .sqlite-result__scroll .dc-cell:first-child { padding-left: 14px; }
+.sqlite-result__scroll .dc-th:last-child, .sqlite-result__scroll .dc-cell:last-child { padding-right: 14px; }
+.sqlite-grid--result .dc-cell { max-width: 420px; }
+.sqlite-grid--result [data-action="openResultCell"] { cursor: pointer; }
+.sqlite-note { font-size: 11.5px; line-height: 1.5; color: var(--t4); }
+.sqlite-note--warn { color: var(--lvl-w); }
+
+/* ── The dialogs ── */
+.sqlite-edit__where { font-size: 12.5px; color: var(--t1); overflow-wrap: anywhere; }
+.sqlite-edit__lock { font-size: 11.5px; line-height: 1.5; }
+.sqlite-fields { display: flex; flex-direction: column; gap: 14px; }
+.sqlite-field { display: flex; flex-direction: column; gap: 6px; }
+.sqlite-field__head { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; min-height: 24px; }
+.sqlite-field__name { font-size: 12px; font-weight: 600; color: var(--t1); overflow-wrap: anywhere; }
+.sqlite-field__type { font-size: 10.5px; letter-spacing: .06em; color: var(--t4); }
+.sqlite-field__tools { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+.sqlite-field__null { width: auto; font-size: 10.5px; letter-spacing: .06em; }
+.sqlite-field__input { font-size: 12.5px; }
+.sqlite-field__input:disabled { color: var(--t5); cursor: not-allowed; }
+.sqlite-field__input[readonly] { color: var(--t3); }
+textarea.sqlite-field__input { min-height: 64px; }
+.sqlite-field__note { font-size: 11.5px; line-height: 1.5; }
+
+.sqlite-value { min-height: 0; }
+.sqlite-value .dc-code { max-height: 60vh; margin: 0; overflow: auto; }
+.sqlite-confirm__message { margin: 0; font-size: 12.5px; line-height: 1.6; color: var(--t2); overflow-wrap: anywhere; }
