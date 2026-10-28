@@ -213,19 +213,58 @@ database file in the app's `databases` directory, under `/api/v1/sqlite/`.
   `adb shell run-as` reads the same files of a debuggable app. With
   `DebugConfig.bindAddress` set for LAN access, every client with the token can
   read them.
-- **The routes only read, and run only the SQL that the tab builds.** A client
+- **The routes that browse run only the SQL that the tab builds.** A client
   names a database, a table, and a column. The tab finds each name in the
   database's own schema before it puts it in a statement, as a quoted
   identifier, and a filter value is a bound parameter, so a request can't add
   SQL of its own. A database file, registered or discovered, is opened with
   `OPEN_READONLY` for one request, so the engine refuses a write there too, and
-  a file in which SQLite finds corruption is left on disk, not deleted. The
-  `writable` flag of a registration is reported only; no route of this version
-  writes.
+  a file in which SQLite finds corruption is left on disk, not deleted.
+- **`POST query` is read-only for every database, and SQLite enforces it, not
+  the API.** It runs a client's statement, and Android's `rawQuery` runs any
+  statement that it is given, a `DELETE` too. So the statement never runs on
+  the app's handle: the tab opens a connection with `OPEN_READONLY` to the
+  database's file for the request, and closes it after. A write, also one that
+  a statement classifier would read as a `SELECT`, such as
+  ``WITH `x(` AS (SELECT 1) DELETE FROM t``, fails there with `SQLITE_READONLY`,
+  and a pragma that the statement sets stays on that connection. A database in
+  memory, and a live handle on another copy of SQLite than the platform's,
+  take no `query`, because the tab's connection would not see that copy's
+  locks.
+- **Writes are opt-in for each database.** `POST exec`, `edit`, and `delete`
+  write through the app's handle, and only to a database that the app
+  registers with `writable = true`. Every other database answers `403` at the
+  route, before the statement is read. Every client with the token can change
+  a writable database: its rows, and its schema, `DROP TABLE` too. Make a
+  database writable only when the clients may change it.
+- **No request leaves state on a connection that the app shares.** Both
+  `query` and `exec` refuse `BEGIN`, `COMMIT`, `END`, `ROLLBACK`, `SAVEPOINT`,
+  `RELEASE`, `ATTACH`, `DETACH`, and `VACUUM` before they run, `exec` every
+  `PRAGMA` too, and `query` the pragmas that set a value for every connection of
+  the process, such as `hard_heap_limit`, which would make the app's own
+  statements fail. A `BEGIN` would leave a transaction open on a pooled request
+  thread, which blocks the app's writes; a pragma such as `query_only` or
+  `foreign_keys` would change the app's connection; `ATTACH` changes its
+  databases, and `ATTACH` and `VACUUM INTO` can create files. The check finds
+  the statement's first keyword past comments, white space (a byte order mark
+  too), empty statements, and `EXPLAIN`, as SQLite's tokenizer does; SQLite runs only the first
+  statement of a text. `exec` also rolls back a statement that creates or
+  drops a `TEMP` object, which would stay on the app's connection, but for a
+  `TEMP` trigger that SQLite drops or rewrites with its table. Each write runs
+  in a transaction of its own, which ends before the request does, and a write
+  that breaks a deferred foreign key is rolled back before its commit: a
+  failed commit would keep the transaction open on the app's connection, and
+  the app's later writes would never commit.
 - **A read is bounded.** A page has at most 500 rows, a text cell at most 4096
-  characters, and a blob only its size, and each read stops at the request's
-  timeout, so that a request can't hold a lock that the app waits for, or fill
-  the app's memory.
+  characters, and a blob only its size. A `query` result has at most 1000
+  rows, and fewer when their texts pass 4 Mi characters. Each read stops at
+  the request's timeout, so that a request can't hold a lock that the app
+  waits for, or fill the app's memory. Out of WAL mode, a reader's lock on a
+  connection of its own makes the app's writer wait, and Android's SQLite fails
+  a write that waited 2.5 s. So on a connection that the tab opens itself, for
+  every `query` and for the routes that browse a file database, a statement
+  there stops after 2 s. Through the app's own handle, a read waits in the
+  app's connection pool, which has no such time limit.
 
 An external review of the auth, CSP, and capture implementation is part of the
 work remaining before the first public release (`0.1.0`), alongside the

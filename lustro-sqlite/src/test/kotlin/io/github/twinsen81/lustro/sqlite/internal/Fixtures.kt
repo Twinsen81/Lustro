@@ -69,6 +69,10 @@ internal object Fixtures {
     fun get(routes: SqliteRoutes, path: String, vararg query: Pair<String, String>): DebugResponse =
         routes.handle(DebugRequest(path, "GET", query.associate { it.first to listOf(it.second) }))!!
 
+    fun post(routes: SqliteRoutes, path: String, body: JSONObject): DebugResponse = routes.handle(request(path, body))!!
+
+    fun request(path: String, body: JSONObject): DebugRequest = DebugRequest(path, "POST", body = body.toString().toByteArray())
+
     fun DebugResponse.json(): JSONObject = JSONObject(text())
 
     fun DebugResponse.text(): String = body.toString(Charsets.UTF_8)

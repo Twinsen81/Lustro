@@ -12,8 +12,10 @@ import io.github.twinsen81.lustro.Lustro
 import io.github.twinsen81.lustro.LustroStatus
 import io.github.twinsen81.lustro.sqlite.internal.Fixtures
 import java.io.File
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import org.json.JSONObject
 import org.junit.After
@@ -106,6 +108,37 @@ class SqliteDebugTabServerTest {
     }
 
     @Test
+    fun `query only reads, exec and the row edits write the writable database, and no worker thread keeps a transaction`() {
+        val delete = post("query", JSONObject().put("db", "app").put("sql", "DELETE FROM notes"))
+        assertEquals(403, delete.code)
+        assertEquals("read_only", JSONObject(delete.body!!.string()).getString("code"))
+        val read = JSONObject(post("query", JSONObject().put("db", "app").put("sql", "SELECT count(*) FROM notes")).body!!.string())
+        assertEquals(3, read.getJSONArray("rows").getJSONArray(0).getJSONObject(0).getInt("value"))
+        // Each request runs on a worker thread of the server's pool; a BEGIN would stay open on one.
+        repeat(4) {
+            for (sql in listOf("BEGIN", "/* x */ BEGIN IMMEDIATE", ";SAVEPOINT s")) {
+                assertEquals(400, post("exec", JSONObject().put("db", "app").put("sql", sql)).code)
+                assertEquals(400, post("query", JSONObject().put("db", "app").put("sql", sql)).code)
+            }
+        }
+        assertEquals(403, post("exec", JSONObject().put("db", "library.db").put("sql", "DELETE FROM notes")).code)
+
+        val exec = JSONObject(post("exec", JSONObject().put("db", "app").put("sql", "UPDATE notes SET title = 'exec' WHERE id = 1")).body!!.string())
+        assertEquals(1, exec.getInt("changes"))
+        assertEquals(200, post("edit", JSONObject().put("db", "app").put("table", "notes").put("rowid", "2").put("values", JSONObject().put("title", "edit"))).code)
+        assertEquals(200, post("delete", JSONObject().put("db", "app").put("table", "notes").put("rowid", "3")).code)
+
+        val writer = Thread { db.execSQL("INSERT INTO notes (id, title) VALUES (4, 'from the app')") }
+        writer.start()
+        writer.join(5_000)
+        assertFalse("the app's write waited for a transaction that a request left open", writer.isAlive)
+        val titles = db.rawQuery("SELECT title FROM notes ORDER BY id", null).use { c -> buildList { while (c.moveToNext()) add(c.getString(0)) } }
+        assertEquals(listOf("exec", "edit", "from the app"), titles)
+        // A GET can't write: the routes that write take POST only.
+        assertEquals(405, get("exec?db=app&sql=DELETE%20FROM%20notes").code)
+    }
+
+    @Test
     fun `a request without the token gets the enveloped 401`() {
         val response = http.newCall(Request.Builder().url("$base/databases").build()).execute()
         response.use {
@@ -120,6 +153,7 @@ class SqliteDebugTabServerTest {
         assertEquals(200, schema.code)
         val paths = JSONObject(schema.body!!.string()).getJSONObject("paths")
         assertTrue(paths.has("/api/v1/sqlite/rows"))
+        assertTrue(paths.has("/api/v1/sqlite/query"))
 
         val meta = http.newCall(Request.Builder().url("$root/api/v1/_meta").header("Authorization", "Bearer $TOKEN").build()).execute()
         assertTrue(meta.body!!.string().contains("\"sqlite\""))
@@ -129,6 +163,15 @@ class SqliteDebugTabServerTest {
 
     private fun get(path: String): Response =
         http.newCall(Request.Builder().url("$base/$path").header("Authorization", "Bearer $TOKEN").build()).execute()
+
+    private fun post(path: String, body: JSONObject): Response =
+        http.newCall(
+            Request.Builder()
+                .url("$base/$path")
+                .header("Authorization", "Bearer $TOKEN")
+                .post(body.toString().toRequestBody("application/json".toMediaType()))
+                .build(),
+        ).execute()
 
     private companion object {
         const val TOKEN = "test-token-0123456789"

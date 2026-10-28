@@ -44,6 +44,8 @@ with no source checkout required.
 | `sqlite-tables.json` | `GET sqlite/tables?db=app` | SQLite OpenAPI `listSqliteTables` 200 |
 | `sqlite-schema.json` | `GET sqlite/schema?db=app&table=notes` | SQLite OpenAPI `SqliteSchema` |
 | `sqlite-rows.json` | `GET sqlite/rows?db=app&table=notes&limit=3&dir=desc` | `pagination.schema.json` + SQLite OpenAPI `SqliteRowsPage` |
+| `sqlite-query.json` | `POST sqlite/query` with a `SELECT` on `app` | SQLite OpenAPI `SqliteQueryResult` |
+| `sqlite-exec.json` | `POST sqlite/exec` with an `UPDATE` on `app` | SQLite OpenAPI `SqliteExecResult` |
 
 ## Notes on the shapes
 
@@ -131,8 +133,13 @@ with no source checkout required.
   page of `notes` in descending order, with 3 rows and a `nextCursor`: a rowid
   beyond 2^53 - 1, which is a string in a cell too, a blob in the `TEXT` column
   `body`, a text cut at 4096 characters with its length, and a blob read by its
-  size. The paths and the sizes model a device. A unit test in `:lustro-sqlite`
-  checks that the routes write these fixtures, except the paths and the sizes.
+  size. `sqlite-query.json` is the result of
+  `SELECT id, title, attachment, score, length(body) AS body_chars FROM notes ORDER BY id DESC`:
+  each row an array of cells in the order of `columns`, a blob by its size, and
+  `truncated` false. `sqlite-exec.json` is the result of
+  `UPDATE notes SET score = 5 WHERE folder_id = 1`, which changed 2 rows. The
+  paths and the sizes model a device. A unit test in `:lustro-sqlite` checks
+  that the routes write these fixtures, except the paths and the sizes.
 
 When the server's emitted shapes change, update these fixtures in the same
 change that bumps the protocol version, and keep the schema validation green.
