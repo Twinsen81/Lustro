@@ -178,7 +178,7 @@ class SqliteRoutesTest {
         assertError(404, "table", Fixtures.get(routes, "schema", "db" to "app", "table" to "nope"))
         assertError(404, "table", Fixtures.get(routes, "rows", "db" to "app", "table" to "nope"))
         assertEquals(405, routes.handle(DebugRequest("rows", "POST"))!!.status)
-        assertNull(routes.handle(DebugRequest("query", "POST")))
+        assertNull(routes.handle(DebugRequest("import", "POST")))
     }
 
     @Test

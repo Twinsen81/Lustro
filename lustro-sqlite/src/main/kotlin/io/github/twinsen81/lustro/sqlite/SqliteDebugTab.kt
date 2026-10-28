@@ -34,16 +34,25 @@ import java.io.File
  * `databases` directory, such as those of its libraries. It opens a discovered
  * file read-only for each request, as a [SqliteDb.file] database.
  *
- * The tab runs only the SQL that it builds itself: a client names a database, a
- * table, and a column, and the tab checks each name against the database's
- * schema before it puts it in a statement, as a quoted identifier. A filter
- * value is a bound parameter. A page of rows holds at most 4096 characters of a
- * text value, with its length, and only the size of a blob, so a large cell
- * does not fill the memory or the response. Each read stops when the request
- * times out.
+ * The routes that browse run only the SQL that the tab builds itself: a client
+ * names a database, a table, and a column, and the tab checks each name against
+ * the database's schema before it puts it in a statement, as a quoted
+ * identifier. A filter value is a bound parameter. A page of rows holds at most
+ * 4096 characters of a text value, with its length, and only the size of a
+ * blob, so a large cell does not fill the memory or the response. Each read
+ * stops when the request times out.
  *
- * Every client that has the token can read every registered database: register
- * only the databases that you want to show.
+ * `POST query` runs a client's statement on a connection that SQLite opens
+ * read-only to the database's file, for one request, so SQLite refuses every
+ * write. `POST exec`, `edit`, and `delete` write through the app's handle, only
+ * to a [writable][SqliteDb.writable] database. Neither route runs a statement
+ * that would leave a transaction or a setting on a connection: `BEGIN`,
+ * `SAVEPOINT`, and the other transaction statements, `ATTACH`, `DETACH`, and
+ * `VACUUM`, and in `exec` also every `PRAGMA`.
+ *
+ * Every client that has the token can read every registered database, and write
+ * every writable one: register only the databases that you want to show, and
+ * make writable only those that a client may change.
  *
  * The tab has no console view yet: it serves its API, and stays out of the tab
  * bar. `GET /api/v1/sqlite/_schema` describes its routes.

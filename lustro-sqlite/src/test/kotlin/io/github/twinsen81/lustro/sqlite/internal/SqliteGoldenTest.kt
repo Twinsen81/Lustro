@@ -48,7 +48,7 @@ class SqliteGoldenTest {
     }
 
     @Test
-    fun `the golden databases, tables, schema, and rows fixtures are what the routes write`() {
+    fun `the golden databases, tables, schema, rows, query, and exec fixtures are what the routes write`() {
         Fixtures.file(databases, "sdk_cache.db", notes = 0)
         val catalog = File(databases, "catalog.db")
         Fixtures.file(databases, catalog.name, notes = 0)
@@ -67,6 +67,8 @@ class SqliteGoldenTest {
         assertGolden(TABLES, Fixtures.get(routes, "tables", "db" to "app").text())
         assertGolden(SCHEMA, Fixtures.get(routes, "schema", "db" to "app", "table" to "notes").text())
         assertGolden(ROWS, Fixtures.get(routes, "rows", "db" to "app", "table" to "notes", "limit" to "3", "dir" to "desc").text())
+        assertGolden(QUERY, Fixtures.post(routes, "query", JSONObject().put("db", "app").put("sql", QUERY_SQL)).text())
+        assertGolden(EXEC, Fixtures.post(routes, "exec", JSONObject().put("db", "app").put("sql", EXEC_SQL)).text())
     }
 
     private fun createApp(db: SupportSQLiteDatabase) {
@@ -117,5 +119,10 @@ class SqliteGoldenTest {
         const val TABLES = "../wire-protocol/v1/golden/sqlite-tables.json"
         const val SCHEMA = "../wire-protocol/v1/golden/sqlite-schema.json"
         const val ROWS = "../wire-protocol/v1/golden/sqlite-rows.json"
+        const val QUERY = "../wire-protocol/v1/golden/sqlite-query.json"
+        const val EXEC = "../wire-protocol/v1/golden/sqlite-exec.json"
+
+        const val QUERY_SQL = "SELECT id, title, attachment, score, length(body) AS body_chars FROM notes ORDER BY id DESC"
+        const val EXEC_SQL = "UPDATE notes SET score = 5 WHERE folder_id = 1"
     }
 }

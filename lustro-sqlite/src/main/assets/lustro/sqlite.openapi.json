@@ -3,7 +3,7 @@
   "info": {
     "title": "Lustro SQLite debug tab",
     "version": "1.0",
-    "description": "The app's SQLite and Room databases: the ones that the app registers, and, when the app turns discovery on, the other database files in its databases directory. A registered database is the app's own open handle, a framework SQLiteDatabase or an androidx SupportSQLiteDatabase such as Room's, or a file that the tab opens read-only for each request; a discovered file is opened the same way. The routes here only read, and run only SQL that the tab builds: each database, table, and column that a client names is checked against the database's schema and quoted as an identifier, and a filter value is a bound parameter. A page of rows holds each cell with its storage class: at most 4096 characters of a text, with the whole length when it is cut, and only the size of a blob. Each read stops when the request times out, and the client then gets a 504. All routes are token-authenticated (Bearer header or HttpOnly cookie) and live under /api/v1/sqlite. Errors use the shared error envelope; a statement that SQLite refuses, such as one on a corrupt file, is a 500 with code sqlite_error and SQLite's message."
+    "description": "The app's SQLite and Room databases: the ones that the app registers, and, when the app turns discovery on, the other database files in its databases directory. A registered database is the app's own open handle, a framework SQLiteDatabase or an androidx SupportSQLiteDatabase such as Room's, or a file that the tab opens read-only for each request; a discovered file is opened the same way. The GET routes run only SQL that the tab builds: each database, table, and column that a client names is checked against the database's schema and quoted as an identifier, and a filter value is a bound parameter. A page of rows holds each cell with its storage class: at most 4096 characters of a text, with the whole length when it is cut, and only the size of a blob. POST query runs a client's statement on a connection that SQLite opens read-only for the request, so SQLite refuses every write. POST exec, edit, and delete write through the app's handle, only to a database that the app registers with writable = true, and answer 403 with code read_only for any other. Both query and exec refuse BEGIN, COMMIT, END, ROLLBACK, SAVEPOINT, RELEASE, ATTACH, DETACH, and VACUUM before they run, and exec also refuses every PRAGMA. Each read stops when the request times out, and the client then gets a 504. All routes are token-authenticated (Bearer header or HttpOnly cookie) and live under /api/v1/sqlite. Errors use the shared error envelope; a statement that SQLite refuses in a GET route, such as one on a corrupt file, is a 500 with code sqlite_error and SQLite's message."
   },
   "servers": [
     {
@@ -317,6 +317,325 @@
           }
         }
       }
+    },
+    "/api/v1/sqlite/query": {
+      "post": {
+        "operationId": "runSqliteQuery",
+        "summary": "Run a statement read-only.",
+        "description": "Runs a client's statement on a connection that SQLite opens read-only to the database's file, for this request only; never on the app's handle, on which any statement, a DELETE too, could write. SQLite refuses every write there, so a statement that writes is a 403 with code read_only and field sql, and changes nothing. A pragma that only reads, such as PRAGMA user_version, works; a pragma that changes a setting changes it only on that connection, which is closed after the request. BEGIN, COMMIT, END, ROLLBACK, SAVEPOINT, RELEASE, ATTACH, DETACH, and VACUUM are refused before they run, also after comments, white space, empty statements, and EXPLAIN: 400 with code statement_refused and field sql. A database in memory has no file, and a live handle on another copy of SQLite than the platform's, such as SQLCipher's, would not share its locks with the tab's connection: both are a 400 with code query_unavailable and field db; read them with GET rows. A result has at most 1000 rows, and fewer when its texts pass 4 Mi characters in all; truncated says that rows were left out. A text comes whole, and a blob is only its size. Android's cursor steps through the whole result once, to count it, so a statement over a large table should have a LIMIT. A row that does not fit Android's cursor window, about 2 MB, is a 400 with code row_too_big. A statement that SQLite can't run is a 400 with code sqlite_error and SQLite's message; one that fails on the file or the device, such as a corrupt file, a 500 with that code. A statement stops at the request's timeout, with a 504. On a database that is not in WAL mode, a read holds a lock that the app's writes wait for, and Android's SQLite gives up a write after 2.5 s: there a statement stops after 2 s, with a 504 with code read_limit and field sql.",
+        "requestBody": {
+          "required": true,
+          "description": "The database and the statement.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "db",
+                  "sql"
+                ],
+                "properties": {
+                  "db": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "The database's name, as GET databases lists it. 400 with field db when it is missing; 404 with field db when there is no database of this name; 500 with code open_failed and field db when the database does not open."
+                  },
+                  "sql": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "One statement. SQLite runs only the first statement of the text and ignores the rest. 400 with field sql when it is missing, or has only white space and comments."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SqliteQueryResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          },
+          "504": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/sqlite/exec": {
+      "post": {
+        "operationId": "execSqliteStatement",
+        "summary": "Run a statement that writes.",
+        "description": "Runs a client's statement through the app's handle of a writable database, in a transaction of its own that takes the write lock, and commits it. The statement must return no rows: a SELECT is for POST query. The statements that query refuses are refused here too, and every PRAGMA also, because a pragma can change a setting of the app's connection, such as foreign_keys or query_only: 400 with code statement_refused and field sql. A statement that creates or drops a TEMP table, view, index, or trigger, which would stay on the app's connection, is rolled back, with the same error. A statement that SQLite refuses, such as one that breaks a constraint, is rolled back: 400 with code sqlite_error and SQLite's message. SQLite can't stop a write at the request's timeout: the statement runs to its end and is then rolled back, so a client that got a 504 knows that nothing changed. Room's observers see the change at the app's next write through Room.",
+        "requestBody": {
+          "required": true,
+          "description": "The database and the statement.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "db",
+                  "sql"
+                ],
+                "properties": {
+                  "db": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "The database's name, as GET databases lists it. 400 with field db when it is missing; 404 with field db when there is no database of this name; 500 with code open_failed and field db when the database does not open. 403 with code read_only and field db when the database is not writable, whatever the rest of the body is."
+                  },
+                  "sql": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "One statement. SQLite runs only the first statement of the text and ignores the rest. 400 with field sql when it is missing, or has only white space and comments."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Committed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SqliteExecResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          },
+          "504": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/sqlite/edit": {
+      "post": {
+        "operationId": "editSqliteRow",
+        "summary": "Change one row.",
+        "description": "Sets the values of one row of a table, through the app's handle of a writable database, in a transaction of its own. 400 with field values when values is missing or empty, names a column that the table does not have or a generated one, or has a value that is not a string, a number, or null. The row must be the only one with its rowid or key: 404 with the field rowid or key when no row has it, and 400 with that field when more than one row has it, which a NULL in a primary key column allows. The change is rolled back when SQLite refuses it, such as for a constraint: 400 with code sqlite_error. The tab finds each name in the table's schema and binds each value, as in the GET routes.",
+        "requestBody": {
+          "required": true,
+          "description": "The row, and the values to set.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "db",
+                  "table",
+                  "values"
+                ],
+                "properties": {
+                  "db": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "The database's name, as GET databases lists it. 400 with field db when it is missing; 404 with field db when there is no database of this name; 500 with code open_failed and field db when the database does not open. 403 with code read_only and field db when the database is not writable, whatever the rest of the body is."
+                  },
+                  "table": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "The table's name, as GET tables lists it. A name in another case finds it too, as in SQL. 400 with field table when it is missing, or names a view; 404 with field table when the database has no table of this name."
+                  },
+                  "rowid": {
+                    "type": [
+                      "string",
+                      "integer"
+                    ],
+                    "pattern": "^-?[0-9]+$",
+                    "description": "The row's rowid, as GET rows gives it. Name the row by rowid or by key, not both. 400 with field rowid when it is not a whole number, when the table has no rowid (WITHOUT ROWID), and when the body has neither rowid nor key."
+                  },
+                  "key": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "$ref": "#/components/schemas/SqliteValue"
+                    },
+                    "description": "The row's primary key: each column of the key, and only those, with its value. A text value matches a number in a column with a numeric type. 400 with field key when the columns are not those of the primary key, or the table has none."
+                  },
+                  "values": {
+                    "type": "object",
+                    "minProperties": 1,
+                    "additionalProperties": {
+                      "$ref": "#/components/schemas/SqliteValue"
+                    },
+                    "description": "Each column to set, by its name as GET schema gives it, with its value."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Committed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SqliteWriteOk"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          },
+          "504": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/sqlite/delete": {
+      "post": {
+        "operationId": "deleteSqliteRow",
+        "summary": "Delete one row.",
+        "description": "Deletes one row of a table, through the app's handle of a writable database, in a transaction of its own. The row must be the only one with its rowid or key: 404 with the field rowid or key when no row has it, and 400 with that field when more than one row has it, which a NULL in a primary key column allows. The change is rolled back when SQLite refuses it, such as for a constraint: 400 with code sqlite_error. The tab finds each name in the table's schema and binds each value, as in the GET routes.",
+        "requestBody": {
+          "required": true,
+          "description": "The row.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "db",
+                  "table"
+                ],
+                "properties": {
+                  "db": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "The database's name, as GET databases lists it. 400 with field db when it is missing; 404 with field db when there is no database of this name; 500 with code open_failed and field db when the database does not open. 403 with code read_only and field db when the database is not writable, whatever the rest of the body is."
+                  },
+                  "table": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "The table's name, as GET tables lists it. A name in another case finds it too, as in SQL. 400 with field table when it is missing, or names a view; 404 with field table when the database has no table of this name."
+                  },
+                  "rowid": {
+                    "type": [
+                      "string",
+                      "integer"
+                    ],
+                    "pattern": "^-?[0-9]+$",
+                    "description": "The row's rowid, as GET rows gives it. Name the row by rowid or by key, not both. 400 with field rowid when it is not a whole number, when the table has no rowid (WITHOUT ROWID), and when the body has neither rowid nor key."
+                  },
+                  "key": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "$ref": "#/components/schemas/SqliteValue"
+                    },
+                    "description": "The row's primary key: each column of the key, and only those, with its value. A text value matches a number in a column with a numeric type. 400 with field key when the columns are not those of the primary key, or the table has none."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Committed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SqliteWriteOk"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          },
+          "504": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -392,7 +711,7 @@
           },
           "writable": {
             "type": "boolean",
-            "description": "Whether the app lets a client change the database through the tab. The routes here never write. Always false for a file."
+            "description": "Whether the app lets a client change the database through the tab: POST exec, edit, and delete answer 403 for a database that is not writable. Always false for a file."
           },
           "path": {
             "type": [
@@ -765,6 +1084,81 @@
               "null"
             ],
             "description": "The cursor of the next page, or null when this is the last."
+          }
+        },
+        "additionalProperties": false
+      },
+      "SqliteValue": {
+        "type": [
+          "string",
+          "number",
+          "null"
+        ],
+        "description": "A value to bind. A string binds as a text, which the column's type can turn into a number, such as \"42\" in an INTEGER column; a whole number as an integer; another number as a real; null as NULL. A blob is written with POST exec, as a blob literal such as x'00ff'."
+      },
+      "SqliteQueryResult": {
+        "type": "object",
+        "required": [
+          "database",
+          "columns",
+          "rows",
+          "truncated"
+        ],
+        "properties": {
+          "database": {
+            "type": "string"
+          },
+          "columns": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The result's columns, in order. Two can have the same name."
+          },
+          "rows": {
+            "type": "array",
+            "maxItems": 1000,
+            "items": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/SqliteCell"
+              },
+              "description": "A cell for each column, in the order of columns."
+            }
+          },
+          "truncated": {
+            "type": "boolean",
+            "description": "Whether the result had more rows than rows holds."
+          }
+        },
+        "additionalProperties": false
+      },
+      "SqliteExecResult": {
+        "type": "object",
+        "required": [
+          "status",
+          "changes"
+        ],
+        "properties": {
+          "status": {
+            "const": "ok"
+          },
+          "changes": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many rows the statement inserted, updated, or deleted, without the rows of triggers and of foreign key actions; 0 for a statement that changes no row, such as CREATE TABLE."
+          }
+        },
+        "additionalProperties": false
+      },
+      "SqliteWriteOk": {
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "const": "ok"
           }
         },
         "additionalProperties": false

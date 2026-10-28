@@ -21,9 +21,11 @@ import java.io.File
  * closes it after.
  *
  * @property name the database's name in the API. The routes take it as `db`.
- * @property writable whether a client may change the database through the tab.
- *   The tab reports it in `GET databases` and `GET tables`; the read routes
- *   never write. A [file] database is never writable.
+ * @property writable whether a client may change the database through the tab,
+ *   with `POST exec`, `edit`, and `delete`, which write through the app's handle.
+ *   They answer 403 for a database that is not writable. `POST query` reads
+ *   every database, through a connection that SQLite opens read-only. A [file]
+ *   database is never writable.
  */
 public class SqliteDb private constructor(
     public val name: String,

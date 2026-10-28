@@ -3,6 +3,7 @@ package io.github.twinsen81.lustro.sqlite.internal
 import android.database.Cursor
 import android.database.DatabaseErrorHandler
 import android.database.sqlite.SQLiteDatabase
+import android.database.sqlite.SQLiteProgram
 import android.os.CancellationSignal
 import androidx.sqlite.db.SimpleSQLiteQuery
 import androidx.sqlite.db.SupportSQLiteDatabase
@@ -31,6 +32,34 @@ internal interface DbConnection : Closeable {
 
     /** Runs [sql] with [args] bound to its parameters, as text. [signal] stops the statement. */
     fun query(sql: String, args: Array<String>, signal: CancellationSignal): Cursor
+
+    /**
+     * Whether the connection runs on the platform's SQLite, with which the tab opens its own
+     * connections. Two copies of SQLite in one process do not see each other's locks.
+     */
+    fun platformSqlite(): Boolean
+}
+
+/**
+ * The app's own handle, through which the tab writes. Each method runs on the
+ * connection that the calling thread holds in [transaction].
+ */
+internal interface LiveConnection : DbConnection {
+    /**
+     * Runs [block] in a transaction that takes the write lock (`BEGIN IMMEDIATE`), and
+     * commits when it returns, or rolls back when it throws.
+     */
+    fun <T> transaction(block: () -> T): T
+
+    /** Runs [sql], which returns no rows, with [args] bound to its parameters by their own types. */
+    fun execute(sql: String, args: Array<Any?> = NO_ARGS)
+
+    /** The first column of the first row of [sql], with [args] bound by their own types. */
+    fun long(sql: String, args: Array<Any?> = NO_ARGS): Long
+
+    companion object {
+        val NO_ARGS: Array<Any?> = emptyArray()
+    }
 }
 
 internal class FrameworkSource(private val database: () -> SQLiteDatabase) : DbSource() {
@@ -38,10 +67,29 @@ internal class FrameworkSource(private val database: () -> SQLiteDatabase) : DbS
 
     override fun open(): DbConnection = Live(database().also { check(it.isOpen) { CLOSED } })
 
-    private class Live(private val db: SQLiteDatabase) : DbConnection {
+    private class Live(private val db: SQLiteDatabase) : LiveConnection {
         override val path: String? get() = filePath(db.path)
 
         override fun query(sql: String, args: Array<String>, signal: CancellationSignal): Cursor = db.rawQuery(sql, args, signal)
+
+        override fun platformSqlite(): Boolean = true
+
+        override fun <T> transaction(block: () -> T): T {
+            db.beginTransactionNonExclusive()
+            try {
+                return block().also { db.setTransactionSuccessful() }
+            } finally {
+                db.endTransaction()
+            }
+        }
+
+        override fun execute(sql: String, args: Array<Any?>) = db.execSQL(sql, args)
+
+        override fun long(sql: String, args: Array<Any?>): Long =
+            db.compileStatement(sql).use { statement ->
+                bind(statement, args)
+                statement.simpleQueryForLong()
+            }
 
         // The app's handle: the app closes it.
         override fun close() = Unit
@@ -53,14 +101,47 @@ internal class SupportSource(private val database: () -> SupportSQLiteDatabase) 
 
     override fun open(): DbConnection = Live(database().also { check(it.isOpen) { CLOSED } })
 
-    private class Live(private val db: SupportSQLiteDatabase) : DbConnection {
+    private class Live(private val db: SupportSQLiteDatabase) : LiveConnection {
         override val path: String? get() = filePath(db.path)
 
         override fun query(sql: String, args: Array<String>, signal: CancellationSignal): Cursor =
             db.query(SimpleSQLiteQuery(sql, Array<Any?>(args.size) { args[it] }), signal)
 
+        // A SupportSQLiteDatabase can be the platform's, through androidx or a wrapper of Room's, or
+        // another copy of SQLite, such as SQLCipher's. The two answer these the same way only when
+        // they are the same build.
+        override fun platformSqlite(): Boolean = fingerprint { db.query(it) } == PLATFORM_FINGERPRINT
+
+        override fun <T> transaction(block: () -> T): T {
+            db.beginTransactionNonExclusive()
+            try {
+                return block().also { db.setTransactionSuccessful() }
+            } finally {
+                db.endTransaction()
+            }
+        }
+
+        override fun execute(sql: String, args: Array<Any?>) = db.execSQL(sql, args)
+
+        override fun long(sql: String, args: Array<Any?>): Long =
+            db.compileStatement(sql).use { statement ->
+                SimpleSQLiteQuery.bind(statement, args)
+                statement.simpleQueryForLong()
+            }
+
         // The app's handle: the app closes it.
         override fun close() = Unit
+    }
+
+    private companion object {
+        val PLATFORM_FINGERPRINT: String by lazy { SQLiteDatabase.create(null).use { db -> fingerprint { db.rawQuery(it, null) } } }
+
+        // The SQLite build: its version and check-in, and the options that it was compiled with.
+        fun fingerprint(query: (String) -> Cursor): String =
+            buildString {
+                query("SELECT sqlite_source_id()").use { if (it.moveToFirst()) append(it.getString(0)) }
+                query("PRAGMA compile_options").use { while (it.moveToNext()) append('\n').append(it.getString(0)) }
+            }
     }
 }
 
@@ -80,6 +161,8 @@ internal class FileSource(override val file: File) : DbSource() {
 
         override fun query(sql: String, args: Array<String>, signal: CancellationSignal): Cursor = db.rawQuery(sql, args, signal)
 
+        override fun platformSqlite(): Boolean = true
+
         override fun close() = db.close()
     }
 
@@ -95,3 +178,17 @@ private const val CLOSED = "the app closed the handle that it returns"
 
 // SQLiteDatabase names a database in memory ":memory:".
 private fun filePath(path: String?): String? = path?.takeUnless { it.isEmpty() || it == ":memory:" }
+
+private fun bind(program: SQLiteProgram, args: Array<Any?>) {
+    args.forEachIndexed { index, value ->
+        val position = index + 1
+        when (value) {
+            null -> program.bindNull(position)
+            is Long -> program.bindLong(position, value)
+            is Double -> program.bindDouble(position, value)
+            is String -> program.bindString(position, value)
+            is ByteArray -> program.bindBlob(position, value)
+            else -> throw IllegalArgumentException("Can't bind a ${value.javaClass.name}")
+        }
+    }
+}
