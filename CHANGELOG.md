@@ -34,8 +34,10 @@ see [DECISIONS.md](DECISIONS.md).
   a row opens it in a dialog, with a `NULL` toggle and a copy button for each
   column, which reads a cut text whole before it can change. In a writable
   database the dialog saves the changed values with `POST edit`, a number as a
-  number and an integer past 2^53 as its digits, and **Delete**, there and in
-  each row, asks first; in any other, the dialog is read-only and says why.
+  JSON number of its kind, an integer past 2^53 with every digit and a whole
+  real with its point, and a key past 2^53 as a number too, so that it does
+  not match a text key with the same digits. **Delete**, there and in each
+  row, asks first; in any other, the dialog is read-only and says why.
   **Auto refresh** reads the page again every 2 s, but not while a dialog is
   open or the SQL view shows. The SQL view sends a statement to `POST query`,
   also with Cmd or Ctrl+Enter, and **Run as write**, which shows only for a
