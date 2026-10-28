@@ -152,15 +152,8 @@ internal class WorkRoutes(private val source: WorkSource) {
             )
         val ids = request.queryParam("id")?.takeIf { it.isNotEmpty() }?.let { listOf(uuid(it, field = "id")) }.orEmpty()
         val tags = request.queryParam("tag")?.takeIf { it.isNotEmpty() }?.let { listOf(it) }.orEmpty()
-        val names = WorkMetrics.stateNames()
-        val states =
-            request.queryParam("state")?.takeIf { it.isNotEmpty() }?.split(',')?.map { given ->
-                val state = given.trim().uppercase()
-                if (state !in names) throw RouteException("state must be one or more of ${names.joinToString()}", field = "state")
-                state
-            }.orEmpty()
-        val from = millis(request.queryParam("from"), "from")
-        val to = millis(request.queryParam("to"), "to")
+        val states = metricsStates(request.queryParam("state"))
+        val (from, to) = enqueueRange(request)
         val workerClass = request.queryParam("class")?.takeIf { it.isNotEmpty() }
         val periods = metrics.query(ids, tags, states, from, to).filter { matchesClass(it.workerClassName, workerClass) }
         return DebugResponse.json {
@@ -199,10 +192,14 @@ internal class WorkRoutes(private val source: WorkSource) {
         return DebugResponse.json { append("{\"status\":\"ok\",\"cancelled\":").append(unfinished).append('}') }
     }
 
-    // The one key of the body, and its value.
+    // The one key of the body, and its value. An unknown key is refused, not ignored: a
+    // misspelled one would otherwise cancel by the other key alone.
     private fun cancelTarget(body: JSONObject): Pair<String, String> {
-        val given = KEYS.filter { body.has(it) }
-        if (given.size != 1) throw RouteException("The body names exactly one of ${KEYS.joinToString()}", field = given.getOrNull(1))
+        val given = body.keys().asSequence().toList()
+        if (given.size != 1 || given.single() !in KEYS) {
+            val field = given.firstOrNull { it !in KEYS } ?: given.getOrNull(1)
+            throw RouteException("The body names exactly one of ${KEYS.joinToString()}, and nothing else", field = field)
+        }
         val key = given.single()
         val value = (body.get(key) as? String)?.takeIf { it.isNotEmpty() } ?: throw RouteException("$key must be a non-empty string", field = key)
         return key to value
@@ -232,6 +229,24 @@ internal class WorkRoutes(private val source: WorkSource) {
             for (info in workManager.getWorkInfosForUniqueWork(name).get()) names[info.id] = name
         }
         return names
+    }
+
+    private fun metricsStates(text: String?): List<String> {
+        if (text.isNullOrEmpty()) return emptyList()
+        val names = WorkMetrics.stateNames()
+        return text.split(',').map { given ->
+            given.trim().uppercase().takeIf { it in names }
+                ?: throw RouteException("state must be one or more of ${names.joinToString()}", field = "state")
+        }
+    }
+
+    // The enqueue times that GET metrics takes. WorkMetricsQuery.Builder.build() throws for a
+    // range that ends before it begins.
+    private fun enqueueRange(request: DebugRequest): Pair<Long?, Long?> {
+        val from = millis(request.queryParam("from"), "from")
+        val to = millis(request.queryParam("to"), "to")
+        if (from != null && to != null && from > to) throw RouteException("to must not be before from", field = "to")
+        return from to to
     }
 
     private fun states(text: String?): List<WorkInfo.State> {

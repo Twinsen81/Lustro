@@ -687,7 +687,7 @@ with `code: "work_unsupported"`.
 | Read one work request | `GET items/{id}` | `{ item, events, metrics?, state }`: the item, the events that the buffer holds of it, oldest first, and with work-analytics its periods. `item` is `null` after WorkManager deleted the work (a prune) while the tab still has its events; `404` with `field: "id"` when neither has it. |
 | Poll the events | `GET events?cursor=&id=&class=&type=&limit=` | Stream envelope over the events that the tab's listeners recorded. The first poll gets `reset` with the last `limit` events (default 500, at most 5000) that pass the filters; a poll with the cursor gets `delta` with the events after it, oldest first, in pages of `limit`, with `dropped` for events that the buffer evicted first, or `unchanged`. `type` takes one or more event types, comma-separated. |
 | Read the history | `GET metrics?id=&tag=&class=&state=&from=&to=` | `{ items: [period] }` from work-analytics, oldest first by enqueue time; `from` and `to` are enqueue times in epoch ms. `404` with `code: "metrics_off"` when the app passed no repository. |
-| Cancel | `POST cancel` `{ id }` or `{ name }` or `{ tag }` | Exactly one key: `WorkManager.cancelWorkById`, `cancelUniqueWork`, or `cancelAllWorkByTag`. Returns `{ status: "ok", cancelled }`, the number of matched requests that were not finished; finished work stays as it is, and the work that depends on cancelled work is cancelled too, uncounted. `404` with the key as `field` when nothing matches. |
+| Cancel | `POST cancel` `{ id }` or `{ name }` or `{ tag }` | Exactly one key, and no other (`400` with the key as `field`): `WorkManager.cancelWorkById`, `cancelUniqueWork`, or `cancelAllWorkByTag`. Returns `{ status: "ok", cancelled }`, the number of matched requests that were not finished; finished work stays as it is, and the work that depends on cancelled work is cancelled too, uncounted. `404` with the key as `field` when nothing matches. |
 | Prune | `POST prune` | `WorkManager.pruneWork()`: deletes finished work that no unfinished work depends on. Returns `{ status: "ok", pruned }`. The events stay in the buffer. |
 
 **A work item.** `{ id, workerClass, state, tags, uniqueName?, runAttempts, generation,
@@ -704,8 +704,8 @@ from its `finished` event. `nextScheduleTimeMillis` is left out when there is no
 
 **An event.** `{ seq, at, type, id, workerClass, state, runAttempt, generation }` and what the
 type adds: `finished` has `result` (`success`, `failure`, or `retry`) and `output`; `stopped` has
-`stopReason`; `exception` has `exception: { type, message?, stackTrace, truncated? }`, the stack
-trace at most 16384 characters; `updated` has `previousGeneration`. `state` and `runAttempt` are
+`stopReason`; `exception` has `exception: { type, message?, stackTrace, truncated? }`, the message
+at most 4096 characters and the stack trace at most 16384; `updated` has `previousGeneration`. `state` and `runAttempt` are
 the work's at the event. The schedule listener gives `enqueued`, `unblocked` (the work before it
 in a chain finished), `updated`, `cancelled`, and `prerequisiteFailed` (the work before it failed
 or was cancelled, so this work fails without a run); the execution listener gives `started`,

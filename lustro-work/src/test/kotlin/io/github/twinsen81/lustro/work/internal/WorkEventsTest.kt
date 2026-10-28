@@ -69,6 +69,22 @@ class WorkEventsTest {
     }
 
     @Test
+    fun `a long exception message is cut and says so`() {
+        val out = StringBuilder()
+        WorkJson.appendException(out, IllegalStateException("x".repeat(WorkJson.MAX_MESSAGE_CHARS + 1)))
+        val exception = JSONObject(out.toString())
+        assertEquals(WorkJson.MAX_MESSAGE_CHARS, exception.getString("message").length)
+        assertTrue(exception.getBoolean("truncated"))
+    }
+
+    @Test
+    fun `the result kind comes from the public factories' classes`() {
+        assertEquals("success", WorkJson.resultKind(androidx.work.ListenableWorker.Result.success(androidx.work.workDataOf("a" to 1))))
+        assertEquals("failure", WorkJson.resultKind(androidx.work.ListenableWorker.Result.failure()))
+        assertEquals("retry", WorkJson.resultKind(androidx.work.ListenableWorker.Result.retry()))
+    }
+
+    @Test
     fun `stop reasons have the constant's name, and an unknown one is OTHER`() {
         assertEquals("UNKNOWN", WorkJson.stopReasonName(WorkInfo.STOP_REASON_UNKNOWN))
         assertEquals("QUOTA", WorkJson.stopReasonName(WorkInfo.STOP_REASON_QUOTA))

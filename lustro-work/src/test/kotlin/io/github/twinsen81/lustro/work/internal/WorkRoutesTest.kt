@@ -279,6 +279,10 @@ class WorkRoutesTest {
         assertEquals(400, two.status)
         assertEquals("tag", two.json().getString("field"))
         assertEquals(400, WorkFixtures.post(routes, "cancel", JSONObject()).status)
+        // A misspelled key is refused, not ignored, and nothing is cancelled.
+        val misspelled = WorkFixtures.post(routes, "cancel", JSONObject().put("tag", "a").put("nmae", "sync"))
+        assertEquals(400, misspelled.status)
+        assertEquals("nmae", misspelled.json().getString("field"))
         assertEquals("name", WorkFixtures.post(routes, "cancel", JSONObject().put("name", 3)).json().getString("field"))
         assertEquals(400, WorkFixtures.post(routes, "cancel", null).status)
         assertEquals("id", WorkFixtures.post(routes, "cancel", JSONObject().put("id", "nope")).json().getString("field"))

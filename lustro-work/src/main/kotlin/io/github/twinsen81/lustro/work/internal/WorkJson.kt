@@ -11,6 +11,13 @@ internal object WorkJson {
     /** The longest stack trace that an event keeps, in characters. */
     const val MAX_STACK_TRACE_CHARS: Int = 16 * 1024
 
+    /** The longest exception message that an event keeps, in characters. */
+    const val MAX_MESSAGE_CHARS: Int = 4 * 1024
+
+    private val SUCCESS = ListenableWorker.Result.success().javaClass
+    private val FAILURE = ListenableWorker.Result.failure().javaClass
+    private val RETRY = ListenableWorker.Result.retry().javaClass
+
     // A JavaScript number holds an integer exactly up to 2^53 - 1.
     private const val MAX_SAFE_INTEGER = 9_007_199_254_740_991L
 
@@ -87,17 +94,29 @@ internal object WorkJson {
     /**
      * The kind of [result]: `success`, `failure`, or `retry`. The subclasses of
      * `ListenableWorker.Result` are restricted API, so the kind comes from the
-     * class's name, not from an `is` check.
+     * classes of the public factories' results: their names can be minified, as
+     * WorkManager keeps only the names of workers.
      */
-    fun resultKind(result: ListenableWorker.Result): String = result.javaClass.simpleName.replaceFirstChar { it.lowercaseChar() }
+    fun resultKind(result: ListenableWorker.Result): String =
+        when (result.javaClass) {
+            SUCCESS -> "success"
+            FAILURE -> "failure"
+            RETRY -> "retry"
+            else -> result.javaClass.simpleName.replaceFirstChar { it.lowercaseChar() }
+        }
 
-    /** Appends [throwable] with its class, message, and stack trace, cut at [MAX_STACK_TRACE_CHARS]. */
+    /**
+     * Appends [throwable] with its class, message, and stack trace, the message cut at
+     * [MAX_MESSAGE_CHARS] and the trace at [MAX_STACK_TRACE_CHARS]: a library can put a
+     * whole response body into a message.
+     */
     fun appendException(out: StringBuilder, throwable: Throwable) {
         val trace = throwable.stackTraceToString()
+        val message = throwable.message
         out.append("{\"type\":\"").append(throwable.javaClass.name.escapeForJson()).append('"')
-        throwable.message?.let { out.append(",\"message\":\"").append(it.escapeForJson()).append('"') }
+        message?.let { out.append(",\"message\":\"").append(it.take(MAX_MESSAGE_CHARS).escapeForJson()).append('"') }
         out.append(",\"stackTrace\":\"").append(trace.take(MAX_STACK_TRACE_CHARS).escapeForJson()).append('"')
-        if (trace.length > MAX_STACK_TRACE_CHARS) out.append(",\"truncated\":true")
+        if (trace.length > MAX_STACK_TRACE_CHARS || (message?.length ?: 0) > MAX_MESSAGE_CHARS) out.append(",\"truncated\":true")
         out.append('}')
     }
 

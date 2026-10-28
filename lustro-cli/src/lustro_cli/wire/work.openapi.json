@@ -335,7 +335,7 @@
               "type": "integer",
               "minimum": 0
             },
-            "description": "Only periods enqueued at or before this time, in milliseconds since the epoch. 400 with field to when it is not a whole number."
+            "description": "Only periods enqueued at or before this time, in milliseconds since the epoch. 400 with field to when it is not a whole number, or is before from."
           }
         ],
         "responses": {
@@ -392,7 +392,7 @@
       "post": {
         "operationId": "cancelWork",
         "summary": "Cancel work by its id, its unique work name, or a tag.",
-        "description": "The body names exactly one of id, name, and tag, as WorkManager's cancelWorkById, cancelUniqueWork, and cancelAllWorkByTag take them. WorkManager stops the work that runs, leaves finished work as it is, and cancels the work that depends on the cancelled work. 404 with the field when no work matches. 503 with code work_not_initialized while the app has not initialized WorkManager.",
+        "description": "The body names exactly one of id, name, and tag, as WorkManager's cancelWorkById, cancelUniqueWork, and cancelAllWorkByTag take them. WorkManager stops the work that runs, leaves finished work as it is, and cancels the work that depends on the cancelled work. 400 with the field for any other key. 404 with the field when no work matches. 503 with code work_not_initialized while the app has not initialized WorkManager.",
         "requestBody": {
           "required": true,
           "content": {
@@ -877,7 +877,7 @@
           },
           "message": {
             "type": "string",
-            "description": "Only when the throwable has a message."
+            "description": "Only when the throwable has a message. At most 4096 characters."
           },
           "stackTrace": {
             "type": "string",
@@ -885,7 +885,7 @@
           },
           "truncated": {
             "const": true,
-            "description": "Only when the stack trace was longer and is cut."
+            "description": "Only when the stack trace or the message was longer and is cut."
           }
         },
         "additionalProperties": false

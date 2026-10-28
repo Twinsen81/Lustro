@@ -59,6 +59,9 @@ class WorkMetricsTest {
         assertEquals(0, count("from" to (System.currentTimeMillis() + 60_000).toString()))
         assertEquals("state", WorkFixtures.get(routes, "metrics", "state" to "DONE").json().getString("field"))
         assertEquals("to", WorkFixtures.get(routes, "metrics", "to" to "soon").json().getString("field"))
+        val reversed = WorkFixtures.get(routes, "metrics", "from" to "200", "to" to "100")
+        assertEquals(400, reversed.status)
+        assertEquals("to", reversed.json().getString("field"))
 
         val item = offMain { WorkFixtures.get(routes, "items/${ok.id}") }.json()
         assertEquals(1, item.getJSONArray("metrics").length())
