@@ -27,6 +27,7 @@ OPENAPI = wire.load_openapi()
 LOGS_OPENAPI = wire.load_openapi("logs")
 PREFS_OPENAPI = wire.load_openapi("prefs")
 SQLITE_OPENAPI = wire.load_openapi("sqlite")
+WORK_OPENAPI = wire.load_openapi("work")
 
 
 class CheckFailed(Exception):
@@ -246,6 +247,50 @@ def check_sqlite_exec(text: str, rules: List[dict]) -> None:
     expect(result == {"status": "ok", "changes": 1}, "exec {}".format(result))
 
 
+def check_schema_work(text: str, rules: List[dict]) -> None:
+    expect(json.loads(text) == WORK_OPENAPI, "the app serves a WorkManager schema that differs from the CLI's copy")
+
+
+def _work(component: str, text: str) -> Dict[str, Any]:
+    body = json.loads(text)
+    Draft202012Validator(dict(WORK_OPENAPI["components"]["schemas"][component], components=WORK_OPENAPI["components"])).validate(body)
+    return body
+
+
+def check_work_items(text: str, rules: List[dict]) -> None:
+    """The sample's demo work, labelled with the unique names that it registers."""
+    body = _work("WorkCursorEnvelope", text)
+    shared("cursor-envelope.schema.json").validate(body)
+    state = body["state"]
+    expect(state["listeners"] == "installed" and state["metrics"], "state {}".format(state))
+    by_name: Dict[str, List[str]] = {}
+    for item in body["items"]:
+        by_name.setdefault(item.get("uniqueName", "-"), []).append(item["state"])
+    expect(by_name.get("demo-chain") == ["SUCCEEDED"] * 3, "demo-chain {}".format(by_name.get("demo-chain")))
+    expect(sorted(by_name.get("demo-chain-failing", [])) == ["FAILED", "FAILED", "SUCCEEDED"], "demo-chain-failing {}".format(by_name.get("demo-chain-failing")))
+    expect(by_name.get("demo-throwing") == ["FAILED"], "demo-throwing {}".format(by_name.get("demo-throwing")))
+    expect(by_name.get("demo-periodic") == ["ENQUEUED"], "demo-periodic {}".format(by_name.get("demo-periodic")))
+
+
+def check_work_events(text: str, rules: List[dict]) -> None:
+    """A run's result and output, a failed chain step, and what a worker threw."""
+    body = _work("WorkStreamEnvelope", text)
+    shared("stream-envelope.schema.json").validate(body)
+    events = body["items"]
+    kinds = {(e["type"], e.get("result")) for e in events}
+    for kind in (("finished", "success"), ("finished", "failure"), ("finished", "retry"), ("prerequisiteFailed", None), ("exception", None)):
+        expect(kind in kinds, "no {} event in {}".format(kind, sorted(kinds, key=str)))
+    thrown = next(e for e in events if e["type"] == "exception")
+    expect("the journal store is corrupt" in thrown["exception"]["message"] and "CrashingWorker.doWork" in thrown["exception"]["stackTrace"], "exception {}".format(thrown["exception"]))
+    failed = next(e for e in events if e.get("result") == "failure")
+    expect(failed["output"].get("reason", "").endswith("failed on purpose"), "the failed step's output {}".format(failed["output"]))
+
+
+def check_work_cancel(text: str, rules: List[dict]) -> None:
+    body = json.loads(text)
+    expect(body == {"status": "ok", "cancelled": 1}, "cancel {}".format(body))
+
+
 def check_sync(text: str, rules: List[dict]) -> None:
     result = json.loads(text)
     response("/api/v1/network/rules/_/sync", "post").validate(result)
@@ -417,6 +462,10 @@ CHECKS: Dict[str, Callable[[str, List[dict]], None]] = {
     "sqlite-rows-1": check_sqlite_rows_1,
     "sqlite-rows-3": check_sqlite_rows_3,
     "sqlite-imported": check_sqlite_imported,
+    "schema-work": check_schema_work,
+    "work-items": check_work_items,
+    "work-events": check_work_events,
+    "work-cancel": check_work_cancel,
     "sqlite-query": check_sqlite_query,
     "sqlite-exec": check_sqlite_exec,
     "sync": check_sync,

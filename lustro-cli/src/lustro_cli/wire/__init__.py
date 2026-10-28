@@ -6,8 +6,9 @@ These JSON files are vendored copies of the SemVer-governed wire protocol:
 - the authoritative OpenAPI documents of the Network tab
   (``lustro/src/main/assets/lustro/network.openapi.json``), the Logs tab
   (``lustro-logs/src/main/assets/lustro/logs.openapi.json``), the
-  Preferences tab (``lustro-prefs/src/main/assets/lustro/prefs.openapi.json``), and the
-  SQLite tab (``lustro-sqlite/src/main/assets/lustro/sqlite.openapi.json``), and
+  Preferences tab (``lustro-prefs/src/main/assets/lustro/prefs.openapi.json``), the
+  SQLite tab (``lustro-sqlite/src/main/assets/lustro/sqlite.openapi.json``), and the
+  WorkManager tab (``lustro-work/src/main/assets/lustro/work.openapi.json``), and
 - the golden response fixtures from ``wire-protocol/v1/golden/``.
 
 They are packaged into the wheel so the installed CLI ships its own schemas and
@@ -47,7 +48,7 @@ def load_schema(name: str) -> Any:
 
 
 def load_openapi(tab: str = "network") -> Any:
-    """Load the bundled OpenAPI document of a tab: ``"network"`` (the default), ``"logs"``, ``"prefs"``, or ``"sqlite"``."""
+    """Load the bundled OpenAPI document of a tab: ``"network"`` (the default), ``"logs"``, ``"prefs"``, ``"sqlite"``, or ``"work"``."""
     return _load(tab + ".openapi.json")
 
 

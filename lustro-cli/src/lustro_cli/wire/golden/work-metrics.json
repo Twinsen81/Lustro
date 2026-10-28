@@ -1,0 +1,40 @@
+{
+  "items": [
+    {
+      "id": "3f1c2a4e-8b9d-4e2f-a6c1-0d7e5b3a9f12",
+      "generation": 0,
+      "workerClass": "io.github.twinsen81.lustro.work.internal.StepWorker",
+      "tags": [
+        "demo",
+        "io.github.twinsen81.lustro.work.internal.StepWorker"
+      ],
+      "state": "SUCCEEDED",
+      "enqueueTimeMillis": 1793198238738,
+      "unblockTimeMillis": 1793198238747,
+      "firstStartTimeMillis": 1793198238761,
+      "finishTimeMillis": 1793198238763,
+      "workerDurationMillis": 2,
+      "totalRuntimeMillis": 2,
+      "runAttempts": 1,
+      "explicitRetries": 0,
+      "stopReasons": []
+    },
+    {
+      "id": "8a6b0c1d-2e3f-4a5b-9c7d-1e2f3a4b5c6d",
+      "generation": 0,
+      "workerClass": "io.github.twinsen81.lustro.work.internal.StepWorker",
+      "tags": [
+        "demo",
+        "io.github.twinsen81.lustro.work.internal.StepWorker"
+      ],
+      "state": "ENQUEUED_PENDING",
+      "enqueueTimeMillis": 1793198238771,
+      "unblockTimeMillis": 1793198238772,
+      "workerDurationMillis": 0,
+      "totalRuntimeMillis": 0,
+      "runAttempts": 0,
+      "explicitRetries": 0,
+      "stopReasons": []
+    }
+  ]
+}

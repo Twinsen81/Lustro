@@ -1,0 +1,128 @@
+{
+  "cursor": "NTI1NzQ2NjY4MTAzMjMyMDM3ODo3MDk0NTQ1NjI1Mjg1MjY3NzU1",
+  "status": "reset",
+  "items": [
+    {
+      "id": "3f1c2a4e-8b9d-4e2f-a6c1-0d7e5b3a9f12",
+      "workerClass": "io.github.twinsen81.lustro.work.internal.StepWorker",
+      "state": "SUCCEEDED",
+      "tags": [
+        "demo",
+        "io.github.twinsen81.lustro.work.internal.StepWorker"
+      ],
+      "uniqueName": "sync",
+      "runAttempts": 1,
+      "generation": 0,
+      "stopReason": {
+        "code": -256,
+        "name": "NOT_STOPPED"
+      },
+      "output": {
+        "big": "9223372036854775807",
+        "names": [
+          "a",
+          "b"
+        ],
+        "ratio": 0.5,
+        "step": 3
+      },
+      "progress": {},
+      "constraints": {
+        "network": "NOT_REQUIRED",
+        "requiresCharging": false,
+        "requiresDeviceIdle": false,
+        "requiresBatteryNotLow": false,
+        "requiresStorageNotLow": false
+      },
+      "initialDelayMillis": 0
+    },
+    {
+      "id": "8a6b0c1d-2e3f-4a5b-9c7d-1e2f3a4b5c6d",
+      "workerClass": "io.github.twinsen81.lustro.work.internal.StepWorker",
+      "state": "ENQUEUED",
+      "tags": [
+        "demo",
+        "io.github.twinsen81.lustro.work.internal.StepWorker"
+      ],
+      "runAttempts": 0,
+      "generation": 0,
+      "stopReason": {
+        "code": -256,
+        "name": "NOT_STOPPED"
+      },
+      "output": {},
+      "progress": {},
+      "constraints": {
+        "network": "UNMETERED",
+        "requiresCharging": false,
+        "requiresDeviceIdle": false,
+        "requiresBatteryNotLow": true,
+        "requiresStorageNotLow": false
+      },
+      "initialDelayMillis": 0,
+      "periodicity": {
+        "repeatIntervalMillis": 900000,
+        "flexIntervalMillis": 900000
+      },
+      "nextScheduleTimeMillis": 1792419740000
+    },
+    {
+      "id": "c2d4e6f8-0a1b-4c3d-8e5f-7a9b1c3d5e7f",
+      "workerClass": "io.github.twinsen81.lustro.work.internal.RetryWorker",
+      "state": "ENQUEUED",
+      "tags": [
+        "io.github.twinsen81.lustro.work.internal.RetryWorker"
+      ],
+      "runAttempts": 1,
+      "generation": 0,
+      "stopReason": {
+        "code": -256,
+        "name": "NOT_STOPPED"
+      },
+      "output": {},
+      "progress": {},
+      "constraints": {
+        "network": "NOT_REQUIRED",
+        "requiresCharging": false,
+        "requiresDeviceIdle": false,
+        "requiresBatteryNotLow": false,
+        "requiresStorageNotLow": false
+      },
+      "initialDelayMillis": 0,
+      "nextScheduleTimeMillis": 1792419770000
+    },
+    {
+      "id": "5e7f9a1b-3c5d-4e7f-a1b3-c5d7e9f1a3b5",
+      "workerClass": "io.github.twinsen81.lustro.work.internal.ThrowingWorker",
+      "state": "FAILED",
+      "tags": [
+        "io.github.twinsen81.lustro.work.internal.ThrowingWorker"
+      ],
+      "runAttempts": 1,
+      "generation": 0,
+      "stopReason": {
+        "code": -256,
+        "name": "NOT_STOPPED"
+      },
+      "output": {},
+      "progress": {},
+      "constraints": {
+        "network": "NOT_REQUIRED",
+        "requiresCharging": false,
+        "requiresDeviceIdle": false,
+        "requiresBatteryNotLow": false,
+        "requiresStorageNotLow": false
+      },
+      "initialDelayMillis": 0
+    }
+  ],
+  "state": {
+    "listeners": "installed",
+    "initialized": true,
+    "metrics": true,
+    "uniqueNames": [
+      "sync"
+    ],
+    "bufferBytes": 1048576
+  }
+}

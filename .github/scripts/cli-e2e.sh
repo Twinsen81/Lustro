@@ -372,4 +372,38 @@ grep -q "^error: 403 forbidden" "$OUT/sqlite-exec-catalog.txt"
 lustro_to sqlite-exec.json --json api POST sqlite/exec --body '{"db":"notes","sql":"UPDATE notes SET title = '"'"'Renamed by exec'"'"' WHERE id = 1"}'
 check sqlite-exec < "$OUT/sqlite-exec.json"
 
+# The WorkManager tab lists the sample's demo work, labelled with its unique
+# names, and the events of each run: a success, a failed chain step and the
+# step after it, a retry, and what a worker threw. Cancel finds the delayed
+# worker by its unique name before it runs, and a name without work is a 404.
+step "lustro --json schema work"
+lustro --json schema work > "$OUT/schema-work.json"
+check schema-work < "$OUT/schema-work.json"
+echo "matches the CLI's copy ($(wc -c < "$OUT/schema-work.json") bytes)"
+
+adb shell am start -W --activity-single-top -n "$PACKAGE/.MainActivity" --es request "'Enqueue the demo work'"
+step "lustro api GET work/items, until the demo chains have finished"
+for _ in $(seq 30); do
+  lustro --json api GET work/items > "$OUT/work-items.json"
+  check work-items < "$OUT/work-items.json" 2> /dev/null && break
+  sleep 1
+done
+cat "$OUT/work-items.json"
+check work-items < "$OUT/work-items.json"
+
+lustro_to work-events.json --json api GET work/events --param type=finished,exception,prerequisiteFailed
+check work-events < "$OUT/work-events.json"
+
+adb shell am start -W --activity-single-top -n "$PACKAGE/.MainActivity" --es request "'Enqueue a delayed worker'"
+lustro_to work-cancel.json --json api POST work/cancel --body '{"name":"demo-delayed"}'
+check work-cancel < "$OUT/work-cancel.json"
+
+step "lustro api POST work/cancel with a unique name that has no work"
+if lustro api POST work/cancel --body '{"name":"no-such-work"}' 2> "$OUT/work-cancel-none.txt"; then
+  echo "error: the tab cancelled work of a name that has none" >&2
+  exit 1
+fi
+cat "$OUT/work-cancel-none.txt"
+grep -q "^error: 404 not_found" "$OUT/work-cancel-none.txt"
+
 step "The CLI end to end passed"
