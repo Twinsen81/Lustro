@@ -20,7 +20,7 @@
 
    Rules of thumb for tab authors:
      - Never hardcode colors; use tokens (methods, statuses, levels,
-       types and categories all have semantic tokens).
+       types, work states and categories all have semantic tokens).
      - Labels are UPPERCASE with wide tracking; use spaces, not
        underscores, in UI labels.
      - Flat by default: shadows only on floating layers (menus,
@@ -139,6 +139,16 @@
   --type-long:    #22d3ee;
   --type-float:   #fbbf24;
 
+  /* WorkManager work state coding (Enqueued/Running/Succeeded/Failed/
+     Blocked/Cancelled). An event of a run takes the color of the state
+     it leads to. */
+  --work-enqueued:  #22d3ee;
+  --work-running:   #60a5fa;
+  --work-succeeded: #34d399;
+  --work-failed:    #f87171;
+  --work-blocked:   #fbbf24;
+  --work-cancelled: #94a3b8;
+
   /* Network traffic category tags (classic labels; unknown categories
      fall back to --cat-other) */
   --cat-sync:    #60a5fa;
@@ -239,6 +249,13 @@
   --type-int:     #059669;
   --type-long:    #0891b2;
   --type-float:   #b45309;
+
+  --work-enqueued:  #0891b2;
+  --work-running:   #2563eb;
+  --work-succeeded: #059669;
+  --work-failed:    #dc2626;
+  --work-blocked:   #b45309;
+  --work-cancelled: #475569;
 
   --cat-sync:    #2563eb;
   --cat-ai:      #7c3aed;
