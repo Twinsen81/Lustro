@@ -73,9 +73,7 @@
 .work-head__actions .dc-btn { min-height: 30px; }
 .work-gone { padding: 8px 11px; border-radius: var(--radius); background: color-mix(in srgb, var(--lvl-w) 12%, transparent); color: var(--lvl-w); font-size: 12px; line-height: 1.5; }
 
-/* The panel tabs: as the button resets of the other tabs, :where() keeps the .dc-tab rules first. */
 .work-tabs { padding-left: 14px; }
-:where(.work-tabs) button.dc-tab { border: none; font-family: inherit; }
 .work-tab__count { margin-left: 6px; color: var(--t4); }
 .dc-tab--active .work-tab__count { color: var(--accent-2); }
 

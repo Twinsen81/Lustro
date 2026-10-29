@@ -317,6 +317,22 @@ test('Cancel sends the id, Cancel unique work the name, and Prune no body', () =
     assert.match(prune.message, /events that the tab recorded stay/);
 });
 
+test('with work-analytics, a cancel of running work warns that it can end the app', () => {
+    const running = Object.assign(byClass('RetryWorker'), { state: 'RUNNING', uniqueName: 'demo-retry' });
+    const warned = work.workConfirmFor('cancel', running, true);
+    assert.match(warned.message, /work-analytics 2\.12\.0, a cancel of work that runs ends the app's process/);
+    assert.match(warned.message, /exception\. This can't be undone\.$/);
+
+    // Only running work can hit it, and only in an app that passed work-analytics.
+    assert.doesNotMatch(work.workConfirmFor('cancel', Object.assign({}, running, { state: 'ENQUEUED' }), true).message, /work-analytics/);
+    assert.doesNotMatch(work.workConfirmFor('cancel', running, false).message, /work-analytics/);
+    assert.doesNotMatch(work.workConfirmFor('cancel', running).message, /work-analytics/);
+
+    // Any work of the unique name may run.
+    assert.match(work.workConfirmFor('cancelName', Object.assign({}, running, { state: 'ENQUEUED' }), true).message, /work-analytics 2\.12\.0/);
+    assert.doesNotMatch(work.workConfirmFor('cancelName', running, false).message, /work-analytics/);
+});
+
 test('the toast after an action says how much it changed', () => {
     assert.deepStrictEqual(plain(work.workResultToast('cancel', { status: 'ok', cancelled: 1 })), { text: 'Cancelled 1 work request', type: 'success' });
     assert.deepStrictEqual(plain(work.workResultToast('cancel', { status: 'ok', cancelled: 0 })), { text: 'Nothing to cancel: the work had finished', type: 'info' });

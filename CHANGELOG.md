@@ -34,7 +34,8 @@ see [DECISIONS.md](DECISIONS.md).
   then says that WorkManager no longer has it. **Cancel** (by id) and **Cancel
   unique work** (by name), which shows for work with a unique name, ask first,
   because a cancel can't be undone and also cancels the work that waits in a
-  chain; **Prune** asks too. When the listeners are not installed, a banner
+  chain, and when the app passed work-analytics they say that its 2.12.0 ends
+  the app's process when work is cancelled while it runs; **Prune** asks too. When the listeners are not installed, a banner
   says why there are no events and how to fix it, with the server's reason, and
   a 503 of the routes says that WorkManager has not started or is too old. Six
   tokens, `--work-enqueued` to `--work-cancelled`, color the states in both

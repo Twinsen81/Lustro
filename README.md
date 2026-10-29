@@ -931,8 +931,9 @@ fun start(app: Application) {
   attempts, generation, last stop reason, output, and progress; **Timeline** has the events of its
   runs, with the result, the output, the stop reason, and a worker's exception with its stack
   trace; and **History**, with work-analytics, has its periods. **Cancel**, **Cancel unique work**,
-  and **Prune** ask first. When the listeners are not installed, a banner says why, and how to
-  fix it.
+  and **Prune** ask first, and with work-analytics the cancel dialogs say that a cancel of running
+  work can end the app's process (see above). When the listeners are not installed, a banner says
+  why, and how to fix it.
 
   ![The WorkManager tab: the sample's demo work, and the timeline of the worker that throws, with its stack trace](docs/images/work-tab.png)
 - **Not shown:** the chain graph and a work's input data, which WorkManager's public API does

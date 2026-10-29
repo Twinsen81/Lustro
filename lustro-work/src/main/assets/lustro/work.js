@@ -426,14 +426,22 @@
         return '// no events of this work in the tab\'s buffer: it records them from Lustro.start(), in this process';
     }
 
-    // What a confirm dialog asks, and the body of POST cancel or prune.
-    function confirmFor(kind, item) {
+    // An app that passed work-analytics to the tab most likely has its repository as
+    // its listeners, and work-analytics 2.12.0 ends the process when work is
+    // cancelled while it runs: a cancel from here is then more than a cancel.
+    var METRICS_WARNING = 'The app passed work-analytics to the tab: in work-analytics 2.12.0, a cancel of work that runs '
+        + 'ends the app\'s process, unless the app catches the exception.';
+
+    // What a confirm dialog asks, and the body of POST cancel or prune. [metrics]
+    // says whether the app passed work-analytics to the tab.
+    function confirmFor(kind, item, metrics) {
         var worker = simpleClass(item && item.workerClass) || 'the work';
         if (kind === 'cancel') {
             return {
                 title: 'Cancel work',
                 message: 'Cancel ' + worker + ' (' + item.id + ')? WorkManager stops it if it runs, and also cancels the work that waits for it in a chain.'
                     + (item.periodicity ? ' A periodic work does not run again until the app enqueues it again.' : '')
+                    + (metrics && item.state === 'RUNNING' ? ' ' + METRICS_WARNING : '')
                     + ' This can\'t be undone.',
                 ok: 'Cancel work',
                 path: 'cancel',
@@ -441,9 +449,12 @@
             };
         }
         if (kind === 'cancelName') {
+            // Any work of the name may run.
             return {
                 title: 'Cancel unique work',
-                message: 'Cancel all unfinished work of the unique name "' + item.uniqueName + '"? WorkManager stops the work that runs. This can\'t be undone.',
+                message: 'Cancel all unfinished work of the unique name "' + item.uniqueName + '"? WorkManager stops the work that runs.'
+                    + (metrics ? ' ' + METRICS_WARNING : '')
+                    + ' This can\'t be undone.',
                 ok: 'Cancel unique work',
                 path: 'cancel',
                 body: { name: item.uniqueName }
@@ -618,7 +629,8 @@
             span.textContent = count ? ' ' + count : '';
         });
         var shown = visibleItems(list.items, states).length;
-        els.count.textContent = rejected ? '' : countLabel(shown, list.items.length);
+        // No count before the first answer: the list says that it reads the work.
+        els.count.textContent = rejected || !list.cursor ? '' : countLabel(shown, list.items.length);
     }
 
     // The relative times count on between the polls that change nothing.
@@ -823,9 +835,15 @@
             });
     }
 
+    // Whether the app passed work-analytics to the tab: the envelopes say so, and
+    // GET items/{id} answers with the periods only then.
+    function metricsOn() {
+        return !!((list.state && list.state.metrics) || (detail && Array.isArray(detail.metrics)));
+    }
+
     function renderHistory() {
         var periods = detail && detail.metrics;
-        var on = !!(list.state && list.state.metrics) || Array.isArray(periods);
+        var on = metricsOn();
         els.historyTab.hidden = !on;
         if (!on) {
             if (panel === 'history') showPanel('details');
@@ -901,7 +919,7 @@
     function ask(kind) {
         var item = currentItem();
         if (kind !== 'prune' && !item) return;
-        pending = confirmFor(kind, item);
+        pending = confirmFor(kind, item, metricsOn());
         els.confirmTitle.textContent = pending.title;
         els.confirmMessage.textContent = pending.message;
         els.confirmOk.textContent = pending.ok;
