@@ -51,11 +51,13 @@ given, the CLI reads `adb forward --list` and connects to the local port of the
 first forward to the app's port on the selected device: `--device`, else
 `ANDROID_SERIAL`, else the only device. Without such a forward, it makes one,
 as `lustro open` does (see [The local port](#the-local-port)), and exits 1 with
-`connection_failed` when adb can't make it. It never connects to the same port
-number on the computer instead: with several devices, that port can be a
-forward to the app on another device. A command with `--port` connects to that
-port and looks for no forward, for example when the server runs on the
-computer. For `lustro open`, `--port` is the app's port, which it forwards to.
+`connection_failed` when adb can't make it. It does not connect to the same
+port number on the computer instead: with several devices, that port can be a
+forward to the app on another device. Without adb installed, there is no device
+to forward to, and a command connects to that port on the computer. A command
+with `--port` connects to that port and looks for no forward, for example when
+the server runs on the computer. For `lustro open`, `--port` is the app's port,
+which it forwards to.
 
 ## Global flags
 

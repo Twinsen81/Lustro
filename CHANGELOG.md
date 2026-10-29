@@ -736,7 +736,8 @@ see [DECISIONS.md](DECISIONS.md).
   program. A command now makes its own forward to the
   selected device when there is none, with `adb forward --no-rebind` on the
   app's port, or on a free port that adb chooses when the app's port is taken.
-  It exits 1 with `connection_failed` when adb can't make the forward.
+  It exits 1 with `connection_failed` when adb can't make the forward. For a
+  server on the computer, which needs no forward, pass `--port N`.
   `lustro open` without `--local-port` also falls back to a free port, where
   it exited 1. Several agents can now drive the app on their own emulators at
   the same time, with `--device` or `ANDROID_SERIAL`.

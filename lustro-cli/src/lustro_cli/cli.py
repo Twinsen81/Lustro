@@ -559,8 +559,7 @@ def _forward_to_app(device_port: int, device: Optional[str]) -> Tuple[int, Optio
     device: the first one there is, else a new one on the same port number, else
     on a free port that adb chooses, as when another program or another device's
     forward holds the app's port. Returns the error of the last forward when none
-    works. Raises
-    FileNotFoundError when adb isn't installed."""
+    works. Raises FileNotFoundError when adb isn't installed."""
     forwarded = forwarded_ports(device_port, device)
     if forwarded:
         return forwarded[0], None
@@ -568,6 +567,17 @@ def _forward_to_app(device_port: int, device: Optional[str]) -> Tuple[int, Optio
     if err:
         local_port, err = _adb_forward(0, device_port, device)
     return local_port, err
+
+
+def _no_forward_error(device_port: int, err: str) -> str:
+    """The error of a command that found no forward to the app's ``device_port``
+    and could make none: ``err`` is from the last attempt, on a free port."""
+    return "no adb forward reaches the app's port {}: adb forward tcp:0 tcp:{} failed: {}".format(
+        device_port, device_port, err
+    )
+
+
+_DEVICE_HINT = "Pass --device SERIAL when more than one device is connected."
 
 
 def _client_local_port(device_port: int, device: Optional[str]) -> int:
@@ -580,13 +590,10 @@ def _client_local_port(device_port: int, device: Optional[str]) -> int:
     if err:
         raise LustroError(
             "connection_failed",
-            "no adb forward reaches the app's port {}: adb forward tcp:0 tcp:{} failed: {}".format(
-                device_port, device_port, err
-            ),
+            _no_forward_error(device_port, err),
             hint=(
-                "Pass --device SERIAL when more than one device is connected. For a server on this "
-                "computer, or a forward that adb does not list, pass --port N: the CLI then connects "
-                "to local port N and makes no forward."
+                _DEVICE_HINT + " For a server on this computer, or a forward that adb does not list, "
+                "pass --port N: the CLI then connects to local port N and makes no forward."
             ),
         )
     return local_port
@@ -618,6 +625,13 @@ def _forward_local_port(args: argparse.Namespace, device_port: int) -> Optional[
         # Without adb there is no device to forward to: the server is local.
         print("warning: adb is not installed, so the port was not forwarded", file=sys.stderr)
         return device_port
+    if err and args.local_port is None:
+        print("error: {}".format(_no_forward_error(device_port, err)), file=sys.stderr)
+        print(
+            "  hint: {} Use --no-forward when you forward the port yourself.".format(_DEVICE_HINT),
+            file=sys.stderr,
+        )
+        return None
     if err:
         # The URL would reach whatever holds the local port, not the app.
         print("error: adb forward tcp:{} tcp:{} failed: {}".format(local_port, device_port, err), file=sys.stderr)

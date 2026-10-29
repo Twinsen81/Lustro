@@ -127,11 +127,16 @@ def test_open_forwards_a_free_port_when_another_device_holds_the_app_port(app, m
 
 
 def test_open_fails_when_no_forward_works(app, monkeypatch, capsys):
-    adb = _Adb(monkeypatch, error="adb: error: device offline")
+    adb = _Adb(monkeypatch, error="adb: error: more than one device/emulator")
     assert cli.main(["open", "--print-only"]) == 1
     out, err = capsys.readouterr()
     assert out == ""
-    assert err == "error: adb forward tcp:0 tcp:8080 failed: adb: error: device offline\n"
+    assert err == (
+        "error: no adb forward reaches the app's port 8080: "
+        "adb forward tcp:0 tcp:8080 failed: adb: error: more than one device/emulator\n"
+        "  hint: Pass --device SERIAL when more than one device is connected. "
+        "Use --no-forward when you forward the port yourself.\n"
+    )
     assert adb.forwards == [(8080, 8080, None), (0, 8080, None)]
 
 
