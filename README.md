@@ -902,10 +902,16 @@ fun start(app: Application) {
   `WorkDebugTab.create(app, metrics = repository, uniqueNames = ...)`. `GET metrics` then reads
   the enqueue, start, and finish times, durations, attempts, retries, and stop reasons of each
   run, kept 7 days by default. Lustro never depends on work-analytics: its POM pins
-  `work-runtime` to its own exact version. **work-analytics 2.12.0 ends the app's process when work
-  is cancelled while it runs**, also from the console's `POST cancel`: its `onStopped` inserts the
-  period that `onCancelled` already closed, and throws `SQLiteConstraintException` on WorkManager's
-  thread. The sample's `MetricsListeners` wraps the repository and catches that exception.
+  `work-runtime` to its own exact version. **work-analytics 2.12.0 can end the app's process.**
+  When an event comes for work that has no open period, the repository inserts period 0 again, and
+  when it closed period 0 before, it throws `SQLiteConstraintException` on WorkManager's thread.
+  That happens when work is cancelled while it runs, also from the console's `POST cancel`
+  (`onStopped` comes after `onCancelled`), at the next run of a periodic worker that threw
+  (`onException` opens no next period), and when the process dies after the repository closed a
+  run but before WorkManager saved the result, so that WorkManager runs it again. In the last two
+  cases, every later run of that work fails the same way, so the app ends at each start until its
+  data is cleared. The sample's `MetricsListeners` wraps the repository and catches that exception
+  in every listener method.
 - **Unique names.** `WorkInfo` has no unique name, so the tab labels the work of the names in
   `uniqueNames`. `GET items?name=` finds the work of any name.
 - **The tab never initializes WorkManager.** Until your app calls `WorkManager.getInstance`, the

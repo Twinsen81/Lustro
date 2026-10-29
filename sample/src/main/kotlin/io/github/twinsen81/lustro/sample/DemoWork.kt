@@ -10,6 +10,7 @@ import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExecutionEventListener
 import androidx.work.ExistingWorkPolicy
 import androidx.work.ExperimentalEventsApi
+import androidx.work.ListenableWorker
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequest
 import androidx.work.OneTimeWorkRequestBuilder
@@ -132,23 +133,59 @@ internal class DemoWork(private val context: Context) {
 }
 
 /**
- * work-analytics' [repository] as the app's listeners, with one exception caught. In
- * work-analytics 2.12.0, cancelling work while it runs ends the process: `onCancelled`
- * closes the run's period, and `onStopped`, which comes after it, inserts the same period
- * again and fails with a `SQLiteConstraintException` on WorkManager's thread. The console's
- * `POST work/cancel` cancels running work as the app's own calls do, so the sample catches
- * that exception; the period that `onCancelled` closed stays as it is.
+ * work-analytics' [repository] as the app's listeners, with its constraint failures caught.
+ * In work-analytics 2.12.0, an event for work that has no open period makes the repository
+ * insert period 0 again. When it closed period 0 before, the insert fails with a
+ * `SQLiteConstraintException` on WorkManager's thread, and the process ends. That happens
+ * when work is cancelled while it runs (`onCancelled` closes the period, and `onStopped`
+ * comes after it), when a periodic worker throws (`onException` closes the period and opens
+ * no next one), and when the process dies after the repository closed a run but before
+ * WorkManager saved the run's result, so that WorkManager runs it again. The failed insert
+ * rolls back, so each later run of that work fails the same way: without the catch, the
+ * app would end at every start. The sample logs the failure and leaves those runs out of
+ * the history.
  */
 @OptIn(ExperimentalEventsApi::class, ExperimentalWorkMetricsApi::class)
 internal class MetricsListeners(private val repository: WorkMetricsInfoRepository) :
     ExecutionEventListener by repository,
     ScheduleEventListener by repository {
-    override suspend fun onStopped(stopReason: Int, workInfo: WorkInfo) {
+    override suspend fun onStarted(workInfo: WorkInfo) = guard("started", workInfo) { repository.onStarted(workInfo) }
+
+    override suspend fun onStopped(stopReason: Int, workInfo: WorkInfo) =
+        guard("stopped", workInfo) { repository.onStopped(stopReason, workInfo) }
+
+    override suspend fun onFinished(result: ListenableWorker.Result, workInfo: WorkInfo) =
+        guard("finished", workInfo) { repository.onFinished(result, workInfo) }
+
+    override suspend fun onException(throwable: Throwable, workInfo: WorkInfo) =
+        guard("threw", workInfo) { repository.onException(throwable, workInfo) }
+
+    override suspend fun onEnqueued(workInfo: WorkInfo) = guard("was enqueued", workInfo) { repository.onEnqueued(workInfo) }
+
+    override suspend fun onUpdated(oldWorkInfo: WorkInfo, updatedWorkInfo: WorkInfo) =
+        guard("was updated", updatedWorkInfo) { repository.onUpdated(oldWorkInfo, updatedWorkInfo) }
+
+    override suspend fun onUnblocked(workInfo: WorkInfo) = guard("was unblocked", workInfo) { repository.onUnblocked(workInfo) }
+
+    override suspend fun onCancelled(workInfo: WorkInfo) = guard("was cancelled", workInfo) { repository.onCancelled(workInfo) }
+
+    override suspend fun onPrerequisiteFailed(workInfo: WorkInfo) =
+        guard("lost a prerequisite", workInfo) { repository.onPrerequisiteFailed(workInfo) }
+
+    private inline fun guard(event: String, workInfo: WorkInfo, record: () -> Unit) {
         try {
-            repository.onStopped(stopReason, workInfo)
+            record()
         } catch (e: SQLiteConstraintException) {
-            Log.w("LustroSample", "work-analytics could not record that ${workInfo.id} stopped", e)
+            notRecorded(event, workInfo, e)
+        } catch (e: IllegalStateException) {
+            // onEnqueued wraps the constraint failure in one.
+            if (e.cause !is SQLiteConstraintException) throw e
+            notRecorded(event, workInfo, e)
         }
+    }
+
+    private fun notRecorded(event: String, workInfo: WorkInfo, e: RuntimeException) {
+        Log.w("LustroSample", "work-analytics could not record that ${workInfo.id} $event", e)
     }
 }
 
