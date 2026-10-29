@@ -508,12 +508,11 @@ def _with_current_token(args: argparse.Namespace, endpoint: Endpoint) -> Endpoin
 
 def _build_client(args: argparse.Namespace) -> LustroClient:
     endpoint = _build_endpoint(args)
-    # The app's port is on the device. Without --port, connect through the adb
-    # forward to it, which `lustro open --local-port` can put on another local port.
+    # The app's port is on the device. Without --port, connect through an adb
+    # forward to it on the selected device, and make one when there is none: the
+    # same port number on the computer can be another device's forward.
     if args.port is None and endpoint.host in LOOPBACK_HOSTS:
-        local_ports = forwarded_ports(endpoint.port, args.device)
-        if local_ports:
-            endpoint = endpoint._replace(host=DEFAULT_HOST, port=local_ports[0])
+        endpoint = endpoint._replace(host=DEFAULT_HOST, port=_client_local_port(endpoint.port, args.device))
     # A token from the ready line is stale when the app was installed again and
     # the device dropped the new line. On a 401, the client tries the app's prefs.
     discovered = _token_was_discovered(args)
@@ -555,6 +554,44 @@ def _adb_forward(local_port: int, device_port: int, device: Optional[str]) -> Tu
     return local_port, None
 
 
+def _forward_to_app(device_port: int, device: Optional[str]) -> Tuple[int, Optional[str]]:
+    """The local port of a forward to the app's ``device_port`` on the selected
+    device: the first one there is, else a new one on the same port number, else
+    on a free port that adb chooses, as when another program or another device's
+    forward holds the app's port. Returns the error of the last forward when none
+    works. Raises
+    FileNotFoundError when adb isn't installed."""
+    forwarded = forwarded_ports(device_port, device)
+    if forwarded:
+        return forwarded[0], None
+    local_port, err = _adb_forward(device_port, device_port, device)
+    if err:
+        local_port, err = _adb_forward(0, device_port, device)
+    return local_port, err
+
+
+def _client_local_port(device_port: int, device: Optional[str]) -> int:
+    """The local port that a command connects to, for the app's ``device_port``."""
+    try:
+        local_port, err = _forward_to_app(device_port, device)
+    except FileNotFoundError:
+        # Without adb there is no device to forward to: the server is local.
+        return device_port
+    if err:
+        raise LustroError(
+            "connection_failed",
+            "no adb forward reaches the app's port {}: adb forward tcp:0 tcp:{} failed: {}".format(
+                device_port, device_port, err
+            ),
+            hint=(
+                "Pass --device SERIAL when more than one device is connected. For a server on this "
+                "computer, or a forward that adb does not list, pass --port N: the CLI then connects "
+                "to local port N and makes no forward."
+            ),
+        )
+    return local_port
+
+
 def _forward_local_port(args: argparse.Namespace, device_port: int) -> Optional[int]:
     """Choose the local port for the console URL, and forward it to the app's
     ``device_port``. Returns the local port, or None after it prints why the
@@ -563,26 +600,24 @@ def _forward_local_port(args: argparse.Namespace, device_port: int) -> Optional[
         if args.local_port == 0:
             raise UsageError("--local-port 0 lets adb choose the port, so it can't go with --no-forward")
         return device_port if args.local_port is None else args.local_port
-    # Without a port number from --local-port, keep an existing forward to the app.
-    forwarded = forwarded_ports(device_port, args.device)
-    if args.local_port:
-        local_port = args.local_port
-    elif forwarded:
-        local_port = forwarded[0]
-    else:
-        local_port = device_port if args.local_port is None else 0
-    # adb forward --no-rebind fails for a forward that is there already.
-    if local_port in forwarded:
-        return local_port
     try:
-        local_port, err = _adb_forward(local_port, device_port, args.device)
+        if args.local_port is None:
+            local_port, err = _forward_to_app(device_port, args.device)
+        else:
+            # --local-port 0 keeps an existing forward to the app.
+            forwarded = forwarded_ports(device_port, args.device)
+            local_port = args.local_port or (forwarded[0] if forwarded else 0)
+            # adb forward --no-rebind fails for a forward that is there already.
+            if local_port in forwarded:
+                return local_port
+            local_port, err = _adb_forward(local_port, device_port, args.device)
     except FileNotFoundError:
         if args.local_port is not None:
             print("error: adb is not installed, so --local-port can't forward a port", file=sys.stderr)
             return None
         # Without adb there is no device to forward to: the server is local.
         print("warning: adb is not installed, so the port was not forwarded", file=sys.stderr)
-        return local_port
+        return device_port
     if err:
         # The URL would reach whatever holds the local port, not the app.
         print("error: adb forward tcp:{} tcp:{} failed: {}".format(local_port, device_port, err), file=sys.stderr)
