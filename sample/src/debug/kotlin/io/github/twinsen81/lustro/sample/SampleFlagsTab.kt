@@ -18,7 +18,7 @@ import org.json.JSONObject
  * the app, and a toggle in the app shows in the console on its next poll.
  */
 public class SampleFlagsTab(
-    @Suppress("UNUSED_PARAMETER") application: Application,
+    application: Application,
 ) : DebugTab() {
     override val id: String = "flags"
     override val title: String = "Sample Client Feature Flags"
@@ -36,11 +36,15 @@ public class SampleFlagsTab(
 
     internal val flags: StateFlow<List<SampleFlag>> = state.asStateFlow()
 
+    // The system setting that the dark theme flag last followed. A toggle of the flag
+    // lasts until the system setting changes.
+    private var systemDark = SampleFlags.isSystemDark(application.resources.configuration)
+
     init {
         // Seed a few flags so the tab is populated on first open. The app reads
         // the first two; see SampleFlags.
         putFlag(SampleFlag(SampleFlags.HOME_INTRO, "Intro on the sample's home screen", enabled = true))
-        putFlag(SampleFlag(SampleFlags.DARK_THEME, "Dark theme for the sample app", enabled = false))
+        putFlag(SampleFlag(SampleFlags.DARK_THEME, "Dark theme for the sample app", enabled = systemDark))
         putFlag(SampleFlag("offline-sync", "Offline sync (the sample does not read it)", enabled = true))
     }
 
@@ -54,6 +58,15 @@ public class SampleFlagsTab(
         }
         sequence.incrementAndGet()
         return true
+    }
+
+    /** Sets the dark theme flag to [dark] when the system setting changed since the last call. */
+    internal fun onSystemDarkTheme(dark: Boolean) {
+        synchronized(lock) {
+            if (dark == systemDark) return
+            systemDark = dark
+        }
+        setEnabled(SampleFlags.DARK_THEME, dark)
     }
 
     private fun putFlag(flag: SampleFlag) {

@@ -2,8 +2,9 @@
 <resources>
     <!--
         The UI is Compose and draws edge-to-edge, with its own top bar, so the window
-        has no action bar. The background matches the light theme's, so the window
-        shows no flash of another color before the first frame.
+        has no action bar. The background matches the theme that the system setting
+        picks (values-night has the dark one), so the window shows no flash of
+        another color before the first frame.
     -->
     <style name="Theme.LustroSample" parent="@android:style/Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@color/sample_background</item>

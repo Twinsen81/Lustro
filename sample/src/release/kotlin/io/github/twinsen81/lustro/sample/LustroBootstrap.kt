@@ -169,6 +169,11 @@ public object LustroBootstrap {
     /** Null: the release build has no Feature Flags tab, so the app uses its defaults. */
     internal fun flags(): StateFlow<List<SampleFlag>>? = null
 
+    /** No-op: without flags, the app reads the system setting itself. */
+    internal fun onSystemDarkTheme(dark: Boolean) {
+        // No-op: there is no Feature Flags tab in this variant.
+    }
+
     /** No-op: the release build has no flags to set. */
     internal fun setFlag(id: String, enabled: Boolean) {
         // No-op: there is no Feature Flags tab in this variant.

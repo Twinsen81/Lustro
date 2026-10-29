@@ -170,6 +170,11 @@ internal class SampleViewModel(application: Application) : AndroidViewModel(appl
         }
     }
 
+    /** Moves the dark theme flag to the system setting when that setting changes. */
+    fun onSystemDarkTheme(dark: Boolean) {
+        LustroBootstrap.onSystemDarkTheme(dark)
+    }
+
     fun setFlag(id: String, enabled: Boolean) {
         LustroBootstrap.setFlag(id, enabled)
     }

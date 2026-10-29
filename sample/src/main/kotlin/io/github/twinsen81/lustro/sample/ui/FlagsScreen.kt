@@ -47,7 +47,7 @@ internal fun FlagsScreen(viewModel: SampleViewModel, flags: List<SampleFlag>, on
                         Text("IN THE BROWSER", style = SampleText.eyebrow, color = palette.orange)
                         Spacer(Modifier.height(2.dp))
                         Text("Open the Sample Client Feature Flags tab", style = SampleText.cardTitle.copy(fontSize = SampleText.body.fontSize))
-                        Text("Turn on ${SampleFlags.DARK_THEME} and watch this phone.", style = SampleText.small, color = palette.textMuted)
+                        Text("Toggle ${SampleFlags.DARK_THEME} and watch this phone.", style = SampleText.small, color = palette.textMuted)
                     }
                 }
             }
