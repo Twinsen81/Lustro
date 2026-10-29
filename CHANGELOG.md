@@ -781,6 +781,17 @@ see [DECISIONS.md](DECISIONS.md).
   `lustro open` without `--local-port` also falls back to a free port, where
   it exited 1. Several agents can now drive the app on their own emulators at
   the same time, with `--device` or `ANDROID_SERIAL`.
+- **The sample no longer ends at each start after work-analytics lost track
+  of a run.** When work-analytics 2.12.0 has no open period for work that
+  runs, it inserts period 0 again, which fails with
+  `SQLiteConstraintException` when it closed period 0 before. A periodic
+  worker that throws, or a process that dies after work-analytics closed a
+  run but before WorkManager saved the result, leads there, and because the
+  insert rolls back, every later run of that work ended the process. The
+  sample caught the exception only in `onStopped`, for the cancel of running
+  work; its `MetricsListeners` now catches it in every listener method, logs
+  it, and leaves those runs out of the history. The README describes the
+  three cases.
 - **A start after `Lustro.stop()` no longer says that platform capture is
   off.** Each start made a new platform capture, which tried to set the
   process's `URLStreamHandlerFactory` again. A process can set it only once,
