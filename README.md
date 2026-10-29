@@ -924,8 +924,18 @@ fun start(app: Application) {
   them with `lustro api`, for example `lustro api GET work/events --param type=finished,exception`.
   See [docs/AGENTS.md](docs/AGENTS.md#workmanager-tab-operations) and
   [`work.openapi.json`](lustro-work/src/main/assets/lustro/work.openapi.json).
-- **Not in the tab bar yet.** The tab has no console view yet: it serves its routes, and `_meta`
-  lists it.
+- **In the console.** The **WorkManager** tab lists the work with its state, worker, unique name,
+  tags, runs, and next run. The state chips show the count of each state and filter the list by
+  it, and the tag, worker class, and unique name fields go to the route. A click on a work opens
+  it: **Details** has its id, class, tags, constraints, periodicity, initial delay, next run,
+  attempts, generation, last stop reason, output, and progress; **Timeline** has the events of its
+  runs, with the result, the output, the stop reason, and a worker's exception with its stack
+  trace; and **History**, with work-analytics, has its periods. **Cancel**, **Cancel unique work**,
+  and **Prune** ask first, and with work-analytics the cancel dialogs say that a cancel of running
+  work can end the app's process (see above). When the listeners are not installed, a banner says
+  why, and how to fix it.
+
+  ![The WorkManager tab: the sample's demo work, and the timeline of the worker that throws, with its stack trace](docs/images/work-tab.png)
 - **Not shown:** the chain graph and a work's input data, which WorkManager's public API does
   not have (the SQLite tab can read WorkManager's database as a file:
   `SqliteDb.file("workmanager", File(app.noBackupFilesDir, "androidx.work.workdb"))`, but its

@@ -304,6 +304,10 @@ the events of each run under `/api/v1/work/`.
   `Lustro.stop()`, so it records nothing in a build that the runtime guard
   disables. The events stay on the heap, in a bounded buffer, and end with the
   process. The tab never initializes WorkManager.
+- **The console shows a value as text.** The WorkManager tab escapes every
+  tag, name, class, output value, exception message, and stack trace that it
+  draws, so a value that holds HTML shows as text and can't run script under
+  the console's origin. Cancel and Prune ask before they send.
 - **Release builds get none of it.** `lustro-work-noop`'s `configure()` returns
   the app's builder as it is, so release WorkManager runs the app's own
   configuration. Neither artifact depends on WorkManager at runtime.

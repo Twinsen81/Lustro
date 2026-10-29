@@ -1,0 +1,137 @@
+/* WorkManager tab. Builds on the tokens and .dc-* components from shared.css:
+   every color here is a token or a color-mix of one, so both themes work. */
+
+.work { height: 100%; min-height: 0; display: flex; flex-direction: column; }
+.work-split { flex: 1; min-height: 0; }
+
+/* ── The banner: why there are no events, or no work ── */
+.work-banner {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px 22px;
+    border-bottom: 1px solid var(--border-soft);
+    font-size: 12px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}
+.work-banner__title { font-weight: 600; }
+.work-banner__fix { color: var(--t2); }
+.work-banner__reason { color: var(--t4); }
+.work-banner--warn { background: color-mix(in srgb, var(--lvl-w) 12%, transparent); }
+.work-banner--warn .work-banner__title { color: var(--lvl-w); }
+.work-banner--error { background: var(--danger-soft); }
+.work-banner--error .work-banner__title { color: var(--danger); }
+.work-banner--info { background: var(--accent-soft); }
+.work-banner--info .work-banner__title { color: var(--accent-2); }
+
+/* ── The list ── */
+.work-list { width: 56%; min-width: 420px; background: var(--bg); }
+.work-toolbar { border-bottom: none; }
+.work-count { font-size: 11.5px; color: var(--t4); }
+.work-toolbar__prune { margin-left: auto; padding: 8px 13px; font-size: 11.5px; }
+
+.work-filters { flex: none; display: flex; flex-direction: column; gap: 10px; padding: 0 22px 12px; border-bottom: 1px solid var(--border-soft); }
+.work-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+/* A chip is a button: no native look, and a 30px hit target. */
+.work-chips .dc-chip { min-height: 30px; }
+.work-chips .dc-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.work-chip__count { color: var(--t4); }
+.dc-chip--active .work-chip__count { color: var(--accent-2); }
+.work-fields { display: flex; flex-wrap: wrap; gap: 8px; }
+.work-field { flex: 1; min-width: 150px; }
+.work-field__label { display: flex; flex: 1; align-items: center; gap: 8px; min-width: 0; cursor: text; }
+/* A 24px hit target that doesn't make the field taller. */
+.work-field__clear { min-width: 24px; min-height: 24px; margin: -5px -4px; padding: 0 4px; font-size: 15px; line-height: 1; }
+
+.work-scroll { flex: 1; min-height: 0; overflow: auto; }
+.work-table { table-layout: fixed; }
+.work-th--state { width: 112px; }
+.work-th--name { width: 22%; }
+.work-th--tags { width: 18%; }
+.work-th--attempts { width: 64px; }
+.work-th--next { width: 140px; }
+.work-row { cursor: pointer; }
+.work-cell--worker { color: var(--t1); }
+.work-cell--attempts { text-align: right; }
+.work-periodic { margin-right: 6px; color: var(--accent-2); }
+.work-tag { margin-right: 4px; text-transform: none; letter-spacing: .02em; font-weight: 600; }
+.work-tag--class { color: var(--t4); }
+.work-next--running { color: var(--work-running); }
+
+/* ── The drawer ── */
+.work-detail { flex: 1; min-width: 340px; background: var(--raise); }
+.work-none { flex: 1; display: flex; align-items: center; justify-content: center; padding: 22px; color: var(--t4); font-size: 12.5px; text-align: center; }
+.work-drawer { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.work-head { flex: none; display: flex; flex-direction: column; gap: 8px; padding: 16px 22px 14px; }
+.work-head__line { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.work-head__class { flex: 1; min-width: 0; margin: 0; font-size: 14px; font-weight: 600; color: var(--t1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.work-head__close { min-width: 24px; min-height: 24px; }
+.work-head__id { font-size: 11.5px; color: var(--t4); overflow-wrap: anywhere; user-select: all; }
+.work-head__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.work-head__actions .dc-btn { min-height: 30px; }
+.work-gone { padding: 8px 11px; border-radius: var(--radius); background: color-mix(in srgb, var(--lvl-w) 12%, transparent); color: var(--lvl-w); font-size: 12px; line-height: 1.5; }
+
+.work-tabs { padding-left: 14px; }
+.work-tab__count { margin-left: 6px; color: var(--t4); }
+.dc-tab--active .work-tab__count { color: var(--accent-2); }
+
+.work-panel { flex: 1; min-height: 0; overflow: auto; padding: 16px 22px 22px; }
+.work-kv { table-layout: fixed; }
+.work-kv .dc-kv__key { width: 132px; }
+.work-kv .dc-kv__value { white-space: normal; }
+.work-kv .dc-badge, .work-kv .dc-tag { vertical-align: middle; }
+.work-mono { user-select: all; }
+.work-json { margin: 2px 0; padding: 8px 10px; font-size: 11.5px; line-height: 1.55; }
+
+/* ── The timeline ── */
+.work-note { margin-bottom: 12px; color: var(--lvl-w); font-size: 12px; }
+.work-events { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; }
+/* Each event has a line in the color of the state it leads to, so the runs read top to bottom. */
+.work-event {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 9px 0 11px 16px;
+    border-left: 2px solid color-mix(in srgb, var(--c, var(--t4)) 45%, transparent);
+}
+.work-event::before {
+    content: '';
+    position: absolute;
+    left: -5px;
+    top: 14px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--c, var(--t4));
+}
+.work-event__line { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; font-size: 12px; }
+.work-event__time { color: var(--t3); font-variant-numeric: tabular-nums; }
+.work-event__run { font-size: 11px; color: var(--t4); }
+.work-event__state { font-size: 11px; color: var(--t4); }
+.work-event__details { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 10px; font-size: 12px; color: var(--t2); line-height: 1.5; }
+.work-event__reason { color: var(--lvl-w); }
+.work-event__note { color: var(--t3); }
+.work-event__exception { color: var(--danger); overflow-wrap: anywhere; }
+.work-result { font-size: 10px; }
+
+.work-trace__summary { width: fit-content; min-height: 24px; display: flex; align-items: center; gap: 6px; list-style: none; font-size: 11.5px; color: var(--t3); cursor: pointer; }
+.work-trace__summary::-webkit-details-marker { display: none; }
+.work-trace__summary::before { content: '▸'; width: 10px; color: var(--t4); }
+.work-trace[open] > .work-trace__summary::before { content: '▾'; }
+.work-trace__summary:hover { color: var(--t1); }
+.work-trace__summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-sm); }
+.work-trace__text { margin: 6px 0 8px; max-height: 320px; overflow: auto; font-size: 11px; line-height: 1.55; white-space: pre; }
+
+/* ── The history ── */
+.work-periods { display: flex; flex-direction: column; gap: 16px; }
+.work-period { display: flex; flex-direction: column; gap: 8px; }
+.work-period__head { display: flex; align-items: center; gap: 10px; }
+.work-period__gen { font-size: 11.5px; color: var(--t4); }
+
+.work-empty { padding: 32px 22px; text-align: center; color: var(--t4); font-size: 12.5px; }
+.work-panel .work-empty { padding: 24px 0; text-align: left; }
+
+.work-confirm__message { margin: 0; font-size: 12.5px; line-height: 1.6; color: var(--t2); overflow-wrap: anywhere; }

@@ -23,8 +23,8 @@ writing a tab.
 - **Flat by default.** Shadows appear only on floating layers (menus, modals,
   toasts). Everything else is separated by 1px borders and surface shifts.
 - **Never hardcode colors.** Every surface, border, text shade, and semantic
-  color (HTTP method, status class, log level, value type, category) has a
-  token. If you need a soft tinted fill, use
+  color (HTTP method, status class, log level, value type, work state,
+  category) has a token. If you need a soft tinted fill, use
   `color-mix(in srgb, var(--c) 15%, transparent)`.
 - **Comments as helper text.** Secondary hints render like
   `// sent through the app's live OkHttp client` in `--t4`.
@@ -53,6 +53,8 @@ Defined on `:root` (dark default) with light overrides under
   `--type-string/boolean/int/long/float` (a SharedPreferences or DataStore
   value's type; a string set and bytes have the string color, and a double the
   float color: their labels tell them apart),
+  `--work-enqueued/running/succeeded/failed/blocked/cancelled` (a WorkManager
+  work state; an event of a run takes the color of the state it leads to),
   `--cat-sync/ai/config/media/auth/
   other/wiretap`, `--syn-key/str/num/bool/punc` (JSON highlighting).
 - **Row states**: `--row-selected`, `--row-zebra`, `--row-hover`, `--row-warn`,

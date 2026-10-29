@@ -11,6 +11,7 @@ import io.github.twinsen81.lustro.work.internal.WorkMetrics
 import io.github.twinsen81.lustro.work.internal.WorkRoutes
 import io.github.twinsen81.lustro.work.internal.WorkSource
 import io.github.twinsen81.lustro.work.internal.WorkSupport
+import io.github.twinsen81.lustro.work.internal.WorkView
 
 /**
  * The WorkManager tab: the app's work, the events of each run, and cancel and
@@ -58,8 +59,10 @@ import io.github.twinsen81.lustro.work.internal.WorkSupport
  * deletes finished work, as `WorkManager.pruneWork()` does. Every client that has
  * the token can do both.
  *
- * `GET /api/v1/work/_schema` describes the routes. The tab has no console view
- * yet, so it is not in the tab bar.
+ * In the console, the tab lists the work with its state, filtered by state, tag,
+ * worker class, and unique name, and shows the selected work's details, the
+ * timeline of its events, and its work-analytics history, with Cancel and Prune.
+ * `GET /api/v1/work/_schema` describes its routes.
  */
 public class WorkDebugTab private constructor(private val source: WorkSource) : DebugTab() {
     override val id: String = "work"
@@ -67,10 +70,10 @@ public class WorkDebugTab private constructor(private val source: WorkSource) : 
     override val icon: String = "⏳"
     override val order: Int = 50
 
-    // API only until the tab has a console view; _meta lists it.
-    override val showInTabBar: Boolean = false
-
     private val routes = WorkRoutes(source)
+
+    /** The view's static shell; `work.js` and `work.css` in the assets fill and style it. */
+    override fun renderContent(): String = WorkView.HTML
 
     /** Serves the routes under `/api/v1/work/`; the static `work.openapi.json` describes them. */
     override fun handle(request: DebugRequest): DebugResponse? = routes.handle(request)

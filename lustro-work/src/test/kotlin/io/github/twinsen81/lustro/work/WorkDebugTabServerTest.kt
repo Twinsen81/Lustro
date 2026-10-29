@@ -111,6 +111,18 @@ class WorkDebugTabServerTest {
         assertEquals(401, http.newCall(Request.Builder().url("$base/items").build()).execute().code)
     }
 
+    @Test
+    fun `the tab is in the tab bar, and serves its view with its script and styles`() {
+        val page = http.newCall(Request.Builder().url("$root/tab/work").build()).execute()
+        assertTrue(page.body!!.string().contains("<a href=\"/tab/work\" class=\"dc-nav__item dc-nav__item--active\">"))
+
+        val view = get("_view")
+        assertEquals(200, view.code)
+        assertTrue(view.body!!.string().contains("<tbody id=\"work-rows\"></tbody>"))
+        assertTrue(get("_view.js").body!!.string().contains("window.workApplyItems"))
+        assertTrue(get("_view.css").body!!.string().contains(".work-event"))
+    }
+
     private fun get(path: String): Response = call(Request.Builder().url("$base/$path"))
 
     private fun post(path: String, body: JSONObject): Response =
