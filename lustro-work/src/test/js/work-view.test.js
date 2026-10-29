@@ -163,6 +163,10 @@ test('the details show the output as JSON, and say when a value is empty', () =>
     const waiting = work.workDetailsHtml(byClass('RetryWorker'), NOW);
     assert.match(waiting, /Next run<\/th><td class="dc-kv__value">2026-10-19 14:22:50\.000 <span class="dc-comment" data-at="1792419770000">in 30 s</);
     assert.match(waiting, /Unique name<\/th><td class="dc-kv__value"><span class="dc-comment">/);
+
+    // A run's own schedule time is in the past: running work says so instead.
+    const running = work.workDetailsHtml(Object.assign(byClass('RetryWorker'), { state: 'RUNNING' }), NOW);
+    assert.match(running, /Next run<\/th><td class="dc-kv__value"><span class="dc-comment">\/\/ running now</);
 });
 
 // ── The timeline ────────────────────────────────────────────────

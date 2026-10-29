@@ -242,7 +242,9 @@
             return '<span class="dc-tag work-tag' + (own ? ' work-tag--class' : '') + '"'
                 + (own ? ' title="WorkManager adds the worker class as a tag."' : '') + '>' + esc(tag) + '</span>';
         }).join('');
-        var next = item.nextScheduleTimeMillis == null || isFinished(item.state)
+        var next = item.state === 'RUNNING'
+            ? '<span class="dc-comment">// running now</span>'
+            : item.nextScheduleTimeMillis == null || isFinished(item.state)
             ? '<span class="dc-comment">// none</span>'
             : esc(dateTimeText(item.nextScheduleTimeMillis)) + ' <span class="dc-comment" data-at="'
                 + esc(String(item.nextScheduleTimeMillis)) + '">' + esc(relativeText(item.nextScheduleTimeMillis, now)) + '</span>';
@@ -562,6 +564,10 @@
             collectSuggestions();
             renderRows();
             syncSelected();
+        } else if (selectedId && !list.byId.has(selectedId) && !(detail && !detail.item)) {
+            // A filter hides the selected work, so the list does not say when it
+            // changes: the drawer reads it at the pace of the list, until it is gone.
+            loadDetail();
         }
         renderBanner(listenersBanner(list.state));
         renderTimes();
@@ -802,6 +808,8 @@
                 renderHistory();
             })
             .catch(function(e) {
+                // A refusal is an answer of the app: it does not mean a lost connection.
+                if (e && e.response) window.debugSetStatus('connected');
                 if (requestSelection !== selection) return;
                 if (e && e.status === 404) {
                     detail = { item: null, events: [] };
@@ -945,7 +953,9 @@
         var index = rows.findIndex(function(row) { return row.dataset.id === selectedId; });
         var next = rows[index < 0 ? (step > 0 ? 0 : rows.length - 1) : Math.max(0, Math.min(rows.length - 1, index + step))];
         select(next.dataset.id);
-        next.scrollIntoView({ block: 'nearest' });
+        // select() draws the row again, as selected.
+        var drawn = els.rows.querySelector('tr.dc-row--selected');
+        if (drawn) drawn.scrollIntoView({ block: 'nearest' });
     }
 
     var CLICK_ACTIONS = {
