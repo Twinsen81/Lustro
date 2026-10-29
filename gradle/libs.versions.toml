@@ -1,6 +1,6 @@
 [versions]
 # Build toolchain.
-agp = "9.4.1"
+agp = "9.5.0"
 kotlin = "2.3.21"
 ksp = "2.3.21-2.0.4"
 # lint = AGP major + 23; shipped to consumers via :lustro-lint.
@@ -28,8 +28,8 @@ androidxAnnotation = "1.11.0"
 # that registers a Preferences DataStore brings its own. The oldest DataStore
 # release, and the coroutines that it depends on, so that every call the tab
 # makes exists in any app that has DataStore.
-datastoreFloor = "1.0.0"
-coroutinesFloor = "1.5.0"
+datastoreFloor = "1.3.0"
+coroutinesFloor = "1.11.0"
 # compileOnly in :lustro-sqlite and :lustro-sqlite-noop, so not published: an app
 # that registers a SupportSQLiteDatabase, such as Room's, brings its own. The
 # first androidx release has every call that the tab makes.
@@ -49,7 +49,7 @@ composeBom = "2025.07.00"
 activityCompose = "1.10.1"
 # The sample's Preferences DataStore. The prefs unit tests use it too, for the
 # byte array values that DataStore 1.1 added.
-datastore = "1.1.7"
+datastore = "1.3.0"
 # The sample's SupportSQLiteOpenHelper, the one Room uses, without Room. The
 # sqlite unit tests use it too, for a live SupportSQLiteDatabase.
 sqlite = "2.4.0"
