@@ -25,10 +25,13 @@ public class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // A change of the system dark mode recreates the activity, so the flag is
+        // in sync before the first frame.
+        viewModel.onSystemDarkTheme(SampleFlags.isSystemDark(resources.configuration))
         setContent {
             SampleApp(viewModel) { dark ->
-                // The dark-mode-v2 flag, not the system setting, picks the theme,
-                // so the system bar icons follow it here.
+                // The dark-mode-v2 flag can differ from the system setting, so the
+                // system bar icons follow the theme here.
                 DisposableEffect(dark) {
                     val style =
                         if (dark) {

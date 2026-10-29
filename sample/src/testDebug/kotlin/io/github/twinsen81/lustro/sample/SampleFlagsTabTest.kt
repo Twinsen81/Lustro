@@ -14,7 +14,7 @@ class SampleFlagsTabTest {
     private val tab = SampleFlagsTab(ApplicationProvider.getApplicationContext<Application>())
 
     @Test
-    fun `the app reads the seeded flags, with their defaults`() {
+    fun `the app reads the seeded flags, and the dark theme follows the light system setting`() {
         val flags = tab.flags.value
 
         assertTrue(SampleFlags.isOn(flags, SampleFlags.HOME_INTRO))
@@ -30,6 +30,24 @@ class SampleFlagsTabTest {
     }
 
     @Test
+    fun `a change of the system setting moves the dark theme flag`() {
+        tab.onSystemDarkTheme(true)
+        assertTrue(SampleFlags.isOn(tab.flags.value, SampleFlags.DARK_THEME))
+
+        tab.onSystemDarkTheme(false)
+        assertFalse(SampleFlags.isOn(tab.flags.value, SampleFlags.DARK_THEME))
+    }
+
+    @Test
+    fun `a toggle of the dark theme flag lasts while the system setting does not change`() {
+        tab.setEnabled(SampleFlags.DARK_THEME, true)
+
+        tab.onSystemDarkTheme(false)
+
+        assertTrue(SampleFlags.isOn(tab.flags.value, SampleFlags.DARK_THEME))
+    }
+
+    @Test
     fun `an unknown flag is not added`() {
         assertFalse(tab.setEnabled("no-such-flag", true))
         assertEquals(3, tab.flags.value.size)
@@ -38,6 +56,7 @@ class SampleFlagsTabTest {
     @Test
     fun `without the tab the app uses its defaults`() {
         assertTrue(SampleFlags.isOn(null, SampleFlags.HOME_INTRO))
-        assertFalse(SampleFlags.isOn(null, SampleFlags.DARK_THEME))
+        assertTrue(SampleFlags.isOn(null, SampleFlags.DARK_THEME, default = true))
+        assertFalse(SampleFlags.isOn(null, SampleFlags.DARK_THEME, default = false))
     }
 }

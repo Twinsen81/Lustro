@@ -205,6 +205,11 @@ public object LustroBootstrap {
     /** The flags of the Feature Flags tab, which the app reads. */
     internal fun flags(): StateFlow<List<SampleFlag>>? = flagsTab?.flags
 
+    /** Moves the dark theme flag to the system setting when that setting changes. */
+    internal fun onSystemDarkTheme(dark: Boolean) {
+        flagsTab?.onSystemDarkTheme(dark)
+    }
+
     /** Sets a flag from the app. The console shows the change on its next poll. */
     internal fun setFlag(id: String, enabled: Boolean) {
         flagsTab?.setEnabled(id, enabled)

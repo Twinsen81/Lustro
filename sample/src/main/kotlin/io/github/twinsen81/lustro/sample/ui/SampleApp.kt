@@ -9,6 +9,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
@@ -41,7 +42,7 @@ import io.github.twinsen81.lustro.sample.SampleViewModel
 @Composable
 internal fun SampleApp(viewModel: SampleViewModel, systemBars: @Composable (dark: Boolean) -> Unit) {
     val flags = viewModel.flags?.collectAsState()?.value
-    val dark = SampleFlags.isOn(flags, SampleFlags.DARK_THEME)
+    val dark = SampleFlags.isOn(flags, SampleFlags.DARK_THEME, default = isSystemInDarkTheme())
     systemBars(dark)
     SampleTheme(dark) {
         var screen by rememberSaveable { mutableStateOf(Screen.HOME) }
