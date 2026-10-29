@@ -319,10 +319,10 @@ def _connection_failed(url: str, reason: Any) -> LustroError:
         "connection_failed",
         "could not reach {}: {}".format(url, reason),
         hint=(
-            "Is the app running and foregrounded? For a device, run "
-            "`lustro open --print-only`: it forwards the port and reports a local "
-            "port that another process holds. The `LustroToken` log line gives "
-            "the live endpoint."
+            "Is the app running and foregrounded? Without --port, the CLI "
+            "connects through an adb forward to the app's port on the device. "
+            "With --port, it connects to that local port and makes no forward. "
+            "The `LustroToken` log line gives the live endpoint."
         ),
     )
 

@@ -20,6 +20,10 @@ from lustro_cli.discovery import Endpoint
 
 TOKEN = "tok"
 
+# conftest replaces cli._adb_forward for each test, so that no test reaches adb.
+# The tests of the function itself run it with a fake adb on PATH.
+_adb_forward = cli._adb_forward
+
 
 def _serve_raw(reply):
     """Accept connections on a free port and hand each to ``reply(conn)``, which
@@ -99,7 +103,7 @@ def test_open_fails_when_adb_forward_fails(endpoint, monkeypatch, capsys):
         return local_port, "adb: error: cannot bind listener: Address already in use"
 
     monkeypatch.setattr(cli, "_adb_forward", forward)
-    assert cli.main(["open", "--print-only"]) == 1
+    assert cli.main(["open", "--local-port", "8080", "--print-only"]) == 1
     out, err = capsys.readouterr()
     # The URL would reach whatever holds the port, so it isn't printed.
     assert out == ""
@@ -107,6 +111,23 @@ def test_open_fails_when_adb_forward_fails(endpoint, monkeypatch, capsys):
     assert "hint: " in err
     assert "--local-port 0" in err
     assert calls == [(8080, 8080, None)]
+
+
+def test_open_forwards_a_free_port_when_another_program_holds_the_app_port(endpoint, monkeypatch, capsys):
+    calls = []
+
+    def forward(local_port, device_port, device):
+        calls.append((local_port, device_port, device))
+        if local_port:
+            return local_port, "adb: error: cannot bind listener: Address already in use"
+        return 51234, None
+
+    monkeypatch.setattr(cli, "_adb_forward", forward)
+    assert cli.main(["open", "--print-only"]) == 0
+    out, err = capsys.readouterr()
+    assert out.strip() == "http://localhost:51234/#lustro_token=tok"
+    assert err == ""
+    assert calls == [(8080, 8080, None), (0, 8080, None)]
 
 
 def test_open_warns_and_goes_on_without_adb(endpoint, monkeypatch, capsys):
@@ -144,14 +165,14 @@ def _fake_adb(tmp_path, monkeypatch, script):
 @pytest.mark.skipif(os.name == "nt", reason="uses a POSIX shell script as adb")
 def test_adb_forward_returns_what_adb_reports(tmp_path, monkeypatch):
     _fake_adb(tmp_path, monkeypatch, 'echo "adb: error: more than one device/emulator" >&2\nexit 1\n')
-    assert cli._adb_forward(8080, 8080, None) == (8080, "adb: error: more than one device/emulator")
+    assert _adb_forward(8080, 8080, None) == (8080, "adb: error: more than one device/emulator")
 
 
 @pytest.mark.skipif(os.name == "nt", reason="uses a POSIX shell script as adb")
 def test_adb_forward_passes_the_device_and_both_ports(tmp_path, monkeypatch):
     args_file = tmp_path / "args"
     _fake_adb(tmp_path, monkeypatch, 'echo "$@" > "{}"\n'.format(args_file))
-    assert cli._adb_forward(18080, 8080, "emulator-5554") == (18080, None)
+    assert _adb_forward(18080, 8080, "emulator-5554") == (18080, None)
     # --no-rebind: a local port that another device's forward holds stays with it.
     assert args_file.read_text().strip() == "-s emulator-5554 forward --no-rebind tcp:18080 tcp:8080"
 
@@ -160,14 +181,14 @@ def test_adb_forward_passes_the_device_and_both_ports(tmp_path, monkeypatch):
 def test_adb_forward_returns_the_local_port_that_adb_chose(tmp_path, monkeypatch):
     args_file = tmp_path / "args"
     _fake_adb(tmp_path, monkeypatch, 'echo "$@" > "{}"\necho 51234\n'.format(args_file))
-    assert cli._adb_forward(0, 8080, None) == (51234, None)
+    assert _adb_forward(0, 8080, None) == (51234, None)
     assert args_file.read_text().strip() == "forward --no-rebind tcp:0 tcp:8080"
 
 
 @pytest.mark.skipif(os.name == "nt", reason="uses a POSIX shell script as adb")
 def test_adb_forward_fails_when_adb_prints_no_local_port(tmp_path, monkeypatch):
     _fake_adb(tmp_path, monkeypatch, "exit 0\n")
-    port, err = cli._adb_forward(0, 8080, None)
+    port, err = _adb_forward(0, 8080, None)
     assert port == 0
     assert err == "adb did not print the local port that it chose: ''"
 
@@ -175,7 +196,7 @@ def test_adb_forward_fails_when_adb_prints_no_local_port(tmp_path, monkeypatch):
 def test_adb_forward_raises_when_adb_is_missing(tmp_path, monkeypatch):
     monkeypatch.setenv("PATH", str(tmp_path))
     with pytest.raises(FileNotFoundError):
-        cli._adb_forward(8080, 8080, None)
+        _adb_forward(8080, 8080, None)
 
 
 # ── a reader that stops early ──────────────────────────────────────────────────

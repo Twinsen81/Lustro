@@ -49,10 +49,15 @@ it through an `adb forward`, and the local port of the forward can be a
 different number. So when the host is a loopback address and `--port` is not
 given, the CLI reads `adb forward --list` and connects to the local port of the
 first forward to the app's port on the selected device: `--device`, else
-`ANDROID_SERIAL`, else the only device. Without such a forward, it connects to
-the same port number on the computer. A command with `--port` connects to that
-port and looks for no forward, for example when the server runs on the
-computer. For `lustro open`, `--port` is the app's port, which it forwards to.
+`ANDROID_SERIAL`, else the only device. Without such a forward, it makes one,
+as `lustro open` does (see [The local port](#the-local-port)), and exits 1 with
+`connection_failed` when adb can't make it. It does not connect to the same
+port number on the computer instead: with several devices, that port can be a
+forward to the app on another device. Without adb installed, there is no device
+to forward to, and a command connects to that port on the computer. A command
+with `--port` connects to that port and looks for no forward, for example when
+the server runs on the computer. For `lustro open`, `--port` is the app's port,
+which it forwards to.
 
 ## Global flags
 
@@ -100,9 +105,10 @@ discovery), `--json` (JSON output). They go before or after the command:
 
 `lustro open` forwards a local port to the app's port on the device, and prints
 the console URL with the local port. It keeps an existing forward to the app.
-Without one, it forwards the same port number, 8080 by default, and exits 1
-when another process, such as a local development server, holds that port on
-the computer. Then choose the local port:
+Without one, it forwards the same port number, 8080 by default. When another
+process, such as a local development server or a forward to another device,
+holds that port on the computer, adb chooses a free local port. To choose the
+local port yourself:
 
 ```bash
 lustro open --local-port 18080   # forward local port 18080 to the app's port
@@ -110,17 +116,28 @@ lustro open --local-port 0       # adb chooses a free local port
 lustro net list                  # connects through the forward, without --port
 ```
 
-The other commands find the forward in `adb forward --list`, as
+`open --local-port N` exits 1 when port N is taken. The other commands find
+the forward in `adb forward --list`, as
 [discovery](#endpoint-and-token-discovery) describes, so they need no `--port`.
 This also applies to a forward that you make yourself, such as
-`adb forward tcp:18080 tcp:8080`. `open` runs `adb forward --no-rebind`, so it
-does not take over a local port that a forward of another device holds.
-`--no-forward` skips the forward, and the URL then uses `--local-port N`, else
-the app's port.
+`adb forward tcp:18080 tcp:8080`. Without a forward, a command makes one the
+way `open` does, so it needs no `open` first. The CLI runs
+`adb forward --no-rebind`, so it does not take over a local port that a forward
+of another device holds. `--no-forward` skips the forward, and the URL then
+uses `--local-port N`, else the app's port.
 
 The commands connect to the forward directly, whatever `http_proxy`,
 `HTTPS_PROXY`, or the system's proxy settings say: the server is an adb forward
 on this computer, which a proxy cannot reach, and the token must not leave it.
+
+### Several devices
+
+The app on each device or emulator listens on port 8080 of that device, but
+the computer has only one local port 8080. Select the device with
+`--device SERIAL` or `ANDROID_SERIAL` for each command. The CLI then connects
+through a forward to that device, on whatever local port the forward has, and
+not through a forward to another device. Several agents or scripts can each
+drive the app on their own device at the same time.
 
 ## Output
 

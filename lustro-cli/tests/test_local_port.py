@@ -1,6 +1,6 @@
 """The local port: ``lustro open --local-port``, and the adb forward that the
-other commands connect through when the app's local port differs from its port
-on the device."""
+other commands connect through, or make, to reach the app's port on the
+selected device."""
 
 from __future__ import annotations
 
@@ -15,10 +15,12 @@ TOKEN = "tok"
 class _Adb:
     """Stands in for the adb forward list and for ``adb forward``."""
 
-    def __init__(self, monkeypatch, forwarded=(), chosen=51234, error=None):
+    def __init__(self, monkeypatch, forwarded=(), chosen=51234, error=None, taken=()):
         self.forwarded = list(forwarded)
         self.chosen = chosen
         self.error = error
+        # Local ports that another device's forward holds.
+        self.taken = set(taken)
         self.lookups = []
         self.forwards = []
         monkeypatch.setattr(cli, "forwarded_ports", self.forwarded_ports)
@@ -32,6 +34,8 @@ class _Adb:
         self.forwards.append((local_port, device_port, device))
         if self.error:
             return local_port, self.error
+        if local_port in self.taken:
+            return local_port, "adb: error: cannot rebind existing socket"
         return (self.chosen if local_port == 0 else local_port), None
 
 
@@ -113,6 +117,33 @@ def test_open_without_a_forward_forwards_the_app_port(app, monkeypatch, capsys):
     adb = _Adb(monkeypatch)
     assert open_url(["open", "--print-only"], capsys) == "http://localhost:8080/#lustro_token=tok"
     assert adb.forwards == [(8080, 8080, None)]
+
+
+def test_open_forwards_a_free_port_when_another_device_holds_the_app_port(app, monkeypatch, capsys):
+    adb = _Adb(monkeypatch, taken=[8080], chosen=51234)
+    url = open_url(["--device", "emulator-5556", "open", "--print-only"], capsys)
+    assert adb.forwards == [(8080, 8080, "emulator-5556"), (0, 8080, "emulator-5556")]
+    assert url == "http://localhost:51234/#lustro_token=tok"
+
+
+def test_open_fails_when_no_forward_works(app, monkeypatch, capsys):
+    adb = _Adb(monkeypatch, error="adb: error: more than one device/emulator")
+    assert cli.main(["open", "--print-only"]) == 1
+    out, err = capsys.readouterr()
+    assert out == ""
+    assert err == (
+        "error: no adb forward reaches the app's port 8080: "
+        "adb forward tcp:0 tcp:8080 failed: adb: error: more than one device/emulator\n"
+        "  hint: Pass --device SERIAL when more than one device is connected. "
+        "Use --no-forward when you forward the port yourself.\n"
+    )
+    assert adb.forwards == [(8080, 8080, None), (0, 8080, None)]
+
+
+def test_open_local_port_does_not_fall_back_to_a_free_port(app, monkeypatch, capsys):
+    adb = _Adb(monkeypatch, taken=[18080])
+    assert cli.main(["open", "--local-port", "18080", "--print-only"]) == 1
+    assert adb.forwards == [(18080, 8080, None)]
 
 
 def test_open_forwards_to_the_port_that_port_names(monkeypatch, capsys):
@@ -208,12 +239,47 @@ def test_commands_connect_through_the_forward_to_the_app(app, monkeypatch, base_
     assert cli.main(["--device", "emulator-5554", "meta"]) == 0
     assert base_urls == ["http://127.0.0.1:18080"]
     assert adb.lookups == [(8080, "emulator-5554")]
+    assert adb.forwards == []
 
 
-def test_commands_connect_to_the_app_port_without_a_forward(app, monkeypatch, base_urls):
-    _Adb(monkeypatch)
+def test_commands_forward_the_app_port_without_a_forward(app, monkeypatch, base_urls):
+    adb = _Adb(monkeypatch)
+    assert cli.main(["--device", "emulator-5554", "meta"]) == 0
+    assert base_urls == ["http://127.0.0.1:8080"]
+    assert adb.forwards == [(8080, 8080, "emulator-5554")]
+
+
+def test_commands_forward_a_free_port_when_another_device_holds_the_app_port(app, monkeypatch, base_urls):
+    # Local port 8080 reaches another device's app, so the command must not connect to it.
+    adb = _Adb(monkeypatch, taken=[8080], chosen=51234)
+    assert cli.main(["--device", "emulator-5556", "meta"]) == 0
+    assert base_urls == ["http://127.0.0.1:51234"]
+    assert adb.forwards == [(8080, 8080, "emulator-5556"), (0, 8080, "emulator-5556")]
+
+
+def test_commands_fail_when_no_forward_works(app, monkeypatch, base_urls, capsys):
+    _Adb(monkeypatch, error="adb: error: more than one device/emulator")
+    assert cli.main(["meta"]) == 1
+    assert base_urls == []
+    err = capsys.readouterr().err
+    assert err.startswith(
+        "error: connection_failed: no adb forward reaches the app's port 8080: "
+        "adb forward tcp:0 tcp:8080 failed: adb: error: more than one device/emulator\n  hint: "
+    )
+    assert "--device SERIAL" in err
+    assert "--port N" in err
+
+
+def test_commands_connect_to_the_app_port_without_adb(app, monkeypatch, base_urls):
+    adb = _Adb(monkeypatch)
+
+    def forward(local_port, device_port, device):
+        raise FileNotFoundError("adb")
+
+    monkeypatch.setattr(cli, "_adb_forward", forward)
     assert cli.main(["meta"]) == 0
     assert base_urls == ["http://127.0.0.1:8080"]
+    assert adb.lookups == [(8080, None)]
 
 
 def test_commands_use_the_loopback_for_an_app_on_all_interfaces(monkeypatch, base_urls):
@@ -230,6 +296,7 @@ def test_commands_use_port_as_it_is(monkeypatch, base_urls):
     assert cli.main(["--port", "18181", "net", "list"]) == 0
     assert base_urls == ["http://127.0.0.1:18181"]
     assert adb.lookups == []
+    assert adb.forwards == []
 
 
 def test_commands_look_for_no_forward_for_a_lan_host(monkeypatch, base_urls):
@@ -238,3 +305,4 @@ def test_commands_look_for_no_forward_for_a_lan_host(monkeypatch, base_urls):
     assert cli.main(["meta"]) == 0
     assert base_urls == ["http://192.168.1.50:8080"]
     assert adb.lookups == []
+    assert adb.forwards == []

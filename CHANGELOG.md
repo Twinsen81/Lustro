@@ -768,6 +768,19 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Fixed
 
+- **A `lustro` command no longer connects to the app on another device.** When
+  the selected device had no adb forward to the app, a command connected to
+  local port 8080 on the computer. That port can be a forward to another device
+  or emulator, or another program, such as an SSH tunnel. The command then got
+  a `401` from the app on the other device, or sent the token to the other
+  program. A command now makes its own forward to the
+  selected device when there is none, with `adb forward --no-rebind` on the
+  app's port, or on a free port that adb chooses when the app's port is taken.
+  It exits 1 with `connection_failed` when adb can't make the forward. For a
+  server on the computer, which needs no forward, pass `--port N`.
+  `lustro open` without `--local-port` also falls back to a free port, where
+  it exited 1. Several agents can now drive the app on their own emulators at
+  the same time, with `--device` or `ANDROID_SERIAL`.
 - **A start after `Lustro.stop()` no longer says that platform capture is
   off.** Each start made a new platform capture, which tried to set the
   process's `URLStreamHandlerFactory` again. A process can set it only once,

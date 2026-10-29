@@ -68,10 +68,16 @@ the server runs over the URL, the method, the headers, and the bodies, as text o
 as a regular expression (see [Search](#search)). Global flags, such as `--json` and `--port`, go
 before or after the command.
 
-`lustro open` forwards a local port to the app's port on the device. When another process holds
-local port 8080, `--local-port 0` lets adb choose a free local port, and `--local-port N` forwards
-port N. The other commands find the forward in `adb forward --list`, also one that you made
-yourself, so they need no `--port`.
+`lustro open` forwards a local port to the app's port on the device: 8080, or a free local port
+that adb chooses when another process or a forward to another device holds 8080. `--local-port N`
+forwards port N. The other commands find the forward in `adb forward --list`, also one that you
+made yourself, so they need no `--port`. Without a forward, they make one the same way.
+
+With more than one device connected, pass `--device <serial>` (or set `ANDROID_SERIAL`) on every
+command. The CLI then connects only through a forward to that device, so agents that each drive
+the app on their own emulator at the same time do not reach each other's app. Don't pass `--port`
+for a device: `--port N` connects to local port N as it is, which can be a forward to another
+device.
 
 ### Keep the output small
 
@@ -226,10 +232,12 @@ The server binds to `127.0.0.1:8080` by default and only listens while the app i
   "cannot rebind existing socket" for a forward that `adb forward --list` doesn't show for your
   device), forward a free local port to the same device port, for example
   `adb forward --no-rebind tcp:18080 tcp:8080`, and use `http://localhost:18080`. The `lustro`
-  CLI finds such a forward without `--port`.
+  CLI finds such a forward without `--port`, and makes one when there is none.
 - With more than one device connected, use the device in `ANDROID_SERIAL`, or pass
   `adb -s <serial>`; don't choose one that other tools may be using. Don't clear the device log
   (`adb logcat -c`) to find the `LustroToken` line: read it with `-d` and take the last one.
+  Local port 8080 can be another device's forward: find your device's forward in
+  `adb forward --list` before you send a request with curl.
 
 - If you can't reach the default port, parse the `endpoint=` field from the `LustroToken` log
   line (see above) to learn the real host and port, and forward that port instead.
