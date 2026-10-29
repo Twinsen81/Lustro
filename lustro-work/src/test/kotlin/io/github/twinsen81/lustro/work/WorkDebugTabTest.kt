@@ -11,7 +11,6 @@ import java.util.UUID
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -24,11 +23,11 @@ class WorkDebugTabTest {
     private val app = ApplicationProvider.getApplicationContext<Application>()
 
     @Test
-    fun `the tab is API only for now, under the id work`() {
+    fun `the tab is in the tab bar, under the id work, with its view`() {
         val tab = WorkDebugTab.create(app)
         assertEquals("work", tab.id)
-        assertFalse(tab.showInTabBar)
-        assertEquals("", tab.renderContent())
+        assertTrue(tab.showInTabBar)
+        assertTrue(tab.renderContent().contains("id=\"work-root\""))
     }
 
     @Test
