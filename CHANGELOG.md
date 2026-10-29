@@ -14,6 +14,45 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Added
 
+- **The WorkManager tab has a console view, so it is in the tab bar.** The list
+  polls `GET items` every second, with the state, the worker, the unique name,
+  the app's tags, the runs, and the next run of each work, and a ↻ on periodic
+  work. The state chips (enqueued, running, succeeded, failed, blocked, and
+  cancelled) count each state and filter the list by any of them, and the tag,
+  worker class, and unique name fields go to the route 300 ms after the last
+  key, with the values that the list showed as suggestions. A click on a work,
+  or the arrow keys, opens its drawer. **Details** has its id, class, state,
+  tags, unique name, constraints, periodicity, initial delay, next run,
+  attempts, generation, last stop reason, and the output and progress as JSON.
+  **Timeline** polls `GET events` for the work in the stream envelope, oldest
+  first: each event with its time, its type in the color of the state that it
+  leads to, its run, the result and output of a finished run, the stop reason,
+  the generations of an update, and a worker's exception, with its stack trace
+  behind a toggle and a copy button. **History**, when the app passed a
+  work-analytics repository, has the periods that `GET items/{id}` carries,
+  newest first. `GET items/{id}` also keeps a pruned work in the drawer, which
+  then says that WorkManager no longer has it. **Cancel** (by id) and **Cancel
+  unique work** (by name), which shows for work with a unique name, ask first,
+  because a cancel can't be undone and also cancels the work that waits in a
+  chain; **Prune** asks too. When the listeners are not installed, a banner
+  says why there are no events and how to fix it, with the server's reason, and
+  a 503 of the routes says that WorkManager has not started or is too old. Six
+  tokens, `--work-enqueued` to `--work-cancelled`, color the states in both
+  themes. Node tests cover the list and timeline merges, the rows, details,
+  events, and periods, with every value from the app escaped, the banners, and
+  the bodies of Cancel and Prune. Verified on a physical device (API 37), with
+  the console in Chrome, in the dark and the light theme, with the sample's
+  demo work: the periodic sync and its next run; the chain, and the failing
+  chain with the failure output of its second step and a prerequisite failed
+  event for its third; the upload that asked for a retry twice, with three
+  runs and a work-analytics period with two retries; and the worker that
+  throws, with its stack trace. Also the state chips, the tag, class, and name
+  filters, Cancel of a delayed worker, which recorded a cancelled event, Cancel
+  unique work of the periodic sync, Keep, and a Prune of 11 work requests,
+  after which the drawer kept the pruned work. The banners were checked with a
+  `state` and a 503 that the page rewrote, because the sample starts
+  WorkManager at launch.
+
 - **The WorkManager plugin: the app's work, the events of each run, and cancel
   and prune under `/api/v1/work`, with a no-op half.** `:lustro-work` adds a
   tab, `WorkDebugTab.create(context, uniqueNames)`, for an app on WorkManager
@@ -39,8 +78,8 @@ see [DECISIONS.md](DECISIONS.md).
   and answers 503 until the app does. `work-runtime` and `work-analytics` are
   `compileOnly` in both artifacts, so neither adds nor raises a WorkManager
   version, and without WorkManager 2.12.0 every route answers 503 and
-  `configure()` returns the builder unchanged. The tab has no console view yet,
-  so it is not in the tab bar; `_meta` lists it. `work.openapi.json` has its own
+  `configure()` returns the builder unchanged. `_meta` lists the tab.
+  `work.openapi.json` has its own
   version, 1.0, and the golden fixtures `work-items.json`, `work-item.json`,
   `work-events.json`, and `work-metrics.json` are pinned to what the routes
   write. The sample initializes WorkManager on demand with work-analytics, and
