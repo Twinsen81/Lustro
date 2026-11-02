@@ -601,7 +601,9 @@ val lustro = Lustro.builder(application)
 - **A live tail in the console.** The **Logs** tab follows the newest lines, with a lowest level,
   a tag regex, and a message search, which the app applies to its whole buffer. It can pause,
   fold repeated lines, clear the buffer, copy the lines it shows as text, and show or hide the
-  Time, Level, Tag, and PID / TID columns. A line with JSON in it opens indented from the toolbar
+  Time, Level, Tag, and PID / TID columns. The **Fatal** chip shows the lines at level F
+  (`Log.ASSERT`); a Java crash and `Log.wtf()` are at level E, and a crash that ends the app's
+  process ends the server too, so the tab never shows it. A line with JSON in it opens indented from the toolbar
   that shows on a row after a second.
 - **Routes.** `GET /api/v1/logs/entries` polls the log in the stream envelope, with `level`, `tag`,
   `q`, and `mq` filters; `GET /api/v1/logs/text` exports it as logcat's threadtime text; and

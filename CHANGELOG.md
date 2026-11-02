@@ -814,6 +814,11 @@ see [DECISIONS.md](DECISIONS.md).
   were the default set before. With it, the tab lost no line in 20 starts on
   the same emulator, while readers with the default buffers in the same
   process lost lines. `LogcatReaderTest` checks the arguments.
+- **The Logs tab's Fatal chip says what it shows.** Its title said "such as
+  a crash", but a Java crash and `Log.wtf()` are logged at level E, and a
+  crash that ends the app's process ends the server too. The title now says
+  that the chip shows level F (`Log.ASSERT`), and that a crash and
+  `Log.wtf()` are at level E. The filter does not change.
 - **The WorkManager console says what its actions can do, and calls an app
   with an old WorkManager less often.** With `work_unsupported` (the app's
   WorkManager is older than 2.12.0), Prune stayed on and opened its dialog,
