@@ -805,6 +805,15 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Fixed
 
+- **The Logs tab no longer loses lines on Android 16 when its logcat starts.**
+  On an API 36 emulator, 6 of 12 starts lost 1 to 22 of the app's lines: the
+  output of the `logcat` process already lacked them. From Android 16 the
+  default buffers include the kernel buffer, and logd can then drop a block
+  of lines for a reader that has just started. The tab now runs
+  `logcat -b main,system,crash`, the buffers that an app writes to, which
+  were the default set before. With it, the tab lost no line in 20 starts on
+  the same emulator, while readers with the default buffers in the same
+  process lost lines. `LogcatReaderTest` checks the arguments.
 - **The WorkManager console says what its actions can do, and calls an app
   with an old WorkManager less often.** With `work_unsupported` (the app's
   WorkManager is older than 2.12.0), Prune stayed on and opened its dialog,
