@@ -768,6 +768,16 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Fixed
 
+- **`POST sqlite/exec` refuses a statement that returns rows with a clear
+  error.** A `SELECT` sent to `exec`, also with **Run as write** in the
+  console, got Android's message "unknown error (code 0 SQLITE_OK): Queries
+  can be performed using SQLiteDatabase query or rawQuery methods only", as a
+  `400` with `code: "sqlite_error"`. `exec` now prepares the statement first,
+  and a statement with result columns, such as a `SELECT`, `VALUES`, or a
+  write with `RETURNING`, is a `400` with `code: "statement_refused"`, as for
+  `BEGIN` and `PRAGMA`, whose hint says to read it with `query`. The statement
+  does not run: Android's `execSQL` steps it once before it fails, so a write
+  with `RETURNING` ran and was then rolled back.
 - **A `lustro` command no longer connects to the app on another device.** When
   the selected device had no adb forward to the app, a command connected to
   local port 8080 on the computer. That port can be a forward to another device

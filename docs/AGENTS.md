@@ -647,7 +647,8 @@ because a longer read would make the app's writes fail with `SQLITE_BUSY`.
 **`POST exec`, `edit`, and `delete` write through the app's handle,** in a transaction of their
 own, and only to a database that the app registers with `writable = true`: any other answers
 `403` with `code: "read_only"` and `field: "db"`, whatever the rest of the body is. `exec` takes
-a statement that returns no rows; a `SELECT` is for `query`. `edit` and `delete` name one row by
+a statement that returns no rows: one that returns rows, such as a `SELECT` or a write with
+`RETURNING`, is a `400` with `code: "statement_refused"`, and does not run; read it with `query`. `edit` and `delete` name one row by
 `rowid` (as `GET rows` gives it) or by `key`, an object with each primary key column of the table
 and its value; a table `WITHOUT ROWID` takes `key` only. The row must be the only one that
 matches: `404` when none does, `400` when more than one does. A value binds by its JSON type, and
@@ -938,7 +939,7 @@ Errors use the shared envelope; key statuses:
   `SqliteDb`). On `sqlite/query`, with `field: "sql"`: SQLite refused a write, because `query`
   only reads.
 - **`400 bad_request` on `sqlite/query` or `exec`:** `code: "statement_refused"` for a statement
-  that the tab does not run (see above); `code: "sqlite_error"` with SQLite's message for one that
+  that the tab does not run (see above), and in `exec` for a statement that returns rows; `code: "sqlite_error"` with SQLite's message for one that
   SQLite can't run, such as a syntax error or a broken constraint; `code: "query_unavailable"` for
   a database that has no file for `query` to open read-only; `code: "row_too_big"` for a row that
   does not fit Android's cursor window, about 2 MB: read the value in parts with `substr()`.

@@ -21,8 +21,16 @@ internal class SqliteWriter(private val connection: LiveConnection, private val 
      * Runs a client's statement, and returns how many rows it inserted, updated, or deleted,
      * without the rows of triggers and foreign key actions.
      */
-    fun exec(sql: String): Long =
-        write {
+    fun exec(sql: String): Long {
+        if (returnsRows(sql)) {
+            throw RouteException(
+                "exec runs a statement that returns no rows, and this one returns rows. It did not run",
+                code = "statement_refused",
+                field = "sql",
+                hint = "Read it with POST query, which the console's Run button sends",
+            )
+        }
+        return write {
             val temp = tempSchema()
             val before = connection.long("SELECT total_changes()")
             connection.execute(sql)
@@ -38,6 +46,12 @@ internal class SqliteWriter(private val connection: LiveConnection, private val 
             }
             changes
         }
+    }
+
+    // Android's execSQL steps a statement that returns rows once, a write with RETURNING too, and
+    // then fails with code 0 (SQLITE_OK). A prepare runs no part of the statement, and it gives
+    // the result's columns.
+    private fun returnsRows(sql: String): Boolean = connection.query(sql, emptyArray(), CancellationSignal()).use { it.columnCount > 0 }
 
     /** Sets [values] in the one row that [target] names. */
     fun edit(target: RowTarget, values: List<Pair<Column, Any?>>) =

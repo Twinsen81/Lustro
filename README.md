@@ -798,7 +798,8 @@ val lustro = Lustro.builder(application)
 - **Writes are opt-in for each database.** `POST exec` runs a statement that writes, and
   `POST edit` and `POST delete` change or delete one row by its rowid or primary key, through the
   app's handle, in a transaction of their own, and only on a `writable` database: any other
-  answers 403. Both `query` and `exec` refuse the statements that would leave a transaction or a
+  answers 403. `exec` refuses a statement that returns rows, such as a `SELECT`, before it runs:
+  read it with `query`. Both `query` and `exec` refuse the statements that would leave a transaction or a
   setting on the app's connection (`BEGIN`, `SAVEPOINT`, and the other transaction statements,
   `ATTACH`, `DETACH`, `VACUUM`, and, in `exec`, every `PRAGMA`), and `query` refuses the pragmas
   that set a value for the whole process, such as `hard_heap_limit`. Room's observers see a change

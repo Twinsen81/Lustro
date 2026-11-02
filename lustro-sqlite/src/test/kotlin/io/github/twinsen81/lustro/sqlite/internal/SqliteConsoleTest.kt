@@ -453,8 +453,28 @@ class SqliteConsoleTest {
         assertError(400, "sqlite_error", response)
         assertTrue(response.json().getString("message"), response.json().getString("message").contains("UNIQUE"))
         assertFalse(live.inTransaction())
-        // A statement that returns rows is for query.
-        assertError(400, "sqlite_error", exec("SELECT * FROM notes"))
+        assertAppWritesOnAnotherThread()
+    }
+
+    @Test
+    fun `exec refuses a statement that returns rows before it runs, and says to read it with query`() {
+        val statements =
+            listOf(
+                "SELECT * FROM notes",
+                "WITH x AS (SELECT 1) SELECT * FROM x",
+                "VALUES (1)",
+                "EXPLAIN DELETE FROM notes",
+                "INSERT INTO notes (id, title) VALUES (9, 'returned') RETURNING id",
+            )
+        for (sql in statements) {
+            val response = exec(sql)
+            assertError(400, "statement_refused", response)
+            assertEquals(sql, "sql", response.json().getString("field"))
+            assertTrue(sql, response.json().getString("hint").contains("POST query"))
+        }
+
+        assertEquals(3, count("notes"))
+        assertFalse(live.inTransaction())
         assertAppWritesOnAnotherThread()
     }
 

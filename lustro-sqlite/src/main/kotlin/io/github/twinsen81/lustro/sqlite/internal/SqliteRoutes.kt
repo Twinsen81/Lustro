@@ -45,7 +45,7 @@ internal class SqliteRoutes(private val registry: SqliteRegistry, private val li
                 else -> null
             }
         } catch (e: RouteException) {
-            DebugResponse.error(e.message.orEmpty(), status = e.status, code = e.code, field = e.field)
+            DebugResponse.error(e.message.orEmpty(), status = e.status, code = e.code, field = e.field, hint = e.hint)
         } catch (_: OperationCanceledException) {
             DebugResponse.error("The statement was stopped: the request timed out or the server stopped", status = 504)
         } catch (e: SQLiteException) {
@@ -433,4 +433,5 @@ internal class RouteException(
     val status: Int = 400,
     val code: String? = null,
     val field: String? = null,
+    val hint: String? = null,
 ) : Exception(message)
