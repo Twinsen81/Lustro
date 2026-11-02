@@ -31,7 +31,7 @@ public class SqliteDb private constructor(
 
     /** Factories for [SqliteDb]. */
     public companion object {
-        /** A database that the app has open as a framework [SQLiteDatabase]. No-op build: [database] is never called. */
+        /** A database that the app has open as a framework [SQLiteDatabase]. No-op build: [database] and [onWrite] are never called. */
         @JvmStatic
         @JvmOverloads
         @Suppress("UNUSED_PARAMETER")
@@ -40,10 +40,11 @@ public class SqliteDb private constructor(
             writable: Boolean = false,
             tableHints: Map<String, TableHint> = emptyMap(),
             valuePolicy: SqliteValuePolicy = SqliteValuePolicy.MASK_SENSITIVE,
+            onWrite: (() -> Unit)? = null,
             database: () -> SQLiteDatabase,
         ): SqliteDb = SqliteDb(name, writable, tableHints, valuePolicy, file = null)
 
-        /** A database that the app has open as an androidx [SupportSQLiteDatabase]. No-op build: [database] is never called. */
+        /** A database that the app has open as an androidx [SupportSQLiteDatabase]. No-op build: [database] and [onWrite] are never called. */
         @JvmStatic
         @JvmOverloads
         @Suppress("UNUSED_PARAMETER")
@@ -52,6 +53,7 @@ public class SqliteDb private constructor(
             writable: Boolean = false,
             tableHints: Map<String, TableHint> = emptyMap(),
             valuePolicy: SqliteValuePolicy = SqliteValuePolicy.MASK_SENSITIVE,
+            onWrite: (() -> Unit)? = null,
             database: () -> SupportSQLiteDatabase,
         ): SqliteDb = SqliteDb(name, writable, tableHints, valuePolicy, file = null)
 

@@ -118,6 +118,13 @@ public object LustroBootstrap {
                                     tableHints = DemoSqlite.NOTES_HINTS.mapValues { (_, hint) -> TableHint(hint.first, hint.second) },
                                 ) { DemoSqlite.notes(app).writableDatabase },
                                 SqliteDb.file(DemoSqlite.CATALOG, app.getDatabasePath(DemoSqlite.CATALOG_FILE), valuePolicy = SqliteValuePolicy.VISIBLE),
+                                SqliteDb.support(
+                                    DemoRoom.NAME,
+                                    writable = true,
+                                    // Room's observers look for changes after Room's own transactions only: this makes
+                                    // the Flow on the SQLite screen see each write of the tab at once.
+                                    onWrite = { DemoRoom.get(app).invalidationTracker.refreshVersionsAsync() },
+                                ) { DemoRoom.get(app).openHelper.writableDatabase },
                             ),
                         discoverFrom = app,
                     ),

@@ -10,6 +10,7 @@ import android.database.sqlite.SQLiteOutOfMemoryException
 import android.database.sqlite.SQLiteReadOnlyDatabaseException
 import android.os.CancellationSignal
 import android.os.OperationCanceledException
+import android.util.Log
 import io.github.twinsen81.lustro.CursorCodec
 import io.github.twinsen81.lustro.DebugRequest
 import io.github.twinsen81.lustro.DebugResponse
@@ -81,6 +82,7 @@ internal class SqliteRoutes(private val registry: SqliteRegistry, private val li
         val entry = writable(string(body, "db"))
         val sql = statement(body, exec = true)
         val changes = live(entry).use { connection -> statementErrors { SqliteWriter(connection, request).exec(sql) } }
+        afterWrite(entry)
         return DebugResponse.json { append("{\"status\":\"ok\",\"changes\":").append(changes).append('}') }
     }
 
@@ -102,7 +104,19 @@ internal class SqliteRoutes(private val registry: SqliteRegistry, private val li
                 statementErrors(field = "values") { writer.edit(target, values) }
             }
         }
+        afterWrite(entry)
         return DebugResponse.json { append("{\"status\":\"ok\"}") }
+    }
+
+    // The write is committed: what the app's callback throws is the app's, and does not undo it.
+    @Suppress("TooGenericExceptionCaught")
+    private fun afterWrite(entry: DbEntry) {
+        val onWrite = entry.onWrite ?: return
+        try {
+            onWrite()
+        } catch (e: Exception) {
+            Log.w(TAG, "onWrite of the database ${entry.name} threw; the write is committed", e)
+        }
     }
 
     private fun databases(signal: CancellationSignal): DebugResponse {
@@ -413,6 +427,7 @@ internal class SqliteRoutes(private val registry: SqliteRegistry, private val li
         if (text == null) append("null") else append('"').append(text.escapeForJson()).append('"')
 
     private companion object {
+        const val TAG = "LustroSqlite"
         const val DEFAULT_LIMIT = 50
         const val MAX_LIMIT = 500
 

@@ -20,6 +20,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.github.twinsen81.lustro.sample.ActionEvent
+import io.github.twinsen81.lustro.sample.DemoRoom
 import io.github.twinsen81.lustro.sample.DemoSqlite
 import io.github.twinsen81.lustro.sample.SampleViewModel
 import io.github.twinsen81.lustro.sample.Tone
@@ -27,6 +28,7 @@ import io.github.twinsen81.lustro.sample.Tone
 @Composable
 internal fun SqliteScreen(viewModel: SampleViewModel, latest: Map<String, ActionEvent>, onBack: () -> Unit) {
     val counts by viewModel.sqliteCounts.collectAsState()
+    val tasks by viewModel.roomTasks.collectAsState(initial = null)
     Column(Modifier.fillMaxSize()) {
         SubScreenBar("SQLite", "${viewModel.sqliteActions.size} actions", onBack)
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
@@ -56,6 +58,18 @@ internal fun SqliteScreen(viewModel: SampleViewModel, latest: Map<String, Action
                 DatabaseRow(DemoSqlite.NOTES, "The app's open handle · writable", counts?.let { "${it.first} notes" })
                 DatabaseRow(DemoSqlite.CATALOG, "A file, opened read-only", counts?.let { "${it.second} products" })
                 DatabaseRow(DemoSqlite.SDK_CACHE, "Not registered: the tab finds it on disk", null)
+                DatabaseRow(DemoRoom.NAME, "Room · writable, with onWrite", tasks?.let { "${it.size} tasks" })
+            }
+            SectionLabel("ROOM TASKS")
+            SampleCard(Modifier.padding(horizontal = ScreenPadding)) {
+                Text(
+                    "A Room Flow. Edit a task in the console's SQLite tab: onWrite refreshes Room's InvalidationTracker, so it changes here at once.",
+                    Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp),
+                    style = SampleText.small,
+                    color = palette.textMuted,
+                )
+                tasks?.forEach { task -> TaskRow(task) }
+                Spacer(Modifier.height(8.dp))
             }
             SectionLabel("APP WRITES")
             viewModel.sqliteActions.forEach { action ->
@@ -63,6 +77,22 @@ internal fun SqliteScreen(viewModel: SampleViewModel, latest: Map<String, Action
             }
             Spacer(Modifier.height(16.dp))
         }
+    }
+}
+
+@Composable
+private fun TaskRow(task: DemoRoom.Task) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .testTag("task ${task.id}")
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("#${task.id}", style = SampleText.mono, color = palette.textMuted)
+        Spacer(Modifier.width(10.dp))
+        Text(task.title, Modifier.weight(1f), style = SampleText.mono)
+        Text(if (task.done) "done" else "open", style = SampleText.mono, color = palette.textMuted)
     }
 }
 

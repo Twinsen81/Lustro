@@ -669,7 +669,9 @@ written with `exec` and a blob literal such as `x'00ff'`. A write that SQLite re
 a constraint, is rolled back. SQLite can't stop a write at the request timeout: it runs to its
 end and is then rolled back. Only a timeout during the commit itself can leave the change
 committed, so read the data again after a `504` before you send a write again. Room's observers, such as a
-`Flow` of a DAO, see the change at the app's next write through Room.
+`Flow` of a DAO, see the change at once when the app registers the database with
+`onWrite = { db.invalidationTracker.refreshVersionsAsync() }`, and otherwise at the app's next write
+through Room.
 
 **The statements that both routes refuse.** `BEGIN`, `COMMIT`, `END`, `ROLLBACK`, `SAVEPOINT`,
 `RELEASE`, `ATTACH`, `DETACH`, and `VACUUM`, in `exec` also every `PRAGMA`, and in `query` the

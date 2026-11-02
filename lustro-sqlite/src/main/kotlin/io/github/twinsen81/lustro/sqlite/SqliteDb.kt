@@ -36,6 +36,7 @@ public class SqliteDb private constructor(
     tableHints: Map<String, TableHint>,
     public val valuePolicy: SqliteValuePolicy,
     internal val source: DbSource,
+    internal val onWrite: (() -> Unit)? = null,
 ) {
     /** What the tables and views hold, by table name. */
     public val tableHints: Map<String, TableHint> = tableHints.toMap()
@@ -50,6 +51,10 @@ public class SqliteDb private constructor(
          * A database that the app has open as a framework [SQLiteDatabase],
          * such as the one that a `SQLiteOpenHelper` returns.
          *
+         * @param onWrite called on a request's thread after each `POST exec`,
+         *   `edit`, or `delete` that committed a change to the database, so that
+         *   the app can tell its own readers, such as a cache. What it throws is
+         *   logged: the write stays committed.
          * @param database returns the app's open instance. The tab calls it on
          *   a request's thread, each time it reads, and never closes what it
          *   returns.
@@ -61,8 +66,9 @@ public class SqliteDb private constructor(
             writable: Boolean = false,
             tableHints: Map<String, TableHint> = emptyMap(),
             valuePolicy: SqliteValuePolicy = SqliteValuePolicy.MASK_SENSITIVE,
+            onWrite: (() -> Unit)? = null,
             database: () -> SQLiteDatabase,
-        ): SqliteDb = SqliteDb(name, writable, tableHints, valuePolicy, FrameworkSource(database))
+        ): SqliteDb = SqliteDb(name, writable, tableHints, valuePolicy, FrameworkSource(database), onWrite)
 
         /**
          * A database that the app has open as an androidx [SupportSQLiteDatabase].
@@ -73,6 +79,17 @@ public class SqliteDb private constructor(
          * The app needs `androidx.sqlite` on its classpath, which Room brings;
          * Lustro does not add it.
          *
+         * Room's observers, such as a `Flow` of a DAO, look for changes after
+         * Room's own transactions only. To make them see a change that the tab
+         * writes at once, pass
+         * `onWrite = { roomDb.invalidationTracker.refreshVersionsAsync() }`: that
+         * public method of Room's `InvalidationTracker` is there for writes that
+         * do not go through Room. Without it, they see the change at the app's
+         * next write through Room.
+         *
+         * @param onWrite called on a request's thread after each `POST exec`,
+         *   `edit`, or `delete` that committed a change to the database. What it
+         *   throws is logged: the write stays committed.
          * @param database returns the app's open instance. The tab calls it on
          *   a request's thread, each time it reads, and never closes what it
          *   returns. Room opens the database on the first call, if the app has
@@ -85,8 +102,9 @@ public class SqliteDb private constructor(
             writable: Boolean = false,
             tableHints: Map<String, TableHint> = emptyMap(),
             valuePolicy: SqliteValuePolicy = SqliteValuePolicy.MASK_SENSITIVE,
+            onWrite: (() -> Unit)? = null,
             database: () -> SupportSQLiteDatabase,
-        ): SqliteDb = SqliteDb(name, writable, tableHints, valuePolicy, SupportSource(database))
+        ): SqliteDb = SqliteDb(name, writable, tableHints, valuePolicy, SupportSource(database), onWrite)
 
         /**
          * A database file that the tab opens read-only for each request, and

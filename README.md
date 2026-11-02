@@ -734,6 +734,7 @@ val lustro = Lustro.builder(application)
                     "app",
                     writable = true,
                     tableHints = mapOf("notes" to TableHint("NoteEntity", "A note that the user wrote.")),
+                    onWrite = { appDatabase.invalidationTracker.refreshVersionsAsync() },
                 ) { appDatabase.openHelper.writableDatabase },
                 SqliteDb.file("cache", application.getDatabasePath("cache.db"), valuePolicy = SqliteValuePolicy.VISIBLE),
             ),
@@ -814,8 +815,25 @@ val lustro = Lustro.builder(application)
   read it with `query`. Both `query` and `exec` refuse the statements that would leave a transaction or a
   setting on the app's connection (`BEGIN`, `SAVEPOINT`, and the other transaction statements,
   `ATTACH`, `DETACH`, `VACUUM`, and, in `exec`, every `PRAGMA`), and `query` refuses the pragmas
-  that set a value for the whole process, such as `hard_heap_limit`. Room's observers see a change
-  that the tab makes at the app's next write through Room.
+  that set a value for the whole process, such as `hard_heap_limit`.
+- **Room's observers.** Room's `InvalidationTracker` looks for changes after Room's own
+  transactions only, so an open screen that a DAO's `Flow` or `LiveData` fills does not show a
+  change that the tab writes until the app's next write through Room. `SqliteDb.support` and
+  `SqliteDb.framework` take `onWrite`, which the tab calls after each `exec`, `edit`, or
+  `delete` that committed. For Room, pass Room's public refresh call, which is there for writes
+  that do not go through Room:
+
+  ```kotlin
+  SqliteDb.support(
+      "app",
+      writable = true,
+      onWrite = { appDatabase.invalidationTracker.refreshVersionsAsync() },
+  ) { appDatabase.openHelper.writableDatabase }
+  ```
+
+  The sample registers its Room database so, and its SQLite screen shows a Room `Flow` that
+  changes at once when the console edits a row. What `onWrite` throws is logged, and the write
+  stays committed.
 - **Routes.** `GET /api/v1/sqlite/databases` lists the databases with their source, file, size,
   and schema version (`PRAGMA user_version`). `GET tables?db=` lists the tables and views, with
   the row count of each table, and flags the internal ones (`sqlite_*`, `android_metadata`,

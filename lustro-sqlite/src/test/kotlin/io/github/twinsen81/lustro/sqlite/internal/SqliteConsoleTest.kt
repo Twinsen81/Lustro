@@ -505,6 +505,36 @@ class SqliteConsoleTest {
     }
 
     @Test
+    fun `onWrite runs after each exec, edit, and delete that committed, and after no other request`() {
+        var writes = 0
+        val routes = routes(SqliteDb.framework("app", writable = true, onWrite = { writes++ }) { live })
+        val edit = JSONObject().put("db", "app").put("table", "notes").put("rowid", "1").put("values", JSONObject().put("title", "Renamed"))
+        val delete = JSONObject().put("db", "app").put("table", "tags").put("key", JSONObject().put("note_id", 1).put("name", "work"))
+
+        ok(Fixtures.post(routes, "exec", body("app", "UPDATE notes SET score = 0")))
+        ok(Fixtures.post(routes, "edit", edit))
+        ok(Fixtures.post(routes, "delete", delete))
+        assertEquals(3, writes)
+
+        // Nothing committed: a refused statement, one that SQLite refuses, a statement that returns rows, a read, and a missing row.
+        assertError(400, "statement_refused", Fixtures.post(routes, "exec", body("app", "BEGIN")))
+        assertError(400, "sqlite_error", Fixtures.post(routes, "exec", body("app", "INSERT INTO folders (id, name) VALUES (1, 'taken')")))
+        assertError(400, "statement_refused", Fixtures.post(routes, "exec", body("app", "SELECT 1")))
+        ok(Fixtures.post(routes, "query", body("app", "SELECT count(*) FROM notes")))
+        assertEquals(404, Fixtures.post(routes, "delete", delete).status)
+        assertEquals(3, writes)
+    }
+
+    @Test
+    fun `what onWrite throws does not turn a committed write into an error`() {
+        val routes = routes(SqliteDb.framework("app", writable = true, onWrite = { error("the app's callback failed") }) { live })
+
+        assertEquals(1, changes(Fixtures.post(routes, "exec", body("app", "DELETE FROM notes WHERE id = 3"))))
+        assertEquals(2, count("notes"))
+        assertFalse(live.inTransaction())
+    }
+
+    @Test
     fun `exec on Room's support handle writes through it`() {
         val helper = supportHelper()
         val routes = routes(SqliteDb.support("room", writable = true) { helper.writableDatabase })

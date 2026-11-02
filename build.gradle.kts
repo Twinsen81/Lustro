@@ -6,6 +6,8 @@ plugins {
     alias(libs.plugins.android.application) apply false
     alias(libs.plugins.kotlin.jvm) apply false
     alias(libs.plugins.detekt) apply false
+    // The sample's Room code generation.
+    alias(libs.plugins.ksp) apply false
     // Unapplied at the root so all publishing modules share one plugin classloader:
     // its SonatypeRepositoryBuildService is a shared build service, and per-module
     // classloaders make it mismatch ("Cannot set ... property 'buildService'").

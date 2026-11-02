@@ -17,6 +17,7 @@ internal class DbEntry(
     val hints: Map<String, TableHint>,
     val policy: SqliteValuePolicy,
     val source: DbSource,
+    val onWrite: (() -> Unit)? = null,
 ) {
     /** Whether the policy leaves out the values of a column, or of a result column, of this name. */
     fun masks(column: String): Boolean = policy == SqliteValuePolicy.MASK_SENSITIVE && SensitiveKeys.isSensitive(column)
@@ -36,7 +37,7 @@ internal class SqliteRegistry(
     private val directory: File?,
     private val isDatabase: (File) -> Boolean = ::openable,
 ) {
-    private val registered = databases.map { DbEntry(it.name, registered = true, it.writable, it.tableHints, it.valuePolicy, it.source) }
+    private val registered = databases.map { DbEntry(it.name, registered = true, it.writable, it.tableHints, it.valuePolicy, it.source, it.onWrite) }
 
     fun list(): List<DbEntry> = registered + discovered()
 

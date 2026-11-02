@@ -14,6 +14,21 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Added
 
+- **The SQLite tab can tell the app about its writes, so Room's observers see
+  them at once.** An open screen that a DAO's `Flow` filled did not show a row
+  that the tab changed until the app's next write through Room, because
+  Room's `InvalidationTracker` looks for changes after Room's own
+  transactions only. `SqliteDb.support` and `SqliteDb.framework` now take
+  `onWrite`, which the tab calls on the request's thread after each `exec`,
+  `edit`, or `delete` that committed; what it throws is logged, and the write
+  stays committed. For Room, pass
+  `onWrite = { db.invalidationTracker.refreshVersionsAsync() }`, a public
+  method of every Room 2.x release, which Room documents for writes that do
+  not go through it. `lustro-sqlite-noop` takes the same parameter and never
+  calls it. The sample has a Room database, built with KSP, whose tasks its
+  SQLite screen shows through a `Flow`. Verified on an emulator (API 28): with
+  the SQLite screen open, `POST edit` of a task and `POST exec` of an insert
+  showed on the screen within a second.
 - **The SQLite tab has a value policy, which masks token columns by default.**
   The tab showed every value, so the `accessToken` and `clientSecret` columns
   of an app's accounts table showed in `GET rows`, in the console, and in
