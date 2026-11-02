@@ -35,9 +35,10 @@ class LogcatReaderTest {
         reader.start()
 
         // The buffers are named: from Android 16 the default set has the kernel buffer, with which
-        // logd can drop lines of a reader that has just started.
+        // logd can drop lines of a reader that has just started. One -b for each: logcat on API 24
+        // fails on a comma list.
         assertEquals(
-            listOf("logcat", "-b", "main,system,crash", "-v", "threadtime", "-v", "UTC", "--pid=4321", "-T", "1792419680.010"),
+            listOf("logcat", "-b", "main", "-b", "system", "-b", "crash", "-v", "threadtime", "-v", "UTC", "--pid=4321", "-T", "1792419680.010"),
             launcher.nextLaunch(),
         )
         logcat.emit(
@@ -91,7 +92,7 @@ class LogcatReaderTest {
         reader.start()
 
         assertTrue(launcher.nextLaunch().contains("-T"))
-        assertEquals(listOf("logcat", "-b", "main,system,crash", "-v", "threadtime", "-v", "UTC", "--pid=4321"), launcher.nextLaunch())
+        assertEquals(listOf("logcat", "-b", "main", "-b", "system", "-b", "crash", "-v", "threadtime", "-v", "UTC", "--pid=4321"), launcher.nextLaunch())
         second.emit("10-19 14:22:20.000  4321  4330 I App     : read")
         awaitMessages("read")
     }
