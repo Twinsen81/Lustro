@@ -805,18 +805,20 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Fixed
 
-- **The Logs tab no longer loses lines on Android 16 when its logcat starts.**
-  On an API 36 emulator, 6 of 12 starts lost 1 to 22 of the app's lines: the
-  output of the `logcat` process already lacked them. From Android 16 the
-  default buffers include the kernel buffer, and logd can then drop a block
-  of lines for a reader that has just started. The tab now runs
-  `logcat -b main -b system -b crash`, the buffers that an app writes to,
+- **The Logs tab no longer loses a block of lines on an Android 16 emulator
+  when its logcat starts.** On an API 36 emulator, 6 of 12 starts lost 1 to 22
+  of the app's lines: the output of the `logcat` process already lacked them.
+  From Android 16 the default buffers include the kernel buffer, and logd can
+  then drop a block of lines for a reader that has just started. The tab now
+  runs `logcat -b main -b system -b crash`, the buffers that an app writes to,
   which were the default set before. With it, the tab lost no line in 20
   starts on the same emulator, while readers with the default buffers in the
   same process lost lines. Each buffer has its own `-b`: logcat on API 24
   fails on a comma list (`-b main,system,crash`) with "Unable to open log
   device", and the tab then reads no line. `LogcatReaderTest` checks the
-  arguments.
+  arguments. On a physical Android 16 device, the tab can still miss the first
+  lines of the process, from before its logcat starts, with or without this
+  change.
 - **The Logs tab's Fatal chip says what it shows.** Its title said "such as
   a crash", but a Java crash and `Log.wtf()` are logged at level E, and a
   crash that ends the app's process ends the server too. The title now says
