@@ -191,13 +191,14 @@ def _sqlite_route(route: str, text: str, method: str = "get") -> Dict[str, Any]:
 
 
 def check_sqlite_databases(text: str, rules: List[dict]) -> None:
-    """The two databases the sample registers come first, then the files that discovery finds, by name:
+    """The three databases the sample registers come first, then the files that discovery finds, by name:
     the library-like file, and work-analytics' database once WorkManager has started."""
     items = _sqlite_route("databases", text)["items"]
     shapes = [(d["name"], d["registered"], d["source"], d["writable"], d["schemaVersion"]) for d in items]
     registered = [
-        ("notes", True, "support", True, 3),
+        ("notes", True, "support", True, 4),
         ("catalog", True, "file", False, 1),
+        ("room", True, "support", True, 1),
     ]
     found = shapes[len(registered):]
     expect(shapes[: len(registered)] == registered, "databases {}".format(shapes))
