@@ -649,7 +649,12 @@ val lustro = Lustro.builder(application)
 - **Registered files.** A `PrefsFile` has the file's name, as you pass it to
   `getSharedPreferences`, the instance that the tab reads and edits, a value policy, and a
   `readOnly` flag. The instance can be an `EncryptedSharedPreferences` that decrypts: then the
-  tab shows its plain values, as the policy lets it.
+  tab shows its plain values, as the policy lets it. The default file of
+  `PreferenceManager.getDefaultSharedPreferences(context)` is named `packageName + "_preferences"`.
+  androidx's `PreferenceManager` keeps that name private, so register the file as
+  `PrefsFile(context.packageName + "_preferences", PreferenceManager.getDefaultSharedPreferences(context))`,
+  or get the name from the framework's `android.preference.PreferenceManager.getDefaultSharedPreferencesName(context)`,
+  which is public from API 24 and deprecated from API 29.
 - **Registered data stores.** A `PrefsDataStore` has the store's name, as you pass it to
   `preferencesDataStore`, the app's own `DataStore<Preferences>`, a value policy, and a `readOnly`
   flag. The tab reads and writes through that instance, so the app sees an edit at once. DataStore
