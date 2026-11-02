@@ -173,7 +173,8 @@ build, and that even in debug builds it stays bound to the local device.
   and Preferences DataStores under `/api/v1/prefs/`. A file's `ValuePolicy` decides what of its values a
   client sees. The default, `MASK_SENSITIVE`, goes by the key's name only, with
   the same check as the network redaction, so a secret under a key such as
-  `cache` or `blob` shows. A registered `EncryptedSharedPreferences` that
+  `cache` or `blob` shows, and so does the value of a key that the app lists in
+  `unmasked`: list only keys that hold no secret. A registered `EncryptedSharedPreferences` that
   decrypts shows its plain values to every client with the token: register it
   with `KEYS_ONLY` when its values must stay hidden. The files that the tab
   discovers on disk are masked by key and read-only by default, and a file that
@@ -211,7 +212,8 @@ database file in the app's `databases` directory, under `/api/v1/sqlite/`.
   such as `access_token` or `client_secret`, by the network redaction's name
   check, in `GET rows` and in `POST query`. It goes by the name only: a token in
   a column named `data`, a password hash under `hash`, and a user's data show
-  as they are stored. `POST query` masks by the result's column name, because
+  as they are stored, and so do the values of a column that the app lists in
+  `unmasked`: list only columns that hold no secret. `POST query` masks by the result's column name, because
   Android does not say which table column a result column comes from, so an
   alias (`SELECT access_token AS t`) reads a masked value, and so can a
   `WHERE` clause, one comparison at a time. The policy keeps secrets off the

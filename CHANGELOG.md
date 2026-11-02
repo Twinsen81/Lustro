@@ -49,8 +49,30 @@ see [DECISIONS.md](DECISIONS.md).
   console shows a masked cell as `masked` with its type, does not search,
   copy, or edit it, and locks it in the row editor, also when it is `NULL`,
   so an edit never writes a mask back; a row whose key column is masked can't
-  be named. `lustro-sqlite-noop` has the same API. The sample's notes
-  database has an accounts table with made-up tokens.
+  be named. A registration can make exceptions with `unmasked`, a set of
+  column names: `MASK_SENSITIVE` shows the values of a column with one of
+  these names, matched exactly and in any case, such as an `oauthScopes`
+  column that holds no secret, without `VISIBLE` for the whole database,
+  which also shows `accessToken`. The exceptions apply everywhere the policy
+  does: `GET schema` marks such a column not `masked`, `GET rows` sends and
+  filters its values, the console shows, copies, and edits them, and
+  `POST query` shows a result column of that name, while an expression of it,
+  such as `length(oauthScopes)`, stays masked. `VISIBLE` ignores them, and a
+  discovered file has none. The wire format does not change: the `masked`
+  flags carry the result. `lustro-sqlite-noop` has the same API. The sample's
+  notes database has an accounts table with made-up tokens, and an
+  `oauth_scopes` column that the sample lists in `unmasked`; the database is
+  at schema version 5.
+- **The Preferences tab can show the values of some keys that look secret.**
+  `MASK_SENSITIVE` masked every key that `SensitiveKeys.isSensitive` finds,
+  so a key such as `auth_method`, which holds no secret, showed only with
+  `VISIBLE` for the whole file. `PrefsFile` and `PrefsDataStore` now take
+  `unmasked`, a set of key names, matched exactly and in any case, whose
+  values `MASK_SENSITIVE` shows in `entries`, `entry`, and the responses of
+  `edit`. `VISIBLE` and `KEYS_ONLY` ignore it, so a change of the policy never
+  shows more than the policy says, and a discovered file has no exceptions.
+  The wire format does not change. `lustro-prefs-noop` has the same API. The
+  sample's app state DataStore lists its `auth_method` key.
 - **The WorkManager tab has a console view, so it is in the tab bar.** The list
   polls `GET items` every second, with the state, the worker, the unique name,
   the app's tags, the runs, and the next run of each work, and a ↻ on periodic

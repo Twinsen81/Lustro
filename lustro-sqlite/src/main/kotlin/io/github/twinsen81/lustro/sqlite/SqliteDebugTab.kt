@@ -56,7 +56,9 @@ import java.io.File
  * make writable only those that a client may change. By default, the tab leaves
  * out the values of the columns whose names look like they hold a secret, as
  * [SqliteValuePolicy.MASK_SENSITIVE] says; that keeps them off the screen, but
- * a client's own statement can still read them.
+ * a client's own statement can still read them. A registration can show some of
+ * those columns with [unmasked][SqliteDb.unmasked]; a discovered file has no
+ * such exceptions.
  *
  * In the console, the tab lists the databases and their tables, and shows a
  * page of rows, which a client sorts, filters, and pages through, with a row

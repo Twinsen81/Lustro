@@ -11,12 +11,13 @@ internal class SharedPrefsSource(
     policy: ValuePolicy,
     readOnly: Boolean,
     registered: Boolean,
+    unmasked: Set<String> = emptySet(),
     /**
      * Opens the platform's instance of the file, which the tab listens to as well
      * when [prefs] is another one, such as an `EncryptedSharedPreferences` over it.
      */
     private val openPlatform: (() -> SharedPreferences)? = null,
-) : PrefsSource(name, PrefsStore.SHARED_PREFS, policy, readOnly, registered) {
+) : PrefsSource(name, PrefsStore.SHARED_PREFS, policy, readOnly, registered, unmasked) {
     // SharedPreferences holds its listeners weakly, so the source keeps this one.
     private val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ -> changed() }
 
@@ -89,6 +90,7 @@ internal class SharedPrefsSource(
             encrypted = decrypting || rawEncrypted,
             policy = if (rawEncrypted) ValuePolicy.KEYS_ONLY else policy,
             readOnly = rawEncrypted || readOnly,
+            unmasked = unmasked,
         )
     }
 

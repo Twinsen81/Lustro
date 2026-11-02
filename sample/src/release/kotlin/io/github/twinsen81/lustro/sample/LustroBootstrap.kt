@@ -103,7 +103,7 @@ public object LustroBootstrap {
                                     readOnly = true,
                                 ),
                             ),
-                        dataStores = listOf(PrefsDataStore(DemoDataStore.APP_STATE, DemoDataStore.appState(app))),
+                        dataStores = listOf(PrefsDataStore(DemoDataStore.APP_STATE, DemoDataStore.appState(app), unmasked = setOf("auth_method"))),
                     ),
                 )
                 // The no-op half of :lustro-sqlite, with the same databases as the
@@ -116,6 +116,8 @@ public object LustroBootstrap {
                                     DemoSqlite.NOTES,
                                     writable = true,
                                     tableHints = DemoSqlite.NOTES_HINTS.mapValues { (_, hint) -> TableHint(hint.first, hint.second) },
+                                    // "auth" is in the name, but the scopes are no secret.
+                                    unmasked = setOf("oauth_scopes"),
                                 ) { DemoSqlite.notes(app).writableDatabase },
                                 SqliteDb.file(DemoSqlite.CATALOG, app.getDatabasePath(DemoSqlite.CATALOG_FILE), valuePolicy = SqliteValuePolicy.VISIBLE),
                                 SqliteDb.support(

@@ -9,7 +9,10 @@ public enum class ValuePolicy {
      * Every value, except the value of a key that looks like it holds a secret,
      * such as `auth_token`, `apiKey`, or `password`. The check is
      * [SensitiveKeys.isSensitive][io.github.twinsen81.lustro.SensitiveKeys.isSensitive],
-     * the same as the Network tab's redaction. It goes by the key only.
+     * the same as the Network tab's redaction. It goes by the key only. The app
+     * can show the values of some of these keys with the `unmasked` keys of
+     * [PrefsFile] and [PrefsDataStore]: a name there matches a key with exactly
+     * that name, in any case.
      */
     MASK_SENSITIVE,
 

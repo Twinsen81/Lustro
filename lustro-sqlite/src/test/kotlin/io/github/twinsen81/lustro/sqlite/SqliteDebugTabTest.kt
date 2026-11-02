@@ -55,6 +55,17 @@ class SqliteDebugTabTest {
     }
 
     @Test
+    fun `a registration has no unmasked names by default, and keeps a copy of those that it gets`() {
+        assertEquals(emptySet<String>(), SqliteDb.framework("app", database = unused).unmasked)
+        assertEquals(emptySet<String>(), SqliteDb.file("cache", File("/data/cache.db")).unmasked)
+        val names = mutableSetOf("oauthScopes")
+        val db = SqliteDb.support("app", unmasked = names) { error("unused") }
+        names.clear()
+        assertEquals(setOf("oauthScopes"), db.unmasked)
+        assertEquals(setOf("auth_method"), SqliteDb.file("cache", File("/data/cache.db"), unmasked = setOf("auth_method")).unmasked)
+    }
+
+    @Test
     fun `the tab is in the tab bar, under the id sqlite, with its view, and creating it opens nothing`() {
         val tab = SqliteDebugTab.create(listOf(SqliteDb.framework("app", database = unused), SqliteDb.file("cache", File("/data/cache.db"))))
 

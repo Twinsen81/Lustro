@@ -8,6 +8,7 @@ import io.github.twinsen81.lustro.sqlite.SqliteDb
 import io.github.twinsen81.lustro.sqlite.SqliteValuePolicy
 import io.github.twinsen81.lustro.sqlite.TableHint
 import java.io.File
+import java.util.Locale
 
 /** A database that the routes can read: a registered one, or a file found on disk. */
 internal class DbEntry(
@@ -18,15 +19,22 @@ internal class DbEntry(
     val policy: SqliteValuePolicy,
     val source: DbSource,
     val onWrite: (() -> Unit)? = null,
+    unmasked: Set<String> = emptySet(),
 ) {
-    /** Whether the policy leaves out the values of a column, or of a result column, of this name. */
-    fun masks(column: String): Boolean = policy == SqliteValuePolicy.MASK_SENSITIVE && SensitiveKeys.isSensitive(column)
+    private val unmasked: Set<String> = unmasked.mapTo(HashSet()) { it.lowercase(Locale.ROOT) }
+
+    /**
+     * Whether the policy leaves out the values of a column, or of a result column, of this name:
+     * a sensitive name that the app did not list in its exceptions, in any case.
+     */
+    fun masks(column: String): Boolean =
+        policy == SqliteValuePolicy.MASK_SENSITIVE && SensitiveKeys.isSensitive(column) && column.lowercase(Locale.ROOT) !in unmasked
 }
 
 /**
  * The registered databases, and, with a [directory], the other database files in
  * it. The directory is listed on each call, so a file that the app creates later
- * shows too. A discovered file is read-only, masks sensitive columns, and has no hints.
+ * shows too. A discovered file is read-only, masks sensitive columns with no exceptions, and has no hints.
  *
  * [isDatabase] decides whether a file is a database. It runs only on the files that no
  * registration stands for, so the tab opens the app's own databases only through the
@@ -37,7 +45,8 @@ internal class SqliteRegistry(
     private val directory: File?,
     private val isDatabase: (File) -> Boolean = ::openable,
 ) {
-    private val registered = databases.map { DbEntry(it.name, registered = true, it.writable, it.tableHints, it.valuePolicy, it.source, it.onWrite) }
+    private val registered =
+        databases.map { DbEntry(it.name, registered = true, it.writable, it.tableHints, it.valuePolicy, it.source, it.onWrite, it.unmasked) }
 
     fun list(): List<DbEntry> = registered + discovered()
 

@@ -13,7 +13,9 @@ public enum class SqliteValuePolicy {
      * a secret, such as `access_token`, `clientSecret`, or `password`. The check
      * is [SensitiveKeys.isSensitive][io.github.twinsen81.lustro.SensitiveKeys.isSensitive],
      * the same as the Network tab's redaction and the Preferences tab's. It goes
-     * by the column's name only.
+     * by the column's name only. The app can show the values of some of these
+     * columns with the `unmasked` names of the [SqliteDb] factories: a name there
+     * matches a column with exactly that name, in any case.
      *
      * `POST query` masks a column of its result by the result's column name, as
      * the statement names it, because Android does not say which table column a

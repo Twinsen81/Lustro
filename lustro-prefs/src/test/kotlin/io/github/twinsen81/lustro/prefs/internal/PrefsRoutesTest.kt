@@ -230,6 +230,42 @@ class PrefsRoutesTest {
     }
 
     @Test
+    fun `unmasked keys show their values under MASK_SENSITIVE, in any case, and change nothing under KEYS_ONLY or for a discovered file`() {
+        val names = mutableSetOf("AUTH_TOKEN", "api_key")
+        val settingsFile = PrefsFile("settings", settings, unmasked = names)
+        names.clear()
+        assertEquals(setOf("AUTH_TOKEN", "api_key"), settingsFile.unmasked)
+        assertEquals(emptySet<String>(), PrefsFile("other", settings).unmasked)
+        settings.edit().putString("refresh_token", "r-1").commit()
+        val routes = routes(settingsFile, PrefsFile("session", session, ValuePolicy.KEYS_ONLY, unmasked = setOf("session_id")))
+
+        val entries = get(routes, "entries", "file" to "settings")
+        assertEquals("t0k3n", item(entries, "auth_token").getString("value"))
+        assertFalse(item(entries, "auth_token").has("masked"))
+        assertTrue(item(entries, "refresh_token").getBoolean("masked"))
+        assertEquals("t0k3n", get(routes, "entry", "file" to "settings", "key" to "auth_token").getJSONObject("item").getString("value"))
+        val edit = post(routes, "edit", """{"file":"settings","key":"auth_token","type":"string","value":"rotated"}""")
+        assertEquals("rotated", JSONObject(edit.text()).getJSONObject("item").getString("value"))
+
+        // KEYS_ONLY shows no value, also of a key that the app lists.
+        val keysOnly = get(routes, "entries", "file" to "session")
+        assertTrue(item(keysOnly, "session_id").getBoolean("masked"))
+        assertFalse(item(keysOnly, "session_id").has("value"))
+
+        // A discovered file has no registration, so no exceptions: the settings file's api_key does not count for it.
+        val discovered = get(routes, "entries", "file" to "sdk_cache")
+        assertTrue(item(discovered, "api_key").getBoolean("masked"))
+    }
+
+    @Test
+    fun `unmasked keys change nothing under VISIBLE, which shows every value`() {
+        val routes = routes(PrefsFile("settings", settings, ValuePolicy.VISIBLE, unmasked = setOf("username")))
+        val entries = get(routes, "entries", "file" to "settings")
+        assertEquals("t0k3n", item(entries, "auth_token").getString("value"))
+        assertEquals("ann", item(entries, "username").getString("value"))
+    }
+
+    @Test
     fun `a masked value can still be written, and the response masks it too`() {
         val routes = routes(PrefsFile("settings", settings))
         val edit = post(routes, "edit", """{"file":"settings","key":"auth_token","type":"string","value":"expired"}""")

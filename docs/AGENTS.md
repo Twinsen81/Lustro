@@ -557,8 +557,10 @@ it with `GET entry`.
 
 **Policies.** `policy` is `visible` (every value), `mask_sensitive` (every value but those of keys
 that look like they hold a secret, such as `auth_token`, `apiKey`, or `password`, by the network
-redaction's key check), or `keys_only` (no value). The keys always show. A discovered file is
-`mask_sensitive`. `encrypted` is `true` when the file on disk is encrypted: the app registered an
+redaction's key check), or `keys_only` (no value). The keys always show. Under `mask_sensitive`,
+the app can list keys whose values show although the check finds them sensitive, such as
+`auth_method`, by their exact names in any case; `files` does not list them, and such an item
+has its `value` and no `masked`. A discovered file is `mask_sensitive`, with no such keys. `encrypted` is `true` when the file on disk is encrypted: the app registered an
 `EncryptedSharedPreferences`, which shows plain values as its policy lets it, or the file has the
 keysets of one and a plain instance reads it, which is always `keys_only` and read-only.
 
@@ -625,7 +627,11 @@ and its `filter` does not search a masked column; a `sort` on one orders the row
 text, so `length(access_token)` is masked, but `SELECT access_token AS t` shows the value, because
 Android does not say which table column a result column comes from. The policy keeps secrets out
 of what you read by accident; it does not stop a client that wants them. `edit` can write a
-masked column.
+masked column. The app can list columns whose values show under `mask_sensitive` although their
+names look like they hold a secret, such as `oauth_scopes`, by their exact names in any case:
+`GET schema` has `masked: false` for such a column, `GET rows` sends and filters its values, and
+`POST query` shows a result column of that name, but not an expression of it, such as
+`length(oauth_scopes)`. `GET databases` does not list these names; a discovered file has none.
 
 **Order, sort, and filter.** Without `sort`, a table's rows come by `rowid`, or by the primary key
 for a table `WITHOUT ROWID`, and a view's as SQLite gives them; `dir=desc` turns the order

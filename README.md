@@ -642,7 +642,7 @@ val lustro = Lustro.builder(application)
                 PrefsFile("settings", settingsPrefs, ValuePolicy.VISIBLE),
                 PrefsFile("session", encryptedPrefs, ValuePolicy.KEYS_ONLY, readOnly = true),
             ),
-            dataStores = listOf(PrefsDataStore("app_state", context.appStateDataStore)),
+            dataStores = listOf(PrefsDataStore("app_state", context.appStateDataStore, unmasked = setOf("auth_method"))),
         ),
     )
     .build()
@@ -667,7 +667,12 @@ val lustro = Lustro.builder(application)
 - **Value policies.** `VISIBLE` shows every value. `MASK_SENSITIVE`, the default, leaves out the
   value of a key that looks like it holds a secret, such as `auth_token`, `apiKey`, or `password`,
   by the same key check as the Network tab's redaction (`SensitiveKeys.isSensitive`). `KEYS_ONLY`
-  leaves out every value. The keys, the types, and the sizes always show.
+  leaves out every value. The keys, the types, and the sizes always show. `unmasked` on a
+  `PrefsFile` or a `PrefsDataStore` lists the keys whose values `MASK_SENSITIVE` shows although the
+  check finds them sensitive, such as `auth_method`, which holds no secret. A name there matches
+  a key with exactly that name, in any case; it is no pattern. `VISIBLE` and `KEYS_ONLY` ignore
+  it, so a change of the policy never shows more than the policy says, and a discovered file has
+  no exceptions.
 - **Discovered files.** With `discover = true`, the default, the tab also shows the other files in
   the app's `shared_prefs` directory, such as the files of your libraries. It opens each one with
   `getSharedPreferences`, and the platform then keeps it in memory until the process ends. A
@@ -737,6 +742,7 @@ val lustro = Lustro.builder(application)
                     writable = true,
                     tableHints = mapOf("notes" to TableHint("NoteEntity", "A note that the user wrote.")),
                     onWrite = { appDatabase.invalidationTracker.refreshVersionsAsync() },
+                    unmasked = setOf("oauthScopes"),
                 ) { appDatabase.openHelper.writableDatabase },
                 SqliteDb.file("cache", application.getDatabasePath("cache.db"), valuePolicy = SqliteValuePolicy.VISIBLE),
             ),
@@ -794,6 +800,14 @@ val lustro = Lustro.builder(application)
   `SELECT access_token AS t`, shows the value. So the policy keeps secrets off the screen and out
   of an agent's output, but it does not stop a client that has the token: to keep a database's
   values from every client, do not register it. The console does not edit a masked column.
+- **Exceptions to the mask.** `unmasked` on each `SqliteDb` factory lists the columns whose values
+  `MASK_SENSITIVE` shows although their names look like they hold a secret, such as an
+  `oauthScopes` column, which has `auth` in its name. A name there matches a column with exactly
+  that name, in any case; it is no pattern. Such a column is not `masked` in `GET schema`, `GET rows`
+  sends and filters its values, the console shows, copies, and edits them, and `POST query` shows
+  a result column of that name. An expression of the column, such as `length(oauthScopes)`, has
+  another name, so it stays masked. `VISIBLE` shows every value anyway, and a discovered file has no
+  exceptions.
 - **Browsing runs only the SQL that the tab builds.** A client names a database, a table, and a
   column, and the tab checks each name against the database's schema before it puts it in a
   statement, as a quoted identifier. A filter value is a bound parameter. A page of rows reads

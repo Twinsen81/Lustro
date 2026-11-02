@@ -23,7 +23,7 @@
     var DECIMAL = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
     var WHOLE = /^-?\d+$/;
     var MASKED_TITLE = 'The database\'s value policy masks this column: its name looks like it holds a secret, so the tab does not send its values. '
-        + 'The app shows them with SqliteValuePolicy.VISIBLE.';
+        + 'The app shows them with SqliteValuePolicy.VISIBLE, or the values of this column alone with its name in unmasked.';
 
     function esc(text) {
         return window.debugEscapeHtml(text);
@@ -462,7 +462,7 @@
         if (!db.registered) lines.push('The tab found it in the app\'s databases directory.');
         if (db.schemaVersion != null) lines.push('PRAGMA user_version: ' + db.schemaVersion + '. Room and SQLiteOpenHelper set it to the schema\'s version.');
         lines.push(dbLockReason(db) || 'Writable: the tab may change its rows.');
-        if (db.policy === 'mask_sensitive') lines.push('Value policy: the values of the columns whose names look like they hold a secret are masked.');
+        if (db.policy === 'mask_sensitive') lines.push('Value policy: the values of the columns whose names look like they hold a secret are masked, except those of the columns that the app lists in unmasked.');
         else if (db.policy === 'visible') lines.push('Value policy: every value shows.');
         if (db.error) lines.push('It does not open: ' + db.error);
         return lines.join('\n');

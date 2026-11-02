@@ -196,7 +196,7 @@ def check_sqlite_databases(text: str, rules: List[dict]) -> None:
     items = _sqlite_route("databases", text)["items"]
     shapes = [(d["name"], d["registered"], d["source"], d["writable"], d["schemaVersion"]) for d in items]
     registered = [
-        ("notes", True, "support", True, 4),
+        ("notes", True, "support", True, 5),
         ("catalog", True, "file", False, 1),
         ("room", True, "support", True, 1),
     ]

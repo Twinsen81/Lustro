@@ -493,8 +493,25 @@ test('a key column that the value policy masks can\'t name its row', () => {
     assert.match(sqlite.sqliteRowLockReason(database('app'), schema, row), /value policy masks a column of the row's primary key/);
 });
 
+test('a column that the server does not mark masked shows its value, also with a name that looks secret', () => {
+    // The app lists oauth_scopes in unmasked: the schema and the cell carry the result, and the page has no name check of its own.
+    const schema = Object.assign({}, notesSchema(), {
+        columns: notesSchema().columns.concat([{ name: 'oauth_scopes', type: 'TEXT', notNull: false, defaultValue: null, primaryKey: 0, generated: false, masked: false }]),
+    });
+    const cell = { type: 'text', value: 'read write' };
+    const column = sqlite.sqliteGridColumns(schema).find((c) => c.name === 'oauth_scopes');
+    assert.ok(!column.masked);
+    assert.strictEqual(sqlite.sqliteCellView(cell).html, 'read write');
+    assert.strictEqual(sqlite.sqliteCellText(cell), 'read write');
+    const info = schema.columns.find((c) => c.name === 'oauth_scopes');
+    const html = sqlite.sqliteFieldHtml({ column: 'oauth_scopes', info, original: cell, whole: null }, 8, false);
+    assert.match(html, /data-field-input/);
+    assert.match(html, /data-action="copyField"/);
+    assert.ok(!html.includes('>Masked</span>'));
+});
+
 test('a database\'s tooltip says its value policy', () => {
-    assert.match(sqlite.sqliteDbItemHtml(database('app'), 0, false), /Value policy: the values of the columns whose names look like they hold a secret are masked\./);
+    assert.match(sqlite.sqliteDbItemHtml(database('app'), 0, false), /Value policy: the values of the columns whose names look like they hold a secret are masked, except those of the columns that the app lists in unmasked\./);
     assert.match(sqlite.sqliteDbItemHtml(database('catalog'), 1, false), /Value policy: every value shows\./);
 });
 

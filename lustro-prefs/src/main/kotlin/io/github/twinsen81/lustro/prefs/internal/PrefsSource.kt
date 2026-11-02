@@ -3,6 +3,7 @@ package io.github.twinsen81.lustro.prefs.internal
 import io.github.twinsen81.lustro.CursorCodec
 import io.github.twinsen81.lustro.SensitiveKeys
 import io.github.twinsen81.lustro.prefs.ValuePolicy
+import java.util.Locale
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.random.Random
 
@@ -34,7 +35,11 @@ internal abstract class PrefsSource(
     /** Whether the app made the file read-only. [writable] also checks the file. */
     val readOnly: Boolean,
     val registered: Boolean,
+    unmasked: Set<String> = emptySet(),
 ) {
+    /** The keys that [ValuePolicy.MASK_SENSITIVE] shows, in lowercase. A discovered file has none. */
+    val unmasked: Set<String> = unmasked.mapTo(HashSet()) { it.lowercase(Locale.ROOT) }
+
     private val sequence = AtomicLong()
 
     /** A file has an epoch of its own, so that the cursor of one file is foreign to another. */
@@ -89,11 +94,13 @@ internal class Contents(
     /** The policy that applies, which can be stricter than the one that the app chose. */
     val policy: ValuePolicy,
     val readOnly: Boolean,
+    /** The keys, in lowercase, that [ValuePolicy.MASK_SENSITIVE] shows. The other policies ignore them. */
+    private val unmasked: Set<String> = emptySet(),
 ) {
     fun masked(key: String): Boolean =
         when (policy) {
             ValuePolicy.VISIBLE -> false
-            ValuePolicy.MASK_SENSITIVE -> SensitiveKeys.isSensitive(key)
+            ValuePolicy.MASK_SENSITIVE -> SensitiveKeys.isSensitive(key) && key.lowercase(Locale.ROOT) !in unmasked
             ValuePolicy.KEYS_ONLY -> true
         }
 }
