@@ -507,7 +507,16 @@ class SqliteConsoleTest {
     @Test
     fun `onWrite runs after each exec, edit, and delete that committed, and after no other request`() {
         var writes = 0
-        val routes = routes(SqliteDb.framework("app", writable = true, onWrite = { writes++ }) { live })
+        // After the commit: the tab's transaction is over, and another thread of the app sees the change.
+        val renamed = mutableListOf<Long>()
+        val reader = Executors.newSingleThreadExecutor()
+        val onWrite = {
+            assertFalse(live.inTransaction())
+            renamed += reader.submit<Long> { live.compileStatement("SELECT count(*) FROM notes WHERE title = 'Renamed'").simpleQueryForLong() }.get()
+            writes++
+            Unit
+        }
+        val routes = routes(SqliteDb.framework("app", writable = true, onWrite = onWrite) { live })
         val edit = JSONObject().put("db", "app").put("table", "notes").put("rowid", "1").put("values", JSONObject().put("title", "Renamed"))
         val delete = JSONObject().put("db", "app").put("table", "tags").put("key", JSONObject().put("note_id", 1).put("name", "work"))
 
@@ -515,6 +524,7 @@ class SqliteConsoleTest {
         ok(Fixtures.post(routes, "edit", edit))
         ok(Fixtures.post(routes, "delete", delete))
         assertEquals(3, writes)
+        assertEquals(listOf(0L, 1L, 1L), renamed)
 
         // Nothing committed: a refused statement, one that SQLite refuses, a statement that returns rows, a read, and a missing row.
         assertError(400, "statement_refused", Fixtures.post(routes, "exec", body("app", "BEGIN")))
@@ -523,6 +533,7 @@ class SqliteConsoleTest {
         ok(Fixtures.post(routes, "query", body("app", "SELECT count(*) FROM notes")))
         assertEquals(404, Fixtures.post(routes, "delete", delete).status)
         assertEquals(3, writes)
+        reader.shutdown()
     }
 
     @Test
