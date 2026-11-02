@@ -714,9 +714,11 @@ from its `finished` event. `nextScheduleTimeMillis` is left out when there is no
 type adds: `finished` has `result` (`success`, `failure`, or `retry`) and `output`; `stopped` has
 `stopReason`; `exception` has `exception: { type, message?, stackTrace, truncated? }`, the message
 at most 4096 characters and the stack trace at most 16384; `updated` has `previousGeneration`. `state` and `runAttempts` are
-the work's at the event. The schedule listener gives `enqueued`, `unblocked` (the work before it
-in a chain finished), `updated`, `cancelled`, and `prerequisiteFailed` (the work before it failed
-or was cancelled, so this work fails without a run); the execution listener gives `started`,
+the work's at the event. The schedule listener gives `enqueued`, `unblocked` (the work waits for
+no work before it: WorkManager sends it at the time of `enqueued` for work that has no
+prerequisites, or whose prerequisites all succeeded, and else when the last one succeeds),
+`updated`, `cancelled`, and `prerequisiteFailed` (the work before it failed or was cancelled, so
+this work fails without a run); the execution listener gives `started`,
 `stopped`, `finished`, and `exception`. A worker that throws ends its run with `exception`, not
 `finished`. A `finished` with `retry` leaves the work `ENQUEUED`, as does the end of a period of
 periodic work.
