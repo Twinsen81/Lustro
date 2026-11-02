@@ -929,7 +929,10 @@ fun start(app: Application) {
   default initializer is still in the manifest), or `unsupported` when your WorkManager has
   listener methods that this version of Lustro does not forward. `state.reason` says what to
   change. Without WorkManager 2.12.0 or newer, every route answers `503` with code
-  `work_unsupported`, and `configure()` returns the builder as it is.
+  `work_unsupported`, and `configure()` returns the builder as it is. The message names the
+  version that the app has when the APK has WorkManager's version file,
+  `META-INF/androidx.work_work-runtime.version`; a packaging exclude of `META-INF/*.version`
+  leaves it out.
 - **Routes.** `GET /api/v1/work/items` polls the work in the cursor envelope, with `state`, `tag`,
   `class`, and `name` filters; `GET items/{id}` gives one work request with its events and history;
   `GET events` polls the events in the stream envelope, with `id`, `class`, and `type` filters;
@@ -939,15 +942,21 @@ fun start(app: Application) {
   See [docs/AGENTS.md](docs/AGENTS.md#workmanager-tab-operations) and
   [`work.openapi.json`](lustro-work/src/main/assets/lustro/work.openapi.json).
 - **In the console.** The **WorkManager** tab lists the work with its state, worker, unique name,
-  tags, runs, and next run. The state chips show the count of each state and filter the list by
+  tags, attempts, and next run. For periodic work, the attempts are those of the current period:
+  WorkManager sets the count back to 0 when a period ends, so it is 0 after a run that finished. The state chips show the count of each state and filter the list by
   it, and the tag, worker class, and unique name fields go to the route. A click on a work opens
   it: **Details** has its id, class, tags, constraints, periodicity, initial delay, next run,
   attempts, generation, last stop reason, output, and progress; **Timeline** has the events of its
   runs, with the result, the output, the stop reason, and a worker's exception with its stack
   trace; and **History**, with work-analytics, has its periods. **Cancel**, **Cancel unique work**,
   and **Prune** ask first, and with work-analytics the cancel dialogs say that a cancel of running
-  work can end the app's process (see above). When the listeners are not installed, a banner says
-  why, and how to fix it.
+  work can end the app's process (see above). **Cancel** is off for finished work, and **Cancel
+  unique work** when all work of the name in the list has finished, each with the reason as its
+  title; with a tag or class filter, the list can't tell, and the route answers
+  `cancelled: 0`. When the listeners are not installed, a banner says why, and how to fix it.
+  While the routes answer `503`, the actions are off; with `work_unsupported`, the banner shows
+  the app's WorkManager version when it is known, and the list asks again every 30 s instead of
+  every second.
 
   ![The WorkManager tab: the sample's demo work, and the timeline of the worker that throws, with its stack trace](docs/images/work-tab.png)
 - **Not shown:** the chain graph and a work's input data, which WorkManager's public API does

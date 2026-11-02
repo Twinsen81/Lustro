@@ -5,6 +5,8 @@
 // app passed work-analytics. work.openapi.json describes the routes.
 (function() {
     var ITEMS_POLL_MS = 1000;
+    // The answer to an app whose WorkManager is too old changes only with a new build of the app.
+    var UNSUPPORTED_RETRY_MS = 30000;
     var EVENTS_POLL_MS = 1000;
     // A reset of the timeline gets the last events of the work, up to the route's cap.
     var EVENTS_LIMIT = 5000;
@@ -15,6 +17,8 @@
 
     var STATES = ['ENQUEUED', 'RUNNING', 'SUCCEEDED', 'FAILED', 'BLOCKED', 'CANCELLED'];
     var FINISHED = { SUCCEEDED: true, FAILED: true, CANCELLED: true };
+    // The events that end a run of the work.
+    var RUN_ENDS = { finished: true, stopped: true, exception: true };
     var EVENT_LABELS = {
         enqueued: 'Enqueued',
         unblocked: 'Unblocked',
@@ -221,10 +225,13 @@
             + '<td class="dc-cell work-cell--worker" title="' + esc(item.workerClass || '') + '">' + periodic + esc(worker) + '</td>'
             + '<td class="dc-cell work-cell--name"' + (item.uniqueName ? ' title="' + esc(item.uniqueName) + '">' + esc(item.uniqueName) : '><span class="dc-comment">-</span>') + '</td>'
             + '<td class="dc-cell work-cell--tags" title="' + esc(tags.join(', ')) + '">' + tagsHtml + '</td>'
-            + '<td class="dc-cell dc-cell--num work-cell--attempts">' + esc(String(item.runAttempts == null ? '' : item.runAttempts)) + '</td>'
+            + '<td class="dc-cell dc-cell--num work-cell--attempts"' + (item.periodicity ? ' title="' + esc(PERIOD_ATTEMPTS) + '"' : '') + '>'
+                + esc(String(item.runAttempts == null ? '' : item.runAttempts)) + '</td>'
             + '<td class="dc-cell dc-cell--muted work-cell--next">' + nextRunHtml(item, now) + '</td>'
             + '</tr>';
     }
+
+    var PERIOD_ATTEMPTS = 'The attempts of the current period. WorkManager sets the count back to 0 when a period ends.';
 
     function countLabel(shown, total) {
         var noun = total === 1 ? 'work request' : 'work requests';
@@ -262,7 +269,9 @@
             kvRow('Periodicity', esc(periodicityText(item.periodicity))),
             kvRow('Initial delay', item.initialDelayMillis ? esc(durationText(item.initialDelayMillis)) : '<span class="dc-comment">// none</span>'),
             kvRow('Next run', next, 'When WorkManager runs the work next, on the device\'s clock.'),
-            kvRow('Run attempts', esc(String(item.runAttempts))),
+            kvRow('Run attempts', esc(String(item.runAttempts)), item.periodicity
+                ? PERIOD_ATTEMPTS
+                : 'How many times WorkManager started the work: a retry and a stop by the system each start it again.'),
             kvRow('Generation', esc(String(item.generation)), 'How many times the app updated the work with WorkManager.updateWork().'),
             kvRow('Last stop', stopped ? '<span class="dc-comment">NOT_STOPPED</span>' : esc(stopReasonText(item.stopReason)), 'The reason of the last stop of a run: the system stopped the worker before it finished.'),
             kvRow('Output', hasData(item.output) ? jsonHtml(item.output, 'work-json') : '<span class="dc-comment">// empty</span>'),
@@ -333,13 +342,28 @@
         return html;
     }
 
-    function eventHtml(event) {
+    // The attempt of the run that the event belongs to. WorkManager sets the count of periodic
+    // work back to 0 when a period ends, before it sends the event of the run's end, so such an
+    // event takes the attempt of the start before it.
+    function eventAttempt(events, index) {
+        var event = events[index];
+        if (event.runAttempts > 0 || !RUN_ENDS[event.type]) return event.runAttempts;
+        for (var i = index - 1; i >= 0; i--) {
+            if (events[i].type === 'started') return events[i].runAttempts;
+            if (RUN_ENDS[events[i].type]) break;
+        }
+        return event.runAttempts;
+    }
+
+    // [attempt] is the attempt that eventAttempt() finds; without it, the event's own count.
+    function eventHtml(event, attempt) {
         var label = EVENT_LABELS[event.type] || stateLabel(event.type);
+        var run = attempt == null ? event.runAttempts : attempt;
         return '<li class="work-event" data-seq="' + esc(String(event.seq)) + '" style="--c: ' + eventColor(event) + '">'
             + '<div class="work-event__line">'
             + '<span class="work-event__time" title="' + esc(dateTimeText(event.at)) + '">' + esc(clockText(event.at)) + '</span>'
             + '<span class="dc-badge work-event__type" style="--c: ' + eventColor(event) + '">' + esc(label) + '</span>'
-            + '<span class="work-event__run" title="The run attempts when the event came.">run ' + esc(String(event.runAttempts)) + '</span>'
+            + (run > 0 ? '<span class="work-event__run" title="The run attempt that the event belongs to: one-time work counts its attempts until it finishes, and periodic work those of each period.">attempt ' + esc(String(run)) + '</span>' : '')
             + (event.generation ? '<span class="work-event__run" title="The generation of the work: how many times the app updated it.">gen ' + esc(String(event.generation)) + '</span>' : '')
             + '<span class="work-event__state">→ ' + esc(stateLabel(event.state)) + '</span>'
             + '</div>'
@@ -406,7 +430,12 @@
             return { kind: 'info', title: 'WorkManager has not started in the app yet. The tab does not start it.', fix: envelope.hint || '', reason: envelope.message || '' };
         }
         if (code === 'work_unsupported') {
-            return { kind: 'error', title: 'The tab can\'t read this app\'s WorkManager.', fix: envelope.hint || '', reason: envelope.message || '' };
+            return {
+                kind: 'error',
+                title: 'The tab can\'t read this app\'s WorkManager. Cancel and Prune are off, and the list asks again every ' + (UNSUPPORTED_RETRY_MS / 1000) + ' s.',
+                fix: (envelope.hint ? envelope.hint + ', and build the app again.' : ''),
+                reason: envelope.message || ''
+            };
         }
         if (code === 'work_error') {
             return { kind: 'error', title: 'WorkManager did not answer.', fix: '', reason: envelope.message || '' };
@@ -470,6 +499,56 @@
         };
     }
 
+    // Why Prune and Cancel can't run now, after a refusal of GET items, or null.
+    function refusedActions(rejected) {
+        if (rejected === 'work_unsupported') return 'The tab can\'t read this app\'s WorkManager: every route answers 503. See the banner.';
+        if (rejected === 'work_not_initialized') return 'WorkManager has not started in the app yet: the route answers 503 until it does.';
+        return null;
+    }
+
+    function pruneAction(rejected) {
+        var refused = refusedActions(rejected);
+        return {
+            disabled: !!refused,
+            title: refused || 'Prune: delete the finished work (succeeded, failed, and cancelled) that no unfinished work depends on, as WorkManager.pruneWork() does. It asks first.'
+        };
+    }
+
+    // What Cancel and Cancel unique work allow for [item]. [gone] says that WorkManager no
+    // longer has it, [items] is the list, and [complete] says whether the list has all the
+    // work of the item's unique name: a tag or class filter, or a filter for another name,
+    // can leave some out, and then only the route knows whether any of it is unfinished.
+    function cancelActions(item, gone, items, complete, rejected) {
+        var refused = refusedActions(rejected);
+        var finished = !item || gone || isFinished(item.state);
+        var cancel = refused
+            ? { disabled: true, title: refused }
+            : finished
+            ? { disabled: true, title: gone ? 'WorkManager no longer has this work: there is nothing to cancel.' : 'The work has finished: there is nothing to cancel.' }
+            : { disabled: false, title: 'Cancel this work, as WorkManager.cancelWorkById() does. It asks first.' };
+        var name = item && item.uniqueName;
+        var byName = { hidden: !name || gone, disabled: false, title: '' };
+        if (byName.hidden) return { cancel: cancel, cancelName: byName };
+        var what = 'Cancel all unfinished work of the unique name "' + name + '", as WorkManager.cancelUniqueWork() does. It asks first.';
+        var others = (items || []).filter(function(other) {
+            return other.uniqueName === name && other.id !== item.id && !isFinished(other.state);
+        }).length;
+        if (refused) {
+            byName.disabled = true;
+            byName.title = refused;
+        } else if (!finished) {
+            byName.title = what;
+        } else if (others) {
+            byName.title = what + ' This work has finished, but ' + others + (others === 1 ? ' other work' : ' other work requests') + ' of the name ' + (others === 1 ? 'has' : 'have') + ' not.';
+        } else if (complete) {
+            byName.disabled = true;
+            byName.title = 'All work of the unique name "' + name + '" has finished: there is nothing to cancel.';
+        } else {
+            byName.title = what + ' The filters hide some work, so the list can\'t tell whether any work of the name is unfinished.';
+        }
+        return { cancel: cancel, cancelName: byName };
+    }
+
     function resultToast(path, data) {
         if (path === 'prune') {
             var pruned = data && data.pruned || 0;
@@ -500,6 +579,9 @@
     window.workEventsPath = eventsPath;
     window.workApplyEvents = applyEvents;
     window.workEventHtml = eventHtml;
+    window.workEventAttempt = eventAttempt;
+    window.workPruneAction = pruneAction;
+    window.workCancelActions = cancelActions;
     window.workPeriodHtml = periodHtml;
     window.workListenersBanner = listenersBanner;
     window.workRejectionBanner = rejectionBanner;
@@ -518,6 +600,7 @@
     // an earlier one is late and changes nothing.
     var generation = 0;
     var itemsPoll = null;
+    var itemsRetry = null;
     var filterTimer = null;
     var suggestions = { tags: new Set(), classes: new Set(), names: new Set() };
     // The key of each drawn row: its work as JSON, and whether it is selected.
@@ -553,6 +636,7 @@
 
     function startItemsPoll() {
         if (itemsPoll) itemsPoll.stop();
+        if (itemsRetry) { clearTimeout(itemsRetry); itemsRetry = null; }
         var requestGeneration = -1;
         itemsPoll = window.debugPoll(function() {
             requestGeneration = generation;
@@ -564,8 +648,16 @@
             var banner = rejectionBanner(status, envelope);
             if (!banner) return false;
             onRejected(envelope.code, banner);
+            if (envelope.code === 'work_unsupported') slowItemsPoll();
             return true;
         });
+    }
+
+    // Asks once every UNSUPPORTED_RETRY_MS, so that a new build of the app shows without a reload.
+    function slowItemsPoll() {
+        if (itemsPoll) { itemsPoll.stop(); itemsPoll = null; }
+        if (itemsRetry) clearTimeout(itemsRetry);
+        itemsRetry = setTimeout(startItemsPoll, UNSUPPORTED_RETRY_MS);
     }
 
     function onItems(data) {
@@ -583,6 +675,7 @@
         renderBanner(listenersBanner(list.state));
         renderTimes();
         renderCounts();
+        renderActions();
     }
 
     function onRejected(code, banner) {
@@ -591,6 +684,14 @@
         renderBanner(banner);
         renderRows();
         renderCounts();
+        renderActions();
+    }
+
+    function renderActions() {
+        var prune = pruneAction(rejected);
+        els.prune.disabled = prune.disabled;
+        els.prune.title = prune.title;
+        if (selectedId) renderDrawer();
     }
 
     function filtered() {
@@ -785,17 +886,14 @@
         els.headClass.textContent = item ? simpleClass(item.workerClass) || '?' : '';
         els.headClass.title = item ? item.workerClass || '' : '';
         els.headId.textContent = selectedId;
-        var finished = !item || gone || isFinished(state);
-        els.cancel.disabled = finished;
-        els.cancel.title = finished
-            ? 'The work has finished: there is nothing to cancel.'
-            : 'Cancel this work, as WorkManager.cancelWorkById() does. It asks first.';
-        var name = item && item.uniqueName;
-        els.cancelName.hidden = !name || gone;
-        if (name) {
-            els.cancelName.textContent = 'Cancel unique work';
-            els.cancelName.title = 'Cancel all unfinished work of the unique name "' + name + '", as WorkManager.cancelUniqueWork() does. It asks first.';
-        }
+        var complete = !filters.tag && !filters.workerClass && (!filters.name || filters.name === (item && item.uniqueName));
+        var actions = cancelActions(item, gone, list.items, complete, rejected);
+        els.cancel.disabled = actions.cancel.disabled;
+        els.cancel.title = actions.cancel.title;
+        els.cancelName.hidden = actions.cancelName.hidden;
+        els.cancelName.disabled = actions.cancelName.disabled;
+        els.cancelName.textContent = 'Cancel unique work';
+        els.cancelName.title = actions.cancelName.title;
         els.gone.hidden = !gone;
         if (gone) {
             els.gone.textContent = lastItem
@@ -877,8 +975,11 @@
         var follow = stuckToEnd;
         var changes = applyEvents(timeline, data);
         if (changes) {
-            if (changes.reset) els.events.innerHTML = timeline.events.map(eventHtml).join('');
-            else els.events.insertAdjacentHTML('beforeend', changes.appended.map(eventHtml).join(''));
+            var all = timeline.events;
+            var first = changes.reset ? 0 : all.length - changes.appended.length;
+            var html = all.slice(first).map(function(event, i) { return eventHtml(event, eventAttempt(all, first + i)); }).join('');
+            if (changes.reset) els.events.innerHTML = html;
+            else els.events.insertAdjacentHTML('beforeend', html);
             // A new event means a new state, and a new period of its history. The
             // first answer comes with the selection, which reads them already.
             if (timeline.read) loadDetail();
@@ -1059,6 +1160,7 @@
             headId: document.getElementById('work-head-id'),
             cancel: document.getElementById('work-cancel'),
             cancelName: document.getElementById('work-cancel-name'),
+            prune: document.getElementById('work-prune'),
             gone: document.getElementById('work-gone'),
             timelineCount: document.getElementById('work-timeline-count'),
             historyTab: document.getElementById('work-history-tab'),

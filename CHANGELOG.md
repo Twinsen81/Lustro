@@ -768,6 +768,25 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Fixed
 
+- **The WorkManager console says what its actions can do, and calls an app
+  with an old WorkManager less often.** With `work_unsupported` (the app's
+  WorkManager is older than 2.12.0), Prune stayed on and opened its dialog,
+  although every route answered `503`, and the list asked `GET items` every
+  second, although the answer changes only with a new build of the app. Prune
+  and the cancel buttons are now off while the routes answer `503`, with the
+  reason as their title, and with `work_unsupported` the list asks again
+  every 30 s. The `503` message names the app's WorkManager version, such as
+  "the app has 2.11.2", read from the version file that work-runtime puts in
+  its jar, when the APK has it. **Cancel unique work** is off, with the
+  reason, when all work of the name in the list has finished, and stays on
+  when other work of the name has not, or when a tag or class filter hides
+  some of it; **Cancel** was already off for finished work. The list column
+  **Runs** is now **Attempts**: WorkManager sets the count of periodic work
+  back to 0 when a period ends, so it showed 0 after a run that succeeded.
+  Its title says so, and the timeline shows "attempt N" instead of "run N",
+  where the end of a periodic run takes the attempt of its start, and an
+  event before the first start shows none. Node tests cover the actions, the
+  banner, and the attempts; a unit test covers the version.
 - **`POST sqlite/exec` refuses a statement that returns rows with a clear
   error.** A `SELECT` sent to `exec`, also with **Run as write** in the
   console, got Android's message "unknown error (code 0 SQLITE_OK): Queries

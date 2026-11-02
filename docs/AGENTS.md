@@ -703,7 +703,10 @@ with `code: "work_unsupported"`.
 stopReason: { code, name }, output, progress, constraints, initialDelayMillis, periodicity?,
 nextScheduleTimeMillis? }`. `state` is a `WorkInfo.State` name: `ENQUEUED`, `RUNNING`,
 `SUCCEEDED`, `FAILED`, `BLOCKED` (waiting for the work before it in a chain), or `CANCELLED`.
-`tags` includes the worker's class name, which WorkManager adds. `uniqueName` is there only for a
+`tags` includes the worker's class name, which WorkManager adds. `runAttempts` is
+`WorkInfo.runAttemptCount`, how often the work started; for periodic work it counts only the
+current period, because WorkManager sets it back to 0 when a period ends, so the `finished` event
+of a periodic run has 0 and its `started` event has the attempt. `uniqueName` is there only for a
 name that the app registered, or the one that `name=` asked for: `WorkInfo` does not have it.
 `stopReason.name` is the `WorkInfo.STOP_REASON_*` constant without the prefix: `NOT_STOPPED`
 when the work never stopped, `UNKNOWN` when WorkManager does not know why, as after the app's
@@ -953,7 +956,8 @@ Errors use the shared envelope; key statuses:
   a corrupt file or a view whose table is gone, or a client's statement failed on the file or the
   device; the message is SQLite's.
 - **`503` on a `work/` route:** `code: "work_unsupported"` when the app's WorkManager is older
-  than 2.12.0 or missing; `code: "work_not_initialized"` on `items`, `items/{id}`, `cancel`, and
+  than 2.12.0 or missing, with the app's version in the message when the APK has WorkManager's
+  version file (`META-INF/androidx.work_work-runtime.version`), which a build can leave out; `code: "work_not_initialized"` on `items`, `items/{id}`, `cancel`, and
   `prune` until the app initializes WorkManager. `404` with `code: "metrics_off"` on
   `work/metrics` when the app passed no work-analytics repository. **No work events:** check
   `state.listeners` and `state.reason` (see [WorkManager tab operations](#workmanager-tab-operations)).

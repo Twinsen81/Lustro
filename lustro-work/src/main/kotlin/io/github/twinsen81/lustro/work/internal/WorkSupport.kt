@@ -1,5 +1,6 @@
 package io.github.twinsen81.lustro.work.internal
 
+import java.io.IOException
 import java.lang.reflect.Method
 import java.lang.reflect.Modifier
 
@@ -17,8 +18,22 @@ internal object WorkSupport {
         when {
             !loads("androidx.work.WorkManager", loader) -> "The app has no WorkManager (androidx.work:work-runtime)"
             // The listeners and WorkInfo.workerClassName came in 2.12.0, together.
-            !loads("androidx.work.ExecutionEventListener", loader) -> "The tab needs WorkManager $MIN_VERSION or newer; the app has an older one"
+            !loads("androidx.work.ExecutionEventListener", loader) ->
+                "The tab needs WorkManager $MIN_VERSION or newer; the app has ${runtimeVersion(loader) ?: "an older one"}"
             else -> null
+        }
+
+    /**
+     * The version of the app's work-runtime, from the file that each release puts in
+     * its jar, or `null` when the app's build left the file out of the APK, as a
+     * packaging exclude of the `.version` files in `META-INF` does.
+     */
+    fun runtimeVersion(loader: ClassLoader?): String? =
+        try {
+            loader?.getResourceAsStream(VERSION_FILE)?.use { it.readBytes().toString(Charsets.UTF_8).trim() }
+                ?.takeIf { it.isNotEmpty() && it.length <= MAX_VERSION_LENGTH && !it.contains('\n') }
+        } catch (_: IOException) {
+            null
         }
 
     /**
@@ -39,6 +54,11 @@ internal object WorkSupport {
         wrapper.declaredMethods.any {
             it.name == method.name && it.parameterTypes.contentEquals(method.parameterTypes) && !Modifier.isAbstract(it.modifiers)
         }
+
+    private const val VERSION_FILE = "META-INF/androidx.work_work-runtime.version"
+
+    // A version such as 2.11.2 or 2.12.0-alpha01; anything longer is not one.
+    private const val MAX_VERSION_LENGTH = 32
 
     private fun loads(name: String, loader: ClassLoader?): Boolean =
         try {

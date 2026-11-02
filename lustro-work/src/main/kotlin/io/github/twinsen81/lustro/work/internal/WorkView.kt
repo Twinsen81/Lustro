@@ -56,7 +56,7 @@ internal object WorkView {
                                     <th class="dc-th">Worker</th>
                                     <th class="dc-th work-th--name">Unique name</th>
                                     <th class="dc-th work-th--tags" title="The tags that the app added. WorkManager also tags each work with its worker class; the details show that tag too.">Tags</th>
-                                    <th class="dc-th work-th--attempts" title="How many times the work ran: run attempts.">Runs</th>
+                                    <th class="dc-th work-th--attempts" title="Run attempts: how many times WorkManager started the work, as WorkInfo.runAttemptCount says. For periodic work, the attempts of the current period only: WorkManager sets the count back to 0 when a period ends, so it is 0 after a run that finished.">Attempts</th>
                                     <th class="dc-th work-th--next" title="When WorkManager runs the work next, on the device's clock. Hover a time for the date.">Next run</th>
                                 </tr>
                             </thead>
