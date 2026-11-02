@@ -609,12 +609,12 @@
         var input = multiline
             ? '<textarea class="dc-textarea sqlite-field__input" rows="' + Math.min(10, Math.max(3, text.split('\n').length)) + '"' + attrs + '>' + esc(isNull ? '' : text) + '</textarea>'
             : '<input type="text" class="dc-input--block sqlite-field__input"' + attrs + ' value="' + esc(isNull ? '' : text) + '">';
+        var masked = fieldMasked(field);
         var badges = (info.type ? '<span class="sqlite-field__type">' + esc(info.type) + '</span>' : '')
             + (info.primaryKey > 0 ? tag('PK', 'Column ' + info.primaryKey + ' of the primary key.', '--accent-2') : '')
             + (info.notNull ? tag('Not null', 'The column takes no NULL.') : '')
             + (info.generated ? tag('Generated', 'SQLite computes the column.') : '')
             + (masked ? tag('Masked', MASKED_TITLE, '--lvl-w') : '');
-        var masked = fieldMasked(field);
         var nullToggle = !readOnly && !(info.generated || original.type === 'blob' || masked)
             ? '<button type="button" class="sqlite-check sqlite-field__null" data-action="toggleNull" data-field="' + index + '" role="checkbox"'
                 + ' aria-checked="' + (isNull ? 'true' : 'false') + '"' + (lock ? ' disabled' : '') + ' title="Save NULL in this column.">'

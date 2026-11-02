@@ -466,10 +466,14 @@ test('the editor locks a masked column, also when its cell is NULL, and never se
     assert.ok(!html.includes('copyField'));
     assert.match(html, /masked · text/);
     assert.match(html, /does not change a value that it does not show/);
+    assert.match(html, /<span class="dc-tag" style="--c: var\(--lvl-w\)" title="[^"]*value policy masks this column[^"]*">Masked<\/span>/);
 
     const empty = sqlite.sqliteFieldHtml({ column: 'share_token', info, original: imported.cells.share_token, whole: null }, 7, false);
     assert.match(empty, / readonly/);
     assert.ok(!empty.includes('toggleNull'));
+    assert.match(empty, />Masked<\/span>/);
+    const plainField = sqlite.sqliteFieldHtml({ column: 'title', info: notesSchema().columns.find((column) => column.name === 'title'), original: synced.cells.title, whole: null }, 1, false);
+    assert.ok(!plainField.includes('>Masked</span>'));
 
     // A field that is locked is not editable, so whatever it holds stays out of the edit.
     const values = sqlite.sqliteEditChanges([
