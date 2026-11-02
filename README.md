@@ -760,7 +760,9 @@ val lustro = Lustro.builder(application)
   of a file drops the process's POSIX locks on it, and only the SQLite that holds them works
   around that. See [How To Corrupt An SQLite Database File](https://www.sqlite.org/howtocorrupt.html#_posix_advisory_locks_canceled_by_a_separate_thread_doing_close_).
 - **Discovery.** With `discoverFrom = context`, the tab also lists the other database files in the
-  app's `databases` directory, such as those of WorkManager and other libraries, by file name.
+  app's `databases` directory, such as those of your libraries, by file name. It looks in no
+  other directory: WorkManager, for one, keeps `androidx.work.workdb` in `noBackupFilesDir`, so
+  register that file with `SqliteDb.file`, as the [WorkManager](#workmanager) section shows.
   It lists the directory on each request, so it finds a file that the app creates later, and
   leaves out a file that a registration stands for, SQLite's journal, WAL, and lock files, and a
   file that is not a SQLite database. It asks the platform's SQLite about a file, and never
