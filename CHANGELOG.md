@@ -38,9 +38,9 @@ see [DECISIONS.md](DECISIONS.md).
   `VISIBLE`. `MASK_SENSITIVE` leaves out the values of a column whose name
   looks like it holds a secret, by `SensitiveKeys.isSensitive`, the network
   redaction's check. A masked cell is `{ "type": "text", "masked": true }`,
-  with its storage class only, and the tab does not read its value; a `NULL`
-  stays `NULL`. `GET rows` masks by the table's column, and its filter does
-  not search a masked column. `POST query` masks by the result's column name,
+  with its storage class only, and the tab never sends its value (`GET rows`
+  does not read it at all); a `NULL` stays `NULL`. `GET rows` masks by the
+  table's column, and its filter does not search a masked column. `POST query` masks by the result's column name,
   because Android's cursor does not say which table column a result column
   comes from: `length(access_token)` is masked, but an alias shows the value.
   The README and SECURITY.md say that the policy keeps secrets off the screen

@@ -786,8 +786,9 @@ val lustro = Lustro.builder(application)
   secret, such as `access_token`, `clientSecret`, or `password`, by the same name check as the
   Network tab's redaction (`SensitiveKeys.isSensitive`). `VISIBLE` shows every value. A
   discovered file is `MASK_SENSITIVE`. A masked cell has only its storage class,
-  `{ "type": "text", "masked": true }`, and the tab does not read its value; a `NULL` stays
-  `NULL`. `GET rows` masks by the table's column, and its filter does not search a masked column.
+  `{ "type": "text", "masked": true }`, and the tab never sends its value (`GET rows` does not
+  read it at all); a `NULL` stays `NULL`. `GET rows` masks by the table's column, and its filter
+  does not search a masked column.
   `POST query` masks by the result's column name, because Android does not say which table column
   a result column comes from: `length(access_token)` is masked by its name, but an alias, such as
   `SELECT access_token AS t`, shows the value. So the policy keeps secrets off the screen and out

@@ -1075,7 +1075,7 @@
               },
               "masked": {
                 "const": true,
-                "description": "The value policy leaves the value out: the tab does not read it. A text has no length here, and a blob no size."
+                "description": "The value policy leaves the value out: the tab never sends it. GET rows does not read it from the database; POST query reads it into the cursor and drops it. A text has no length here, and a blob no size."
               }
             },
             "additionalProperties": false

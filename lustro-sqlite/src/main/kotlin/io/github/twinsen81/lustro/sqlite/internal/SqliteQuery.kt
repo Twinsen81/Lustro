@@ -66,7 +66,7 @@ internal class SqliteQuery(private val limit: ReadLimit = ReadLimit()) {
             else -> Cell.Null
         }
 
-    // Only the storage class: the value is never read. A NULL holds no secret.
+    // Only the storage class. The cursor window holds the value, but it is not read from there. A NULL holds no secret.
     private fun maskedCell(cursor: Cursor, index: Int): Cell =
         when (cursor.getType(index)) {
             Cursor.FIELD_TYPE_INTEGER -> Cell.Masked("integer")

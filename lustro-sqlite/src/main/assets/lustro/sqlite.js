@@ -22,7 +22,7 @@
     var ROWID_ALIASES = ['rowid', '_rowid_', 'oid'];
     var DECIMAL = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
     var WHOLE = /^-?\d+$/;
-    var MASKED_TITLE = 'The database\'s value policy masks this column: its name looks like it holds a secret, so the tab does not read its values. '
+    var MASKED_TITLE = 'The database\'s value policy masks this column: its name looks like it holds a secret, so the tab does not send its values. '
         + 'The app shows them with SqliteValuePolicy.VISIBLE.';
 
     function esc(text) {
