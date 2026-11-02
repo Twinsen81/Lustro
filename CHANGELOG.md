@@ -14,6 +14,28 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Added
 
+- **The SQLite tab has a value policy, which masks token columns by default.**
+  The tab showed every value, so the `accessToken` and `clientSecret` columns
+  of an app's accounts table showed in `GET rows`, in the console, and in
+  `POST query`, while the Preferences tab masked such keys. Each `SqliteDb`
+  factory now takes `valuePolicy`: `SqliteValuePolicy.MASK_SENSITIVE`, the
+  default, as in the Preferences tab, and always for a discovered file, or
+  `VISIBLE`. `MASK_SENSITIVE` leaves out the values of a column whose name
+  looks like it holds a secret, by `SensitiveKeys.isSensitive`, the network
+  redaction's check. A masked cell is `{ "type": "text", "masked": true }`,
+  with its storage class only, and the tab does not read its value; a `NULL`
+  stays `NULL`. `GET rows` masks by the table's column, and its filter does
+  not search a masked column. `POST query` masks by the result's column name,
+  because Android's cursor does not say which table column a result column
+  comes from: `length(access_token)` is masked, but an alias shows the value.
+  The README and SECURITY.md say that the policy keeps secrets off the screen
+  and is not a boundary against a client with the token. `GET databases` has
+  each database's `policy`, and `GET schema` marks each column `masked`. The
+  console shows a masked cell as `masked` with its type, does not search,
+  copy, or edit it, and locks it in the row editor, also when it is `NULL`,
+  so an edit never writes a mask back; a row whose key column is masked can't
+  be named. `lustro-sqlite-noop` has the same API. The sample's notes
+  database has an accounts table with made-up tokens.
 - **The WorkManager tab has a console view, so it is in the tab bar.** The list
   polls `GET items` every second, with the state, the worker, the unique name,
   the app's tags, the runs, and the next run of each work, and a ↻ on periodic

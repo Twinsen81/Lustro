@@ -19,6 +19,7 @@ import io.github.twinsen81.lustro.prefs.PrefsFile
 import io.github.twinsen81.lustro.prefs.ValuePolicy
 import io.github.twinsen81.lustro.sqlite.SqliteDb
 import io.github.twinsen81.lustro.sqlite.SqliteDebugTab
+import io.github.twinsen81.lustro.sqlite.SqliteValuePolicy
 import io.github.twinsen81.lustro.sqlite.TableHint
 import io.github.twinsen81.lustro.work.WorkDebugTab
 import okhttp3.Interceptor
@@ -141,8 +142,10 @@ public object LustroBootstrap {
                     ),
                 )
                 // The app's SQLite databases, from :lustro-sqlite: the notes database
-                // through the app's open handle, writable, with hints; the catalog as a
-                // file that the tab opens read-only; and, with discovery, the other
+                // through the app's open handle, writable, with hints, and with the default
+                // value policy, which masks the token columns of its accounts table; the
+                // catalog as a file that the tab opens read-only, with every value shown;
+                // and, with discovery, the other
                 // database files on disk. The release bootstrap registers the no-op half
                 // from :lustro-sqlite-noop.
                 .addTab(sqliteTab(app))
@@ -267,7 +270,7 @@ public object LustroBootstrap {
                         writable = true,
                         tableHints = DemoSqlite.NOTES_HINTS.mapValues { (_, hint) -> TableHint(hint.first, hint.second) },
                     ) { DemoSqlite.notes(app).writableDatabase },
-                    SqliteDb.file(DemoSqlite.CATALOG, app.getDatabasePath(DemoSqlite.CATALOG_FILE)),
+                    SqliteDb.file(DemoSqlite.CATALOG, app.getDatabasePath(DemoSqlite.CATALOG_FILE), valuePolicy = SqliteValuePolicy.VISIBLE),
                 ),
             discoverFrom = app,
         )

@@ -41,7 +41,7 @@ internal object SqliteView {
                         <div class="sqlite-bar">
                             <div class="dc-field sqlite-search sqlite-search--rows">
                                 <label class="sqlite-search__label" for="sqlite-filter"><svg class="sqlite-search__icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg></label>
-                                <input type="text" id="sqlite-filter" class="dc-input" placeholder="filter rows… (a cell contains it)" autocomplete="off" spellcheck="false" aria-label="Filter rows" title="Show the rows in which a cell, as text, contains this text. Case does not matter for ASCII letters, and a blob never matches.">
+                                <input type="text" id="sqlite-filter" class="dc-input" placeholder="filter rows… (a cell contains it)" autocomplete="off" spellcheck="false" aria-label="Filter rows" title="Show the rows in which a cell, as text, contains this text. Case does not matter for ASCII letters, and a blob never matches. A column that the value policy masks is not searched.">
                                 <button type="button" class="dc-btn dc-btn--icon sqlite-search__clear" id="sqlite-filter-clear" data-action="clearFilter" hidden aria-label="Clear the filter" title="Clear the filter.">×</button>
                             </div>
                             <div class="dc-menu-anchor">

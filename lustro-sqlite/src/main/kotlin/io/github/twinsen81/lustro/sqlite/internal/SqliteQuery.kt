@@ -14,16 +14,22 @@ internal class QueryResult(val columns: List<String>, val rows: List<List<Cell>>
  * connection is the tab's own, so out of WAL mode [limit] stops the statement.
  */
 internal class SqliteQuery(private val limit: ReadLimit = ReadLimit()) {
-    fun run(connection: DbConnection, sql: String, signal: CancellationSignal): QueryResult =
+    /**
+     * Runs [sql], and leaves out the values of the result columns that [masked] names. Android's
+     * cursor does not say which table column a result column comes from, so it goes by the
+     * result column's name.
+     */
+    fun run(connection: DbConnection, sql: String, signal: CancellationSignal, masked: (String) -> Boolean = { false }): QueryResult =
         if (limit.applies(connection, signal)) {
-            limit.statement(signal, field = "sql") { statement -> connection.query(sql, emptyArray(), statement).use { read(it) } }
+            limit.statement(signal, field = "sql") { statement -> connection.query(sql, emptyArray(), statement).use { read(it, masked) } }
         } else {
-            connection.query(sql, emptyArray(), signal).use { read(it) }
+            connection.query(sql, emptyArray(), signal).use { read(it, masked) }
         }
 
     // Android's cursor steps through the whole result once, to count it; only the first rows are kept.
-    private fun read(cursor: Cursor): QueryResult {
+    private fun read(cursor: Cursor, masked: (String) -> Boolean): QueryResult {
         val columns = cursor.columnNames.toList()
+        val hidden = columns.map(masked)
         val rows = ArrayList<List<Cell>>()
         var chars = 0L
         var truncated = false
@@ -33,7 +39,7 @@ internal class SqliteQuery(private val limit: ReadLimit = ReadLimit()) {
                 break
             }
             checkInWindow(cursor)
-            val row = List(columns.size) { cell(cursor, it) }
+            val row = List(columns.size) { if (hidden[it]) maskedCell(cursor, it) else cell(cursor, it) }
             chars += row.sumOf { (it as? Cell.Text)?.value?.length?.toLong() ?: 0L }
             rows += row
         }
@@ -57,6 +63,16 @@ internal class SqliteQuery(private val limit: ReadLimit = ReadLimit()) {
             Cursor.FIELD_TYPE_FLOAT -> Cell.Real(cursor.getDouble(index))
             Cursor.FIELD_TYPE_STRING -> Cell.Text(cursor.getString(index), length = null)
             Cursor.FIELD_TYPE_BLOB -> Cell.Blob(cursor.getBlob(index).size.toLong())
+            else -> Cell.Null
+        }
+
+    // Only the storage class: the value is never read. A NULL holds no secret.
+    private fun maskedCell(cursor: Cursor, index: Int): Cell =
+        when (cursor.getType(index)) {
+            Cursor.FIELD_TYPE_INTEGER -> Cell.Masked("integer")
+            Cursor.FIELD_TYPE_FLOAT -> Cell.Masked("real")
+            Cursor.FIELD_TYPE_STRING -> Cell.Masked("text")
+            Cursor.FIELD_TYPE_BLOB -> Cell.Masked("blob")
             else -> Cell.Null
         }
 

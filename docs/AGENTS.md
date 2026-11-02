@@ -597,9 +597,9 @@ Base path `/api/v1/sqlite`, when the app registers the SQLite plugin
 
 | Operation | Route | Notes |
 | --- | --- | --- |
-| List the databases | `GET databases` | `{ items: [{ name, registered, source, writable, path, sizeBytes, schemaVersion, error? }] }`: the databases that the app registered, in its order, then the files that the tab found in the app's `databases` directory, by file name. `source` is `support` (the app's `SupportSQLiteDatabase`, such as Room's), `framework` (the app's `SQLiteDatabase`), or `file` (opened read-only for each request). `schemaVersion` is `PRAGMA user_version`; Room and `SQLiteOpenHelper` set it to the schema's version. `path` and `sizeBytes` are `null` for a database in memory; `sizeBytes` leaves out the `-wal` file. `error` says why a database does not open. |
+| List the databases | `GET databases` | `{ items: [{ name, registered, source, writable, policy, path, sizeBytes, schemaVersion, error? }] }`: the databases that the app registered, in its order, then the files that the tab found in the app's `databases` directory, by file name. `source` is `support` (the app's `SupportSQLiteDatabase`, such as Room's), `framework` (the app's `SQLiteDatabase`), or `file` (opened read-only for each request). `schemaVersion` is `PRAGMA user_version`; Room and `SQLiteOpenHelper` set it to the schema's version. `policy` is the value policy, `visible` or `mask_sensitive` (see below). `path` and `sizeBytes` are `null` for a database in memory; `sizeBytes` leaves out the `-wal` file. `error` says why a database does not open. |
 | List the tables | `GET tables?db=` | `{ database, writable, items: [{ name, type, internal, hasRowId, rowCount, entity?, purpose?, error? }] }`, by name. `type` is `table` or `view`. A view has no `rowCount`: counting runs its query. `internal` flags `sqlite_*`, `android_metadata`, `room_master_table`, and the shadow tables of a full-text or R*Tree index. `entity` and `purpose` are the app's hint. |
-| Read a schema | `GET schema?db=&table=` | `{ database, table, type, internal, hasRowId, rowCount, sql, entity?, purpose?, columns: [{ name, type, notNull, defaultValue, primaryKey, generated }], foreignKeys: [{ table, from, to, onUpdate, onDelete }] }`. `primaryKey` is the column's place in the key, from 1, or 0. `generated` is `true` for a column that SQLite computes (`GENERATED ALWAYS AS`). A key over several columns has them in order in `from` and `to`; a `null` in `to` stands for the other table's primary key. |
+| Read a schema | `GET schema?db=&table=` | `{ database, table, type, internal, hasRowId, rowCount, sql, entity?, purpose?, columns: [{ name, type, notNull, defaultValue, primaryKey, generated, masked }], foreignKeys: [{ table, from, to, onUpdate, onDelete }] }`. `primaryKey` is the column's place in the key, from 1, or 0. `generated` is `true` for a column that SQLite computes (`GENERATED ALWAYS AS`). `masked` is `true` for a column whose values the value policy leaves out. A key over several columns has them in order in `from` and `to`; a `null` in `to` stands for the other table's primary key. |
 | Read rows | `GET rows?db=&table=&limit=&cursor=&filter=&sort=&dir=` | Pagination envelope `{ items, nextCursor }`. 50 rows by default, `limit` 1 to 500. Pass `nextCursor` as `cursor` for the next page; it is `null` on the last one. |
 | Run a statement that reads | `POST query` `{ db, sql }` | `{ database, columns, rows: [[cell]], truncated }`: a row is an array of cells in the order of `columns`, which can repeat a name. At most 1000 rows, and fewer when their texts pass 4 Mi characters in all; `truncated` says that rows were left out. A text comes whole; a blob is its size. |
 | Run a statement that writes | `POST exec` `{ db, sql }` | `{ status: "ok", changes }`: the rows that the statement inserted, updated, or deleted, without those of triggers and foreign key actions. Writable databases only. |
@@ -614,6 +614,18 @@ own: `{ type: "null" }`, `{ type: "integer", value }`, `{ type: "real", value }`
 2^53 - 1 either way is a string of its digits, and an infinite real the string `"Infinity"` or
 `"-Infinity"`. A text longer than 4096 characters is cut, with `truncated: true` and the whole
 `length` in characters. A blob is only its size, in any column, also in a `TEXT` one.
+
+**The value policy.** A database's `policy` is `mask_sensitive`, the default and always for a
+discovered file, or `visible`. With `mask_sensitive`, a cell of a column whose name looks like it
+holds a secret, such as `access_token`, `clientSecret`, or `password` (the network redaction's
+name check), is `{ type, masked: true }`, with its storage class and no value, length, or size; a
+`NULL` stays `{ type: "null" }`. `GET rows` masks by the table's column, as `GET schema` marks it,
+and its `filter` does not search a masked column; a `sort` on one orders the rows by its values.
+`POST query` masks by the result's column name: SQLite names an expression without an alias by its
+text, so `length(access_token)` is masked, but `SELECT access_token AS t` shows the value, because
+Android does not say which table column a result column comes from. The policy keeps secrets out
+of what you read by accident; it does not stop a client that wants them. `edit` can write a
+masked column.
 
 **Order, sort, and filter.** Without `sort`, a table's rows come by `rowid`, or by the primary key
 for a table `WITHOUT ROWID`, and a view's as SQLite gives them; `dir=desc` turns the order

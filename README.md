@@ -735,7 +735,7 @@ val lustro = Lustro.builder(application)
                     writable = true,
                     tableHints = mapOf("notes" to TableHint("NoteEntity", "A note that the user wrote.")),
                 ) { appDatabase.openHelper.writableDatabase },
-                SqliteDb.file("cache", application.getDatabasePath("cache.db")),
+                SqliteDb.file("cache", application.getDatabasePath("cache.db"), valuePolicy = SqliteValuePolicy.VISIBLE),
             ),
             discoverFrom = application,
         ),
@@ -778,6 +778,18 @@ val lustro = Lustro.builder(application)
   and one line on what a row is, for an agent that reads the database without your code.
   `writable`, `false` by default, says whether a client may change the database through the tab.
   A file is never writable.
+- **Value policies.** `valuePolicy` is `SqliteValuePolicy.MASK_SENSITIVE` by default, as in the
+  Preferences tab: the tab leaves out the values of a column whose name looks like it holds a
+  secret, such as `access_token`, `clientSecret`, or `password`, by the same name check as the
+  Network tab's redaction (`SensitiveKeys.isSensitive`). `VISIBLE` shows every value. A
+  discovered file is `MASK_SENSITIVE`. A masked cell has only its storage class,
+  `{ "type": "text", "masked": true }`, and the tab does not read its value; a `NULL` stays
+  `NULL`. `GET rows` masks by the table's column, and its filter does not search a masked column.
+  `POST query` masks by the result's column name, because Android does not say which table column
+  a result column comes from: `length(access_token)` is masked by its name, but an alias, such as
+  `SELECT access_token AS t`, shows the value. So the policy keeps secrets off the screen and out
+  of an agent's output, but it does not stop a client that has the token: to keep a database's
+  values from every client, do not register it. The console does not edit a masked column.
 - **Browsing runs only the SQL that the tab builds.** A client names a database, a table, and a
   column, and the tab checks each name against the database's schema before it puts it in a
   statement, as a quoted identifier. A filter value is a bound parameter. A page of rows reads
@@ -824,8 +836,9 @@ val lustro = Lustro.builder(application)
   **Prev** and **Next** page through them, a filter finds the rows in which a cell contains a
   text, a click on a header sorts ascending, descending, then not, and a right-click or the
   **Columns** menu hides a column. Your browser keeps the hidden columns and the widths for each
-  table. A cut text opens whole, read with `query`. A click on a row opens it, to edit, set a
-  column to `NULL`, or delete the row in a writable database, and to read and copy in any other.
+  table. A cut text opens whole, read with `query`. A masked cell shows `masked` and its type. A
+  click on a row opens it, to edit, set a column to `NULL`, or delete the row in a writable
+  database, and to read and copy in any other; a masked column is locked there.
   **Auto refresh** reads the page again every 2 s. The **SQL** view runs a statement with
   `query`; **Run as write**, only for a writable database, sends it to `exec`. A refused
   statement shows the route's error.

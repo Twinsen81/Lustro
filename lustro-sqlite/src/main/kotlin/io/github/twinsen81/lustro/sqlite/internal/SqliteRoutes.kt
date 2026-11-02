@@ -16,6 +16,7 @@ import io.github.twinsen81.lustro.DebugResponse
 import io.github.twinsen81.lustro.escapeForJson
 import io.github.twinsen81.lustro.sqlite.TableHint
 import java.io.File
+import java.util.Locale
 import org.json.JSONException
 import org.json.JSONObject
 
@@ -58,7 +59,7 @@ internal class SqliteRoutes(private val registry: SqliteRegistry, private val li
     private fun query(body: JSONObject, signal: CancellationSignal): DebugResponse {
         val entry = entry(string(body, "db"))
         val sql = statement(body, exec = false)
-        val result = readOnly(entry).use { connection -> statementErrors { console.run(connection, sql, signal) } }
+        val result = readOnly(entry).use { connection -> statementErrors { console.run(connection, sql, signal, entry::masks) } }
         return DebugResponse.json {
             append("{\"database\":\"").append(entry.name.escapeForJson()).append('"')
             append(",\"columns\":[").append(result.columns.joinToString(",") { "\"${it.escapeForJson()}\"" }).append(']')
@@ -114,6 +115,7 @@ internal class SqliteRoutes(private val registry: SqliteRegistry, private val li
                 append(",\"registered\":").append(entry.registered)
                 append(",\"source\":\"").append(entry.source.kind).append('"')
                 append(",\"writable\":").append(entry.writable)
+                append(",\"policy\":\"").append(entry.policy.name.lowercase(Locale.ROOT)).append('"')
                 var path = entry.source.file?.path
                 var version: Int? = null
                 var error: String? = null
@@ -208,6 +210,7 @@ internal class SqliteRoutes(private val registry: SqliteRegistry, private val li
                     append(",\"defaultValue\":").appendString(column.defaultValue)
                     append(",\"primaryKey\":").append(column.primaryKey)
                     append(",\"generated\":").append(column.generated)
+                    append(",\"masked\":").append(entry.masks(column.name))
                     append('}')
                 }
                 append("],\"foreignKeys\":[")
@@ -236,7 +239,7 @@ internal class SqliteRoutes(private val registry: SqliteRegistry, private val li
             val columns = reader.columns(table)
             val rowid = reader.rowid(table, columns)
             val sort = request.queryParam("sort")?.takeIf { it.isNotEmpty() }?.let { sortColumn(it, columns, rowid) }
-            val page = reader.rows(table, columns, rowid, RowsQuery(offset, limit, request.queryParam("filter"), sort, descending))
+            val page = reader.rows(table, columns, rowid, RowsQuery(offset, limit, request.queryParam("filter"), sort, descending)) { entry.masks(it.name) }
             DebugResponse.json {
                 append("{\"items\":[")
                 page.rows.forEachIndexed { index, row ->

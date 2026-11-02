@@ -48,6 +48,13 @@ class SqliteDebugTabTest {
     }
 
     @Test
+    fun `the value policy masks sensitive columns by default, as the Preferences tab does`() {
+        assertEquals(SqliteValuePolicy.MASK_SENSITIVE, SqliteDb.framework("app", database = unused).valuePolicy)
+        assertEquals(SqliteValuePolicy.MASK_SENSITIVE, SqliteDb.file("cache", File("/data/cache.db")).valuePolicy)
+        assertEquals(SqliteValuePolicy.VISIBLE, SqliteDb.file("cache", File("/data/cache.db"), valuePolicy = SqliteValuePolicy.VISIBLE).valuePolicy)
+    }
+
+    @Test
     fun `the tab is in the tab bar, under the id sqlite, with its view, and creating it opens nothing`() {
         val tab = SqliteDebugTab.create(listOf(SqliteDb.framework("app", database = unused), SqliteDb.file("cache", File("/data/cache.db"))))
 

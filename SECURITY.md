@@ -206,12 +206,20 @@ databases that the app registers, and with `discoverFrom` of every other
 database file in the app's `databases` directory, under `/api/v1/sqlite/`.
 
 - **Every client with the token reads every registered database, whole.** The
-  tab has no value policy: a column that holds a token, a password hash, or a
-  user's data shows as it is stored, and the schema of every table shows too.
-  The live handle of an encrypted database, such as a Room database that
-  SQLCipher opens, shows its plain contents. Register only the databases that a
-  client may read, and turn discovery on only when the libraries' databases may
-  show too. With the default loopback binding this adds little, because
+  value policy, `MASK_SENSITIVE` by default and for every discovered file,
+  leaves out the values of a column whose name looks like it holds a secret,
+  such as `access_token` or `client_secret`, by the network redaction's name
+  check, in `GET rows` and in `POST query`. It goes by the name only: a token in
+  a column named `data`, a password hash under `hash`, and a user's data show
+  as they are stored. `POST query` masks by the result's column name, because
+  Android does not say which table column a result column comes from, so an
+  alias (`SELECT access_token AS t`) reads a masked value, and so can a
+  `WHERE` clause, one comparison at a time. The policy keeps secrets off the
+  screen and out of an agent's output; it is not a boundary against a client
+  that has the token. The schema of every table shows too. The live handle of
+  an encrypted database, such as a Room database that SQLCipher opens, shows
+  its plain contents. Register only the databases that a client may read, and
+  turn discovery on only when the libraries' databases may show too. With the default loopback binding this adds little, because
   `adb shell run-as` reads the same files of a debuggable app. With
   `DebugConfig.bindAddress` set for LAN access, every client with the token can
   read them.

@@ -18,6 +18,7 @@ import io.github.twinsen81.lustro.prefs.PrefsFile
 import io.github.twinsen81.lustro.prefs.ValuePolicy
 import io.github.twinsen81.lustro.sqlite.SqliteDb
 import io.github.twinsen81.lustro.sqlite.SqliteDebugTab
+import io.github.twinsen81.lustro.sqlite.SqliteValuePolicy
 import io.github.twinsen81.lustro.sqlite.TableHint
 import io.github.twinsen81.lustro.work.WorkDebugTab
 import okhttp3.Interceptor
@@ -116,7 +117,7 @@ public object LustroBootstrap {
                                     writable = true,
                                     tableHints = DemoSqlite.NOTES_HINTS.mapValues { (_, hint) -> TableHint(hint.first, hint.second) },
                                 ) { DemoSqlite.notes(app).writableDatabase },
-                                SqliteDb.file(DemoSqlite.CATALOG, app.getDatabasePath(DemoSqlite.CATALOG_FILE)),
+                                SqliteDb.file(DemoSqlite.CATALOG, app.getDatabasePath(DemoSqlite.CATALOG_FILE), valuePolicy = SqliteValuePolicy.VISIBLE),
                             ),
                         discoverFrom = app,
                     ),

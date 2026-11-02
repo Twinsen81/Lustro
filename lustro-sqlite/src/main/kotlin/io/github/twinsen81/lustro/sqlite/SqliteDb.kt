@@ -26,11 +26,15 @@ import java.io.File
  *   They answer 403 for a database that is not writable. `POST query` reads
  *   every database, through a connection that SQLite opens read-only. A [file]
  *   database is never writable.
+ * @property valuePolicy what a client sees of the values: every value, or all
+ *   but those of the columns whose names look like they hold a secret, which is
+ *   the default. See [SqliteValuePolicy].
  */
 public class SqliteDb private constructor(
     public val name: String,
     public val writable: Boolean,
     tableHints: Map<String, TableHint>,
+    public val valuePolicy: SqliteValuePolicy,
     internal val source: DbSource,
 ) {
     /** What the tables and views hold, by table name. */
@@ -56,8 +60,9 @@ public class SqliteDb private constructor(
             name: String,
             writable: Boolean = false,
             tableHints: Map<String, TableHint> = emptyMap(),
+            valuePolicy: SqliteValuePolicy = SqliteValuePolicy.MASK_SENSITIVE,
             database: () -> SQLiteDatabase,
-        ): SqliteDb = SqliteDb(name, writable, tableHints, FrameworkSource(database))
+        ): SqliteDb = SqliteDb(name, writable, tableHints, valuePolicy, FrameworkSource(database))
 
         /**
          * A database that the app has open as an androidx [SupportSQLiteDatabase].
@@ -79,8 +84,9 @@ public class SqliteDb private constructor(
             name: String,
             writable: Boolean = false,
             tableHints: Map<String, TableHint> = emptyMap(),
+            valuePolicy: SqliteValuePolicy = SqliteValuePolicy.MASK_SENSITIVE,
             database: () -> SupportSQLiteDatabase,
-        ): SqliteDb = SqliteDb(name, writable, tableHints, SupportSource(database))
+        ): SqliteDb = SqliteDb(name, writable, tableHints, valuePolicy, SupportSource(database))
 
         /**
          * A database file that the tab opens read-only for each request, and
@@ -103,9 +109,10 @@ public class SqliteDb private constructor(
             name: String,
             file: File,
             tableHints: Map<String, TableHint> = emptyMap(),
+            valuePolicy: SqliteValuePolicy = SqliteValuePolicy.MASK_SENSITIVE,
         ): SqliteDb {
             require(file.isAbsolute) { "file must be an absolute path, such as context.getDatabasePath(name): $file" }
-            return SqliteDb(name, writable = false, tableHints, FileSource(file.normalize()))
+            return SqliteDb(name, writable = false, tableHints, valuePolicy, FileSource(file.normalize()))
         }
     }
 }

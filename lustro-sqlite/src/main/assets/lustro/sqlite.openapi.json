@@ -3,7 +3,7 @@
   "info": {
     "title": "Lustro SQLite debug tab",
     "version": "1.0",
-    "description": "The app's SQLite and Room databases: the ones that the app registers, and, when the app turns discovery on, the other database files in its databases directory. A registered database is the app's own open handle, a framework SQLiteDatabase or an androidx SupportSQLiteDatabase such as Room's, or a file that the tab opens read-only for each request; a discovered file is opened the same way. The GET routes run only SQL that the tab builds: each database, table, and column that a client names is checked against the database's schema and quoted as an identifier, and a filter value is a bound parameter. A page of rows holds each cell with its storage class: at most 4096 characters of a text, with the whole length when it is cut, and only the size of a blob. POST query runs a client's statement on a connection that SQLite opens read-only for the request, so SQLite refuses every write. POST exec, edit, and delete write through the app's handle, only to a database that the app registers with writable = true, and answer 403 with code read_only for any other. Both query and exec refuse BEGIN, COMMIT, END, ROLLBACK, SAVEPOINT, RELEASE, ATTACH, DETACH, and VACUUM before they run; exec also refuses every PRAGMA, and query the pragmas that set a value for the whole process. Each read stops when the request times out, and the client then gets a 504. On a connection that the tab opens itself (a file database, registered or discovered, and every POST query), a database out of WAL mode makes the app's writes wait for the tab's lock, and Android's SQLite fails a write that waited 2.5 s: there a statement stops after 2 s, with a 504 with code read_limit. All routes are token-authenticated (Bearer header or HttpOnly cookie) and live under /api/v1/sqlite. Errors use the shared error envelope; a statement that SQLite refuses in a GET route, such as one on a corrupt file, is a 500 with code sqlite_error and SQLite's message."
+    "description": "The app's SQLite and Room databases: the ones that the app registers, and, when the app turns discovery on, the other database files in its databases directory. A registered database is the app's own open handle, a framework SQLiteDatabase or an androidx SupportSQLiteDatabase such as Room's, or a file that the tab opens read-only for each request; a discovered file is opened the same way. The GET routes run only SQL that the tab builds: each database, table, and column that a client names is checked against the database's schema and quoted as an identifier, and a filter value is a bound parameter. Each database has a value policy, visible or mask_sensitive (the default, and always for a discovered file): mask_sensitive leaves out the values of the columns whose names look like they hold a secret, such as access_token or client_secret, by the same name check as the Network tab's redaction, in GET rows and POST query; such a cell is {type, masked: true}. A page of rows holds each cell with its storage class: at most 4096 characters of a text, with the whole length when it is cut, and only the size of a blob. POST query runs a client's statement on a connection that SQLite opens read-only for the request, so SQLite refuses every write. POST exec, edit, and delete write through the app's handle, only to a database that the app registers with writable = true, and answer 403 with code read_only for any other. Both query and exec refuse BEGIN, COMMIT, END, ROLLBACK, SAVEPOINT, RELEASE, ATTACH, DETACH, and VACUUM before they run; exec also refuses every PRAGMA, and query the pragmas that set a value for the whole process. Each read stops when the request times out, and the client then gets a 504. On a connection that the tab opens itself (a file database, registered or discovered, and every POST query), a database out of WAL mode makes the app's writes wait for the tab's lock, and Android's SQLite fails a write that waited 2.5 s: there a statement stops after 2 s, with a 504 with code read_limit. All routes are token-authenticated (Bearer header or HttpOnly cookie) and live under /api/v1/sqlite. Errors use the shared error envelope; a statement that SQLite refuses in a GET route, such as one on a corrupt file, is a 500 with code sqlite_error and SQLite's message."
   },
   "servers": [
     {
@@ -254,7 +254,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Only the rows where a cell, as text, contains this text. Case does not matter for ASCII letters. % and _ are plain characters here. A blob never matches."
+            "description": "Only the rows where a cell, as text, contains this text. Case does not matter for ASCII letters. % and _ are plain characters here. A blob never matches. A column that the value policy masks is not searched."
           },
           {
             "name": "sort",
@@ -263,7 +263,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "The column to sort by, as GET schema names it, or rowid when the table has one and no column has that name. 400 with field sort when the table has no such column."
+            "description": "The column to sort by, as GET schema names it, or rowid when the table has one and no column has that name. 400 with field sort when the table has no such column. A masked column sorts too: the order of the rows shows the order of its values, but not the values."
           },
           {
             "name": "dir",
@@ -322,7 +322,7 @@
       "post": {
         "operationId": "runSqliteQuery",
         "summary": "Run a statement read-only.",
-        "description": "Runs a client's statement on a connection that SQLite opens read-only to the database's file, for this request only; never on the app's handle, on which any statement, a DELETE too, could write. SQLite refuses every write there, so a statement that writes is a 403 with code read_only and field sql, and changes nothing. A pragma that only reads, such as PRAGMA user_version, works; a pragma that changes a setting changes it only on that connection, which is closed after the request. BEGIN, COMMIT, END, ROLLBACK, SAVEPOINT, RELEASE, ATTACH, DETACH, and VACUUM are refused before they run, and so are the pragmas that set a value for every connection of the process (hard_heap_limit, soft_heap_limit, temp_store_directory, data_store_directory), also after comments, white space, a byte order mark, empty statements, and EXPLAIN: 400 with code statement_refused and field sql. A database in memory has no file, and a live handle on another copy of SQLite than the platform's, such as SQLCipher's, would not share its locks with the tab's connection: both are a 400 with code query_unavailable and field db; read them with GET rows. A result has at most 1000 rows, and fewer when its texts pass 4 Mi characters in all; truncated says that rows were left out. A text comes whole, and a blob is only its size. Android's cursor steps through the whole result once, to count it, so a statement over a large table should have a LIMIT. A row that does not fit Android's cursor window, about 2 MB, is a 400 with code row_too_big. A statement that SQLite can't run is a 400 with code sqlite_error and SQLite's message; one that fails on the file or the device, such as a corrupt file, a 500 with that code. A statement stops at the request's timeout, with a 504. On a database that is not in WAL mode, a read holds a lock that the app's writes wait for, and Android's SQLite gives up a write after 2.5 s: there a statement stops after 2 s, with a 504 with code read_limit and field sql.",
+        "description": "Runs a client's statement on a connection that SQLite opens read-only to the database's file, for this request only; never on the app's handle, on which any statement, a DELETE too, could write. SQLite refuses every write there, so a statement that writes is a 403 with code read_only and field sql, and changes nothing. A pragma that only reads, such as PRAGMA user_version, works; a pragma that changes a setting changes it only on that connection, which is closed after the request. BEGIN, COMMIT, END, ROLLBACK, SAVEPOINT, RELEASE, ATTACH, DETACH, and VACUUM are refused before they run, and so are the pragmas that set a value for every connection of the process (hard_heap_limit, soft_heap_limit, temp_store_directory, data_store_directory), also after comments, white space, a byte order mark, empty statements, and EXPLAIN: 400 with code statement_refused and field sql. A database in memory has no file, and a live handle on another copy of SQLite than the platform's, such as SQLCipher's, would not share its locks with the tab's connection: both are a 400 with code query_unavailable and field db; read them with GET rows. A result has at most 1000 rows, and fewer when its texts pass 4 Mi characters in all; truncated says that rows were left out. A text comes whole, and a blob is only its size. With the value policy mask_sensitive, a result column whose name looks like it holds a secret has only the storage class of each cell, with masked: true. The name is the result's, as the statement names it: Android does not say which table column a result column comes from, so SELECT access_token AS t shows the value, while length(access_token) without an alias is masked by its name. Android's cursor steps through the whole result once, to count it, so a statement over a large table should have a LIMIT. A row that does not fit Android's cursor window, about 2 MB, is a 400 with code row_too_big. A statement that SQLite can't run is a 400 with code sqlite_error and SQLite's message; one that fails on the file or the device, such as a corrupt file, a 500 with that code. A statement stops at the request's timeout, with a 504. On a database that is not in WAL mode, a read holds a lock that the app's writes wait for, and Android's SQLite gives up a write after 2.5 s: there a statement stops after 2 s, with a 504 with code read_limit and field sql.",
         "requestBody": {
           "required": true,
           "description": "The database and the statement.",
@@ -462,7 +462,7 @@
       "post": {
         "operationId": "editSqliteRow",
         "summary": "Change one row.",
-        "description": "Sets the values of one row of a table, through the app's handle of a writable database, in a transaction of its own. 400 with field values when values is missing or empty, names a column that the table does not have or a generated one, or has a value that is not a string, a number, or null. The row must be the only one with its rowid or key: 404 with the field rowid or key when no row has it, and 400 with that field when more than one row has it, which a NULL in a primary key column allows. The change is rolled back when SQLite refuses it, such as for a constraint, also a deferred foreign key, which the tab checks before the commit: 400 with code sqlite_error. The tab finds each name in the table's schema and binds each value, as in the GET routes.",
+        "description": "Sets the values of one row of a table, through the app's handle of a writable database, in a transaction of its own. 400 with field values when values is missing or empty, names a column that the table does not have or a generated one, or has a value that is not a string, a number, or null. The row must be the only one with its rowid or key: 404 with the field rowid or key when no row has it, and 400 with that field when more than one row has it, which a NULL in a primary key column allows. The change is rolled back when SQLite refuses it, such as for a constraint, also a deferred foreign key, which the tab checks before the commit: 400 with code sqlite_error. The tab finds each name in the table's schema and binds each value, as in the GET routes. A column that the value policy masks can be written, as in the Preferences tab; the console does not offer it.",
         "requestBody": {
           "required": true,
           "description": "The row, and the values to set.",
@@ -686,6 +686,14 @@
         ],
         "description": "Where the tab reads the database: framework, the app's open SQLiteDatabase; support, the app's open SupportSQLiteDatabase, such as Room's; file, a connection that the tab opens read-only for each request."
       },
+      "SqliteValuePolicy": {
+        "type": "string",
+        "enum": [
+          "visible",
+          "mask_sensitive"
+        ],
+        "description": "What a client sees of the database's values. visible: every value. mask_sensitive: every value but those of the columns whose names look like they hold a secret, such as access_token, clientSecret, or password, by the same name check as the Network tab's redaction (SensitiveKeys.isSensitive). It goes by the name only. In GET rows it goes by the table's column, and in POST query by the result's column name, as the statement names it: SQLite names an expression without an alias by its text, such as length(access_token), which is masked too, but an alias shows the value. The policy keeps secrets off the screen; it does not stop a client that has the token."
+      },
       "SqliteDatabase": {
         "type": "object",
         "required": [
@@ -693,6 +701,7 @@
           "registered",
           "source",
           "writable",
+          "policy",
           "path",
           "sizeBytes",
           "schemaVersion"
@@ -712,6 +721,9 @@
           "writable": {
             "type": "boolean",
             "description": "Whether the app lets a client change the database through the tab: POST exec, edit, and delete answer 403 for a database that is not writable. Always false for a file."
+          },
+          "policy": {
+            "$ref": "#/components/schemas/SqliteValuePolicy"
           },
           "path": {
             "type": [
@@ -799,7 +811,8 @@
           "notNull",
           "defaultValue",
           "primaryKey",
-          "generated"
+          "generated",
+          "masked"
         ],
         "properties": {
           "name": {
@@ -827,6 +840,10 @@
           "generated": {
             "type": "boolean",
             "description": "Whether SQLite computes the column from the others: GENERATED ALWAYS AS, stored or virtual."
+          },
+          "masked": {
+            "type": "boolean",
+            "description": "Whether the database's value policy leaves out the column's values: in GET rows, a cell of this column that is not NULL is {type, masked: true}. The console does not edit such a column."
           }
         },
         "additionalProperties": false
@@ -943,7 +960,7 @@
         "additionalProperties": false
       },
       "SqliteCell": {
-        "description": "A cell, by its own storage class, which typeof() gives: any column can hold any type, so the declared type does not say.",
+        "description": "A cell, by its own storage class, which typeof() gives: any column can hold any type, so the declared type does not say. A cell of a column that the value policy masks has only its storage class and masked: true, and a NULL is still a NULL.",
         "oneOf": [
           {
             "type": "object",
@@ -1037,6 +1054,28 @@
                 "type": "integer",
                 "minimum": 0,
                 "description": "The blob's size. Its bytes are not read."
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "type",
+              "masked"
+            ],
+            "properties": {
+              "type": {
+                "enum": [
+                  "integer",
+                  "real",
+                  "text",
+                  "blob"
+                ]
+              },
+              "masked": {
+                "const": true,
+                "description": "The value policy leaves the value out: the tab does not read it. A text has no length here, and a blob no size."
               }
             },
             "additionalProperties": false

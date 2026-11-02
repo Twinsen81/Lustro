@@ -496,6 +496,21 @@ def test_the_golden_databases_list_the_registered_ones_first():
     assert not any(d["writable"] for d in databases if d["source"] == "file")
 
 
+def test_a_golden_masked_column_has_no_value_in_rows_or_query():
+    sqlite = wire.load_openapi("sqlite")
+    assert sqlite["components"]["schemas"]["SqliteValuePolicy"]["enum"] == ["visible", "mask_sensitive"]
+    assert {d["policy"] for d in wire.load_golden("sqlite-databases.json")["items"]} == {"visible", "mask_sensitive"}
+    masked = {c["name"] for c in wire.load_golden("sqlite-schema.json")["columns"] if c["masked"]}
+    assert masked == {"share_token"}
+    cells = [row["cells"]["share_token"] for row in wire.load_golden("sqlite-rows.json")["items"]]
+    assert {"type": "text", "masked": True} in cells
+    for cell in cells:
+        assert "value" not in cell and "bytes" not in cell
+    query = wire.load_golden("sqlite-query.json")
+    index = query["columns"].index("share_token")
+    assert {"type": "text", "masked": True} in [row[index] for row in query["rows"]]
+
+
 def test_the_golden_tables_flag_the_internal_ones():
     tables = {t["name"]: t for t in wire.load_golden("sqlite-tables.json")["items"]}
     assert all(tables[name]["internal"] for name in ("android_metadata", "room_master_table", "sqlite_sequence"))

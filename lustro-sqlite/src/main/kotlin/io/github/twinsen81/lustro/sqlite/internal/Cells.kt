@@ -28,6 +28,7 @@ internal object Cells {
                 out.append('}')
             }
             is Cell.Blob -> out.append("{\"type\":\"blob\",\"bytes\":").append(cell.bytes).append('}')
+            is Cell.Masked -> out.append("{\"type\":\"").append(cell.type).append("\",\"masked\":true}")
         }
     }
 }

@@ -3,7 +3,9 @@ package io.github.twinsen81.lustro.sqlite.internal
 import android.database.sqlite.SQLiteDatabaseLockedException
 import android.database.sqlite.SQLiteException
 import android.os.CancellationSignal
+import io.github.twinsen81.lustro.SensitiveKeys
 import io.github.twinsen81.lustro.sqlite.SqliteDb
+import io.github.twinsen81.lustro.sqlite.SqliteValuePolicy
 import io.github.twinsen81.lustro.sqlite.TableHint
 import java.io.File
 
@@ -13,13 +15,17 @@ internal class DbEntry(
     val registered: Boolean,
     val writable: Boolean,
     val hints: Map<String, TableHint>,
+    val policy: SqliteValuePolicy,
     val source: DbSource,
-)
+) {
+    /** Whether the policy leaves out the values of a column, or of a result column, of this name. */
+    fun masks(column: String): Boolean = policy == SqliteValuePolicy.MASK_SENSITIVE && SensitiveKeys.isSensitive(column)
+}
 
 /**
  * The registered databases, and, with a [directory], the other database files in
  * it. The directory is listed on each call, so a file that the app creates later
- * shows too. A discovered file is read-only and has no hints.
+ * shows too. A discovered file is read-only, masks sensitive columns, and has no hints.
  *
  * [isDatabase] decides whether a file is a database. It runs only on the files that no
  * registration stands for, so the tab opens the app's own databases only through the
@@ -30,7 +36,7 @@ internal class SqliteRegistry(
     private val directory: File?,
     private val isDatabase: (File) -> Boolean = ::openable,
 ) {
-    private val registered = databases.map { DbEntry(it.name, registered = true, it.writable, it.tableHints, it.source) }
+    private val registered = databases.map { DbEntry(it.name, registered = true, it.writable, it.tableHints, it.valuePolicy, it.source) }
 
     fun list(): List<DbEntry> = registered + discovered()
 
@@ -48,7 +54,7 @@ internal class SqliteRegistry(
         return candidates
             .filter { it.name !in names && it !in covered && isDatabase(it) }
             .sortedBy { it.name }
-            .map { DbEntry(it.name, registered = false, writable = false, emptyMap(), FileSource(it)) }
+            .map { DbEntry(it.name, registered = false, writable = false, emptyMap(), SqliteValuePolicy.MASK_SENSITIVE, FileSource(it)) }
     }
 
     // The files that the registrations stand for. A live handle names its file only once
