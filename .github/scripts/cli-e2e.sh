@@ -285,6 +285,9 @@ check prefs-files < "$OUT/prefs-files.json"
 lustro_to prefs-reset.json api GET prefs/entries --param file=sample_settings
 check prefs-reset < "$OUT/prefs-reset.json"
 
+lustro_to prefs-app-state.json api GET prefs/entries --param store=preferences_datastore --param file=sample_app_state
+check prefs-app-state < "$OUT/prefs-app-state.json"
+
 step "lustro api POST prefs/edit, then count a launch in the app, and poll with the edit's cursor"
 lustro_to prefs-edit.json api POST prefs/edit --body '{"file":"sample_settings","key":"username","type":"string","value":"e2e"}'
 check prefs-edit < "$OUT/prefs-edit.json"
@@ -372,6 +375,29 @@ grep -q "^error: 403 forbidden" "$OUT/sqlite-exec-catalog.txt"
 
 lustro_to sqlite-exec.json --json api POST sqlite/exec --body '{"db":"notes","sql":"UPDATE notes SET title = '"'"'Renamed by exec'"'"' WHERE id = 1"}'
 check sqlite-exec < "$OUT/sqlite-exec.json"
+
+# exec refuses a statement that returns rows before it runs it: 400 with code
+# statement_refused, whose message only that refusal has (the CLI does not print
+# the code).
+step "lustro api POST sqlite/exec with a SELECT"
+if lustro api POST sqlite/exec --body '{"db":"notes","sql":"SELECT 1"}' 2> "$OUT/sqlite-exec-select.txt"; then
+  echo "error: exec took the SELECT" >&2
+  exit 1
+fi
+cat "$OUT/sqlite-exec-select.txt"
+grep -q "^error: 400 bad_request: exec runs a statement that returns no rows, and this one returns rows" "$OUT/sqlite-exec-select.txt"
+
+# The value policy masks the token columns of the sample's accounts table in the
+# schema, the rows, and query, and shows oauth_scopes, which the sample lists in
+# unmasked.
+lustro_to sqlite-accounts-schema.json --json api GET sqlite/schema --param db=notes --param table=accounts
+check sqlite-accounts-schema < "$OUT/sqlite-accounts-schema.json"
+
+lustro_to sqlite-accounts.json --json api GET sqlite/rows --param db=notes --param table=accounts
+check sqlite-accounts < "$OUT/sqlite-accounts.json"
+
+lustro_to sqlite-accounts-query.json --json api POST sqlite/query --body '{"db":"notes","sql":"SELECT oauth_scopes, access_token FROM accounts WHERE user_name = '"'"'ada'"'"'"}'
+check sqlite-accounts-query < "$OUT/sqlite-accounts-query.json"
 
 # The WorkManager tab lists the sample's demo work, labelled with its unique
 # names, and the events of each run: a success, a failed chain step and the
