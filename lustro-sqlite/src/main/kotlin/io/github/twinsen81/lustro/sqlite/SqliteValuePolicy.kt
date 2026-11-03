@@ -15,7 +15,8 @@ public enum class SqliteValuePolicy {
      * the same as the Network tab's redaction and the Preferences tab's. It goes
      * by the column's name only. The app can show the values of some of these
      * columns with the `unmasked` names of the [SqliteDb] factories: a name there
-     * matches a column with exactly that name, in any case.
+     * matches a column with exactly that name, in any case. A column named
+     * only `key`, the name column of a key-value table, is not masked.
      *
      * `POST query` masks a column of its result by the result's column name, as
      * the statement names it, because Android does not say which table column a

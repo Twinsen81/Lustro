@@ -198,6 +198,9 @@ class SqliteRoutesTest {
         assertFalse(masked.masks("OAuth_Scopes"))
         assertTrue(masked.masks("oauth_scopes_v2"))
         assertTrue(masked.masks("access_token"))
+        assertFalse(masked.masks("key"))
+        assertFalse(masked.masks("KEY"))
+        assertTrue(masked.masks("api_key"))
         val visible = registry.find("visible")!!
         assertFalse(visible.masks("oauth_scopes"))
         assertFalse(visible.masks("access_token"))

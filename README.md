@@ -800,6 +800,9 @@ val lustro = Lustro.builder(application)
   `SELECT access_token AS t`, shows the value. So the policy keeps secrets off the screen and out
   of an agent's output, but it does not stop a client that has the token: to keep a database's
   values from every client, do not register it. The console does not edit a masked column.
+  A column named only `key`, as in a key-value table such as WorkManager's `Preference`, is not
+  masked, so that the rows show their names. `GET schema` always shows a column's default value
+  and the `CREATE` statement, also of a masked column.
 - **Exceptions to the mask.** `unmasked` on each `SqliteDb` factory lists the columns whose values
   `MASK_SENSITIVE` shows although their names look like they hold a secret, such as an
   `oauthScopes` column, which has `auth` in its name. A name there matches a column with exactly

@@ -27,8 +27,19 @@ internal class DbEntry(
      * Whether the policy leaves out the values of a column, or of a result column, of this name:
      * a sensitive name that the app did not list in its exceptions, in any case.
      */
-    fun masks(column: String): Boolean =
-        policy == SqliteValuePolicy.MASK_SENSITIVE && SensitiveKeys.isSensitive(column) && column.lowercase(Locale.ROOT) !in unmasked
+    fun masks(column: String): Boolean {
+        if (policy != SqliteValuePolicy.MASK_SENSITIVE) return false
+        val name = column.lowercase(Locale.ROOT)
+        return name != KEY_COLUMN && name !in unmasked && SensitiveKeys.isSensitive(column)
+    }
+
+    private companion object {
+        // In a table, a column named only `key` is the name column of a key-value table, such as
+        // WorkManager's `Preference`: masked, the rows would show values without their names, and
+        // a discovered file has no exceptions to fix that. `SensitiveKeys` keeps it, because a
+        // JSON field `key` in a request can hold an API key.
+        const val KEY_COLUMN = "key"
+    }
 }
 
 /**

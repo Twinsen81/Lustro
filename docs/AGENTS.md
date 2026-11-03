@@ -621,7 +621,7 @@ own: `{ type: "null" }`, `{ type: "integer", value }`, `{ type: "real", value }`
 discovered file, or `visible`. With `mask_sensitive`, a cell of a column whose name looks like it
 holds a secret, such as `access_token`, `clientSecret`, or `password` (the network redaction's
 name check), is `{ type, masked: true }`, with its storage class and no value, length, or size; a
-`NULL` stays `{ type: "null" }`. `GET rows` masks by the table's column, as `GET schema` marks it,
+`NULL` stays `{ type: "null" }`. A column named only `key`, the name column of a key-value table, is not masked. `GET rows` masks by the table's column, as `GET schema` marks it,
 and its `filter` does not search a masked column; a `sort` on one orders the rows by its values.
 `POST query` masks by the result's column name: SQLite names an expression without an alias by its
 text, so `length(access_token)` is masked, but `SELECT access_token AS t` shows the value, because

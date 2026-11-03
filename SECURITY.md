@@ -210,7 +210,8 @@ database file in the app's `databases` directory, under `/api/v1/sqlite/`.
   value policy, `MASK_SENSITIVE` by default and for every discovered file,
   leaves out the values of a column whose name looks like it holds a secret,
   such as `access_token` or `client_secret`, by the network redaction's name
-  check, in `GET rows` and in `POST query`. It goes by the name only: a token in
+  check, in `GET rows` and in `POST query`, except a column named only `key`,
+  the name column of a key-value table. It goes by the name only: a token in
   a column named `data`, a password hash under `hash`, and a user's data show
   as they are stored, and so do the values of a column that the app lists in
   `unmasked`: list only columns that hold no secret. `POST query` masks by the result's column name, because
