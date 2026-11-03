@@ -109,9 +109,19 @@
             return column;
         });
         var hasRowId = schema ? schema.hasRowId : !!(firstRow && firstRow.rowid != null);
-        var alias = hasRowId ? rowidAlias(names) : null;
+        var alias = hasRowId && !keyIsRowid(schema) ? rowidAlias(names) : null;
         if (alias) columns.unshift({ name: alias, rowid: true, type: 'INTEGER' });
         return columns;
+    }
+
+    // Whether the table's key is a column that SQLite makes the rowid itself: the one
+    // column of the primary key, declared INTEGER, in a table with a rowid. The grid then
+    // shows that column, and not the rowid, which has the same values. The rows still
+    // carry the rowid, which edit and delete send.
+    function keyIsRowid(schema) {
+        if (!schema || !schema.hasRowId || !Array.isArray(schema.columns)) return false;
+        var key = schema.columns.filter(function(column) { return column.primaryKey > 0; });
+        return key.length === 1 && String(key[0].type || '').toUpperCase() === 'INTEGER';
     }
 
     // ── Exact numbers in a request ──────────────────────────────
@@ -352,14 +362,36 @@
         return String(cell.value);
     }
 
-    // A cell in the grid: its class and its HTML. A cut text has a tag with its
-    // length, and a blob is a tag with its size.
+    // Epoch milliseconds from 2000 to 2100: an integer in this range is most likely a
+    // time, such as a publish date, and its cell has the date as its title.
+    var EPOCH_MS_MIN = 946684800000;
+    var EPOCH_MS_MAX = 4102444800000;
+
+    function pad(n, width) {
+        return String(n).padStart(width || 2, '0');
+    }
+
+    // The date of an integer cell in the range of epoch milliseconds, in this browser's
+    // time zone, or null.
+    function epochMsTitle(cell) {
+        if (!cell || cell.type !== 'integer' || typeof cell.value !== 'number') return null;
+        if (cell.value < EPOCH_MS_MIN || cell.value > EPOCH_MS_MAX) return null;
+        var date = new Date(cell.value);
+        return 'As a time in epoch milliseconds: ' + date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate())
+            + ' ' + pad(date.getHours()) + ':' + pad(date.getMinutes()) + ':' + pad(date.getSeconds()) + '.' + pad(date.getMilliseconds(), 3);
+    }
+
+    // A cell in the grid: its class and its HTML, and a title for an integer that looks
+    // like a time. A cut text has a tag with its length, and a blob is a tag with its size.
     function cellView(cell, previewChars) {
         if (!cell || cell.type === 'null') return { cls: 'dc-cell--null', html: 'NULL' };
         if (cell.masked) {
             return { cls: 'sqlite-cell--masked', html: tag('masked · ' + cell.type, 'A ' + cell.type + ' value. ' + MASKED_TITLE, null, 'sqlite-tag--masked') };
         }
-        if (cell.type === 'integer' || cell.type === 'real') return { cls: 'dc-cell--num', html: esc(String(cell.value)) };
+        if (cell.type === 'integer' || cell.type === 'real') {
+            var title = epochMsTitle(cell);
+            return title ? { cls: 'dc-cell--num', html: esc(String(cell.value)), title: title } : { cls: 'dc-cell--num', html: esc(String(cell.value)) };
+        }
         if (cell.type === 'blob') {
             return { cls: '', html: tag('BLOB · ' + bytesLabel(cell.bytes), 'A blob of ' + plural(cell.bytes, 'byte', 'bytes') + ': the tab reads only its size.', null, 'sqlite-tag--blob') };
         }
@@ -406,7 +438,8 @@
                 return '<td class="dc-cell dc-cell--muted" data-col="' + col + '">' + (row.rowid != null ? esc(String(row.rowid)) : '') + '</td>';
             }
             var view = cellView(row.cells ? row.cells[column.name] : null);
-            return '<td class="dc-cell' + (view.cls ? ' ' + view.cls : '') + '" data-col="' + col + '">' + view.html + '</td>';
+            return '<td class="dc-cell' + (view.cls ? ' ' + view.cls : '') + '" data-col="' + col + '"'
+                + (view.title ? ' title="' + esc(view.title) + '"' : '') + '>' + view.html + '</td>';
         }).join('');
         if (ctx && ctx.actions) {
             cells += '<td class="dc-cell sqlite-cell--actions"><button type="button" class="dc-btn dc-btn--sm dc-btn--danger" data-action="deleteRow" data-row="' + index + '"'
@@ -1637,7 +1670,10 @@
             return '<tr class="dc-row">' + row.map(function(cell, c) {
                 var view = cellView(cell, PREVIEW_CHARS);
                 var text = cellText(cell);
-                return '<td class="dc-cell' + (view.cls ? ' ' + view.cls : '') + '"' + (text != null ? ' data-action="openResultCell" data-r="' + r + '" data-c="' + c + '" title="Click to open the whole value."' : '') + '>' + view.html + '</td>';
+                var title = (view.title ? view.title + '. ' : '') + (text != null ? 'Click to open the whole value.' : '');
+                return '<td class="dc-cell' + (view.cls ? ' ' + view.cls : '') + '"'
+                    + (text != null ? ' data-action="openResultCell" data-r="' + r + '" data-c="' + c + '"' : '')
+                    + (title ? ' title="' + esc(title) + '"' : '') + '>' + view.html + '</td>';
             }).join('') + '</tr>';
         }).join('') + '</tbody>';
         els.result.innerHTML = head + body;

@@ -113,7 +113,7 @@ internal class SqliteRoutes(private val registry: SqliteRegistry, private val li
     private fun afterWrite(entry: DbEntry) {
         val onWrite = entry.onWrite ?: return
         try {
-            onWrite()
+            onWrite.run()
         } catch (e: Exception) {
             Log.w(TAG, "onWrite of the database ${entry.name} threw; the write is committed", e)
         }

@@ -7,14 +7,16 @@ import java.util.regex.PatternSyntaxException
 
 /**
  * The filters of `GET entries` and `GET text`: the lowest level, a regex found
- * in the tag, a text the message contains (ignoring case), and a regex found in
- * the message.
+ * in the tag, a text the message contains (ignoring case), a regex found in
+ * the message, and a time range in epoch milliseconds, both ends included.
  */
 internal class LogFilter(
     private val minRank: Int,
     private val tag: Pattern?,
     private val text: String?,
     private val message: Pattern?,
+    private val from: Long = Long.MIN_VALUE,
+    private val to: Long = Long.MAX_VALUE,
 ) {
     /** The parameter to blame when the filters run out of time: the regex, when only one is set. */
     val regexField: String?
@@ -32,6 +34,8 @@ internal class LogFilter(
      */
     fun matches(entry: LogEntry, budget: FilterBudget): Boolean {
         if (LogLevels.rank(entry.level) < minRank) return false
+        // A folded line stands for its repeats too, from at to lastAt.
+        if (entry.lastAt < from || entry.at > to) return false
         if (text != null && !entry.message.contains(text, ignoreCase = true)) return false
         if (tag == null && message == null) return true
         budget.check()
@@ -46,19 +50,31 @@ internal class LogFilter(
          * Reads the filters of [request].
          *
          * @throws BadParameterException for a level that is not one of V, D, I, W, E,
-         *   and F, or a regex that is too long or doesn't compile.
+         *   and F, a regex that is too long or doesn't compile, or a time that is not
+         *   a whole number of milliseconds, or a `from` after `to`.
          */
         fun from(request: DebugRequest): LogFilter {
             val level = request.queryParam("level")?.takeIf { it.isNotEmpty() }
             val rank = level?.singleOrNull()?.let { LogLevels.rank(it.uppercaseChar()) } ?: -1
             if (level != null && rank < 0) throw BadParameterException("level must be one of V, D, I, W, E, and F", "level")
             val minRank = rank.coerceAtLeast(0)
+            val from = time(request, "from") ?: Long.MIN_VALUE
+            val to = time(request, "to") ?: Long.MAX_VALUE
+            if (from > to) throw BadParameterException("from must not be after to", "from")
             return LogFilter(
                 minRank = minRank,
                 tag = regex(request, "tag"),
                 text = request.queryParam("q")?.takeIf { it.isNotEmpty() },
                 message = regex(request, "mq"),
+                from = from,
+                to = to,
             )
+        }
+
+        private fun time(request: DebugRequest, name: String): Long? {
+            val given = request.queryParam(name)?.takeIf { it.isNotEmpty() } ?: return null
+            return given.toLongOrNull()
+                ?: throw BadParameterException("$name must be a time in epoch milliseconds, such as 1792419740000", name)
         }
 
         private fun regex(request: DebugRequest, name: String): Pattern? {

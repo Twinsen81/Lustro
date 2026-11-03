@@ -22,7 +22,11 @@ public class DebugConfig private constructor(
     public val serverPort: Int,
     /** The loopback address to bind. Default `"127.0.0.1"`. */
     public val bindAddress: String,
-    /** Whether to fall back to an ephemeral port when [serverPort] is taken. Default `false`. */
+    /**
+     * Whether to fall back to an ephemeral port when [serverPort] is taken. Default `false`:
+     * the server then tries [serverPort] again for 10 s while the app is in the foreground,
+     * and else does not start until the next foreground.
+     */
     public val bindFallback: Boolean,
     /**
      * Base URL for the relative URLs of the Send form when the Network tab sends

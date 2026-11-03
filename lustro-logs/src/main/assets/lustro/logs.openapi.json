@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Lustro Logs debug tab",
-    "version": "1.0",
+    "version": "1.1",
     "description": "The app's own logcat (logcat -b main -b system -b crash -v threadtime -v UTC --pid=<the app's pid>), from the start of its process: a live tail, filters, and a plain-text export. The tab reads logcat while Lustro is started, also in the background, and holds the newest lines in a buffer of a fixed size on the app's heap. Log lines are not redacted. All routes are token-authenticated (Bearer header or HttpOnly cookie) and live under /api/v1/logs. Errors use the shared error envelope."
   },
   "servers": [
@@ -72,6 +72,26 @@
               "maxLength": 200
             },
             "description": "A Java regular expression found in the message, case-sensitive. 400 with field mq when it is longer than 200 characters or doesn't compile. The filters check the time between lines and stop with a 400 after 5 s. One match can't be stopped, so a regex that backtracks a lot, such as (a+)+$, can hold the request for long: keep tag and mq simple."
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "The start of a time range, in epoch milliseconds, included: only the lines at or after it. A repeated line counts from its first time to its last (at to lastAt). 400 with field from when it is not a whole number, or when it is after to."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "The end of a time range, in epoch milliseconds, included: only the lines at or before it, such as the lines of one run of a worker. 400 with field to when it is not a whole number."
           },
           {
             "name": "limit",
@@ -175,6 +195,26 @@
               "maxLength": 200
             },
             "description": "A Java regular expression found in the message, case-sensitive. 400 with field mq when it is longer than 200 characters or doesn't compile. The filters check the time between lines and stop with a 400 after 5 s. One match can't be stopped, so a regex that backtracks a lot, such as (a+)+$, can hold the request for long: keep tag and mq simple."
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "The start of a time range, in epoch milliseconds, included: only the lines at or after it. A repeated line counts from its first time to its last (at to lastAt). 400 with field from when it is not a whole number, or when it is after to."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "The end of a time range, in epoch milliseconds, included: only the lines at or before it, such as the lines of one run of a worker. 400 with field to when it is not a whole number."
           },
           {
             "name": "limit",

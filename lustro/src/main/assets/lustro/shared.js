@@ -77,9 +77,15 @@ window.debugSetStatus = function(state) {
         return null;
     }
 
+    // Removes the token from the fragment and keeps the rest, such as the time range of a
+    // link to the Logs tab, which the tab reads after the token is gone.
     function stripHash() {
         try {
-            var url = window.location.pathname + window.location.search;
+            var rest = (window.location.hash || '').replace(/^#/, '').split('&').filter(function(pair) {
+                var key = decodeURIComponent(pair.split('=')[0] || '');
+                return pair && key !== 'lustro_token' && key !== 'token';
+            }).join('&');
+            var url = window.location.pathname + window.location.search + (rest ? '#' + rest : '');
             window.history.replaceState(null, '', url);
         } catch(e) {
             // Best-effort: clearing the hash directly still removes it from view.

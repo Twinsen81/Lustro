@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Lustro WorkManager debug tab",
-    "version": "1.0",
+    "version": "1.1",
     "description": "The app's WorkManager work: every work request that WorkManager knows, with its state, tags, attempts, output, progress, constraints, and schedule; the events of WorkManager's execution and schedule listeners (WorkManager 2.12.0 and newer), with the result, the output, the stop reason, and the exception of each run; the history of work-analytics when the app has it; and cancel and prune. The events need the app's WorkManager configuration to go through WorkDebugTab.configure(), so the app initializes WorkManager on demand; the routes' state says whether it does. The tab records the events from Lustro.start() to Lustro.stop() and keeps them on the app's heap, so they end with the process. The tab never initializes WorkManager. Without WorkManager 2.12.0 or newer, every route answers 503 with code work_unsupported; the message names the app's WorkManager version when the APK has its version file (META-INF/androidx.work_work-runtime.version), which a build can leave out. All routes are token-authenticated (Bearer header or HttpOnly cookie) and live under /api/v1/work. Errors use the shared error envelope."
   },
   "servers": [
@@ -278,7 +278,7 @@
       "get": {
         "operationId": "listWorkMetrics",
         "summary": "The history that work-analytics keeps on disk, also of the runs of earlier processes.",
-        "description": "Only when the app passed its WorkMetricsInfoRepository to WorkDebugTab.create: otherwise 404 with code metrics_off. work-analytics keeps the periods for 7 days by default. Oldest first, by enqueue time.",
+        "description": "Only when the app passed its WorkMetricsInfoRepository to WorkDebugTab.createWithMetrics: otherwise 404 with code metrics_off. work-analytics keeps the periods for 7 days by default. Oldest first, by enqueue time.",
         "parameters": [
           {
             "name": "id",
@@ -730,7 +730,7 @@
           },
           "uniqueName": {
             "type": "string",
-            "description": "The unique work name of the work: only for a name that the app registered with uniqueNames, or the name that the request asked for with name."
+            "description": "The unique work name that the app enqueued the work with. WorkInfo has none, so the tab reads it from WorkManager's own database; when the app's WorkManager does not have the call that reads it, only for a name that the app registered with uniqueNames, or the name that the request asked for with name."
           },
           "runAttempts": {
             "type": "integer",

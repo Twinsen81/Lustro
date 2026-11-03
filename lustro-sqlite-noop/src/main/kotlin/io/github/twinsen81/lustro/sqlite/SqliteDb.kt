@@ -44,7 +44,7 @@ public class SqliteDb private constructor(
             writable: Boolean = false,
             tableHints: Map<String, TableHint> = emptyMap(),
             valuePolicy: SqliteValuePolicy = SqliteValuePolicy.MASK_SENSITIVE,
-            onWrite: (() -> Unit)? = null,
+            onWrite: Runnable? = null,
             unmasked: Set<String> = emptySet(),
             database: () -> SQLiteDatabase,
         ): SqliteDb = SqliteDb(name, writable, tableHints, valuePolicy, unmasked, file = null)
@@ -58,7 +58,7 @@ public class SqliteDb private constructor(
             writable: Boolean = false,
             tableHints: Map<String, TableHint> = emptyMap(),
             valuePolicy: SqliteValuePolicy = SqliteValuePolicy.MASK_SENSITIVE,
-            onWrite: (() -> Unit)? = null,
+            onWrite: Runnable? = null,
             unmasked: Set<String> = emptySet(),
             database: () -> SupportSQLiteDatabase,
         ): SqliteDb = SqliteDb(name, writable, tableHints, valuePolicy, unmasked, file = null)

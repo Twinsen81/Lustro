@@ -41,7 +41,8 @@ public class WorkDebugTab private constructor() : DebugTab() {
          * Creates a [WorkDebugTab].
          *
          * @param context a context of the app.
-         * @param uniqueNames the unique work names whose work the tab labels with the name.
+         * @param uniqueNames the unique work names whose work the tab labels with the name
+         *   when it can't read the names from WorkManager's database.
          * @param bufferBytes the most memory that the held events may take.
          * @throws IllegalArgumentException when [bufferBytes] is not positive.
          *
@@ -71,7 +72,7 @@ public class WorkDebugTab private constructor() : DebugTab() {
         @JvmStatic
         @JvmOverloads
         @Suppress("UNUSED_PARAMETER")
-        public fun create(
+        public fun createWithMetrics(
             context: Context,
             metrics: WorkMetricsInfoRepository,
             uniqueNames: List<String> = emptyList(),

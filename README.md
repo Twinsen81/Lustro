@@ -84,7 +84,7 @@ keeps your newer one.
 | --- | --- | --- |
 | Android Gradle Plugin | 8.6 | The oldest that supports `compileSdk` 35. |
 | `compileSdk` | 35 | |
-| `minSdk` | 24 | |
+| `minSdk` | 24 | 21 for the no-op halves, which call no Android API. An app with a lower `minSdk` raises it for its debug variant only: see below. |
 | Kotlin | 2.0 | The artifacts carry Kotlin 2.0 metadata and need `kotlin-stdlib` 2.0.21 or newer. |
 | OkHttp | 4.12.0 | 4.x or 5.x. CI runs Lustro's tests against OkHttp 5 as well. |
 | `androidx.lifecycle` | 2.4.1 | `lifecycle-process` only, and only in `lustro`. |
@@ -93,9 +93,34 @@ keeps your newer one.
 | `androidx.sqlite` | none | `compileOnly` in `lustro-sqlite` and `lustro-sqlite-noop`. A registered `SqliteDb.support` needs `androidx.sqlite` 2.0, which Room brings. |
 | `androidx.work` | none | `compileOnly` in `lustro-work` and `lustro-work-noop`. The WorkManager tab needs `work-runtime` 2.12.0, and its history `work-analytics` 2.12.0. |
 
+The runtime needs API 24, for `logcat --pid` among others. An app whose `minSdk` is lower keeps it
+for its release build, which takes the no-op halves, and raises it for the debug variant, which
+takes the runtime. WorkManager 2.12.0, which the WorkManager tab needs, needs API 24 itself:
+with an older WorkManager, the tab answers `work_unsupported`.
+
+```kotlin
+// build.gradle.kts (app module)
+androidComponents {
+    beforeVariants(selector().withBuildType("debug")) { variant ->
+        variant.minSdk = 24
+    }
+}
+```
+
+```groovy
+// build.gradle (app module), the same in Groovy
+androidComponents {
+    beforeVariants(selector().withBuildType("debug")) { variant ->
+        variant.minSdk = 24
+    }
+}
+```
+
 `lustro` also brings NanoHTTPD 2.3.1, its embedded server. CI builds a small app in
 [`consumer-check/`](consumer-check/) with exactly these versions, and again on a current
-toolchain, and fails when a published artifact would change any version the app has.
+toolchain, and fails when a published artifact would change any version the app has. CI also
+builds it with `minSdk` 23, with its debug variant raised as above, and it registers every tab
+from Java too.
 
 ## Quick start
 
@@ -609,9 +634,12 @@ val lustro = Lustro.builder(application)
   Time, Level, Tag, and PID / TID columns. The **Fatal** chip shows the lines at level F
   (`Log.ASSERT`); a Java crash and `Log.wtf()` are at level E, and a crash that ends the app's
   process ends the server too, so the tab never shows it. A line with JSON in it opens indented from the toolbar
-  that shows on a row after a second.
+  that shows on a row after a second. A link such as `/tab/logs#from=<ms>&to=<ms>`, which the
+  WorkManager tab has for each run of a worker, opens the tab with only the lines of that time
+  range, and a chip that clears it.
 - **Routes.** `GET /api/v1/logs/entries` polls the log in the stream envelope, with `level`, `tag`,
-  `q`, and `mq` filters; `GET /api/v1/logs/text` exports it as logcat's threadtime text; and
+  `q`, and `mq` filters, and `from` and `to`, a time range in epoch milliseconds, such as the run
+  of a worker; `GET /api/v1/logs/text` exports it as logcat's threadtime text; and
   `POST clear`, `pause`, and `compact` control it. The `lustro` CLI reaches them with `lustro api`,
   for example `lustro api GET logs/text --param level=W`. See [docs/AGENTS.md](docs/AGENTS.md#logs-tab-operations)
   and [`logs.openapi.json`](lustro-logs/src/main/assets/lustro/logs.openapi.json).
@@ -696,6 +724,14 @@ val lustro = Lustro.builder(application)
   that writes the file is not seen. The tab follows a registered store's data over the same
   period, and it sees a change to a discovered store when the file's bytes change, on the next
   poll.
+- **What the app sees of an edit.** The app's own instance holds the new value at once, so its
+  next read gets it, and its own `OnSharedPreferenceChangeListener` runs, as for a change that the
+  app makes. A screen that read the value before keeps what it shows until it reads it again: an
+  open androidx `PreferenceFragmentCompat` keeps the values of its preferences in memory, and
+  saving its dialog writes that old value back over the edit, so open the screen again after an
+  edit. A setting that the app reads with a default in code, such as
+  `prefs.getBoolean(KEY, true)`, is not in the file until the app writes it, so the tab can't
+  show it: **Add key** writes it, with the key and the type that the app reads.
 - **Routes.** `GET /api/v1/prefs/files` lists the files with their stores, policies, and cursors.
   A file's `store` is `shared_prefs` or `preferences_datastore`, and every other route takes it
   next to `file`; without it, a route picks a SharedPreferences file.
@@ -841,12 +877,13 @@ val lustro = Lustro.builder(application)
   setting on the app's connection (`BEGIN`, `SAVEPOINT`, and the other transaction statements,
   `ATTACH`, `DETACH`, `VACUUM`, and, in `exec`, every `PRAGMA`), and `query` refuses the pragmas
   that set a value for the whole process, such as `hard_heap_limit`.
-- **Room's observers.** Room's `InvalidationTracker` looks for changes after Room's own
+- **The app's observers.** Room's `InvalidationTracker` looks for changes after Room's own
   transactions only, so an open screen that a DAO's `Flow` or `LiveData` fills does not show a
-  change that the tab writes until the app's next write through Room. `SqliteDb.support` and
-  `SqliteDb.framework` take `onWrite`, which the tab calls after each `exec`, `edit`, or
-  `delete` that committed. For Room, pass Room's public refresh call, which is there for writes
-  that do not go through Room:
+  change that the tab writes until the app's next write through Room. An app on a
+  `SQLiteOpenHelper` of its own reloads a screen on an event of its own, which a write through the
+  tab does not send either. `SqliteDb.support` and `SqliteDb.framework` take `onWrite`, a
+  `Runnable`, which the tab calls after each `exec`, `edit`, or `delete` that committed. For Room,
+  pass Room's public refresh call, which is there for writes that do not go through Room:
 
   ```kotlin
   SqliteDb.support(
@@ -854,6 +891,15 @@ val lustro = Lustro.builder(application)
       writable = true,
       onWrite = { appDatabase.invalidationTracker.refreshVersionsAsync() },
   ) { appDatabase.openHelper.writableDatabase }
+  ```
+
+  For an app on its own `SQLiteOpenHelper`, post the event that its screens reload on. From
+  Java, which has no named arguments, give the parameters before `onWrite` too:
+
+  ```java
+  SqliteDb.framework("app", true, Collections.emptyMap(), SqliteValuePolicy.MASK_SENSITIVE,
+          () -> changes.notifyDatabaseChanged(),
+          () -> openHelper.getWritableDatabase())
   ```
 
   The sample registers its Room database so, and its SQLite screen shows a Room `Flow` that
@@ -949,6 +995,28 @@ fun start(app: Application) {
 </provider>
 ```
 
+From Java, the provider is a method, and every factory has overloads without the trailing
+parameters:
+
+```java
+// src/main
+public class App extends Application implements Configuration.Provider {
+    @NonNull
+    @Override
+    public Configuration getWorkManagerConfiguration() {
+        return LustroBootstrap.workManagerConfiguration(this, new Configuration.Builder()).build();
+    }
+}
+
+// src/debug and src/release, LustroBootstrap
+private static WorkDebugTab work;
+
+static synchronized WorkDebugTab work(Application app) {
+    if (work == null) work = WorkDebugTab.create(app, Arrays.asList("sync", "upload"));
+    return work;
+}
+```
+
 - **Your listeners keep working.** `configure()` sets the tab's execution and schedule listeners
   on the builder and returns it. Each one records the event and then calls the listener that you
   set before, with the same arguments, so call `configure()` last. What your listener throws
@@ -963,7 +1031,8 @@ fun start(app: Application) {
   (`WM-WorkerWrapper`).
 - **History on disk with work-analytics.** If your app uses `androidx.work:work-analytics`, set its
   `WorkMetricsInfoRepository` as both of your listeners, and pass it to the tab with
-  `WorkDebugTab.create(app, metrics = repository, uniqueNames = ...)`. `GET metrics` then reads
+  `WorkDebugTab.createWithMetrics(app, metrics = repository, uniqueNames = ...)`, which has a name of its own
+  so that an app without work-analytics, in Java too, never needs its types. `GET metrics` then reads
   the enqueue, start, and finish times, durations, attempts, retries, and stop reasons of each
   run, kept 7 days by default. Lustro never depends on work-analytics: its POM pins
   `work-runtime` to its own exact version. **work-analytics 2.12.0 can end the app's process.**
@@ -976,8 +1045,12 @@ fun start(app: Application) {
   cases, every later run of that work fails the same way, so the app ends at each start until its
   data is cleared. The sample's `MetricsListeners` wraps the repository and catches that exception
   in every listener method.
-- **Unique names.** `WorkInfo` has no unique name, so the tab labels the work of the names in
-  `uniqueNames`. `GET items?name=` finds the work of any name.
+- **Unique names.** `WorkInfo` has no unique name, so the tab reads the name of each work from
+  WorkManager's own database, through WorkManager's connection, also a name that the app makes
+  for each work, such as the URL of a download. The table and the call have been the same since
+  WorkManager 2.0, but they are WorkManager's internals: when a later WorkManager changes them,
+  the tab logs it once and labels the work of the names in `uniqueNames` only.
+  `GET items?name=` finds the work of any name.
 - **The tab never initializes WorkManager.** Until your app calls `WorkManager.getInstance`, the
   routes that read work answer `503` with code `work_not_initialized`.
 - **When there are no events.** The `state` of `items`, `items/{id}`, and `events` has `listeners`: `installed`, `missing` when
@@ -1002,9 +1075,13 @@ fun start(app: Application) {
   WorkManager sets the count back to 0 when a period ends, so it is 0 after a run that finished. The state chips show the count of each state and filter the list by
   it, and the tag, worker class, and unique name fields go to the route. A click on a work opens
   it: **Details** has its id, class, tags, constraints, periodicity, initial delay, next run,
-  attempts, generation, last stop reason, output, and progress; **Timeline** has the events of its
-  runs, with the result, the output, the stop reason, and a worker's exception with its stack
-  trace; and **History**, with work-analytics, has its periods. **Cancel**, **Cancel unique work**,
+  attempts, generation, last stop reason, output, and progress, with a bar when the progress is
+  one number from 0 to 100, which the list also shows next to `running`; **Timeline** has the
+  events of its runs, with the result, the output, the stop reason, and a worker's exception with
+  its stack trace, and, when the app registers the Logs tab, a link at the end of each run to the
+  app's log lines from a second before the run to a second after it, which say why a worker that
+  returned `Result.failure()` without output failed; and **History**, with work-analytics, has its
+  periods. **Cancel**, **Cancel unique work**,
   and **Prune** ask first, and with work-analytics the cancel dialogs say that a cancel of running
   work can end the app's process (see above). **Cancel** is off for finished work, and **Cancel
   unique work** when all work of the name in the list has finished, each with the reason as its
@@ -1202,7 +1279,10 @@ For driving Lustro from agents, scripts, or the `lustro` CLI, see
 - **Can't connect from the browser.** Run `adb forward tcp:8080 tcp:8080` and confirm the app is
   in the **foreground** (the server only listens while foregrounded). Check `adb logcat -s
   LustroToken` for the actual endpoint — if you set `bindFallback` and the configured port was
-  taken, the server is on an OS-assigned port that the log line reports.
+  taken, the server is on an OS-assigned port that the log line reports. Without `bindFallback`,
+  a taken port, such as one that another app with Lustro still holds while it goes to the
+  background, gets a try again every 250 ms for 10 s, and then `adb logcat -s Lustro` says
+  `is taken and bindFallback=false; not starting` until the app comes to the foreground again.
 - **`401 unauthorized`.** The request is missing a valid token. Browsers: open via
   `#lustro_token=<token>` once (or `lustro open`). Programmatic clients: send
   `Authorization: Bearer <token>`. Get the token from `adb logcat -s LustroToken`.

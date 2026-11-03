@@ -195,6 +195,22 @@
         return !!data && typeof data === 'object' && Object.keys(data).length > 0;
     }
 
+    // The percent of a progress that has one number from 0 to 100, as most workers set it,
+    // or null for any other progress.
+    function progressPercent(progress) {
+        if (!hasData(progress)) return null;
+        var keys = Object.keys(progress);
+        if (keys.length !== 1) return null;
+        var value = progress[keys[0]];
+        return typeof value === 'number' && isFinite(value) && value >= 0 && value <= 100 ? value : null;
+    }
+
+    function progressBarHtml(percent) {
+        return '<span class="work-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + esc(String(percent)) + '">'
+            + '<span class="work-progress__bar" style="width: ' + esc(String(percent)) + '%"></span></span>'
+            + '<span class="work-progress__text">' + esc(String(Math.round(percent))) + '%</span>';
+    }
+
     function jsonHtml(data, cls) {
         return '<pre class="dc-code dc-json ' + (cls || '') + '">'
             + window.debugSyntaxHighlightJson(JSON.stringify(data), { indent: 2 }) + '</pre>';
@@ -203,7 +219,10 @@
     // ── Rendering ───────────────────────────────────────────────
 
     function nextRunHtml(item, now) {
-        if (item.state === 'RUNNING') return '<span class="work-next work-next--running">running</span>';
+        if (item.state === 'RUNNING') {
+            var percent = progressPercent(item.progress);
+            return '<span class="work-next work-next--running">running' + (percent == null ? '' : ' ' + esc(String(Math.round(percent))) + '%') + '</span>';
+        }
         if (item.nextScheduleTimeMillis == null || isFinished(item.state)) return '<span class="dc-comment">-</span>';
         var at = item.nextScheduleTimeMillis;
         return '<span class="work-next" data-at="' + esc(String(at)) + '" title="' + esc(dateTimeText(at)) + '">'
@@ -243,6 +262,12 @@
             + '<td class="dc-kv__value">' + valueHtml + '</td></tr>';
     }
 
+    function progressHtml(progress) {
+        if (!hasData(progress)) return '<span class="dc-comment">// empty</span>';
+        var percent = progressPercent(progress);
+        return (percent == null ? '' : '<div class="work-progress__line">' + progressBarHtml(percent) + '</div>') + jsonHtml(progress, 'work-json');
+    }
+
     function details(item, now) {
         var tags = (item.tags || []).map(function(tag) {
             var own = tag === item.workerClass;
@@ -255,16 +280,14 @@
             ? '<span class="dc-comment">// none</span>'
             : esc(dateTimeText(item.nextScheduleTimeMillis)) + ' <span class="dc-comment" data-at="'
                 + esc(String(item.nextScheduleTimeMillis)) + '">' + esc(relativeText(item.nextScheduleTimeMillis, now)) + '</span>';
-        var name = item.uniqueName
-            ? esc(item.uniqueName)
-            : '<span class="dc-comment">// none that the app registers with the tab</span>';
+        var name = item.uniqueName ? esc(item.uniqueName) : '<span class="dc-comment">// none</span>';
         var stopped = !item.stopReason || item.stopReason.name === 'NOT_STOPPED';
         var rows = [
             kvRow('Id', '<span class="work-mono">' + esc(item.id) + '</span>'),
             kvRow('Worker class', esc(item.workerClass || '?')),
             kvRow('State', stateBadge(item.state)),
             kvRow('Tags', tags || '<span class="dc-comment">// none</span>'),
-            kvRow('Unique name', name, 'WorkInfo has no unique name: the tab knows the names that the app passes in uniqueNames, and the name of a name filter.'),
+            kvRow('Unique name', name, 'The name that the app enqueued the work with. WorkInfo has none: the tab reads it from WorkManager\'s database.'),
             kvRow('Constraints', esc(constraintsText(item.constraints))),
             kvRow('Periodicity', esc(periodicityText(item.periodicity))),
             kvRow('Initial delay', item.initialDelayMillis ? esc(durationText(item.initialDelayMillis)) : '<span class="dc-comment">// none</span>'),
@@ -275,7 +298,7 @@
             kvRow('Generation', esc(String(item.generation)), 'How many times the app updated the work with WorkManager.updateWork().'),
             kvRow('Last stop', stopped ? '<span class="dc-comment">NOT_STOPPED</span>' : esc(stopReasonText(item.stopReason)), 'The reason of the last stop of a run: the system stopped the worker before it finished.'),
             kvRow('Output', hasData(item.output) ? jsonHtml(item.output, 'work-json') : '<span class="dc-comment">// empty</span>'),
-            kvRow('Progress', hasData(item.progress) ? jsonHtml(item.progress, 'work-json') : '<span class="dc-comment">// empty</span>')
+            kvRow('Progress', progressHtml(item.progress), 'What the worker set with setProgress(). One number from 0 to 100 shows as a bar too.')
         ];
         return '<table class="dc-kv work-kv">' + rows.join('') + '</table>';
     }
@@ -355,8 +378,27 @@
         return event.runAttempts;
     }
 
+    // A second around the run: a worker's first lines can come before the listener's started
+    // event, and its last ones after the event of its end.
+    var RUN_LOGS_MARGIN_MS = 1000;
+
+    // The link to the Logs tab with the lines of the run that the event at [index] ends,
+    // from its started event: null for an event that ends no run, or without the start.
+    function runLogsHref(events, index) {
+        var event = events[index];
+        if (!RUN_ENDS[event.type]) return null;
+        for (var i = index - 1; i >= 0; i--) {
+            if (events[i].type === 'started') {
+                return '/tab/logs#from=' + (Number(events[i].at) - RUN_LOGS_MARGIN_MS) + '&to=' + (Number(event.at) + RUN_LOGS_MARGIN_MS);
+            }
+            if (RUN_ENDS[events[i].type]) return null;
+        }
+        return null;
+    }
+
     // [attempt] is the attempt that eventAttempt() finds; without it, the event's own count.
-    function eventHtml(event, attempt) {
+    // [logsHref] links to the Logs tab with the lines of the run that the event ends.
+    function eventHtml(event, attempt, logsHref) {
         var label = EVENT_LABELS[event.type] || stateLabel(event.type);
         var run = attempt == null ? event.runAttempts : attempt;
         return '<li class="work-event" data-seq="' + esc(String(event.seq)) + '" style="--c: ' + eventColor(event) + '">'
@@ -366,6 +408,7 @@
             + (run > 0 ? '<span class="work-event__run" title="The run attempt that the event belongs to: one-time work counts its attempts until it finishes, and periodic work those of each period.">attempt ' + esc(String(run)) + '</span>' : '')
             + (event.generation ? '<span class="work-event__run" title="The generation of the work: how many times the app updated it.">gen ' + esc(String(event.generation)) + '</span>' : '')
             + '<span class="work-event__state">→ ' + esc(stateLabel(event.state)) + '</span>'
+            + (logsHref ? '<a class="work-event__logs" href="' + esc(logsHref) + '" title="The app\'s log lines from a second before this run started to a second after it ended, in the Logs tab, such as why a worker failed.">Logs of this run →</a>' : '')
             + '</div>'
             + eventDetailsHtml(event)
             + '</li>';
@@ -580,6 +623,8 @@
     window.workApplyEvents = applyEvents;
     window.workEventHtml = eventHtml;
     window.workEventAttempt = eventAttempt;
+    window.workRunLogsHref = runLogsHref;
+    window.workProgressPercent = progressPercent;
     window.workPruneAction = pruneAction;
     window.workCancelActions = cancelActions;
     window.workPeriodHtml = periodHtml;
@@ -623,6 +668,8 @@
     var confirmModal = null;
     var pending = null;
     var els = {};
+    // Whether the app registered the Logs tab, whose link the console's navigation has.
+    var hasLogsTab = false;
 
     function store(key, value) {
         try { window.localStorage.setItem(key, value); } catch(e) {}
@@ -977,7 +1024,9 @@
         if (changes) {
             var all = timeline.events;
             var first = changes.reset ? 0 : all.length - changes.appended.length;
-            var html = all.slice(first).map(function(event, i) { return eventHtml(event, eventAttempt(all, first + i)); }).join('');
+            var html = all.slice(first).map(function(event, i) {
+                return eventHtml(event, eventAttempt(all, first + i), hasLogsTab ? runLogsHref(all, first + i) : null);
+            }).join('');
             if (changes.reset) els.events.innerHTML = html;
             else els.events.insertAdjacentHTML('beforeend', html);
             // A new event means a new state, and a new period of its history. The
@@ -1179,6 +1228,7 @@
             confirmOk: document.getElementById('work-confirm-ok')
         };
         confirmModal = window.debugModal('work-confirm-modal');
+        hasLogsTab = !!document.querySelector('a[href="/tab/logs"]');
         var savedPanel = stored(PANEL_KEY);
         if (PANELS.indexOf(savedPanel) >= 0) showPanel(savedPanel);
         setupEvents();

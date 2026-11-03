@@ -119,6 +119,25 @@ class WorkRoutesTest {
     }
 
     @Test
+    fun `items and item label the work of every unique name, also one that the app did not register`() {
+        // Such as an app that names each download by its URL, which no list of names can hold.
+        val download = step(1)
+        val name = "https://example.com/episode.mp3?a=1&b=2"
+        workManager.enqueueUniqueWork(name, ExistingWorkPolicy.KEEP, download).result.get()
+        val plain = step(2)
+        workManager.enqueue(plain).result.get()
+
+        val listed = byId(items(WorkFixtures.get(routes, "items")))
+        assertEquals(name, listed.getValue(download.id.toString()).getString("uniqueName"))
+        assertFalse(listed.getValue(plain.id.toString()).has("uniqueName"))
+        val item = WorkFixtures.get(routes, "items/${download.id}").json().getJSONObject("item")
+        assertEquals(name, item.getString("uniqueName"))
+        // The name works for cancel too, as the console's Cancel unique work sends it.
+        val cancelled = WorkFixtures.post(routes, "cancel", JSONObject().put("name", name)).json()
+        assertEquals(0, cancelled.getInt("cancelled"))
+    }
+
+    @Test
     fun `a poll of an unchanged list is unchanged, and a change sends the whole list again`() {
         workManager.enqueue(step(1)).result.get()
         val first = WorkFixtures.get(routes, "items").json()

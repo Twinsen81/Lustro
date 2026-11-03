@@ -47,6 +47,22 @@ def test_str_includes_status_field_and_hint():
     assert "check ids" in text
 
 
+def test_str_names_the_code_that_a_client_acts_on():
+    err = LustroError(
+        "unavailable",
+        "The tab needs WorkManager 2.12.0 or newer; the app has 2.10.3",
+        status=503,
+        code="work_unsupported",
+        hint="Add androidx.work:work-runtime 2.12.0 or newer",
+    )
+    assert str(err) == (
+        "503 unavailable: The tab needs WorkManager 2.12.0 or newer; the app has 2.10.3 (code: work_unsupported)\n"
+        "  hint: Add androidx.work:work-runtime 2.12.0 or newer"
+    )
+    with_field = LustroError("bad_request", "exec refused", status=400, code="statement_refused", field="sql")
+    assert str(with_field) == "400 bad_request: exec refused (code: statement_refused, field: sql)"
+
+
 def _http_error(status, body):
     raw = body.encode("utf-8") if isinstance(body, str) else body
     return urllib.error.HTTPError(

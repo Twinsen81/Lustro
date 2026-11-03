@@ -37,7 +37,7 @@ public class SqliteDb private constructor(
     public val valuePolicy: SqliteValuePolicy,
     unmasked: Set<String>,
     internal val source: DbSource,
-    internal val onWrite: (() -> Unit)? = null,
+    internal val onWrite: Runnable? = null,
 ) {
     /** What the tables and views hold, by table name. */
     public val tableHints: Map<String, TableHint> = tableHints.toMap()
@@ -62,8 +62,9 @@ public class SqliteDb private constructor(
          *
          * @param onWrite called on a request's thread after each `POST exec`,
          *   `edit`, or `delete` that committed, also when it changed no row, so that
-         *   the app can tell its own readers, such as a cache. What it throws is
-         *   logged: the write stays committed.
+         *   the app can tell its own readers, such as a cache or the event that its
+         *   screens reload on. What it throws is logged: the write stays committed.
+         *   A `Runnable`, so that a lambda works from Java and from Kotlin.
          * @param unmasked the names of the columns whose values the tab shows
          *   under [SqliteValuePolicy.MASK_SENSITIVE] although their names look
          *   like they hold a secret, such as an `oauth_scopes` column, which has
@@ -82,7 +83,7 @@ public class SqliteDb private constructor(
             writable: Boolean = false,
             tableHints: Map<String, TableHint> = emptyMap(),
             valuePolicy: SqliteValuePolicy = SqliteValuePolicy.MASK_SENSITIVE,
-            onWrite: (() -> Unit)? = null,
+            onWrite: Runnable? = null,
             unmasked: Set<String> = emptySet(),
             database: () -> SQLiteDatabase,
         ): SqliteDb = SqliteDb(name, writable, tableHints, valuePolicy, unmasked, FrameworkSource(database), onWrite)
@@ -106,7 +107,8 @@ public class SqliteDb private constructor(
          *
          * @param onWrite called on a request's thread after each `POST exec`,
          *   `edit`, or `delete` that committed, also when it changed no row. What it
-         *   throws is logged: the write stays committed.
+         *   throws is logged: the write stays committed. A `Runnable`, so that a
+         *   lambda works from Java and from Kotlin.
          * @param unmasked the names of the columns whose values the tab shows
          *   under [SqliteValuePolicy.MASK_SENSITIVE] although their names look
          *   like they hold a secret, such as an `oauth_scopes` column, which has
@@ -126,7 +128,7 @@ public class SqliteDb private constructor(
             writable: Boolean = false,
             tableHints: Map<String, TableHint> = emptyMap(),
             valuePolicy: SqliteValuePolicy = SqliteValuePolicy.MASK_SENSITIVE,
-            onWrite: (() -> Unit)? = null,
+            onWrite: Runnable? = null,
             unmasked: Set<String> = emptySet(),
             database: () -> SupportSQLiteDatabase,
         ): SqliteDb = SqliteDb(name, writable, tableHints, valuePolicy, unmasked, SupportSource(database), onWrite)

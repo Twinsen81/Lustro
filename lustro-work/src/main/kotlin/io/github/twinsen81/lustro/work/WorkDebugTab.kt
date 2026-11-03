@@ -39,10 +39,12 @@ import io.github.twinsen81.lustro.work.internal.WorkView
  * manifest. Without that, the tab shows the work without events.
  *
  * The tab reads the work through WorkManager's public API: its state, tags,
- * attempts, output, progress, constraints, and schedule. It knows the unique name
- * of work only for the names that the app lists in `uniqueNames`, since
- * `WorkInfo` does not have it. It asks for the WorkManager instance only after
- * the app has initialized it, so it never changes when WorkManager starts.
+ * attempts, output, progress, constraints, and schedule. `WorkInfo` has no unique
+ * name, so the tab reads the name of each work from WorkManager's own database,
+ * through WorkManager's connection, and falls back to the names that the app lists
+ * in `uniqueNames` when the app's WorkManager does not have the call. It asks for
+ * the WorkManager instance only after the app has initialized it, so it never
+ * changes when WorkManager starts.
  *
  * The tab records the events of each run (enqueued, unblocked, updated,
  * cancelled, prerequisite failed, started, stopped, finished, and exception),
@@ -112,7 +114,8 @@ public class WorkDebugTab private constructor(private val source: WorkSource) : 
          * @param context a context of the app. The tab keeps its application
          *   context, for `WorkManager.getInstance`.
          * @param uniqueNames the unique work names whose work the tab labels with
-         *   the name. `GET items?name=` finds the work of any name.
+         *   the name when it can't read the names from WorkManager's database.
+         *   `GET items?name=` finds the work of any name.
          * @param bufferBytes the most memory that the held events may take, by the
          *   size of their JSON on the heap (two bytes a character) and a fixed cost
          *   for each event. When a new event goes over it, the oldest events go.
@@ -131,13 +134,18 @@ public class WorkDebugTab private constructor(private val source: WorkSource) : 
          * keeps: the times, attempts, and stop reasons of each run, also of the runs
          * of earlier processes.
          *
+         * It has a name of its own, not another overload of [create]: to choose
+         * between overloads with the same number of parameters, javac loads the
+         * types of all of them, and an app without work-analytics has no
+         * `WorkMetricsInfoRepository`.
+         *
          * @param metrics the app's repository, which the app also sets as its
          *   execution and schedule listeners, before [configure].
          * @see create
          */
         @JvmStatic
         @JvmOverloads
-        public fun create(
+        public fun createWithMetrics(
             context: Context,
             metrics: WorkMetricsInfoRepository,
             uniqueNames: List<String> = emptyList(),

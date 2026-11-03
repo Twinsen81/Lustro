@@ -52,7 +52,7 @@ internal class WorkRoutes(private val source: WorkSource) {
         if (tag != null) query.addTags(listOf(tag))
         if (name != null) query.addUniqueWorkNames(listOf(name))
         val infos = workManager.getWorkInfos(query.build()).get().filter { matchesClass(it.workerClassName, workerClass) }
-        val names = uniqueNames(workManager)
+        val names = source.names.of(workManager, infos)
         val items =
             buildString {
                 infos.forEachIndexed { index, info ->
@@ -75,7 +75,7 @@ internal class WorkRoutes(private val source: WorkSource) {
         if (info == null && events.isEmpty() && periods.isNullOrEmpty()) {
             throw RouteException("No work has the id $id, and the tab has no events of it", status = 404, field = "id")
         }
-        val name = if (info == null) null else uniqueNames(workManager)[id]
+        val name = if (info == null) null else source.names.of(workManager, listOf(info))[id]
         return DebugResponse.json {
             append("{\"item\":")
             if (info == null) append("null") else WorkJson.appendItem(this, info, name)
@@ -221,15 +221,6 @@ internal class WorkRoutes(private val source: WorkSource) {
             code = "work_not_initialized",
             hint = "Open the part of the app that uses WorkManager, or call WorkManager.getInstance(context) in the app",
         )
-
-    // The registered unique names of the work, by id. Each name is one query.
-    private fun uniqueNames(workManager: WorkManager): Map<UUID, String> {
-        val names = HashMap<UUID, String>()
-        for (name in source.uniqueNames) {
-            for (info in workManager.getWorkInfosForUniqueWork(name).get()) names[info.id] = name
-        }
-        return names
-    }
 
     private fun metricsStates(text: String?): List<String> {
         if (text.isNullOrEmpty()) return emptyList()

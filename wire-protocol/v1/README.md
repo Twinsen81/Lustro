@@ -159,19 +159,21 @@ A plugin tab ships in its own artifact pair and versions its routes in its own
 OpenAPI document's `info.version`; the core protocol version above changes only
 with the core wire.
 
-- **Logs `1.0`** (`:lustro-logs`) - the app's own logcat under `/api/v1/logs/`.
+- **Logs `1.1`** (`:lustro-logs`) - the app's own logcat under `/api/v1/logs/`.
   `GET entries` polls it in the stream envelope, with the filters `level`,
-  `tag`, `q`, and `mq`, and `state` carries the reader's status and the
+  `tag`, `q`, and `mq`, and, from `1.1`, the time range `from` and `to` in epoch
+  milliseconds, and `state` carries the reader's status and the
   `paused` and `compact` flags. A repeated line comes again in a later poll
   with the same `seq` and a larger `count`, and replaces the earlier copy.
   `GET text` exports the held lines as logcat's threadtime text. `POST clear`
   returns the cursor of the empty log; `POST pause` and `POST compact` set or
   toggle their flags.
-- **Preferences `1.0`** (`:lustro-prefs`) - the app's SharedPreferences files
+- **Preferences `1.1`** (`:lustro-prefs`) - the app's SharedPreferences files
   under `/api/v1/prefs/`. `GET files` lists them with their value policies,
   read-only flags, and cursors. `GET entries?file=` polls one file in the
   cursor envelope, each entry with its `type`, its `value` unless the policy
-  masks it, and its size in `bytes`; a value is cut at 4096 characters, with
+  masks it, and its size in `bytes`; from `1.1`, a long past 2^53 - 1 is the
+  string of its digits; a value is cut at 4096 characters, with
   `truncated`, and `GET entry?file=&key=` returns it whole. Each file's cursor
   has an epoch of its own, so a cursor of one file is foreign to another.
   `POST edit`, `POST delete`, and `POST clear` change a file and answer `403`
@@ -190,11 +192,12 @@ with the core wire.
   and answer `403` with the code `read_only` for any other. Both `query` and
   `exec` refuse transaction statements, `ATTACH`, `DETACH`, and `VACUUM` with
   the code `statement_refused`, and `exec` also every `PRAGMA`.
-- **WorkManager `1.0`** (`:lustro-work`) - the app's WorkManager work under
+- **WorkManager `1.1`** (`:lustro-work`) - the app's WorkManager work under
   `/api/v1/work/`. `GET items` polls every work request in the cursor envelope,
   whose cursor stands for the list's content, with `state`, `tag`, `class`, and
   `name` filters; an item has its `state`, `tags`, `runAttempts`, `stopReason`
-  (`{ code, name }`), `output`, `progress`, `constraints`, and schedule.
+  (`{ code, name }`), `output`, `progress`, `constraints`, and schedule, and, from
+  `1.1`, the `uniqueName` that the work was enqueued with, for every work.
   `GET items/{id}` gives one with its events. `GET events` polls the events of
   WorkManager's execution and schedule listeners in the stream envelope, each
   `{ seq, at, type, id, workerClass, state, runAttempts, generation }` with the

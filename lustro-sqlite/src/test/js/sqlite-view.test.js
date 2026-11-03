@@ -8,6 +8,9 @@
 // edits, or deletes the wrong one.
 'use strict';
 
+// A cell that looks like a time has a local date as its title: one zone keeps the tests the same everywhere.
+process.env.TZ = 'UTC';
+
 const test = require('node:test');
 const assert = require('node:assert');
 const { loadTabJs, golden } = require('../../../../lustro/src/test/js/harness.js');
@@ -173,22 +176,43 @@ test('saved columns that the table no longer has don\'t hide all of it', () => {
 
 test('a column has a width by its type until the user drags it, and a width below the minimum is ignored', () => {
     const state = { hidden: [], widths: { title: 333, score: 10 } };
-    const [rowid, id, title, , attachment, score] = sqlite.sqliteGridColumns(notesSchema());
+    const [id, title, , attachment, score] = sqlite.sqliteGridColumns(notesSchema());
     assert.strictEqual(sqlite.sqliteColumnWidth(state, title), 333);
     assert.strictEqual(sqlite.sqliteColumnWidth(state, score), 110);
     assert.strictEqual(sqlite.sqliteColumnWidth(state, id), 120);
     assert.strictEqual(sqlite.sqliteColumnWidth(state, attachment), 130);
+    const [rowid] = sqlite.sqliteGridColumns(Object.assign(notesSchema(), { columns: notesSchema().columns.map((column) => Object.assign({}, column, { primaryKey: 0 })) }));
     assert.strictEqual(sqlite.sqliteColumnWidth(state, rowid), 90);
 });
 
-test('the grid shows the rowid first, under a name that no column has', () => {
+test('the grid shows the rowid first, under a name that no column has, unless the key is the rowid', () => {
     const names = (schema) => sqlite.sqliteGridColumns(schema).map((column) => column.name);
-    assert.deepStrictEqual(plain(names(notesSchema())), ['rowid', 'id', 'title', 'body', 'attachment', 'score', 'created_at', 'folder_id', 'share_token']);
+    // id INTEGER PRIMARY KEY is the rowid itself: the grid shows it once, as id.
+    assert.deepStrictEqual(plain(names(notesSchema())), ['id', 'title', 'body', 'attachment', 'score', 'created_at', 'folder_id', 'share_token']);
+    const withKey = (type, keys) => ({
+        hasRowId: true,
+        type: 'table',
+        columns: [{ name: 'id', type, primaryKey: 1 }, { name: 'other', type: 'TEXT', primaryKey: keys > 1 ? 2 : 0 }],
+    });
+    assert.deepStrictEqual(plain(names(withKey('integer', 1))), ['id', 'other']);
+    assert.deepStrictEqual(plain(names(withKey('TEXT', 1))), ['rowid', 'id', 'other']);
+    assert.deepStrictEqual(plain(names(withKey('INT', 1))), ['rowid', 'id', 'other']);
+    assert.deepStrictEqual(plain(names(withKey('INTEGER', 2))), ['rowid', 'id', 'other']);
     assert.deepStrictEqual(plain(names(tagsSchema)), ['note_id', 'tag']);
 
     assert.strictEqual(sqlite.sqliteRowidAlias(['id', 'ROWID']), '_rowid_');
     assert.strictEqual(sqlite.sqliteRowidAlias(['rowid', '_rowid_']), 'oid');
     assert.strictEqual(sqlite.sqliteRowidAlias(['rowid', '_rowid_', 'OID']), null);
+});
+
+test('an integer in the range of epoch milliseconds has its date as the title of its cell', () => {
+    const view = sqlite.sqliteCellView({ type: 'integer', value: 1790982861000 });
+    assert.match(view.title, /^As a time in epoch milliseconds: 2026-10-02 23:14:21\.000$/);
+    assert.strictEqual(sqlite.sqliteCellView({ type: 'integer', value: 42 }).title, undefined);
+    assert.strictEqual(sqlite.sqliteCellView({ type: 'integer', value: '9007199254740993' }).title, undefined);
+    assert.strictEqual(sqlite.sqliteCellView({ type: 'real', value: 1790982861000.5 }).title, undefined);
+    const row = { rowid: '1', cells: { pubDate: { type: 'integer', value: 1790982861000 } } };
+    assert.match(sqlite.sqliteRowHtml(row, 0, [{ name: 'pubDate', type: 'INTEGER' }], null), /<td class="dc-cell dc-cell--num" data-col="0" title="As a time in epoch milliseconds: 2026-10-02 23:14:21\.000"/);
 });
 
 // ── Where a console statement goes ──────────────────────────────
@@ -420,9 +444,11 @@ test('each cell says its own type: a number, NULL, a blob\'s size, and a cut tex
     const columns = sqlite.sqliteGridColumns(notesSchema());
     const html = sqlite.sqliteRowHtml(trip, 2, columns, { actions: false });
 
-    assert.match(html, /<td class="dc-cell dc-cell--muted" data-col="0">2<\/td>/);
-    assert.match(html, /<td class="dc-cell dc-cell--num" data-col="1">2<\/td>/);
-    assert.match(html, /<td class="dc-cell dc-cell--null" data-col="5">NULL<\/td>/);
+    // id is the rowid: the grid shows it once.
+    assert.match(html, /<td class="dc-cell dc-cell--num" data-col="0">2<\/td>/);
+    assert.match(html, /<td class="dc-cell dc-cell--null" data-col="4">NULL<\/td>/);
+    const keyless = sqlite.sqliteRowHtml(trip, 2, [{ name: 'rowid', rowid: true, type: 'INTEGER' }].concat(columns), { actions: false });
+    assert.match(keyless, /<td class="dc-cell dc-cell--muted" data-col="0">2<\/td>/);
     assert.match(html, /BLOB · 20.0 KB/);
     assert.match(html, /class="dc-cell sqlite-cell--cut"/);
     assert.match(html, /4,377 chars/);

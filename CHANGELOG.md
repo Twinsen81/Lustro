@@ -14,6 +14,38 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Added
 
+- **The WorkManager tab names the unique work of every work request, and
+  links each run to its log lines.** `WorkInfo` has no unique name, so the tab
+  labelled only the work of the names that the app listed in `uniqueNames`.
+  An app that names each work by its data, such as a podcast player that
+  names each episode download by its URL, could not list them. The tab now
+  reads the name of each work from WorkManager's own `WorkNameDao`, through
+  WorkManager's connection, once for each id. The DAO has been the same since
+  WorkManager 2.0, but it is restricted API, so the tab calls it by
+  reflection, and a WorkManager that changed it turns the read off for the
+  process, with a log line, and the names of `uniqueNames` as before. In the
+  console, a worker that returned `Result.failure()` without output said
+  nothing about why: the reason was only in logcat. The Timeline now has a
+  link at the end of each run, when the app registers the Logs tab, to the
+  app's log lines from a second before the run started to a second after it
+  ended. Details shows a bar for a progress of one number from 0 to 100, and
+  the list shows the percent next to `running`. Verified on a physical
+  Android 16 device in a podcast player that names each download by its URL:
+  every download, and the app's periodic and sync work, had its name, Cancel
+  unique work needed no typed name, a download showed `running 2%` and its
+  bar, and the link of a download that failed with HTTP 404 opened the Logs
+  tab with the 41 lines of the run, among them `Response code is 404`. The
+  WorkManager schema is `1.1`.
+- **The Logs routes take a time range.** `GET entries` and `GET text` take
+  `from` and `to`, in epoch milliseconds, both ends included, and a repeated
+  line counts from its first time to its last; a value that is not a whole
+  number, or a `from` after `to`, is a 400 with the parameter as `field`. The
+  console reads the range from a link such as
+  `/tab/logs#from=<ms>&to=<ms>`, as the WorkManager tab gives each run, and
+  shows it as a chip that clears it. The console now takes only the token out
+  of a link's fragment, so a link with both keeps its range. The Logs schema
+  is `1.1`.
+
 - **The SQLite tab can tell the app about its writes, so Room's observers see
   them at once.** An open screen that a DAO's `Flow` filled did not show a row
   that the tab changed until the app's next write through Room, because
@@ -132,7 +164,7 @@ see [DECISIONS.md](DECISIONS.md).
   threw, recorded from `Lustro.start()` to `Lustro.stop()` into a buffer of
   1 MiB on the heap by default. `GET items/{id}` gives
   one work request with its events, also after a prune. With
-  `create(context, metrics = repository)`, `GET metrics` reads the history of
+  `createWithMetrics(context, metrics = repository)`, `GET metrics` reads the history of
   work-analytics. `POST cancel` cancels by id, unique name, or tag, and
   `POST prune` deletes finished work. Each response's `state` says whether the
   listeners are installed, and why not. The tab never initializes WorkManager,
@@ -828,6 +860,35 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Fixed
 
+- **A Java app without work-analytics can pass unique names to the
+  WorkManager tab.** `WorkDebugTab.create(context, uniqueNames)` and
+  `create(context, uniqueNames, bufferBytes)` did not compile from Java:
+  javac reported `cannot access WorkMetricsInfoRepository`, because the
+  metrics overloads of `create` had the same numbers of parameters, and javac
+  loads the parameter types of every candidate. Only `create(context)`
+  compiled. The metrics factory now has a name of its own,
+  `WorkDebugTab.createWithMetrics(context, metrics, uniqueNames, bufferBytes)`,
+  in both artifacts. The consumer check now registers every tab from Java,
+  without work-analytics, so such an overload fails its build.
+- **`GET _meta` gives each tab the version of its own schema.** It gave every
+  tab the protocol version, `1.10`, while the plugin schemas say `1.0` in
+  `info.version`, as their versions of their own. It now reads `info.version`
+  from the tab's schema, and gives the protocol version to a schema without
+  one.
+- **The server binds when another app with Lustro still holds the port for a
+  moment.** On a physical device, a cold start of an app over another app
+  with Lustro in front failed its bind with `EADDRINUSE`, because the other
+  app closes its server only after its own `onStop`, and the server did not
+  try again until the app went to the background and back. Without
+  `bindFallback`, the bind now tries the configured port again every 250 ms
+  for 10 s while the app is in the foreground, quietly, closing the socket of
+  each failed attempt, which NanoHTTPD keeps open, and logs the WARN
+  `is taken and bindFallback=false; not starting` only when that time ends.
+  The retries stop when the app goes to the background or `stop()` runs.
+  Verified on a physical Android 16 device: with a shell process on port
+  8080, a cold start logged the retry, and the server was ready 190 ms after
+  the port was free.
+
 - **The Logs tab no longer loses a block of lines on an Android 16 emulator
   when its logcat starts.** On an API 36 emulator, 6 of 12 starts lost 1 to 22
   of the app's lines: the output of the `logcat` process already lacked them.
@@ -1385,6 +1446,37 @@ see [DECISIONS.md](DECISIONS.md).
   body, and a gzip response over `HttpURLConnection`.
 
 ### Changed
+
+- **The no-op halves need `minSdk` 21.** They call no Android API, but
+  declared the runtime's 24, so an app with `minSdk` 23 could not build its
+  release variant with them either. The README now says how such an app
+  raises `minSdk` for its debug variant only, with
+  `androidComponents.beforeVariants`, and the consumer check builds an app
+  with `minSdk` 23 that way.
+- **`onWrite` of `SqliteDb.support` and `SqliteDb.framework` is a
+  `Runnable`.** As a Kotlin function type, a Java lambda had to
+  `return Unit.INSTANCE`. A Kotlin lambda still works; a variable of type
+  `() -> Unit` now needs `Runnable(hook)`. The README has a Java example for
+  an app on its own `SQLiteOpenHelper`, which posts the event that its
+  screens reload on, and one for WorkManager's `Configuration.Provider`.
+- **A long past 2^53 - 1 in the Preferences routes is the string of its
+  digits,** as in the SQLite and WorkManager routes: a JavaScript client of
+  the routes lost its last digits. The console read it right already. The
+  Preferences schema is `1.1`.
+- **The SQLite console shows a date for an integer that looks like a time,
+  and the rowid once.** An integer cell from 2000 to 2100 in epoch
+  milliseconds, such as a publish date, has the date as its title, in the
+  grid and in the results of the SQL view. A table whose key is one
+  `INTEGER` column, which SQLite makes the rowid itself, showed the same
+  values twice, as `rowid` and as the key; the grid now shows the key only.
+  The rows still name a row by its rowid.
+- **The CLI prints the error's `code`,** such as
+  `(code: work_unsupported)` or `(code: statement_refused, field: sql)`,
+  which the docs tell an agent to act on.
+- **The README says what the app sees of a Preferences edit.** An open
+  androidx preference screen keeps the values that it read, and saving its
+  dialog writes the old value back over the edit; a setting that the app
+  reads with a default in code is not in the file until the app writes it.
 
 - **The GitHub Release also carries the `lustro-api` jar.** It attached the
   two AARs and the `lustro-wire-schema` jar, but not the jar of the SPI that

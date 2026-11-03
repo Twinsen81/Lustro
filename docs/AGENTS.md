@@ -252,7 +252,7 @@ reported as `_meta.protocolVersion`.
 
 | Route | Purpose |
 | --- | --- |
-| `GET /api/v1/_meta` | `{ libraryVersion, protocolVersion, tabs: [{ id, title, schemaUrl, version }] }` — only schema-exposing tabs are listed. |
+| `GET /api/v1/_meta` | `{ libraryVersion, protocolVersion, tabs: [{ id, title, schemaUrl, version }] }` — only schema-exposing tabs are listed. A tab's `version` is the `info.version` of its own schema, and the protocol version for a schema without one. |
 | `GET /api/v1/_schema` | JSON Schema for the shared envelopes. |
 | `GET /api/v1/<id>/_schema` | A tab's OpenAPI document (enveloped `404` if it has none). |
 
@@ -487,15 +487,15 @@ request body with no `Content-Type` is stored as text, and its `requestContentTy
 
 Base path `/api/v1/logs`, when the app registers the Logs plugin (`LogsDebugTab.create()`; without
 it, the routes are an enveloped `404 Unknown tab: logs`). The authoritative contract is
-`lustro-logs/src/main/assets/lustro/logs.openapi.json`, version `1.0`. The tab runs
+`lustro-logs/src/main/assets/lustro/logs.openapi.json`, version `1.1` (`1.1` added `from` and `to`). The tab runs
 `logcat -b main -b system -b crash -v threadtime -v UTC --pid=<the app's pid>` while Lustro is started, also in the background, from
 the start of the app's process, and holds the newest lines in a buffer of a fixed size (4 MiB by
 default). The CLI has no `logs` commands: use `lustro api`.
 
 | Operation | Route | Notes |
 | --- | --- | --- |
-| Poll the log | `GET entries?cursor=&level=&tag=&q=&mq=&limit=` | Stream envelope. The first poll gets `reset` with the last `limit` lines (default 500, at most 5000) that pass the filters; a poll with the cursor gets `delta` with the lines after it, oldest first, in pages of `limit`, or `unchanged`. `state` is `{ reader, readerError?, paused, compact }` on every response. |
-| Export as text | `GET text?cursor=&level=&tag=&q=&mq=&limit=` | `text/plain`: the held lines as `adb logcat -v threadtime` prints them, oldest first, every one that passes the filters, or the last `limit`. A repeated line prints once with ` [×N]`. With a cursor from `entries`, only the lines after it. |
+| Poll the log | `GET entries?cursor=&level=&tag=&q=&mq=&from=&to=&limit=` | Stream envelope. The first poll gets `reset` with the last `limit` lines (default 500, at most 5000) that pass the filters; a poll with the cursor gets `delta` with the lines after it, oldest first, in pages of `limit`, or `unchanged`. `state` is `{ reader, readerError?, paused, compact }` on every response. |
+| Export as text | `GET text?cursor=&level=&tag=&q=&mq=&from=&to=&limit=` | `text/plain`: the held lines as `adb logcat -v threadtime` prints them, oldest first, every one that passes the filters, or the last `limit`. A repeated line prints once with ` [×N]`. With a cursor from `entries`, only the lines after it. |
 | Clear | `POST clear` | Empties the buffer and returns `{ status: "ok", cursor }`: poll with that cursor to get only the later lines, with no `dropped` count. A cursor from before the clear gets a `reset`. |
 | Pause | `POST pause` | Body `{ "paused": true }` or `false`; without a body it toggles. While paused, the tab drops new lines. Returns `{ status: "ok", paused }`. |
 | Compact | `POST compact` | Body `{ "compact": true }` or `false`; without a body it toggles. On by default: a line that repeats the line before (same level, tag, pid, tid, and message) folds into it. Returns `{ status: "ok", compact }`. |
@@ -509,7 +509,9 @@ have with that `seq`, do not add a second one.
 **Filters.** `level` is the lowest level, one of `V D I W E F` (`W` gives W, E, and F). `tag` and
 `mq` are Java regular expressions found in the tag and in the message, case-sensitive (prefix
 `(?i)` to ignore case, anchor with `^` and `$`), each at most 200 characters. `q` is text the
-message contains, ignoring case. They combine. The cursor moves past the lines they leave out, so
+message contains, ignoring case. `from` and `to` are a time range in epoch milliseconds, both
+ends included, such as the run of a worker from its `started` to its `finished` event; a repeated
+line counts from its `at` to its `lastAt`. They combine. The cursor moves past the lines they leave out, so
 keep the same filters while you follow one cursor. A bad value gets a `400` with `field` set to
 the parameter. The filters check the time between lines and stop with a `400` after 5 s; one match
 can't be stopped, so a regex that backtracks a lot, such as `(a+)+$`, can hold the request for
@@ -525,7 +527,7 @@ with the reason in `readerError` (the buffer keeps what it has, and `entries` st
 Base path `/api/v1/prefs`, when the app registers the Preferences plugin
 (`PrefsDebugTab.create(context, ...)`; without it, the routes are an enveloped
 `404 Unknown tab: prefs`). The authoritative contract is
-`lustro-prefs/src/main/assets/lustro/prefs.openapi.json`, version `1.0`. The CLI has no `prefs`
+`lustro-prefs/src/main/assets/lustro/prefs.openapi.json`, version `1.1` (`1.1` sends a long past 2^53 - 1 as a string). The CLI has no `prefs`
 commands: use `lustro api`.
 
 | Operation | Route | Notes |
@@ -547,7 +549,8 @@ writes a registered DataStore through the app's own instance. A DataStore that t
 `long`, `float`, `double`, `boolean`, `string_set`, `bytes`, or `unknown` (a value that only a
 custom SharedPreferences implementation can hold). `double` and `bytes` come only from a
 DataStore. `value` is a JSON string, number, boolean, or, for `string_set`, a sorted array of
-strings; a float or a double that is not finite is the string `"NaN"`, `"Infinity"`, or
+strings; a long beyond 2^53 - 1 either way is the string of its digits, as in the SQLite and
+WorkManager routes; a float or a double that is not finite is the string `"NaN"`, `"Infinity"`, or
 `"-Infinity"`, and `bytes` is padded base64. `bytes` (the field) is the size of the whole value:
 a string's UTF-8 bytes, the sum of those of a set's strings, a byte array's length, or 4, 8, 4,
 8, and 1 for `int`, `long`, `float`, `double`, and `boolean`.
@@ -703,9 +706,9 @@ count.
 ## WorkManager tab operations
 
 Base path `/api/v1/work`, when the app registers the WorkManager plugin
-(`WorkDebugTab.create(context, uniqueNames)`, or `create(context, metrics, uniqueNames)` with a
+(`WorkDebugTab.create(context, uniqueNames)`, or `createWithMetrics(context, metrics, uniqueNames)` with a
 work-analytics repository; without it, the routes are an enveloped `404 Unknown tab: work`). The
-authoritative contract is `lustro-work/src/main/assets/lustro/work.openapi.json`, version `1.0`.
+authoritative contract is `lustro-work/src/main/assets/lustro/work.openapi.json`, version `1.1` (`1.1` names the unique work of every work request).
 The CLI has no `work` commands: use `lustro api`. Only `POST cancel` and `POST prune` change
 anything. The app needs WorkManager 2.12.0 or newer: with an older one, every route is a `503`
 with `code: "work_unsupported"`.
@@ -726,8 +729,11 @@ nextScheduleTimeMillis? }`. `state` is a `WorkInfo.State` name: `ENQUEUED`, `RUN
 `tags` includes the worker's class name, which WorkManager adds. `runAttempts` is
 `WorkInfo.runAttemptCount`, how often the work started; for periodic work it counts only the
 current period, because WorkManager sets it back to 0 when a period ends, so the `finished` event
-of a periodic run has 0 and its `started` event has the attempt. `uniqueName` is there only for a
-name that the app registered, or the one that `name=` asked for: `WorkInfo` does not have it.
+of a periodic run has 0 and its `started` event has the attempt. `uniqueName` is the name that
+the app enqueued the work with, such as the URL of a download; `WorkInfo` does not have it, so
+the tab reads it from WorkManager's own database. When the app's WorkManager does not have the
+call that reads it, `uniqueName` is there only for a name that the app registered, or the one
+that `name=` asked for.
 `stopReason.name` is the `WorkInfo.STOP_REASON_*` constant without the prefix: `NOT_STOPPED`
 when the work never stopped, `UNKNOWN` when WorkManager does not know why, as after the app's
 process died. `output` and `progress` are `Data` as JSON: a long beyond 2^53 - 1 and a NaN or an
@@ -923,6 +929,14 @@ lustro --json api GET work/items/<id>
 A `finished` event with `result: "failure"` has the worker's `output`; an `exception` event has the
 stack trace; `prerequisiteFailed` says that the work before it in a chain failed, so look at that
 work. When there are no events, read `state.listeners` and `state.reason` first.
+
+A worker that returns `Result.failure()` without output says why only in its log lines. With the
+Logs plugin registered, read the app's lines of the run, from its `started` event to the event that
+ended it, with a second of margin on each side:
+
+```bash
+lustro api GET logs/text --param from=<started at - 1000> --param to=<finished at + 1000> --param level=W
+```
 
 **Cancel work and clear the finished history**
 

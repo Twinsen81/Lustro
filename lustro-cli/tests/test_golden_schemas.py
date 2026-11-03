@@ -300,7 +300,7 @@ def test_logs_fixture_matches_the_logs_stream_envelope(fixture):
 def test_the_logs_schema_is_valid_and_has_its_own_version():
     logs = wire.load_openapi("logs")
     assert logs["openapi"].startswith("3.1")
-    assert logs["info"]["version"] == "1.0"
+    assert logs["info"]["version"] == "1.1"
     for name, schema in logs["components"]["schemas"].items():
         Draft202012Validator.check_schema(schema)
     # The error envelope is the same everywhere.
@@ -311,7 +311,8 @@ def test_the_logs_routes_are_declared():
     paths = wire.load_openapi("logs")["paths"]
     entries = paths["/api/v1/logs/entries"]["get"]
     params = {p["name"]: p for p in entries["parameters"]}
-    assert set(params) == {"cursor", "level", "tag", "q", "mq", "limit"}
+    assert set(params) == {"cursor", "level", "tag", "q", "mq", "from", "to", "limit"}
+    assert params["from"]["schema"]["type"] == params["to"]["schema"]["type"] == "integer"
     assert params["level"]["schema"]["enum"] == ["V", "D", "I", "W", "E", "F"]
     assert params["tag"]["schema"]["maxLength"] == params["mq"]["schema"]["maxLength"] == 200
     assert params["limit"]["schema"]["maximum"] == 5000
@@ -363,7 +364,7 @@ def test_prefs_files_fixture_matches_the_files_route():
 def test_the_prefs_schema_is_valid_and_has_its_own_version():
     prefs = wire.load_openapi("prefs")
     assert prefs["openapi"].startswith("3.1")
-    assert prefs["info"]["version"] == "1.0"
+    assert prefs["info"]["version"] == "1.1"
     for schema in prefs["components"]["schemas"].values():
         Draft202012Validator.check_schema(schema)
     # The error envelope is the same everywhere.
@@ -557,7 +558,7 @@ WORK_ROUTES = ("items", "items/{id}", "events", "metrics", "cancel", "prune")
 def test_the_work_schema_is_valid_and_has_its_own_version():
     work = wire.load_openapi("work")
     assert work["openapi"].startswith("3.1")
-    assert work["info"]["version"] == "1.0"
+    assert work["info"]["version"] == "1.1"
     for schema in work["components"]["schemas"].values():
         Draft202012Validator.check_schema(schema)
     assert work["components"]["schemas"]["ErrorEnvelope"] == wire.load_openapi()["components"]["schemas"]["ErrorEnvelope"]
@@ -609,11 +610,13 @@ def test_the_golden_work_events_carry_what_each_type_adds():
     assert all("exception" not in e for e in events if e["type"] != "exception")
 
 
-def test_the_golden_work_items_label_a_registered_unique_name_and_keep_periodic_schedules():
+def test_the_golden_work_items_label_every_unique_name_and_keep_periodic_schedules():
     golden = wire.load_golden("work-items.json")
     items = {i["id"]: i for i in golden["items"]}
     named = [i for i in items.values() if "uniqueName" in i]
-    assert [i["uniqueName"] for i in named] == golden["state"]["uniqueNames"]
+    # The tab reads the names from WorkManager's database: a registered one and one that is not.
+    assert [i["uniqueName"] for i in named] == ["sync", "cleanup"]
+    assert golden["state"]["uniqueNames"] == ["sync"]
     periodic = [i for i in items.values() if "periodicity" in i]
     assert periodic and all("nextScheduleTimeMillis" in i for i in periodic)
     # Finished work has no next run.

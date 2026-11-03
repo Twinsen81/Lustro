@@ -21,7 +21,7 @@ internal object WorkJson {
     // A JavaScript number holds an integer exactly up to 2^53 - 1.
     private const val MAX_SAFE_INTEGER = 9_007_199_254_740_991L
 
-    /** Appends [info] as a work item. [uniqueName] is the registered unique name that the work belongs to, if any. */
+    /** Appends [info] as a work item. [uniqueName] is the unique name that the work was enqueued with, if any. */
     fun appendItem(out: StringBuilder, info: WorkInfo, uniqueName: String?) {
         out.append("{\"id\":\"").append(info.id.toString()).append('"')
         out.append(",\"workerClass\":")
