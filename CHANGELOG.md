@@ -839,9 +839,25 @@ see [DECISIONS.md](DECISIONS.md).
   same process lost lines. Each buffer has its own `-b`: logcat on API 24
   fails on a comma list (`-b main,system,crash`) with "Unable to open log
   device", and the tab then reads no line. `LogcatReaderTest` checks the
-  arguments. On a physical Android 16 device, the tab can still miss the first
-  lines of the process, from before its logcat starts, with or without this
-  change.
+  arguments. A different loss of the first lines, on a physical Android 16
+  device, has its own entry below.
+- **The Logs tab no longer misses the first lines of the process on a
+  physical Android 16 device.** At almost every cold start of a real-world
+  app, the tab lost its first 6 to 8 lines, from the first 30 to 50 ms, while
+  `adb logcat` had them. When the tab's `logcat` connects to logd while logd
+  has no line of the process yet, logd can start it after lines that logd
+  already has: in a test reader, the lost lines were always the first lines
+  in logd's order, and a `logcat -d` with the same `-T`, run when the first
+  line came, had all of them. Now, when a run of the tab's `logcat` reads its
+  first line, the tab reads the same lines once with `logcat -d`, and adds
+  the ones before that line. Usually there are none, and the dump ends at its
+  first line. On the same device, the real-world app lost no line in 8 cold
+  starts, against 3 of 4 before, and the sample lost none in 6, against 6 of
+  6 with the dump turned off. `LogcatReaderTest` covers the dump, a dump
+  without the run's first line, a resumed run, and `stop()` during the dump.
+  That device also sets `log.tag` to `E` for about a second while an app
+  starts, so the lines below Error of every process in that time never reach
+  logd, and no reader has them; the README says so.
 - **The Logs tab's Fatal chip says what it shows.** Its title said "such as
   a crash", but a Java crash and `Log.wtf()` are logged at level E, and a
   crash that ends the app's process ends the server too. The title now says

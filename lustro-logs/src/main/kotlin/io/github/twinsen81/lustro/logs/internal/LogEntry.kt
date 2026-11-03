@@ -1,7 +1,7 @@
 package io.github.twinsen81.lustro.logs.internal
 
 /** One line of `logcat -v threadtime`, parsed. [at] is in epoch milliseconds. */
-internal class LogLine(
+internal data class LogLine(
     val at: Long,
     val pid: Int,
     val tid: Int,

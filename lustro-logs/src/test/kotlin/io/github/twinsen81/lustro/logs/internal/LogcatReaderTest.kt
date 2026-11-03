@@ -85,6 +85,101 @@ class LogcatReaderTest {
     }
 
     @Test
+    fun `the lines that logd has but the run starts after come first, from logcat -d`() {
+        val logcat = FakeLogcat()
+        launcher.add(logcat)
+        // As on a physical Android 16 device: the run that started at the app's launch got its
+        // first lines from "three" on, and a logcat -d with the same -T had the ones before it.
+        val dump =
+            FakeLogcat().emit(
+                "--------- beginning of main",
+                "10-19 14:22:20.000  4321  4330 I App     : one",
+                "10-19 14:22:20.001  4321  4331 D Work    : two",
+                "10-19 14:22:20.002  4321  4330 I App     : three",
+                "10-19 14:22:20.003  4321  4330 I App     : four",
+            ).end()
+        launcher.addDump(dump)
+        reader.start()
+        val run = launcher.nextLaunch()
+
+        logcat.emit(
+            "--------- beginning of main",
+            "10-19 14:22:20.002  4321  4330 I App     : three",
+            "10-19 14:22:20.003  4321  4330 I App     : four",
+        )
+        awaitMessages("one", "two", "three", "four")
+        assertEquals(listOf("logcat", "-d") + run.drop(1), launcher.nextDumpLaunch())
+        assertTrue(dump.destroyed)
+
+        logcat.emit("10-19 14:22:20.004  4321  4330 I App     : five")
+        awaitMessages("one", "two", "three", "four", "five")
+        assertTrue("one dump for each run", launcher.dumpLaunches.isEmpty())
+    }
+
+    @Test
+    fun `a dump without the run's first line adds nothing`() {
+        val logcat = FakeLogcat()
+        launcher.add(logcat)
+        launcher.addDump(FakeLogcat().emit("10-19 14:22:20.000  4321  4330 I App     : one").end())
+        reader.start()
+        launcher.nextLaunch()
+
+        logcat.emit("10-19 14:22:20.002  4321  4330 I App     : three")
+        launcher.nextDumpLaunch()
+        logcat.emit("10-19 14:22:20.003  4321  4330 I App     : four")
+        awaitMessages("three", "four")
+    }
+
+    @Test
+    fun `the dump of a resumed run skips the lines that were read, as the run does`() {
+        val first = FakeLogcat()
+        launcher.add(first)
+        reader.start()
+        launcher.nextLaunch()
+        first.emit(
+            "10-19 14:22:20.000  4321  4330 I App     : one",
+            "10-19 14:22:20.005  4321  4330 I App     : two",
+        )
+        awaitMessages("one", "two")
+        reader.stop()
+
+        val second = FakeLogcat()
+        launcher.add(second)
+        launcher.addDump(
+            FakeLogcat().emit(
+                "10-19 14:22:20.000  4321  4330 I App     : one",
+                "10-19 14:22:20.005  4321  4330 I App     : two",
+                "10-19 14:22:20.006  4321  4330 I App     : missed",
+                "10-19 14:22:20.007  4321  4330 I App     : three",
+            ).end(),
+        )
+        reader.start()
+        assertEquals("1792419740.005", launcher.nextLaunch().last())
+        second.emit(
+            "10-19 14:22:20.005  4321  4330 I App     : two",
+            "10-19 14:22:20.007  4321  4330 I App     : three",
+        )
+        awaitMessages("one", "two", "missed", "three")
+    }
+
+    @Test
+    fun `stop ends a dump that is still running`() {
+        val logcat = FakeLogcat()
+        launcher.add(logcat)
+        val dump = FakeLogcat().emit("10-19 14:22:20.000  4321  4330 I App     : one")
+        launcher.addDump(dump)
+        reader.start()
+        launcher.nextLaunch()
+
+        logcat.emit("10-19 14:22:20.002  4321  4330 I App     : three")
+        launcher.nextDumpLaunch()
+        reader.stop()
+        assertTrue(dump.destroyed)
+        assertTrue(logcat.destroyed)
+        assertTrue(Thread.getAllStackTraces().keys.none { it.name == "lustro-logcat" && it.isAlive })
+    }
+
+    @Test
     fun `a logcat that rejects the time of -T is run without it`() {
         launcher.add(FakeLogcat().emit("-T \"1792419680.010\" not in time format").end())
         val second = FakeLogcat()

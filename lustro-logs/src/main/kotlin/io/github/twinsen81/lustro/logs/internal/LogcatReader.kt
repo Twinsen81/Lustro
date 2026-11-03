@@ -20,7 +20,18 @@ import java.util.Locale
  * [stop] and [start], goes on from the newest line read, and skips the lines at
  * that time that it already read. Each run passes its start to logcat with
  * `-T`, and also skips the older lines itself: logcat on API 24 accepts `-T`
- * with a time but prints its whole buffer. When logcat ends, the reader starts
+ * with a time but prints its whole buffer.
+ *
+ * When a run reads its first line, it first reads the same lines once with
+ * `logcat -d`, and adds the lines that come before that first line. A reader
+ * that connects to logd while logd has no line of the process yet can start
+ * after lines that logd already has: on a physical Android 16 device, the
+ * reader that the app started at its launch lost its first 6 to 21 lines,
+ * while a `logcat -d` with the same `-T`, run after it, had them. Usually the
+ * first line of the dump is the first line of the run, and the dump adds
+ * nothing.
+ *
+ * When logcat ends, the reader starts
  * it again after [restartDelayMs]. After [MAX_RESTARTS] restarts in a row with
  * no line, it gives up and its [status] is [Status.FAILED]; the buffer keeps
  * what it has.
@@ -109,9 +120,11 @@ internal class LogcatReader(
         }
     }
 
-    private fun arguments(since: Long): List<String> {
+    private fun arguments(since: Long, dump: Boolean = false): List<String> {
         // UTC, so that a change of the device's time zone can't shift the times it parses.
-        val arguments = listOf("logcat") + BUFFERS.flatMap { listOf("-b", it) } + listOf("-v", "threadtime", "-v", "UTC", "--pid=$pid")
+        val arguments =
+            listOf("logcat") + (if (dump) listOf("-d") else emptyList()) + BUFFERS.flatMap { listOf("-b", it) } +
+                listOf("-v", "threadtime", "-v", "UTC", "--pid=$pid")
         if (!passSince) return arguments
         // Seconds since the epoch: unlike MM-dd, it has no year and no time zone to get wrong.
         return arguments + listOf("-T", String.format(Locale.US, "%d.%03d", since / MILLIS_PER_SECOND, since % MILLIS_PER_SECOND))
@@ -124,9 +137,13 @@ internal class LogcatReader(
         @Volatile
         private var process: Process? = null
 
+        @Volatile
+        private var dump: Process? = null
+
         fun end() {
             active = false
             process?.destroy()
+            dump?.destroy()
         }
 
         // Nothing may leave this thread: on Android, an uncaught throwable, an Error
@@ -175,8 +192,11 @@ internal class LogcatReader(
             // lines at that time that the last run read.
             val resumed = resumeAt >= 0
             val since = if (resumed) resumeAt else processStartMs()
-            var skip = if (resumed) linesAtResume else 0
+            val skipAtSince = if (resumed) linesAtResume else 0
+            var skip = skipAtSince
             var atStart = true
+            // Without -T, logd starts the run at its oldest line, and the run misses none.
+            val withSince = passSince
             val started =
                 try {
                     launch(arguments(since))
@@ -214,18 +234,14 @@ internal class LogcatReader(
                                 continue
                             }
                             atStart = false
-                        }
-                        if (line.at == resumeAt) {
-                            linesAtResume++
-                        } else {
-                            resumeAt = line.at
-                            linesAtResume = 1
+                            if (withSince) addMissedBefore(line, since, skipAtSince)
+                            if (!active) break
                         }
                         if (!readAny) {
                             readAny = true
                             report(Status.RUNNING, newError = null)
                         }
-                        buffer.append(line)
+                        add(line)
                     }
                 }
             } catch (e: IOException) {
@@ -241,6 +257,62 @@ internal class LogcatReader(
                 if (passSince && lastOther?.contains(TIME_FORMAT_ERROR) == true) passSince = false
             }
             return readAny
+        }
+
+        // Reads the run's lines once with logcat -d, and adds the ones before [first], the
+        // run's first line. When the dump can't run or doesn't have [first], it adds none:
+        // without [first], it can't tell which of its lines the run reads too.
+        private fun addMissedBefore(first: LogLine, since: Long, skipAtSince: Int) {
+            val started =
+                try {
+                    launch(arguments(since, dump = true))
+                } catch (_: IOException) {
+                    return
+                } catch (_: SecurityException) {
+                    return
+                }
+            dump = started
+            if (!active) {
+                started.destroy()
+                return
+            }
+            val missed = ArrayList<LogLine>()
+            var skip = skipAtSince
+            var found = false
+            try {
+                started.inputStream.use { input ->
+                    val lines = LogcatLines(input)
+                    while (active && lines.next()) {
+                        val line = parser.parse(lines.line, lines.length) ?: continue
+                        if (line.at < since) continue
+                        if (line.at == since && skip > 0) {
+                            skip--
+                            continue
+                        }
+                        if (line == first) {
+                            found = true
+                            break
+                        }
+                        missed += line
+                    }
+                }
+            } catch (_: IOException) {
+                // As for the run: destroy() closes the stream under the read.
+            } finally {
+                started.destroy()
+                dump = null
+            }
+            if (found && active) missed.forEach(::add)
+        }
+
+        private fun add(line: LogLine) {
+            if (line.at == resumeAt) {
+                linesAtResume++
+            } else {
+                resumeAt = line.at
+                linesAtResume = 1
+            }
+            buffer.append(line)
         }
     }
 
