@@ -73,30 +73,17 @@ internal class FakeLogcat : Process() {
     }
 }
 
-/**
- * Hands out [FakeLogcat]s in order, and records the arguments of each launch. A
- * `logcat -d` gets the next of [addDump], or by default a dump with no line.
- */
+/** Hands out [FakeLogcat]s in order, and records the arguments of each launch. */
 internal class FakeLauncher(vararg processes: FakeLogcat) : (List<String>) -> Process {
     private val queue = LinkedBlockingQueue(processes.toList())
-    private val dumpQueue = LinkedBlockingQueue<FakeLogcat>()
     val launches = LinkedBlockingQueue<List<String>>()
-    val dumpLaunches = LinkedBlockingQueue<List<String>>()
 
     fun add(process: FakeLogcat) = queue.put(process)
 
-    fun addDump(process: FakeLogcat) = dumpQueue.put(process)
-
     override fun invoke(arguments: List<String>): Process {
-        if ("-d" in arguments) {
-            dumpLaunches.put(arguments)
-            return dumpQueue.poll() ?: FakeLogcat().end()
-        }
         launches.put(arguments)
         return queue.poll() ?: FakeLogcat().emit("logcat: no more fakes").end()
     }
 
     fun nextLaunch(): List<String> = launches.poll(5, TimeUnit.SECONDS) ?: throw AssertionError("logcat was not launched")
-
-    fun nextDumpLaunch(): List<String> = dumpLaunches.poll(5, TimeUnit.SECONDS) ?: throw AssertionError("logcat -d was not launched")
 }

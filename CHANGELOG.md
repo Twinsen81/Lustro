@@ -839,25 +839,31 @@ see [DECISIONS.md](DECISIONS.md).
   same process lost lines. Each buffer has its own `-b`: logcat on API 24
   fails on a comma list (`-b main,system,crash`) with "Unable to open log
   device", and the tab then reads no line. `LogcatReaderTest` checks the
-  arguments. A different loss of the first lines, on a physical Android 16
-  device, has its own entry below.
-- **The Logs tab no longer misses the first lines of the process on a
-  physical Android 16 device.** At almost every cold start of a real-world
-  app, the tab lost its first 6 to 8 lines, from the first 30 to 50 ms, while
-  `adb logcat` had them. When the tab's `logcat` connects to logd while logd
-  has no line of the process yet, logd can start it after lines that logd
-  already has: in a test reader, the lost lines were always the first lines
-  in logd's order, and a `logcat -d` with the same `-T`, run when the first
-  line came, had all of them. Now, when a run of the tab's `logcat` reads its
-  first line, the tab reads the same lines once with `logcat -d`, and adds
-  the ones before that line. Usually there are none, and the dump ends at its
-  first line. On the same device, the real-world app lost no line in 8 cold
-  starts, against 3 of 4 before, and the sample lost none in 6, against 6 of
-  6 with the dump turned off. `LogcatReaderTest` covers the dump, a dump
-  without the run's first line, a resumed run, and `stop()` during the dump.
-  That device also sets `log.tag` to `E` for about a second while an app
-  starts, so the lines below Error of every process in that time never reach
-  logd, and no reader has them; the README says so.
+  arguments. A loss of the first lines that this change did not fix has its
+  own entry below.
+- **The Logs tab no longer loses the first lines of the process when its
+  logcat connects before logd has a line of the app.** On a physical Android
+  16 device, the tab lost the first 6 to 8 lines of a real-world app at
+  almost every cold start, while `adb logcat` had them. The tab passed its
+  start time to logcat with `-T`, and logd can skip the lines of a `-T`
+  reader that connects while logd has no line of its process yet. In a test
+  in the sample, from API 33 to 37, on emulators and physical devices, such a
+  reader lost up to all of the 300 lines that the app wrote in the next
+  1.5 s, and the same reader without `-T` lost none; on API 28 and 30 neither
+  lost a line. The tab now passes no `-T`: each run gets every line of the
+  pid that logd still has, and skips the older ones itself, as it already did
+  for API 24. A run after a restart, or after `stop()` and `start()`, gets
+  those lines again and skips them up to the newest line read. The fallback
+  for a logcat that rejects the time of `-T` is gone with it. On the Android
+  16 device, the real-world app lost no line in 8 cold starts, against 3 of 4
+  before, and the sample none in 6, against 6 of 6. On API 33 and 36
+  emulators, with `log.tag` set to `E` for the first second of each start,
+  the sample from `main` lost 1 or 2 lines in 9 of 10 starts, and with this
+  change none in 10. After the tab's logcat was ended and started again, the
+  tab still matched `adb logcat` line for line. That device also sets
+  `log.tag` to `E` for about a second while an app starts, so the lines below
+  Error of every process in that time never reach logd, and no reader has
+  them; the README says so.
 - **The Logs tab's Fatal chip says what it shows.** Its title said "such as
   a crash", but a Java crash and `Log.wtf()` are logged at level E, and a
   crash that ends the app's process ends the server too. The title now says

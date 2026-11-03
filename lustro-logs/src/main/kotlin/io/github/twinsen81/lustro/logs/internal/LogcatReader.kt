@@ -3,7 +3,6 @@ package io.github.twinsen81.lustro.logs.internal
 import android.os.SystemClock
 import android.util.Log
 import java.io.IOException
-import java.util.Locale
 
 /**
  * Runs `logcat -b main -b system -b crash -v threadtime -v UTC --pid=<pid>` on
@@ -15,21 +14,19 @@ import java.util.Locale
  * has its own `-b`: logcat on API 24 takes one name for each `-b`, and fails on
  * a comma list with "Unable to open log device 'main,system,crash'".
  *
- * The first run reads from [processStartMs], so the buffer also gets the lines
- * the app wrote before the tab started. A later run, after a failure or after
- * [stop] and [start], goes on from the newest line read, and skips the lines at
- * that time that it already read. Each run passes its start to logcat with
- * `-T`, and also skips the older lines itself: logcat on API 24 accepts `-T`
- * with a time but prints its whole buffer.
+ * Each run gets every line of the pid that logd still has, and skips the older
+ * ones itself. The first run skips the lines from before [processStartMs], so
+ * the buffer also gets the lines the app wrote before the tab started, and none
+ * of an earlier process that had the same pid. A later run, after a failure or
+ * after [stop] and [start], skips the lines up to the newest line read, and the
+ * lines at that time that it already read.
  *
- * When a run reads its first line, it first reads the same lines once with
- * `logcat -d`, and adds the lines that come before that first line. A reader
- * that connects to logd while logd has no line of the process yet can start
- * after lines that logd already has: on a physical Android 16 device, the
- * reader that the app started at its launch lost its first 6 to 21 lines,
- * while a `logcat -d` with the same `-T`, run after it, had them. Usually the
- * first line of the dump is the first line of the run, and the dump adds
- * nothing.
+ * The runs pass no start time with `-T`. logd can skip the lines of a `-T`
+ * reader that connects while logd has no line of its process yet: from API 33
+ * to 37, on emulators and physical devices, such a reader lost up to all of the
+ * 300 lines that a test app wrote in the next 1.5 s, while the same reader
+ * without `-T` lost none. An app has no line in logd then when it writes none
+ * before the tab starts, or when the device drops its lines during its launch.
  *
  * When logcat ends, the reader starts it again after [restartDelayMs]. After
  * [MAX_RESTARTS] restarts in a row with no line, it gives up and its [status]
@@ -78,10 +75,6 @@ internal class LogcatReader(
     /** The time of the newest line read, also while the buffer is paused, or -1 before the first. */
     val newestLineAt: Long get() = resumeAt
 
-    // False once logcat rejected the time of -T: the runs then read without it.
-    @Volatile
-    private var passSince = true
-
     fun start() {
         synchronized(lock) {
             if (session != null) return
@@ -119,15 +112,9 @@ internal class LogcatReader(
         }
     }
 
-    private fun arguments(since: Long, dump: Boolean = false): List<String> {
-        // UTC, so that a change of the device's time zone can't shift the times it parses.
-        val arguments =
-            listOf("logcat") + (if (dump) listOf("-d") else emptyList()) + BUFFERS.flatMap { listOf("-b", it) } +
-                listOf("-v", "threadtime", "-v", "UTC", "--pid=$pid")
-        if (!passSince) return arguments
-        // Seconds since the epoch: unlike MM-dd, it has no year and no time zone to get wrong.
-        return arguments + listOf("-T", String.format(Locale.US, "%d.%03d", since / MILLIS_PER_SECOND, since % MILLIS_PER_SECOND))
-    }
+    // UTC, so that a change of the device's time zone can't shift the times it parses.
+    private val arguments: List<String> =
+        listOf("logcat") + BUFFERS.flatMap { listOf("-b", it) } + listOf("-v", "threadtime", "-v", "UTC", "--pid=$pid")
 
     private inner class Session : Runnable {
         @Volatile
@@ -136,13 +123,9 @@ internal class LogcatReader(
         @Volatile
         private var process: Process? = null
 
-        @Volatile
-        private var dump: Process? = null
-
         fun end() {
             active = false
             process?.destroy()
-            dump?.destroy()
         }
 
         // Nothing may leave this thread: on Android, an uncaught throwable, an Error
@@ -191,14 +174,11 @@ internal class LogcatReader(
             // lines at that time that the last run read.
             val resumed = resumeAt >= 0
             val since = if (resumed) resumeAt else processStartMs()
-            val skipAtSince = if (resumed) linesAtResume else 0
-            var skip = skipAtSince
+            var skip = if (resumed) linesAtResume else 0
             var atStart = true
-            // Without -T, logd starts the run at its oldest line, and the run misses none.
-            val withSince = passSince
             val started =
                 try {
-                    launch(arguments(since))
+                    launch(arguments)
                 } catch (e: IOException) {
                     report(status, "logcat could not start: ${e.message}")
                     return false
@@ -233,14 +213,18 @@ internal class LogcatReader(
                                 continue
                             }
                             atStart = false
-                            if (withSince) addMissedBefore(line, since, skipAtSince)
-                            if (!active) break
+                        }
+                        if (line.at == resumeAt) {
+                            linesAtResume++
+                        } else {
+                            resumeAt = line.at
+                            linesAtResume = 1
                         }
                         if (!readAny) {
                             readAny = true
                             report(Status.RUNNING, newError = null)
                         }
-                        add(line)
+                        buffer.append(line)
                     }
                 }
             } catch (e: IOException) {
@@ -252,69 +236,8 @@ internal class LogcatReader(
             }
             if (active && !readAny) {
                 report(status, lastOther?.let { "logcat ended: $it" } ?: "logcat ended without a line")
-                // As "-T "1792419740.010" not in time format" from a logcat that has no such format.
-                if (passSince && lastOther?.contains(TIME_FORMAT_ERROR) == true) passSince = false
             }
             return readAny
-        }
-
-        // Reads the run's lines once with logcat -d, and adds the ones before [first], the
-        // run's first line. When the dump can't run or doesn't have [first], it adds none:
-        // without [first], it can't tell which of its lines the run reads too. The dump
-        // stops at the first line equal to [first]: when an equal line from the same
-        // millisecond and thread is among the missed lines, the lines from that one on
-        // stay missed, but none comes twice.
-        private fun addMissedBefore(first: LogLine, since: Long, skipAtSince: Int) {
-            val started =
-                try {
-                    launch(arguments(since, dump = true))
-                } catch (_: IOException) {
-                    return
-                } catch (_: SecurityException) {
-                    return
-                }
-            dump = started
-            if (!active) {
-                started.destroy()
-                return
-            }
-            val missed = ArrayList<LogLine>()
-            var skip = skipAtSince
-            var found = false
-            try {
-                started.inputStream.use { input ->
-                    val lines = LogcatLines(input)
-                    while (active && lines.next()) {
-                        val line = parser.parse(lines.line, lines.length) ?: continue
-                        if (line.at < since) continue
-                        if (line.at == since && skip > 0) {
-                            skip--
-                            continue
-                        }
-                        if (line == first) {
-                            found = true
-                            break
-                        }
-                        missed += line
-                    }
-                }
-            } catch (_: IOException) {
-                // As for the run: destroy() closes the stream under the read.
-            } finally {
-                started.destroy()
-                dump = null
-            }
-            if (found && active) missed.forEach(::add)
-        }
-
-        private fun add(line: LogLine) {
-            if (line.at == resumeAt) {
-                linesAtResume++
-            } else {
-                resumeAt = line.at
-                linesAtResume = 1
-            }
-            buffer.append(line)
         }
     }
 
@@ -329,8 +252,6 @@ internal class LogcatReader(
         // The buffers that an app writes to, the default set before Android 16.
         private val BUFFERS = listOf("main", "system", "crash")
         private const val BANNER_PREFIX = "--------- "
-        private const val TIME_FORMAT_ERROR = "time format"
-        private const val MILLIS_PER_SECOND = 1000L
 
         // The process start has no line of this process before it. A second earlier
         // allows for the error of mapping the elapsed-time clock to wall time.
