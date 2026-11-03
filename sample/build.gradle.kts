@@ -5,6 +5,8 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.detekt)
+    // Room's code generation, for the sample's Room database.
+    alias(libs.plugins.ksp)
 }
 
 // :sample is the public integration target, the cross-variant parity check, AND
@@ -103,6 +105,10 @@ dependencies {
     // The demo notes database is opened through the SupportSQLiteOpenHelper that Room
     // uses, so the SQLite tab reads it as it reads a Room database.
     implementation(libs.sqlite.framework)
+    // A Room database whose Flow the SQLite screen shows: the SQLite tab's onWrite
+    // hook refreshes Room's InvalidationTracker after each write of the tab.
+    implementation(libs.room.runtime)
+    ksp(libs.room.compiler)
     // The demo work of the WorkManager tab, with the history that work-analytics keeps.
     implementation(libs.work.runtime)
     implementation(libs.work.analytics)

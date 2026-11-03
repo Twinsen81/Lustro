@@ -5,7 +5,7 @@
   "internal": false,
   "hasRowId": true,
   "rowCount": 4,
-  "sql": "CREATE TABLE notes (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, body TEXT, attachment BLOB, score REAL, created_at INTEGER NOT NULL, folder_id INTEGER REFERENCES folders(id) ON DELETE CASCADE)",
+  "sql": "CREATE TABLE notes (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, body TEXT, attachment BLOB, score REAL, created_at INTEGER NOT NULL, folder_id INTEGER REFERENCES folders(id) ON DELETE CASCADE, share_token TEXT)",
   "entity": "NoteEntity",
   "purpose": "A note that the user wrote, in a folder.",
   "columns": [
@@ -15,7 +15,8 @@
       "notNull": false,
       "defaultValue": null,
       "primaryKey": 1,
-      "generated": false
+      "generated": false,
+      "masked": false
     },
     {
       "name": "title",
@@ -23,7 +24,8 @@
       "notNull": true,
       "defaultValue": null,
       "primaryKey": 0,
-      "generated": false
+      "generated": false,
+      "masked": false
     },
     {
       "name": "body",
@@ -31,7 +33,8 @@
       "notNull": false,
       "defaultValue": null,
       "primaryKey": 0,
-      "generated": false
+      "generated": false,
+      "masked": false
     },
     {
       "name": "attachment",
@@ -39,7 +42,8 @@
       "notNull": false,
       "defaultValue": null,
       "primaryKey": 0,
-      "generated": false
+      "generated": false,
+      "masked": false
     },
     {
       "name": "score",
@@ -47,7 +51,8 @@
       "notNull": false,
       "defaultValue": null,
       "primaryKey": 0,
-      "generated": false
+      "generated": false,
+      "masked": false
     },
     {
       "name": "created_at",
@@ -55,7 +60,8 @@
       "notNull": true,
       "defaultValue": null,
       "primaryKey": 0,
-      "generated": false
+      "generated": false,
+      "masked": false
     },
     {
       "name": "folder_id",
@@ -63,7 +69,17 @@
       "notNull": false,
       "defaultValue": null,
       "primaryKey": 0,
-      "generated": false
+      "generated": false,
+      "masked": false
+    },
+    {
+      "name": "share_token",
+      "type": "TEXT",
+      "notNull": false,
+      "defaultValue": null,
+      "primaryKey": 0,
+      "generated": false,
+      "masked": true
     }
   ],
   "foreignKeys": [

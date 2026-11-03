@@ -14,6 +14,66 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Added
 
+- **The SQLite tab can tell the app about its writes, so Room's observers see
+  them at once.** An open screen that a DAO's `Flow` filled did not show a row
+  that the tab changed until the app's next write through Room, because
+  Room's `InvalidationTracker` looks for changes after Room's own
+  transactions only. `SqliteDb.support` and `SqliteDb.framework` now take
+  `onWrite`, which the tab calls on the request's thread after each `exec`,
+  `edit`, or `delete` that committed; what it throws is logged, and the write
+  stays committed. For Room, pass
+  `onWrite = { db.invalidationTracker.refreshVersionsAsync() }`, a public
+  method of every Room 2.x release, which Room documents for writes that do
+  not go through it. `lustro-sqlite-noop` takes the same parameter and never
+  calls it. The sample has a Room database, built with KSP, whose tasks its
+  SQLite screen shows through a `Flow`. Verified on an emulator (API 28): with
+  the SQLite screen open, `POST edit` of a task and `POST exec` of an insert
+  showed on the screen within a second.
+- **The SQLite tab has a value policy, which masks token columns by default.**
+  The tab showed every value, so the `accessToken` and `clientSecret` columns
+  of an app's accounts table showed in `GET rows`, in the console, and in
+  `POST query`, while the Preferences tab masked such keys. Each `SqliteDb`
+  factory now takes `valuePolicy`: `SqliteValuePolicy.MASK_SENSITIVE`, the
+  default, as in the Preferences tab, and always for a discovered file, or
+  `VISIBLE`. `MASK_SENSITIVE` leaves out the values of a column whose name
+  looks like it holds a secret, by `SensitiveKeys.isSensitive`, the network
+  redaction's check, except a column named only `key`, the name column of a
+  key-value table such as WorkManager's `Preference`. A masked cell is `{ "type": "text", "masked": true }`,
+  with its storage class only, and the tab never sends its value (`GET rows`
+  does not read it at all); a `NULL` stays `NULL`. `GET rows` masks by the
+  table's column, and its filter does not search a masked column. `POST query` masks by the result's column name,
+  because Android's cursor does not say which table column a result column
+  comes from: `length(access_token)` is masked, but an alias shows the value.
+  The README and SECURITY.md say that the policy keeps secrets off the screen
+  and is not a boundary against a client with the token. `GET databases` has
+  each database's `policy`, and `GET schema` marks each column `masked`. The
+  console shows a masked cell as `masked` with its type, does not search,
+  copy, or edit it, and locks it in the row editor, also when it is `NULL`,
+  so an edit never writes a mask back; a row whose key column is masked can't
+  be named. A registration can make exceptions with `unmasked`, a set of
+  column names: `MASK_SENSITIVE` shows the values of a column with one of
+  these names, matched exactly and in any case, such as an `oauthScopes`
+  column that holds no secret, without `VISIBLE` for the whole database,
+  which also shows `accessToken`. The exceptions apply everywhere the policy
+  does: `GET schema` marks such a column not `masked`, `GET rows` sends and
+  filters its values, the console shows, copies, and edits them, and
+  `POST query` shows a result column of that name, while an expression of it,
+  such as `length(oauthScopes)`, stays masked. `VISIBLE` ignores them, and a
+  discovered file has none. The wire format does not change: the `masked`
+  flags carry the result. `lustro-sqlite-noop` has the same API. The sample's
+  notes database has an accounts table with made-up tokens, and an
+  `oauth_scopes` column that the sample lists in `unmasked`; the database is
+  at schema version 5.
+- **The Preferences tab can show the values of some keys that look secret.**
+  `MASK_SENSITIVE` masked every key that `SensitiveKeys.isSensitive` finds,
+  so a key such as `auth_method`, which holds no secret, showed only with
+  `VISIBLE` for the whole file. `PrefsFile` and `PrefsDataStore` now take
+  `unmasked`, a set of key names, matched exactly and in any case, whose
+  values `MASK_SENSITIVE` shows in `entries`, `entry`, and the responses of
+  `edit`. `VISIBLE` and `KEYS_ONLY` ignore it, so a change of the policy never
+  shows more than the policy says, and a discovered file has no exceptions.
+  The wire format does not change. `lustro-prefs-noop` has the same API. The
+  sample's app state DataStore lists its `auth_method` key.
 - **The WorkManager tab has a console view, so it is in the tab bar.** The list
   polls `GET items` every second, with the state, the worker, the unique name,
   the app's tags, the runs, and the next run of each work, and a ↻ on periodic
@@ -768,6 +828,54 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Fixed
 
+- **The Logs tab no longer loses a block of lines on an Android 16 emulator
+  when its logcat starts.** On an API 36 emulator, 6 of 12 starts lost 1 to 22
+  of the app's lines: the output of the `logcat` process already lacked them.
+  From Android 16 the default buffers include the kernel buffer, and logd can
+  then drop a block of lines for a reader that has just started. The tab now
+  runs `logcat -b main -b system -b crash`, the buffers that an app writes to,
+  which were the default set before. With it, the tab lost no line in 20
+  starts on the same emulator, while readers with the default buffers in the
+  same process lost lines. Each buffer has its own `-b`: logcat on API 24
+  fails on a comma list (`-b main,system,crash`) with "Unable to open log
+  device", and the tab then reads no line. `LogcatReaderTest` checks the
+  arguments. On a physical Android 16 device, the tab can still miss the first
+  lines of the process, from before its logcat starts, with or without this
+  change.
+- **The Logs tab's Fatal chip says what it shows.** Its title said "such as
+  a crash", but a Java crash and `Log.wtf()` are logged at level E, and a
+  crash that ends the app's process ends the server too. The title now says
+  that the chip shows level F (`Log.ASSERT`), and that a crash and
+  `Log.wtf()` are at level E. The filter does not change.
+- **The WorkManager console says what its actions can do, and calls an app
+  with an old WorkManager less often.** With `work_unsupported` (the app's
+  WorkManager is older than 2.12.0), Prune stayed on and opened its dialog,
+  although every route answered `503`, and the list asked `GET items` every
+  second, although the answer changes only with a new build of the app. Prune
+  and the cancel buttons are now off while the routes answer `503`, with the
+  reason as their title, and with `work_unsupported` the list asks again
+  every 30 s. The `503` message names the app's WorkManager version, such as
+  "the app has 2.11.2", read from the version file that work-runtime puts in
+  its jar, when the APK has it. **Cancel unique work** is off, with the
+  reason, when all work of the name in the list has finished, and stays on
+  when other work of the name has not, or when a tag or class filter hides
+  some of it; **Cancel** was already off for finished work. The list column
+  **Runs** is now **Attempts**: WorkManager sets the count of periodic work
+  back to 0 when a period ends, so it showed 0 after a run that succeeded.
+  Its title says so, and the timeline shows "attempt N" instead of "run N",
+  where the end of a periodic run takes the attempt of its start, and an
+  event before the first start shows none. Node tests cover the actions, the
+  banner, and the attempts; a unit test covers the version.
+- **`POST sqlite/exec` refuses a statement that returns rows with a clear
+  error.** A `SELECT` sent to `exec`, also with **Run as write** in the
+  console, got Android's message "unknown error (code 0 SQLITE_OK): Queries
+  can be performed using SQLiteDatabase query or rawQuery methods only", as a
+  `400` with `code: "sqlite_error"`. `exec` now prepares the statement first,
+  and a statement with result columns, such as a `SELECT`, `VALUES`, or a
+  write with `RETURNING`, is a `400` with `code: "statement_refused"`, as for
+  `BEGIN` and `PRAGMA`, whose hint says to read it with `query`. The statement
+  does not run: Android's `execSQL` steps it once before it fails, so a write
+  with `RETURNING` ran and was then rolled back.
 - **A `lustro` command no longer connects to the app on another device.** When
   the selected device had no adb forward to the app, a command connected to
   local port 8080 on the computer. That port can be a forward to another device

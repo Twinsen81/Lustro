@@ -15,6 +15,8 @@ import androidx.datastore.preferences.core.Preferences
  * @property dataStore the instance that the runtime tab reads and edits.
  * @property policy what the runtime tab shows of the values.
  * @property readOnly whether the runtime tab refuses to edit, delete, and clear.
+ * @param unmasked the keys whose values the runtime tab shows under
+ *   [ValuePolicy.MASK_SENSITIVE] although they look like they hold a secret.
  * @throws IllegalArgumentException when [name] is empty or contains `/` or `\`.
  */
 public class PrefsDataStore @JvmOverloads constructor(
@@ -22,7 +24,11 @@ public class PrefsDataStore @JvmOverloads constructor(
     public val dataStore: DataStore<Preferences>,
     public val policy: ValuePolicy = ValuePolicy.MASK_SENSITIVE,
     public val readOnly: Boolean = false,
+    unmasked: Set<String> = emptySet(),
 ) {
+    /** The keys whose values the runtime tab shows under [ValuePolicy.MASK_SENSITIVE], as the app passed them. */
+    public val unmasked: Set<String> = unmasked.toSet()
+
     init {
         require(name.isNotEmpty() && '/' !in name && '\\' !in name) { "name must be a file name, without / or \\: \"$name\"" }
     }

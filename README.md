@@ -601,7 +601,9 @@ val lustro = Lustro.builder(application)
 - **A live tail in the console.** The **Logs** tab follows the newest lines, with a lowest level,
   a tag regex, and a message search, which the app applies to its whole buffer. It can pause,
   fold repeated lines, clear the buffer, copy the lines it shows as text, and show or hide the
-  Time, Level, Tag, and PID / TID columns. A line with JSON in it opens indented from the toolbar
+  Time, Level, Tag, and PID / TID columns. The **Fatal** chip shows the lines at level F
+  (`Log.ASSERT`); a Java crash and `Log.wtf()` are at level E, and a crash that ends the app's
+  process ends the server too, so the tab never shows it. A line with JSON in it opens indented from the toolbar
   that shows on a row after a second.
 - **Routes.** `GET /api/v1/logs/entries` polls the log in the stream envelope, with `level`, `tag`,
   `q`, and `mq` filters; `GET /api/v1/logs/text` exports it as logcat's threadtime text; and
@@ -640,7 +642,7 @@ val lustro = Lustro.builder(application)
                 PrefsFile("settings", settingsPrefs, ValuePolicy.VISIBLE),
                 PrefsFile("session", encryptedPrefs, ValuePolicy.KEYS_ONLY, readOnly = true),
             ),
-            dataStores = listOf(PrefsDataStore("app_state", context.appStateDataStore)),
+            dataStores = listOf(PrefsDataStore("app_state", context.appStateDataStore, unmasked = setOf("auth_method"))),
         ),
     )
     .build()
@@ -649,7 +651,12 @@ val lustro = Lustro.builder(application)
 - **Registered files.** A `PrefsFile` has the file's name, as you pass it to
   `getSharedPreferences`, the instance that the tab reads and edits, a value policy, and a
   `readOnly` flag. The instance can be an `EncryptedSharedPreferences` that decrypts: then the
-  tab shows its plain values, as the policy lets it.
+  tab shows its plain values, as the policy lets it. The default file of
+  `PreferenceManager.getDefaultSharedPreferences(context)` is named `packageName + "_preferences"`.
+  androidx's `PreferenceManager` keeps that name private, so register the file as
+  `PrefsFile(context.packageName + "_preferences", PreferenceManager.getDefaultSharedPreferences(context))`,
+  or get the name from the framework's `android.preference.PreferenceManager.getDefaultSharedPreferencesName(context)`,
+  which is public from API 24 and deprecated from API 29.
 - **Registered data stores.** A `PrefsDataStore` has the store's name, as you pass it to
   `preferencesDataStore`, the app's own `DataStore<Preferences>`, a value policy, and a `readOnly`
   flag. The tab reads and writes through that instance, so the app sees an edit at once. DataStore
@@ -660,7 +667,12 @@ val lustro = Lustro.builder(application)
 - **Value policies.** `VISIBLE` shows every value. `MASK_SENSITIVE`, the default, leaves out the
   value of a key that looks like it holds a secret, such as `auth_token`, `apiKey`, or `password`,
   by the same key check as the Network tab's redaction (`SensitiveKeys.isSensitive`). `KEYS_ONLY`
-  leaves out every value. The keys, the types, and the sizes always show.
+  leaves out every value. The keys, the types, and the sizes always show. `unmasked` on a
+  `PrefsFile` or a `PrefsDataStore` lists the keys whose values `MASK_SENSITIVE` shows although the
+  check finds them sensitive, such as `auth_method`, which holds no secret. A name there matches
+  a key with exactly that name, in any case; it is no pattern. `VISIBLE` and `KEYS_ONLY` ignore
+  it, so a change of the policy never shows more than the policy says, and a discovered file has
+  no exceptions.
 - **Discovered files.** With `discover = true`, the default, the tab also shows the other files in
   the app's `shared_prefs` directory, such as the files of your libraries. It opens each one with
   `getSharedPreferences`, and the platform then keeps it in memory until the process ends. A
@@ -729,8 +741,10 @@ val lustro = Lustro.builder(application)
                     "app",
                     writable = true,
                     tableHints = mapOf("notes" to TableHint("NoteEntity", "A note that the user wrote.")),
+                    onWrite = { appDatabase.invalidationTracker.refreshVersionsAsync() },
+                    unmasked = setOf("oauthScopes"),
                 ) { appDatabase.openHelper.writableDatabase },
-                SqliteDb.file("cache", application.getDatabasePath("cache.db")),
+                SqliteDb.file("cache", application.getDatabasePath("cache.db"), valuePolicy = SqliteValuePolicy.VISIBLE),
             ),
             discoverFrom = application,
         ),
@@ -760,7 +774,9 @@ val lustro = Lustro.builder(application)
   of a file drops the process's POSIX locks on it, and only the SQLite that holds them works
   around that. See [How To Corrupt An SQLite Database File](https://www.sqlite.org/howtocorrupt.html#_posix_advisory_locks_canceled_by_a_separate_thread_doing_close_).
 - **Discovery.** With `discoverFrom = context`, the tab also lists the other database files in the
-  app's `databases` directory, such as those of WorkManager and other libraries, by file name.
+  app's `databases` directory, such as those of your libraries, by file name. It looks in no
+  other directory: WorkManager, for one, keeps `androidx.work.workdb` in `noBackupFilesDir`, so
+  register that file with `SqliteDb.file`, as the [WorkManager](#workmanager) section shows.
   It lists the directory on each request, so it finds a file that the app creates later, and
   leaves out a file that a registration stands for, SQLite's journal, WAL, and lock files, and a
   file that is not a SQLite database. It asks the platform's SQLite about a file, and never
@@ -771,6 +787,30 @@ val lustro = Lustro.builder(application)
   and one line on what a row is, for an agent that reads the database without your code.
   `writable`, `false` by default, says whether a client may change the database through the tab.
   A file is never writable.
+- **Value policies.** `valuePolicy` is `SqliteValuePolicy.MASK_SENSITIVE` by default, as in the
+  Preferences tab: the tab leaves out the values of a column whose name looks like it holds a
+  secret, such as `access_token`, `clientSecret`, or `password`, by the same name check as the
+  Network tab's redaction (`SensitiveKeys.isSensitive`). `VISIBLE` shows every value. A
+  discovered file is `MASK_SENSITIVE`. A masked cell has only its storage class,
+  `{ "type": "text", "masked": true }`, and the tab never sends its value (`GET rows` does not
+  read it at all); a `NULL` stays `NULL`. `GET rows` masks by the table's column, and its filter
+  does not search a masked column.
+  `POST query` masks by the result's column name, because Android does not say which table column
+  a result column comes from: `length(access_token)` is masked by its name, but an alias, such as
+  `SELECT access_token AS t`, shows the value. So the policy keeps secrets off the screen and out
+  of an agent's output, but it does not stop a client that has the token: to keep a database's
+  values from every client, do not register it. The console does not edit a masked column.
+  A column named only `key`, as in a key-value table such as WorkManager's `Preference`, is not
+  masked, so that the rows show their names. `GET schema` always shows a column's default value
+  and the `CREATE` statement, also of a masked column.
+- **Exceptions to the mask.** `unmasked` on each `SqliteDb` factory lists the columns whose values
+  `MASK_SENSITIVE` shows although their names look like they hold a secret, such as an
+  `oauthScopes` column, which has `auth` in its name. A name there matches a column with exactly
+  that name, in any case; it is no pattern. Such a column is not `masked` in `GET schema`, `GET rows`
+  sends and filters its values, the console shows, copies, and edits them, and `POST query` shows
+  a result column of that name. An expression of the column, such as `length(oauthScopes)`, has
+  another name, so it stays masked. `VISIBLE` shows every value anyway, and a discovered file has no
+  exceptions.
 - **Browsing runs only the SQL that the tab builds.** A client names a database, a table, and a
   column, and the tab checks each name against the database's schema before it puts it in a
   statement, as a quoted identifier. A filter value is a bound parameter. A page of rows reads
@@ -791,11 +831,29 @@ val lustro = Lustro.builder(application)
 - **Writes are opt-in for each database.** `POST exec` runs a statement that writes, and
   `POST edit` and `POST delete` change or delete one row by its rowid or primary key, through the
   app's handle, in a transaction of their own, and only on a `writable` database: any other
-  answers 403. Both `query` and `exec` refuse the statements that would leave a transaction or a
+  answers 403. `exec` refuses a statement that returns rows, such as a `SELECT`, before it runs:
+  read it with `query`. Both `query` and `exec` refuse the statements that would leave a transaction or a
   setting on the app's connection (`BEGIN`, `SAVEPOINT`, and the other transaction statements,
   `ATTACH`, `DETACH`, `VACUUM`, and, in `exec`, every `PRAGMA`), and `query` refuses the pragmas
-  that set a value for the whole process, such as `hard_heap_limit`. Room's observers see a change
-  that the tab makes at the app's next write through Room.
+  that set a value for the whole process, such as `hard_heap_limit`.
+- **Room's observers.** Room's `InvalidationTracker` looks for changes after Room's own
+  transactions only, so an open screen that a DAO's `Flow` or `LiveData` fills does not show a
+  change that the tab writes until the app's next write through Room. `SqliteDb.support` and
+  `SqliteDb.framework` take `onWrite`, which the tab calls after each `exec`, `edit`, or
+  `delete` that committed. For Room, pass Room's public refresh call, which is there for writes
+  that do not go through Room:
+
+  ```kotlin
+  SqliteDb.support(
+      "app",
+      writable = true,
+      onWrite = { appDatabase.invalidationTracker.refreshVersionsAsync() },
+  ) { appDatabase.openHelper.writableDatabase }
+  ```
+
+  The sample registers its Room database so, and its SQLite screen shows a Room `Flow` that
+  changes at once when the console edits a row. What `onWrite` throws is logged, and the write
+  stays committed.
 - **Routes.** `GET /api/v1/sqlite/databases` lists the databases with their source, file, size,
   and schema version (`PRAGMA user_version`). `GET tables?db=` lists the tables and views, with
   the row count of each table, and flags the internal ones (`sqlite_*`, `android_metadata`,
@@ -816,8 +874,9 @@ val lustro = Lustro.builder(application)
   **Prev** and **Next** page through them, a filter finds the rows in which a cell contains a
   text, a click on a header sorts ascending, descending, then not, and a right-click or the
   **Columns** menu hides a column. Your browser keeps the hidden columns and the widths for each
-  table. A cut text opens whole, read with `query`. A click on a row opens it, to edit, set a
-  column to `NULL`, or delete the row in a writable database, and to read and copy in any other.
+  table. A cut text opens whole, read with `query`. A masked cell shows `masked` and its type. A
+  click on a row opens it, to edit, set a column to `NULL`, or delete the row in a writable
+  database, and to read and copy in any other; a masked column is locked there.
   **Auto refresh** reads the page again every 2 s. The **SQL** view runs a statement with
   `query`; **Run as write**, only for a writable database, sends it to `exec`. A refused
   statement shows the route's error.
@@ -921,7 +980,10 @@ fun start(app: Application) {
   default initializer is still in the manifest), or `unsupported` when your WorkManager has
   listener methods that this version of Lustro does not forward. `state.reason` says what to
   change. Without WorkManager 2.12.0 or newer, every route answers `503` with code
-  `work_unsupported`, and `configure()` returns the builder as it is.
+  `work_unsupported`, and `configure()` returns the builder as it is. The message names the
+  version that the app has when the APK has WorkManager's version file,
+  `META-INF/androidx.work_work-runtime.version`; a packaging exclude of `META-INF/*.version`
+  leaves it out.
 - **Routes.** `GET /api/v1/work/items` polls the work in the cursor envelope, with `state`, `tag`,
   `class`, and `name` filters; `GET items/{id}` gives one work request with its events and history;
   `GET events` polls the events in the stream envelope, with `id`, `class`, and `type` filters;
@@ -931,15 +993,21 @@ fun start(app: Application) {
   See [docs/AGENTS.md](docs/AGENTS.md#workmanager-tab-operations) and
   [`work.openapi.json`](lustro-work/src/main/assets/lustro/work.openapi.json).
 - **In the console.** The **WorkManager** tab lists the work with its state, worker, unique name,
-  tags, runs, and next run. The state chips show the count of each state and filter the list by
+  tags, attempts, and next run. For periodic work, the attempts are those of the current period:
+  WorkManager sets the count back to 0 when a period ends, so it is 0 after a run that finished. The state chips show the count of each state and filter the list by
   it, and the tag, worker class, and unique name fields go to the route. A click on a work opens
   it: **Details** has its id, class, tags, constraints, periodicity, initial delay, next run,
   attempts, generation, last stop reason, output, and progress; **Timeline** has the events of its
   runs, with the result, the output, the stop reason, and a worker's exception with its stack
   trace; and **History**, with work-analytics, has its periods. **Cancel**, **Cancel unique work**,
   and **Prune** ask first, and with work-analytics the cancel dialogs say that a cancel of running
-  work can end the app's process (see above). When the listeners are not installed, a banner says
-  why, and how to fix it.
+  work can end the app's process (see above). **Cancel** is off for finished work, and **Cancel
+  unique work** when all work of the name in the list has finished, each with the reason as its
+  title; with a tag or class filter, the list can't tell, and the route answers
+  `cancelled: 0`. When the listeners are not installed, a banner says why, and how to fix it.
+  While the routes answer `503`, the actions are off; with `work_unsupported`, the banner shows
+  the app's WorkManager version when it is known, and the list asks again every 30 s instead of
+  every second.
 
   ![The WorkManager tab: the sample's demo work, and the timeline of the worker that throws, with its stack trace](docs/images/work-tab.png)
 - **Not shown:** the chain graph and a work's input data, which WorkManager's public API does

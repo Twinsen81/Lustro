@@ -67,7 +67,7 @@ internal object LogsView {
                     <div class="dc-menu-scrim" id="logs-menu-scrim" data-action="closeMenus" hidden></div>
                 </div>
                 <div class="logs-bar__row">
-                    <button type="button" class="dc-chip" id="logs-fatal" data-action="toggleFatal" aria-pressed="false" title="Show only fatal lines, such as a crash. Click again for the level before."><span class="dc-chip__dot" style="--c: var(--lvl-f)"></span>Fatal</button>
+                    <button type="button" class="dc-chip" id="logs-fatal" data-action="toggleFatal" aria-pressed="false" title="Show only the lines at level F, the assert level of Log.println(Log.ASSERT, ...) and of a native fatal message that does not end the process. A Java crash and Log.wtf() are at level E: choose Error to see them. The tab can't show a crash that ends its own process, which ends the server too. Click again for the level before."><span class="dc-chip__dot" style="--c: var(--lvl-f)"></span>Fatal</button>
                     <span class="logs-paused" id="logs-paused" hidden>Stream paused</span>
                     <span class="logs-count" id="logs-count">0 lines</span>
                 </div>

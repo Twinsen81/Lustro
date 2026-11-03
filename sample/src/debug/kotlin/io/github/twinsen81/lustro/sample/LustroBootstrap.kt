@@ -19,6 +19,7 @@ import io.github.twinsen81.lustro.prefs.PrefsFile
 import io.github.twinsen81.lustro.prefs.ValuePolicy
 import io.github.twinsen81.lustro.sqlite.SqliteDb
 import io.github.twinsen81.lustro.sqlite.SqliteDebugTab
+import io.github.twinsen81.lustro.sqlite.SqliteValuePolicy
 import io.github.twinsen81.lustro.sqlite.TableHint
 import io.github.twinsen81.lustro.work.WorkDebugTab
 import okhttp3.Interceptor
@@ -121,9 +122,10 @@ public object LustroBootstrap {
                 .addTab(LogsDebugTab.create())
                 // The app's SharedPreferences and DataStores, from :lustro-prefs: one file
                 // with every value visible, one with keys only and read-only, one
-                // DataStore with its sensitive values masked, and the other files and
-                // stores on disk, which the tab finds and keeps read-only. The release
-                // bootstrap registers the no-op half from :lustro-prefs-noop.
+                // DataStore with its sensitive values masked but for auth_method, which
+                // holds no secret, and the other files and stores on disk, which the tab
+                // finds and keeps read-only. The release bootstrap registers the no-op
+                // half from :lustro-prefs-noop.
                 .addTab(
                     PrefsDebugTab.create(
                         app,
@@ -137,14 +139,16 @@ public object LustroBootstrap {
                                     readOnly = true,
                                 ),
                             ),
-                        dataStores = listOf(PrefsDataStore(DemoDataStore.APP_STATE, DemoDataStore.appState(app))),
+                        dataStores = listOf(PrefsDataStore(DemoDataStore.APP_STATE, DemoDataStore.appState(app), unmasked = setOf("auth_method"))),
                     ),
                 )
                 // The app's SQLite databases, from :lustro-sqlite: the notes database
-                // through the app's open handle, writable, with hints; the catalog as a
-                // file that the tab opens read-only; and, with discovery, the other
-                // database files on disk. The release bootstrap registers the no-op half
-                // from :lustro-sqlite-noop.
+                // through the app's open handle, writable, with hints, and with the default
+                // value policy, which masks the token columns of its accounts table, and an
+                // exception for its oauth_scopes column, which holds no secret; the
+                // catalog as a file that the tab opens read-only, with every value shown;
+                // and, with discovery, the other database files on disk. The release
+                // bootstrap registers the no-op half from :lustro-sqlite-noop.
                 .addTab(sqliteTab(app))
                 // The app's WorkManager work, from :lustro-work, with the events that its
                 // listeners record and the history of work-analytics. The app's
@@ -266,8 +270,17 @@ public object LustroBootstrap {
                         DemoSqlite.NOTES,
                         writable = true,
                         tableHints = DemoSqlite.NOTES_HINTS.mapValues { (_, hint) -> TableHint(hint.first, hint.second) },
+                        // "auth" is in the name, but the scopes are no secret.
+                        unmasked = setOf("oauth_scopes"),
                     ) { DemoSqlite.notes(app).writableDatabase },
-                    SqliteDb.file(DemoSqlite.CATALOG, app.getDatabasePath(DemoSqlite.CATALOG_FILE)),
+                    SqliteDb.file(DemoSqlite.CATALOG, app.getDatabasePath(DemoSqlite.CATALOG_FILE), valuePolicy = SqliteValuePolicy.VISIBLE),
+                    SqliteDb.support(
+                        DemoRoom.NAME,
+                        writable = true,
+                        // Room's observers look for changes after Room's own transactions only: this makes
+                        // the Flow on the SQLite screen see each write of the tab at once.
+                        onWrite = { DemoRoom.get(app).invalidationTracker.refreshVersionsAsync() },
+                    ) { DemoRoom.get(app).openHelper.writableDatabase },
                 ),
             discoverFrom = app,
         )

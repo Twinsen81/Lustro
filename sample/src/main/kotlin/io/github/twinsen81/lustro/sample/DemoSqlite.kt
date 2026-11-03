@@ -137,9 +137,16 @@ internal class DemoSqlite(context: Context, private val io: Executor) {
                 "folders" to ("FolderEntity" to "A folder of notes."),
                 "note_tags" to ("NoteTagEntity" to "A tag on a note: one row for each pair."),
                 "pinned_notes" to ("PinnedNote" to "The pinned notes, newest first."),
+                "accounts" to
+                    (
+                        "AccountEntity" to
+                            "A signed-in account. The tab masks its token columns by their names, and shows oauth_scopes, which the app lists in unmasked."
+                    ),
             )
 
-        private const val SCHEMA_VERSION = 3
+        private const val SCHEMA_VERSION = 5
+        private const val ACCOUNTS_VERSION = 4
+        private const val SCOPES_VERSION = 5
         private const val NOTE_COUNT = 2_000
         private const val PRODUCTS = 250
         private const val WRITE_FOR_MS = 10_000L
@@ -150,6 +157,7 @@ internal class DemoSqlite(context: Context, private val io: Executor) {
         private const val LONG_BODY_EVERY = 100
         private const val BIG_ATTACHMENT_NOTE = 1_001
         private const val BIG_ATTACHMENT_BYTES = 3_000_000
+        private const val DEMO_SCOPES = "read write follow"
         private val LONG_BODY = "The quick brown fox jumps over the lazy dog. ".repeat(120)
 
         @Volatile
@@ -171,9 +179,16 @@ internal class DemoSqlite(context: Context, private val io: Executor) {
                                     override fun onCreate(db: SupportSQLiteDatabase) {
                                         createNotes(db)
                                         seedNotes(db)
+                                        createAccounts(db)
                                     }
 
-                                    override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+                                    override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) {
+                                        if (oldVersion < ACCOUNTS_VERSION) {
+                                            createAccounts(db)
+                                        } else if (oldVersion < SCOPES_VERSION) {
+                                            addScopes(db)
+                                        }
+                                    }
                                 },
                             )
                             .build(),
@@ -235,6 +250,24 @@ internal class DemoSqlite(context: Context, private val io: Executor) {
             db.execSQL("CREATE INDEX notes_folder ON notes (folder_id)")
             db.execSQL("CREATE TABLE note_tags (note_id INTEGER NOT NULL, tag TEXT NOT NULL, PRIMARY KEY (note_id, tag)) WITHOUT ROWID")
             db.execSQL("CREATE VIEW pinned_notes AS SELECT id, title, created_at FROM notes WHERE pinned = 1 ORDER BY created_at DESC")
+        }
+
+        // Made-up credentials: the SQLite tab's default value policy masks access_token and
+        // client_secret by their names, and shows user_name and expires_at. oauth_scopes has
+        // "auth" in its name but holds no secret: the registration lists it in unmasked.
+        private fun createAccounts(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "CREATE TABLE accounts (id INTEGER PRIMARY KEY, user_name TEXT NOT NULL, access_token TEXT, client_secret TEXT, " +
+                    "expires_at INTEGER, oauth_scopes TEXT)",
+            )
+            val insert = "INSERT INTO accounts (user_name, access_token, client_secret, expires_at, oauth_scopes) VALUES (?, ?, ?, ?, ?)"
+            db.execSQL(insert, arrayOf<Any?>("ada", "demo-token-1f6e2a", "demo-secret-91c0", 1_924_992_000_000L, DEMO_SCOPES))
+            db.execSQL(insert, arrayOf<Any?>("signed.out", null, null, null, null))
+        }
+
+        private fun addScopes(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE accounts ADD COLUMN oauth_scopes TEXT")
+            db.execSQL("UPDATE accounts SET oauth_scopes = ? WHERE access_token IS NOT NULL", arrayOf<Any?>(DEMO_SCOPES))
         }
 
         private fun seedNotes(db: SupportSQLiteDatabase) {

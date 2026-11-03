@@ -22,6 +22,8 @@
     var ROWID_ALIASES = ['rowid', '_rowid_', 'oid'];
     var DECIMAL = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
     var WHOLE = /^-?\d+$/;
+    var MASKED_TITLE = 'The database\'s value policy masks this column: its name looks like it holds a secret, so the tab does not send its values. '
+        + 'The app shows them with SqliteValuePolicy.VISIBLE, or the values of this column alone with its name in unmasked.';
 
     function esc(text) {
         return window.debugEscapeHtml(text);
@@ -56,6 +58,7 @@
     // A cell as a SQL literal, or null when the page can't write it: a blob is
     // only its size, and a cut text only its start.
     function literal(cell) {
+        if (cell && cell.masked) return null;
         if (!cell || cell.type === 'null') return 'NULL';
         if (cell.type === 'integer') return WHOLE.test(String(cell.value)) ? String(cell.value) : null;
         if (cell.type === 'real') {
@@ -93,8 +96,18 @@
         var names = columnNames(schema);
         if (!names.length && firstRow && firstRow.cells) names = Object.keys(firstRow.cells);
         var types = {};
-        if (schema && Array.isArray(schema.columns)) schema.columns.forEach(function(column) { types[column.name] = column.type; });
-        var columns = names.map(function(name) { return { name: name, type: types[name] || '' }; });
+        var masked = {};
+        if (schema && Array.isArray(schema.columns)) {
+            schema.columns.forEach(function(column) {
+                types[column.name] = column.type;
+                if (column.masked) masked[column.name] = true;
+            });
+        }
+        var columns = names.map(function(name) {
+            var column = { name: name, type: types[name] || '' };
+            if (masked[name]) column.masked = true;
+            return column;
+        });
         var hasRowId = schema ? schema.hasRowId : !!(firstRow && firstRow.rowid != null);
         var alias = hasRowId ? rowidAlias(names) : null;
         if (alias) columns.unshift({ name: alias, rowid: true, type: 'INTEGER' });
@@ -144,6 +157,7 @@
     // A cell as a JSON value of the same storage class, or undefined when a
     // request can't carry it.
     function cellJson(cell) {
+        if (cell && cell.masked) return undefined;
         if (!cell || cell.type === 'null') return null;
         if (cell.type === 'integer') return WHOLE.test(String(cell.value)) ? integerJson(cell.value) : undefined;
         if (cell.type === 'real') return typeof cell.value === 'number' && isFinite(cell.value) ? realJson(cell.value) : undefined;
@@ -334,7 +348,7 @@
 
     // A cell as text, or null for a NULL and a blob.
     function cellText(cell) {
-        if (!cell || cell.type === 'null' || cell.type === 'blob') return null;
+        if (!cell || cell.masked || cell.type === 'null' || cell.type === 'blob') return null;
         return String(cell.value);
     }
 
@@ -342,6 +356,9 @@
     // length, and a blob is a tag with its size.
     function cellView(cell, previewChars) {
         if (!cell || cell.type === 'null') return { cls: 'dc-cell--null', html: 'NULL' };
+        if (cell.masked) {
+            return { cls: 'sqlite-cell--masked', html: tag('masked · ' + cell.type, 'A ' + cell.type + ' value. ' + MASKED_TITLE, null, 'sqlite-tag--masked') };
+        }
         if (cell.type === 'integer' || cell.type === 'real') return { cls: 'dc-cell--num', html: esc(String(cell.value)) };
         if (cell.type === 'blob') {
             return { cls: '', html: tag('BLOB · ' + bytesLabel(cell.bytes), 'A blob of ' + plural(cell.bytes, 'byte', 'bytes') + ': the tab reads only its size.', null, 'sqlite-tag--blob') };
@@ -368,6 +385,7 @@
             var sorted = sort && sort.column === column.name;
             var arrow = sorted ? (sort.dir === 'asc' ? '▲' : '▼') : '';
             var title = (column.rowid ? 'The rowid of the row. ' : column.type ? column.type + '. ' : '')
+                + (column.masked ? MASKED_TITLE + ' The row filter does not search it. ' : '')
                 + 'Click to sort: ascending, descending, then the table\'s order. Right-click to hide the column.';
             return '<th class="dc-th dc-th--sortable' + (sorted ? ' dc-th--sorted' : '') + (column.rowid ? ' sqlite-th--rowid' : '') + '"'
                 + ' data-col="' + index + '" title="' + esc(title) + '"'
@@ -421,8 +439,10 @@
         if (lock) return lock;
         if (schema && schema.type === 'view') return 'A view\'s rows don\'t change: change the rows of its tables.';
         if (row && !rowTarget(row, schema)) {
-            return row.rowid == null && !primaryKey(schema).length
-                ? 'The table has no rowid and no primary key, so the tab can\'t name one row.'
+            if (row.rowid == null && !primaryKey(schema).length) return 'The table has no rowid and no primary key, so the tab can\'t name one row.';
+            var maskedKey = primaryKey(schema).some(function(name) { return row.cells && row.cells[name] && row.cells[name].masked; });
+            return maskedKey
+                ? 'The value policy masks a column of the row\'s primary key, so the tab can\'t send it back to name the row.'
                 : 'The row\'s primary key holds a blob or a long text, which the tab can\'t send back to name the row.';
         }
         return null;
@@ -442,6 +462,8 @@
         if (!db.registered) lines.push('The tab found it in the app\'s databases directory.');
         if (db.schemaVersion != null) lines.push('PRAGMA user_version: ' + db.schemaVersion + '. Room and SQLiteOpenHelper set it to the schema\'s version.');
         lines.push(dbLockReason(db) || 'Writable: the tab may change its rows.');
+        if (db.policy === 'mask_sensitive') lines.push('Value policy: the values of the columns whose names look like they hold a secret are masked, except those of the columns that the app lists in unmasked.');
+        else if (db.policy === 'visible') lines.push('Value policy: every value shows.');
         if (db.error) lines.push('It does not open: ' + db.error);
         return lines.join('\n');
     }
@@ -553,6 +575,7 @@
 
     // Why one field can't change, or say all of its value, or null when it can.
     function fieldLock(field, readOnly) {
+        if (fieldMasked(field)) return MASKED_TITLE + ' The page does not change a value that it does not show.';
         if (field.info && field.info.generated) return 'SQLite computes this column (GENERATED ALWAYS AS).';
         if (field.original && field.original.type === 'blob') {
             var size = 'A blob of ' + plural(field.original.bytes, 'byte', 'bytes');
@@ -564,6 +587,11 @@
                 : 'Reading the whole value, ' + plural(field.original.length, 'character', 'characters') + '…';
         }
         return null;
+    }
+
+    // A masked column stays locked when its cell is NULL too: a value typed there would be a secret that the page then hides.
+    function fieldMasked(field) {
+        return !!((field.info && field.info.masked) || (field.original && field.original.masked));
     }
 
     function fieldHtml(field, index, readOnly) {
@@ -581,21 +609,24 @@
         var input = multiline
             ? '<textarea class="dc-textarea sqlite-field__input" rows="' + Math.min(10, Math.max(3, text.split('\n').length)) + '"' + attrs + '>' + esc(isNull ? '' : text) + '</textarea>'
             : '<input type="text" class="dc-input--block sqlite-field__input"' + attrs + ' value="' + esc(isNull ? '' : text) + '">';
+        var masked = fieldMasked(field);
         var badges = (info.type ? '<span class="sqlite-field__type">' + esc(info.type) + '</span>' : '')
             + (info.primaryKey > 0 ? tag('PK', 'Column ' + info.primaryKey + ' of the primary key.', '--accent-2') : '')
             + (info.notNull ? tag('Not null', 'The column takes no NULL.') : '')
-            + (info.generated ? tag('Generated', 'SQLite computes the column.') : '');
-        var nullToggle = !readOnly && !(info.generated || original.type === 'blob')
+            + (info.generated ? tag('Generated', 'SQLite computes the column.') : '')
+            + (masked ? tag('Masked', MASKED_TITLE, '--lvl-w') : '');
+        var nullToggle = !readOnly && !(info.generated || original.type === 'blob' || masked)
             ? '<button type="button" class="sqlite-check sqlite-field__null" data-action="toggleNull" data-field="' + index + '" role="checkbox"'
                 + ' aria-checked="' + (isNull ? 'true' : 'false') + '"' + (lock ? ' disabled' : '') + ' title="Save NULL in this column.">'
                 + '<span class="dc-check' + (isNull ? ' dc-check--on' : '') + '">' + (isNull ? '✓' : '') + '</span>NULL</button>'
             : '';
-        var canCopy = !isNull && original.type !== 'blob' && !(original.truncated && field.whole == null);
+        var canCopy = !isNull && !masked && original.type !== 'blob' && !(original.truncated && field.whole == null);
         var copy = canCopy ? '<button type="button" class="dc-btn dc-btn--icon" data-action="copyField" data-field="' + index + '" aria-label="Copy the value of ' + esc(field.column) + '" title="Copy the value.">⧉</button>' : '';
         return '<div class="sqlite-field" data-field="' + index + '">'
             + '<div class="sqlite-field__head"><label class="sqlite-field__name" for="' + id + '">' + esc(field.column) + '</label>' + badges
             + '<span class="sqlite-field__tools">' + nullToggle + copy + '</span></div>'
-            + (original.type === 'blob' ? '<div class="sqlite-field__blob">' + tag('BLOB · ' + bytesLabel(original.bytes), null, null, 'sqlite-tag--blob') + '</div>' : input)
+            + (original.masked ? '<div class="sqlite-field__blob">' + cellView(original).html + '</div>'
+                : original.type === 'blob' ? '<div class="sqlite-field__blob">' + tag('BLOB · ' + bytesLabel(original.bytes), null, null, 'sqlite-tag--blob') + '</div>' : input)
             + (lock ? '<div class="dc-comment sqlite-field__note">// ' + esc(lock) + '</div>' : '')
             + '</div>';
     }

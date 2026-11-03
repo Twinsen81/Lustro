@@ -50,7 +50,7 @@
 .work-th--state { width: 112px; }
 .work-th--name { width: 22%; }
 .work-th--tags { width: 18%; }
-.work-th--attempts { width: 64px; }
+.work-th--attempts { width: 84px; }
 .work-th--next { width: 140px; }
 .work-row { cursor: pointer; }
 .work-cell--worker { color: var(--t1); }

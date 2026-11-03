@@ -201,8 +201,10 @@ test('an event shows its time, its type in the color of the state it leads to, a
     const started = work.workEventHtml(events()[0]);
     assert.match(started, /<span class="work-event__time" title="2026-10-19 14:22:20\.000">14:22:20\.000<\/span>/);
     assert.match(started, /--c: var\(--work-running\)">Started</);
-    assert.match(started, />run 1</);
+    assert.match(started, />attempt 1</);
     assert.doesNotMatch(started, /gen /);
+    // An enqueued work has no attempt yet, and says none.
+    assert.doesNotMatch(work.workEventHtml(events()[2]), /attempt/);
 
     const finished = work.workEventHtml(events()[1]);
     assert.match(finished, /<span class="dc-tag work-result" style="--c: var\(--work-succeeded\)">success</);
@@ -212,6 +214,32 @@ test('an event shows its time, its type in the color of the state it leads to, a
     assert.match(retry, /--c: var\(--work-blocked\)">retry</);
     // An empty output shows nothing.
     assert.doesNotMatch(retry, /work-event__json/);
+});
+
+test('the end of a run of periodic work takes the attempt of its start, as WorkManager counted it before the reset', () => {
+    const [started, finished] = events();
+    const periodic = [
+        Object.assign({}, started, { runAttempts: 2 }),
+        Object.assign({}, finished, { runAttempts: 0, state: 'ENQUEUED' }),
+        Object.assign({}, started, { type: 'enqueued', runAttempts: 0, state: 'ENQUEUED' }),
+    ];
+    assert.strictEqual(work.workEventAttempt(periodic, 1), 2);
+    assert.match(work.workEventHtml(periodic[1], work.workEventAttempt(periodic, 1)), />attempt 2</);
+    // An event that ends no run keeps its own count.
+    assert.strictEqual(work.workEventAttempt(periodic, 2), 0);
+    // Without its start in the buffer, the end keeps its own count, and shows no attempt.
+    assert.strictEqual(work.workEventAttempt(periodic.slice(1), 0), 0);
+    assert.doesNotMatch(work.workEventHtml(periodic[1], 0), /attempt/);
+    // Another run's end between them stops the search.
+    const twoEnds = [periodic[0], Object.assign({}, finished, { type: 'stopped', runAttempts: 0 }), periodic[1]];
+    assert.strictEqual(work.workEventAttempt(twoEnds, 2), 0);
+});
+
+test('the attempts of periodic work say that they count the current period', () => {
+    const periodic = items().find((item) => item.periodicity);
+    assert.match(work.workRowHtml(periodic, false, NOW), /work-cell--attempts" title="The attempts of the current period\. WorkManager sets the count back to 0 when a period ends\."/);
+    assert.match(work.workDetailsHtml(periodic, NOW), /title="The attempts of the current period\./);
+    assert.doesNotMatch(work.workRowHtml(byClass('ThrowingWorker'), false, NOW), /work-cell--attempts" title=/);
 });
 
 test('an exception shows its class and message, and its stack trace escaped behind a toggle', () => {
@@ -285,7 +313,15 @@ test('a refused list says why for the codes of WorkManager, and leaves the other
         fix: 'Open the part of the app',
         reason: 'not yet',
     });
-    assert.strictEqual(work.workRejectionBanner(503, { code: 'work_unsupported', message: 'old', hint: 'Add androidx.work:work-runtime 2.12.0 or newer' }).kind, 'error');
+    const old = work.workRejectionBanner(503, {
+        code: 'work_unsupported',
+        message: 'The tab needs WorkManager 2.12.0 or newer; the app has 2.11.2',
+        hint: 'Add androidx.work:work-runtime 2.12.0 or newer',
+    });
+    assert.strictEqual(old.kind, 'error');
+    assert.match(old.title, /Cancel and Prune are off, and the list asks again every 30 s\./);
+    assert.strictEqual(old.fix, 'Add androidx.work:work-runtime 2.12.0 or newer, and build the app again.');
+    assert.match(old.reason, /the app has 2\.11\.2/);
     assert.strictEqual(work.workRejectionBanner(500, { code: 'work_error', message: 'boom' }).reason, 'boom');
     assert.strictEqual(work.workRejectionBanner(401, { error: 'unauthorized', message: 'no token' }), null);
     assert.strictEqual(work.workRejectionBanner(502, null), null);
@@ -331,6 +367,60 @@ test('with work-analytics, a cancel of running work warns that it can end the ap
     // Any work of the unique name may run.
     assert.match(work.workConfirmFor('cancelName', Object.assign({}, running, { state: 'ENQUEUED' }), true).message, /work-analytics 2\.12\.0/);
     assert.doesNotMatch(work.workConfirmFor('cancelName', running, false).message, /work-analytics/);
+});
+
+test('Prune is off, with the reason, while the routes answer 503', () => {
+    assert.strictEqual(work.workPruneAction(null).disabled, false);
+    assert.match(work.workPruneAction(null).title, /pruneWork\(\)/);
+    const old = work.workPruneAction('work_unsupported');
+    assert.strictEqual(old.disabled, true);
+    assert.match(old.title, /every route answers 503/);
+    assert.strictEqual(work.workPruneAction('work_not_initialized').disabled, true);
+    // Another refusal, such as a lost token, does not last: the poll counts it as a failure.
+    assert.strictEqual(work.workPruneAction('work_error').disabled, false);
+});
+
+test('Cancel is off for finished work, and Cancel unique work while all work of the name is finished', () => {
+    const done = Object.assign(byClass('StepWorker'), { uniqueName: 'sync' });
+    const waiting = Object.assign(items().find((item) => item.periodicity), { uniqueName: 'sync' });
+
+    for (const state of ['SUCCEEDED', 'FAILED', 'CANCELLED']) {
+        const actions = work.workCancelActions(Object.assign({}, done, { state }), false, [done], true, null);
+        assert.strictEqual(actions.cancel.disabled, true, state);
+        assert.match(actions.cancel.title, /finished: there is nothing to cancel/);
+        assert.strictEqual(actions.cancelName.hidden, false);
+        assert.strictEqual(actions.cancelName.disabled, true, state);
+        assert.match(actions.cancelName.title, /All work of the unique name "sync" has finished/);
+    }
+
+    // Other work of the name is unfinished: the name can still be cancelled.
+    const others = work.workCancelActions(done, false, [done, waiting], true, null);
+    assert.strictEqual(others.cancel.disabled, true);
+    assert.strictEqual(others.cancelName.disabled, false);
+    assert.match(others.cancelName.title, /but 1 other work of the name has not\./);
+
+    // A filter can hide the work of the name: the route decides.
+    const filtered = work.workCancelActions(done, false, [done], false, null);
+    assert.strictEqual(filtered.cancelName.disabled, false);
+    assert.match(filtered.cancelName.title, /can't tell whether any work of the name is unfinished/);
+
+    const open = work.workCancelActions(waiting, false, [done, waiting], true, null);
+    assert.strictEqual(open.cancel.disabled, false);
+    assert.strictEqual(open.cancelName.disabled, false);
+    assert.match(open.cancelName.title, /cancelUniqueWork\(\)/);
+
+    // Work without a registered name has no Cancel unique work, and pruned work no actions.
+    assert.strictEqual(work.workCancelActions(byClass('RetryWorker'), false, items(), true, null).cancelName.hidden, true);
+    const gone = work.workCancelActions(waiting, true, [], true, null);
+    assert.strictEqual(gone.cancel.disabled, true);
+    assert.match(gone.cancel.title, /no longer has this work/);
+    assert.strictEqual(gone.cancelName.hidden, true);
+
+    // While the routes answer 503, both are off with the reason.
+    const refused = work.workCancelActions(waiting, false, [waiting], true, 'work_unsupported');
+    assert.strictEqual(refused.cancel.disabled, true);
+    assert.strictEqual(refused.cancelName.disabled, true);
+    assert.match(refused.cancelName.title, /every route answers 503/);
 });
 
 test('the toast after an action says how much it changed', () => {

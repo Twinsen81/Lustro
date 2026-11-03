@@ -114,6 +114,17 @@ class DataStoreRoutesTest {
     }
 
     @Test
+    fun `a registered store shows the values of its unmasked keys, in any case`() {
+        val store = PrefsDataStore("app_state", appState, unmasked = setOf("Auth_Token"))
+        assertEquals(setOf("Auth_Token"), store.unmasked)
+        val routes = routes(store)
+        val entries = get(routes, "entries", "store" to STORE, "file" to "app_state")
+        assertFalse(item(entries, "auth_token").has("masked"))
+        assertEquals("t0k3n", item(entries, "auth_token").getString("value"))
+        assertEquals("dark", item(entries, "theme").getString("value"))
+    }
+
+    @Test
     fun `edit writes every type through the app's instance`() {
         val routes = routes(PrefsDataStore("app_state", appState, ValuePolicy.VISIBLE))
         val cases =

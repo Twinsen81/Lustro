@@ -48,6 +48,24 @@ class SqliteDebugTabTest {
     }
 
     @Test
+    fun `the value policy masks sensitive columns by default, as the Preferences tab does`() {
+        assertEquals(SqliteValuePolicy.MASK_SENSITIVE, SqliteDb.framework("app", database = unused).valuePolicy)
+        assertEquals(SqliteValuePolicy.MASK_SENSITIVE, SqliteDb.file("cache", File("/data/cache.db")).valuePolicy)
+        assertEquals(SqliteValuePolicy.VISIBLE, SqliteDb.file("cache", File("/data/cache.db"), valuePolicy = SqliteValuePolicy.VISIBLE).valuePolicy)
+    }
+
+    @Test
+    fun `a registration has no unmasked names by default, and keeps a copy of those that it gets`() {
+        assertEquals(emptySet<String>(), SqliteDb.framework("app", database = unused).unmasked)
+        assertEquals(emptySet<String>(), SqliteDb.file("cache", File("/data/cache.db")).unmasked)
+        val names = mutableSetOf("oauthScopes")
+        val db = SqliteDb.support("app", unmasked = names) { error("unused") }
+        names.clear()
+        assertEquals(setOf("oauthScopes"), db.unmasked)
+        assertEquals(setOf("auth_method"), SqliteDb.file("cache", File("/data/cache.db"), unmasked = setOf("auth_method")).unmasked)
+    }
+
+    @Test
     fun `the tab is in the tab bar, under the id sqlite, with its view, and creating it opens nothing`() {
         val tab = SqliteDebugTab.create(listOf(SqliteDb.framework("app", database = unused), SqliteDb.file("cache", File("/data/cache.db"))))
 

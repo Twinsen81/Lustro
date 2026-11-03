@@ -5,7 +5,8 @@
     "title",
     "attachment",
     "score",
-    "body_chars"
+    "body_chars",
+    "share_token"
   ],
   "rows": [
     [
@@ -26,6 +27,10 @@
       },
       {
         "type": "null"
+      },
+      {
+        "type": "text",
+        "masked": true
       }
     ],
     [
@@ -46,6 +51,9 @@
       {
         "type": "integer",
         "value": 4
+      },
+      {
+        "type": "null"
       }
     ],
     [
@@ -67,6 +75,9 @@
       {
         "type": "integer",
         "value": 4377
+      },
+      {
+        "type": "null"
       }
     ],
     [
@@ -88,6 +99,9 @@
       {
         "type": "integer",
         "value": 10
+      },
+      {
+        "type": "null"
       }
     ]
   ],

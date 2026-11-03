@@ -183,7 +183,7 @@ test('a column has a width by its type until the user drags it, and a width belo
 
 test('the grid shows the rowid first, under a name that no column has', () => {
     const names = (schema) => sqlite.sqliteGridColumns(schema).map((column) => column.name);
-    assert.deepStrictEqual(plain(names(notesSchema())), ['rowid', 'id', 'title', 'body', 'attachment', 'score', 'created_at', 'folder_id']);
+    assert.deepStrictEqual(plain(names(notesSchema())), ['rowid', 'id', 'title', 'body', 'attachment', 'score', 'created_at', 'folder_id', 'share_token']);
     assert.deepStrictEqual(plain(names(tagsSchema)), ['note_id', 'tag']);
 
     assert.strictEqual(sqlite.sqliteRowidAlias(['id', 'ROWID']), '_rowid_');
@@ -436,6 +436,83 @@ test('a blob in a TEXT column is a blob, and a cell is escaped', () => {
     assert.strictEqual(sqlite.sqliteCellView({ type: 'text', value: '<img src=x onerror=alert(1)>' }).html, '&lt;img src=x onerror=alert(1)&gt;');
     assert.strictEqual(sqlite.sqliteCellText({ type: 'blob', bytes: 4 }), null);
     assert.strictEqual(sqlite.sqliteCellText({ type: 'integer', value: '9007199254740993' }), '9007199254740993');
+});
+
+test('a masked cell shows its type only, can\'t be read whole, copied, or written back', () => {
+    const [synced] = notesRows();
+    const cell = synced.cells.share_token;
+    assert.deepStrictEqual(plain(cell), { type: 'text', masked: true });
+    const view = sqlite.sqliteCellView(cell);
+    assert.strictEqual(view.cls, 'sqlite-cell--masked');
+    assert.match(view.html, /masked · text/);
+    assert.strictEqual(sqlite.sqliteCellText(cell), null);
+    assert.strictEqual(sqlite.sqliteLiteral(cell), null);
+
+    const columns = sqlite.sqliteGridColumns(notesSchema());
+    const shareToken = columns.find((column) => column.name === 'share_token');
+    assert.strictEqual(shareToken.masked, true);
+    assert.match(sqlite.sqliteHeadHtml(columns, { hidden: [], widths: {} }, null, false), /value policy masks this column[^"]*The row filter does not search it/);
+    assert.strictEqual(columns.find((column) => column.name === 'title').masked, undefined);
+});
+
+test('the editor locks a masked column, also when its cell is NULL, and never sends it', () => {
+    const [synced, imported] = notesRows();
+    const info = notesSchema().columns.find((column) => column.name === 'share_token');
+    assert.strictEqual(info.masked, true);
+
+    const html = sqlite.sqliteFieldHtml({ column: 'share_token', info, original: synced.cells.share_token, whole: null }, 7, false);
+    assert.ok(!html.includes('data-field-input'));
+    assert.ok(!html.includes('toggleNull'));
+    assert.ok(!html.includes('copyField'));
+    assert.match(html, /masked · text/);
+    assert.match(html, /does not change a value that it does not show/);
+    assert.match(html, /<span class="dc-tag" style="--c: var\(--lvl-w\)" title="[^"]*value policy masks this column[^"]*">Masked<\/span>/);
+
+    const empty = sqlite.sqliteFieldHtml({ column: 'share_token', info, original: imported.cells.share_token, whole: null }, 7, false);
+    assert.match(empty, / readonly/);
+    assert.ok(!empty.includes('toggleNull'));
+    assert.match(empty, />Masked<\/span>/);
+    const plainField = sqlite.sqliteFieldHtml({ column: 'title', info: notesSchema().columns.find((column) => column.name === 'title'), original: synced.cells.title, whole: null }, 1, false);
+    assert.ok(!plainField.includes('>Masked</span>'));
+
+    // A field that is locked is not editable, so whatever it holds stays out of the edit.
+    const values = sqlite.sqliteEditChanges([
+        { column: 'share_token', original: synced.cells.share_token, whole: null, text: '[masked]', isNull: false, editable: false },
+        { column: 'title', original: synced.cells.title, whole: null, text: 'Renamed', isNull: false, editable: true },
+    ]);
+    assert.deepStrictEqual(plain(values), { title: 'Renamed' });
+});
+
+test('a key column that the value policy masks can\'t name its row', () => {
+    const schema = Object.assign({}, tagsSchema, {
+        columns: tagsSchema.columns.map((column) => (column.name === 'tag' ? Object.assign({}, column, { masked: true }) : column)),
+    });
+    const row = tagRow({ type: 'text', masked: true });
+    assert.strictEqual(sqlite.sqliteRowTarget(row, schema), null);
+    assert.strictEqual(sqlite.sqliteWhereSql(row, schema), null);
+    assert.match(sqlite.sqliteRowLockReason(database('app'), schema, row), /value policy masks a column of the row's primary key/);
+});
+
+test('a column that the server does not mark masked shows its value, also with a name that looks secret', () => {
+    // The app lists oauth_scopes in unmasked: the schema and the cell carry the result, and the page has no name check of its own.
+    const schema = Object.assign({}, notesSchema(), {
+        columns: notesSchema().columns.concat([{ name: 'oauth_scopes', type: 'TEXT', notNull: false, defaultValue: null, primaryKey: 0, generated: false, masked: false }]),
+    });
+    const cell = { type: 'text', value: 'read write' };
+    const column = sqlite.sqliteGridColumns(schema).find((c) => c.name === 'oauth_scopes');
+    assert.ok(!column.masked);
+    assert.strictEqual(sqlite.sqliteCellView(cell).html, 'read write');
+    assert.strictEqual(sqlite.sqliteCellText(cell), 'read write');
+    const info = schema.columns.find((c) => c.name === 'oauth_scopes');
+    const html = sqlite.sqliteFieldHtml({ column: 'oauth_scopes', info, original: cell, whole: null }, 8, false);
+    assert.match(html, /data-field-input/);
+    assert.match(html, /data-action="copyField"/);
+    assert.ok(!html.includes('>Masked</span>'));
+});
+
+test('a database\'s tooltip says its value policy', () => {
+    assert.match(sqlite.sqliteDbItemHtml(database('app'), 0, false), /Value policy: the values of the columns whose names look like they hold a secret are masked, except those of the columns that the app lists in unmasked\./);
+    assert.match(sqlite.sqliteDbItemHtml(database('catalog'), 1, false), /Value policy: every value shows\./);
 });
 
 test('a row that can\'t be named has its Delete off, with the reason', () => {

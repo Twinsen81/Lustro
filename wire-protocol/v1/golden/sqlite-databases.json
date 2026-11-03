@@ -5,6 +5,7 @@
       "registered": true,
       "source": "support",
       "writable": true,
+      "policy": "mask_sensitive",
       "path": "/data/user/0/com.example.app/databases/app.db",
       "sizeBytes": 57344,
       "schemaVersion": 3
@@ -14,6 +15,7 @@
       "registered": true,
       "source": "file",
       "writable": false,
+      "policy": "visible",
       "path": "/data/user/0/com.example.app/databases/catalog.db",
       "sizeBytes": 24576,
       "schemaVersion": 7
@@ -23,6 +25,7 @@
       "registered": false,
       "source": "file",
       "writable": false,
+      "policy": "mask_sensitive",
       "path": "/data/user/0/com.example.app/databases/sdk_cache.db",
       "sizeBytes": 16384,
       "schemaVersion": 7

@@ -9,8 +9,10 @@ import androidx.test.core.app.ApplicationProvider
 import io.github.twinsen81.lustro.CursorCodec
 import io.github.twinsen81.lustro.DebugRequest
 import io.github.twinsen81.lustro.sqlite.SqliteDb
+import io.github.twinsen81.lustro.sqlite.SqliteValuePolicy
 import io.github.twinsen81.lustro.sqlite.TableHint
 import io.github.twinsen81.lustro.sqlite.internal.Fixtures.json
+import io.github.twinsen81.lustro.sqlite.internal.Fixtures.text
 import java.io.File
 import org.json.JSONArray
 import org.json.JSONObject
@@ -83,6 +85,154 @@ class SqliteRoutesTest {
         assertTrue(missing.getString("error"), missing.getString("error").contains("does not open"))
         assertFalse(File(app.cacheDir, "missing.db").exists())
         memory.close()
+    }
+
+    @Test
+    fun `the value policy masks the sensitive columns in rows and query, by name, and leaves out their values`() {
+        live.execSQL("CREATE TABLE accounts (id INTEGER PRIMARY KEY, user_name TEXT, accessToken TEXT, client_secret BLOB, password_hash INTEGER, primary_key TEXT)")
+        live.execSQL("INSERT INTO accounts VALUES (1, 'ada', 'tok-live-123', x'0102', 42, 'pk')")
+        live.execSQL("INSERT INTO accounts VALUES (2, 'bob', NULL, NULL, NULL, NULL)")
+        val visible = Fixtures.file(app.cacheDir, "visible.db")
+        SQLiteDatabase.openDatabase(visible.path, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.execSQL("CREATE TABLE secrets (api_key TEXT)")
+            db.execSQL("INSERT INTO secrets VALUES ('k-1')")
+        }
+        val routes = routes(SqliteDb.framework("app", writable = true) { live }, SqliteDb.file("visible", visible, valuePolicy = SqliteValuePolicy.VISIBLE))
+
+        val dbs = Fixtures.get(routes, "databases").json().getJSONArray("items")
+        assertEquals("mask_sensitive", dbs.getJSONObject(0).getString("policy"))
+        assertEquals("visible", dbs.getJSONObject(1).getString("policy"))
+
+        val columns = Fixtures.get(routes, "schema", "db" to "app", "table" to "accounts").json().getJSONArray("columns")
+        val masked = (0 until columns.length()).associate { columns.getJSONObject(it).getString("name") to columns.getJSONObject(it).getBoolean("masked") }
+        assertEquals(
+            mapOf("id" to false, "user_name" to false, "accessToken" to true, "client_secret" to true, "password_hash" to true, "primary_key" to false),
+            masked,
+        )
+
+        val page = Fixtures.get(routes, "rows", "db" to "app", "table" to "accounts")
+        val first = page.json().getJSONArray("items").getJSONObject(0).getJSONObject("cells")
+        assertEquals(MASKED_TEXT, first.getJSONObject("accessToken").toString())
+        assertEquals("{\"type\":\"blob\",\"masked\":true}", first.getJSONObject("client_secret").toString())
+        assertEquals("{\"type\":\"integer\",\"masked\":true}", first.getJSONObject("password_hash").toString())
+        assertEquals("ada", first.getJSONObject("user_name").getString("value"))
+        assertEquals("pk", first.getJSONObject("primary_key").getString("value"))
+        // A NULL holds no secret.
+        assertEquals("null", page.json().getJSONArray("items").getJSONObject(1).getJSONObject("cells").getJSONObject("accessToken").getString("type"))
+        assertFalse(page.text(), page.text().contains("tok-live"))
+
+        // The filter does not search a masked column, so it can't find a secret one character at a time.
+        assertEquals(0, Fixtures.get(routes, "rows", "db" to "app", "table" to "accounts", "filter" to "tok-live").json().getJSONArray("items").length())
+        assertEquals(1, Fixtures.get(routes, "rows", "db" to "app", "table" to "accounts", "filter" to "ada").json().getJSONArray("items").length())
+
+        // query masks by the result's column name. SQLite names an expression by its text, which
+        // has the column's name, but an alias is a name of its own.
+        val sql = "SELECT accessToken, length(accessToken), accessToken AS plain, length(accessToken) AS n FROM accounts ORDER BY id"
+        val result = Fixtures.post(routes, "query", JSONObject().put("db", "app").put("sql", sql)).json().getJSONArray("rows")
+        assertEquals(MASKED_TEXT, result.getJSONArray(0).getJSONObject(0).toString())
+        assertEquals("{\"type\":\"integer\",\"masked\":true}", result.getJSONArray(0).getJSONObject(1).toString())
+        assertEquals("tok-live-123", result.getJSONArray(0).getJSONObject(2).getString("value"))
+        assertEquals(12, result.getJSONArray(0).getJSONObject(3).getInt("value"))
+        assertEquals("null", result.getJSONArray(1).getJSONObject(0).getString("type"))
+
+        // A database that the app registers as VISIBLE shows every value.
+        val shown = Fixtures.get(routes, "rows", "db" to "visible", "table" to "secrets").json().getJSONArray("items").getJSONObject(0)
+        assertEquals("k-1", shown.getJSONObject("cells").getJSONObject("api_key").getString("value"))
+        val read = Fixtures.post(routes, "query", JSONObject().put("db", "visible").put("sql", "SELECT api_key FROM secrets")).json()
+        assertEquals("k-1", read.getJSONArray("rows").getJSONArray(0).getJSONObject(0).getString("value"))
+    }
+
+    @Test
+    fun `unmasked names show the values of their columns in schema, rows, the filter, and query, in any case`() {
+        live.execSQL("CREATE TABLE accounts (id INTEGER PRIMARY KEY, accessToken TEXT, oauthScopes TEXT)")
+        live.execSQL("INSERT INTO accounts VALUES (1, 'tok-live-123', 'read write')")
+        val file = Fixtures.file(app.cacheDir, "tokens.db")
+        SQLiteDatabase.openDatabase(file.path, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.execSQL("CREATE TABLE auth (refresh_token TEXT, auth_method TEXT)")
+            db.execSQL("INSERT INTO auth VALUES ('r-1', 'password')")
+        }
+        val routes =
+            routes(
+                SqliteDb.framework("app", writable = true, unmasked = setOf("OAUTHSCOPES")) { live },
+                SqliteDb.file("tokens", file, unmasked = setOf("auth_method")),
+            )
+
+        val columns = Fixtures.get(routes, "schema", "db" to "app", "table" to "accounts").json().getJSONArray("columns")
+        val masked = (0 until columns.length()).associate { columns.getJSONObject(it).getString("name") to columns.getJSONObject(it).getBoolean("masked") }
+        assertEquals(mapOf("id" to false, "accessToken" to true, "oauthScopes" to false), masked)
+
+        val cells = Fixtures.get(routes, "rows", "db" to "app", "table" to "accounts").json().getJSONArray("items").getJSONObject(0).getJSONObject("cells")
+        assertEquals("read write", cells.getJSONObject("oauthScopes").getString("value"))
+        assertEquals(MASKED_TEXT, cells.getJSONObject("accessToken").toString())
+        // The filter searches a column that an exception shows, and still not a masked one.
+        assertEquals(1, Fixtures.get(routes, "rows", "db" to "app", "table" to "accounts", "filter" to "write").json().getJSONArray("items").length())
+        assertEquals(0, Fixtures.get(routes, "rows", "db" to "app", "table" to "accounts", "filter" to "tok-live").json().getJSONArray("items").length())
+
+        // query goes by the result's column name: the exception is the exact name, so an expression of the column stays masked.
+        val sql = "SELECT oauthscopes, length(oauthScopes), accessToken FROM accounts"
+        val row = Fixtures.post(routes, "query", JSONObject().put("db", "app").put("sql", sql)).json().getJSONArray("rows").getJSONArray(0)
+        assertEquals("read write", row.getJSONObject(0).getString("value"))
+        assertEquals("{\"type\":\"integer\",\"masked\":true}", row.getJSONObject(1).toString())
+        assertEquals(MASKED_TEXT, row.getJSONObject(2).toString())
+        // The statement that the console builds to read a cut text whole.
+        val whole = Fixtures.post(routes, "query", JSONObject().put("db", "app").put("sql", "SELECT \"oauthScopes\" FROM \"accounts\" WHERE rowid = 1")).json()
+        assertEquals("read write", whole.getJSONArray("rows").getJSONArray(0).getJSONObject(0).getString("value"))
+
+        val auth = Fixtures.get(routes, "rows", "db" to "tokens", "table" to "auth").json().getJSONArray("items").getJSONObject(0).getJSONObject("cells")
+        assertEquals("password", auth.getJSONObject("auth_method").getString("value"))
+        assertEquals(MASKED_TEXT, auth.getJSONObject("refresh_token").toString())
+    }
+
+    @Test
+    fun `unmasked names are exceptions under MASK_SENSITIVE only, and VISIBLE shows every value with or without them`() {
+        val registry =
+            SqliteRegistry(
+                listOf(
+                    SqliteDb.framework("masked", unmasked = setOf("oauth_scopes")) { live },
+                    SqliteDb.framework("visible", valuePolicy = SqliteValuePolicy.VISIBLE, unmasked = setOf("oauth_scopes")) { live },
+                ),
+                directory = null,
+            )
+        val masked = registry.find("masked")!!
+        assertFalse(masked.masks("oauth_scopes"))
+        assertFalse(masked.masks("OAuth_Scopes"))
+        assertTrue(masked.masks("oauth_scopes_v2"))
+        assertTrue(masked.masks("access_token"))
+        assertFalse(masked.masks("key"))
+        assertFalse(masked.masks("KEY"))
+        assertTrue(masked.masks("api_key"))
+        val visible = registry.find("visible")!!
+        assertFalse(visible.masks("oauth_scopes"))
+        assertFalse(visible.masks("access_token"))
+    }
+
+    @Test
+    fun `a discovered file has no exceptions, also for a name that a registration unmasks`() {
+        val file = Fixtures.file(databases, "library.db")
+        SQLiteDatabase.openDatabase(file.path, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.execSQL("CREATE TABLE auth (auth_method TEXT)")
+            db.execSQL("INSERT INTO auth VALUES ('password')")
+        }
+        val routes = SqliteRoutes(SqliteRegistry(listOf(SqliteDb.framework("app", unmasked = setOf("auth_method")) { live }), databases))
+
+        val rows = Fixtures.get(routes, "rows", "db" to "library.db", "table" to "auth").json().getJSONArray("items")
+        assertEquals(MASKED_TEXT, rows.getJSONObject(0).getJSONObject("cells").getJSONObject("auth_method").toString())
+    }
+
+    @Test
+    fun `a discovered file masks its sensitive columns`() {
+        val file = Fixtures.file(databases, "library.db")
+        SQLiteDatabase.openDatabase(file.path, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.execSQL("CREATE TABLE auth (refresh_token TEXT)")
+            db.execSQL("INSERT INTO auth VALUES ('r-1')")
+        }
+        val routes = SqliteRoutes(SqliteRegistry(listOf(SqliteDb.framework("app") { live }), databases))
+
+        val found = Fixtures.get(routes, "databases").json().getJSONArray("items").getJSONObject(1)
+        assertEquals("library.db", found.getString("name"))
+        assertEquals("mask_sensitive", found.getString("policy"))
+        val rows = Fixtures.get(routes, "rows", "db" to "library.db", "table" to "auth").json().getJSONArray("items")
+        assertEquals(MASKED_TEXT, rows.getJSONObject(0).getJSONObject("cells").getJSONObject("refresh_token").toString())
     }
 
     @Test
@@ -585,5 +735,6 @@ class SqliteRoutesTest {
 
     private companion object {
         val HINTS = mapOf("notes" to TableHint("Note", "A note that the user wrote."))
+        const val MASKED_TEXT = "{\"type\":\"text\",\"masked\":true}"
     }
 }

@@ -10,12 +10,14 @@ import android.database.sqlite.SQLiteOutOfMemoryException
 import android.database.sqlite.SQLiteReadOnlyDatabaseException
 import android.os.CancellationSignal
 import android.os.OperationCanceledException
+import android.util.Log
 import io.github.twinsen81.lustro.CursorCodec
 import io.github.twinsen81.lustro.DebugRequest
 import io.github.twinsen81.lustro.DebugResponse
 import io.github.twinsen81.lustro.escapeForJson
 import io.github.twinsen81.lustro.sqlite.TableHint
 import java.io.File
+import java.util.Locale
 import org.json.JSONException
 import org.json.JSONObject
 
@@ -45,7 +47,7 @@ internal class SqliteRoutes(private val registry: SqliteRegistry, private val li
                 else -> null
             }
         } catch (e: RouteException) {
-            DebugResponse.error(e.message.orEmpty(), status = e.status, code = e.code, field = e.field)
+            DebugResponse.error(e.message.orEmpty(), status = e.status, code = e.code, field = e.field, hint = e.hint)
         } catch (_: OperationCanceledException) {
             DebugResponse.error("The statement was stopped: the request timed out or the server stopped", status = 504)
         } catch (e: SQLiteException) {
@@ -58,7 +60,7 @@ internal class SqliteRoutes(private val registry: SqliteRegistry, private val li
     private fun query(body: JSONObject, signal: CancellationSignal): DebugResponse {
         val entry = entry(string(body, "db"))
         val sql = statement(body, exec = false)
-        val result = readOnly(entry).use { connection -> statementErrors { console.run(connection, sql, signal) } }
+        val result = readOnly(entry).use { connection -> statementErrors { console.run(connection, sql, signal, entry::masks) } }
         return DebugResponse.json {
             append("{\"database\":\"").append(entry.name.escapeForJson()).append('"')
             append(",\"columns\":[").append(result.columns.joinToString(",") { "\"${it.escapeForJson()}\"" }).append(']')
@@ -80,6 +82,7 @@ internal class SqliteRoutes(private val registry: SqliteRegistry, private val li
         val entry = writable(string(body, "db"))
         val sql = statement(body, exec = true)
         val changes = live(entry).use { connection -> statementErrors { SqliteWriter(connection, request).exec(sql) } }
+        afterWrite(entry)
         return DebugResponse.json { append("{\"status\":\"ok\",\"changes\":").append(changes).append('}') }
     }
 
@@ -101,7 +104,19 @@ internal class SqliteRoutes(private val registry: SqliteRegistry, private val li
                 statementErrors(field = "values") { writer.edit(target, values) }
             }
         }
+        afterWrite(entry)
         return DebugResponse.json { append("{\"status\":\"ok\"}") }
+    }
+
+    // The write is committed: what the app's callback throws is the app's, and does not undo it.
+    @Suppress("TooGenericExceptionCaught")
+    private fun afterWrite(entry: DbEntry) {
+        val onWrite = entry.onWrite ?: return
+        try {
+            onWrite()
+        } catch (e: Exception) {
+            Log.w(TAG, "onWrite of the database ${entry.name} threw; the write is committed", e)
+        }
     }
 
     private fun databases(signal: CancellationSignal): DebugResponse {
@@ -114,6 +129,7 @@ internal class SqliteRoutes(private val registry: SqliteRegistry, private val li
                 append(",\"registered\":").append(entry.registered)
                 append(",\"source\":\"").append(entry.source.kind).append('"')
                 append(",\"writable\":").append(entry.writable)
+                append(",\"policy\":\"").append(entry.policy.name.lowercase(Locale.ROOT)).append('"')
                 var path = entry.source.file?.path
                 var version: Int? = null
                 var error: String? = null
@@ -208,6 +224,7 @@ internal class SqliteRoutes(private val registry: SqliteRegistry, private val li
                     append(",\"defaultValue\":").appendString(column.defaultValue)
                     append(",\"primaryKey\":").append(column.primaryKey)
                     append(",\"generated\":").append(column.generated)
+                    append(",\"masked\":").append(entry.masks(column.name))
                     append('}')
                 }
                 append("],\"foreignKeys\":[")
@@ -236,7 +253,7 @@ internal class SqliteRoutes(private val registry: SqliteRegistry, private val li
             val columns = reader.columns(table)
             val rowid = reader.rowid(table, columns)
             val sort = request.queryParam("sort")?.takeIf { it.isNotEmpty() }?.let { sortColumn(it, columns, rowid) }
-            val page = reader.rows(table, columns, rowid, RowsQuery(offset, limit, request.queryParam("filter"), sort, descending))
+            val page = reader.rows(table, columns, rowid, RowsQuery(offset, limit, request.queryParam("filter"), sort, descending)) { entry.masks(it.name) }
             DebugResponse.json {
                 append("{\"items\":[")
                 page.rows.forEachIndexed { index, row ->
@@ -410,6 +427,7 @@ internal class SqliteRoutes(private val registry: SqliteRegistry, private val li
         if (text == null) append("null") else append('"').append(text.escapeForJson()).append('"')
 
     private companion object {
+        const val TAG = "LustroSqlite"
         const val DEFAULT_LIMIT = 50
         const val MAX_LIMIT = 500
 
@@ -433,4 +451,5 @@ internal class RouteException(
     val status: Int = 400,
     val code: String? = null,
     val field: String? = null,
+    val hint: String? = null,
 ) : Exception(message)

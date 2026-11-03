@@ -175,6 +175,13 @@ def check_prefs_delta(text: str, reset: Any) -> None:
     expect(items["launch_count"]["value"] == expected, "launch_count {}, not {}".format(items["launch_count"]["value"], expected))
 
 
+def check_prefs_app_state(text: str, rules: List[dict]) -> None:
+    """The sample's DataStore masks auth_token, and shows auth_method, which it lists in unmasked."""
+    items = _prefs_envelope(text, "reset")
+    expect(items["auth_token"].get("masked") is True and "value" not in items["auth_token"], "auth_token {}".format(items["auth_token"]))
+    expect(items["auth_method"].get("value") == "password" and "masked" not in items["auth_method"], "auth_method {}".format(items["auth_method"]))
+
+
 def check_schema_sqlite(text: str, rules: List[dict]) -> None:
     expect(json.loads(text) == SQLITE_OPENAPI, "the app serves a SQLite schema that differs from the CLI's copy")
 
@@ -191,13 +198,14 @@ def _sqlite_route(route: str, text: str, method: str = "get") -> Dict[str, Any]:
 
 
 def check_sqlite_databases(text: str, rules: List[dict]) -> None:
-    """The two databases the sample registers come first, then the files that discovery finds, by name:
+    """The three databases the sample registers come first, then the files that discovery finds, by name:
     the library-like file, and work-analytics' database once WorkManager has started."""
     items = _sqlite_route("databases", text)["items"]
     shapes = [(d["name"], d["registered"], d["source"], d["writable"], d["schemaVersion"]) for d in items]
     registered = [
-        ("notes", True, "support", True, 3),
+        ("notes", True, "support", True, 5),
         ("catalog", True, "file", False, 1),
+        ("room", True, "support", True, 1),
     ]
     found = shapes[len(registered):]
     expect(shapes[: len(registered)] == registered, "databases {}".format(shapes))
@@ -245,6 +253,35 @@ def check_sqlite_query(text: str, rules: List[dict]) -> None:
     expect(result["columns"] == ["notes", "longest"], "columns {}".format(result["columns"]))
     expect(result["rows"][0][0] == {"type": "integer", "value": 2001}, "the notes {}".format(result["rows"][0][0]))
     expect(result["rows"][0][1]["value"] > 4096, "the longest body {}".format(result["rows"][0][1]))
+
+
+# The sample's accounts table: the policy masks access_token and client_secret, and the
+# registration lists oauth_scopes, which has "auth" in its name, in unmasked.
+MASKED_TEXT = {"type": "text", "masked": True}
+DEMO_SCOPES = {"type": "text", "value": "read write follow"}
+
+
+def check_sqlite_accounts_schema(text: str, rules: List[dict]) -> None:
+    columns = {c["name"]: c["masked"] for c in _sqlite_route("schema", text)["columns"]}
+    expected = {"id": False, "user_name": False, "access_token": True, "client_secret": True, "expires_at": False, "oauth_scopes": False}
+    expect(columns == expected, "masked {}".format(columns))
+
+
+def check_sqlite_accounts(text: str, rules: List[dict]) -> None:
+    rows = {row["cells"]["user_name"]["value"]: row["cells"] for row in _sqlite_rows(text)["items"]}
+    ada = rows["ada"]
+    expect(ada["access_token"] == MASKED_TEXT and ada["client_secret"] == MASKED_TEXT, "ada's tokens {} {}".format(ada["access_token"], ada["client_secret"]))
+    expect(ada["oauth_scopes"] == DEMO_SCOPES, "ada's oauth_scopes {}".format(ada["oauth_scopes"]))
+    expect("demo-token" not in text and "demo-secret" not in text, "a masked value is in the page")
+    # A NULL holds no secret, so it is not masked.
+    expect(rows["signed.out"]["access_token"] == {"type": "null"}, "signed.out's access_token {}".format(rows["signed.out"]["access_token"]))
+
+
+def check_sqlite_accounts_query(text: str, rules: List[dict]) -> None:
+    """query masks by the result's column name, and the exception goes by that name too."""
+    result = _sqlite_route("query", text, "post")
+    expect(result["columns"] == ["oauth_scopes", "access_token"], "columns {}".format(result["columns"]))
+    expect(result["rows"] == [[DEMO_SCOPES, MASKED_TEXT]], "rows {}".format(result["rows"]))
 
 
 def check_sqlite_exec(text: str, rules: List[dict]) -> None:
@@ -461,6 +498,7 @@ CHECKS: Dict[str, Callable[[str, List[dict]], None]] = {
     "prefs-reset": check_prefs_reset,
     "prefs-edit": check_prefs_edit,
     "prefs-delta": check_prefs_delta,
+    "prefs-app-state": check_prefs_app_state,
     "schema-sqlite": check_schema_sqlite,
     "sqlite-databases": check_sqlite_databases,
     "sqlite-tables": check_sqlite_tables,
@@ -473,6 +511,9 @@ CHECKS: Dict[str, Callable[[str, List[dict]], None]] = {
     "work-cancel": check_work_cancel,
     "sqlite-query": check_sqlite_query,
     "sqlite-exec": check_sqlite_exec,
+    "sqlite-accounts-schema": check_sqlite_accounts_schema,
+    "sqlite-accounts": check_sqlite_accounts,
+    "sqlite-accounts-query": check_sqlite_accounts_query,
     "sync": check_sync,
     "rules": check_rules,
     "list": check_list,

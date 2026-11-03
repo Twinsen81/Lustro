@@ -133,6 +133,8 @@ internal class DemoDataStore(context: Context, private val scope: CoroutineScope
                 it[stringSetPreferencesKey("recent_searches")] = setOf("lighthouse", "harbor")
                 it[byteArrayPreferencesKey("avatar_hash")] = byteArrayOf(0x1f, 0x8b.toByte(), 0x08, 0x00)
                 it[stringPreferencesKey("auth_token")] = "at-${java.util.UUID.randomUUID().toString().take(8)}"
+                // "auth" in the name, but no secret: the registration lists it in unmasked.
+                it[stringPreferencesKey("auth_method")] = "password"
             }
             sdkState.edit { it.writeSdkDefaults() }
         }

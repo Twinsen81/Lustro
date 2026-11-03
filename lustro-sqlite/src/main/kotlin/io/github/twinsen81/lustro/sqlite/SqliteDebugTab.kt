@@ -53,7 +53,12 @@ import java.io.File
  *
  * Every client that has the token can read every registered database, and write
  * every writable one: register only the databases that you want to show, and
- * make writable only those that a client may change.
+ * make writable only those that a client may change. By default, the tab leaves
+ * out the values of the columns whose names look like they hold a secret, as
+ * [SqliteValuePolicy.MASK_SENSITIVE] says; that keeps them off the screen, but
+ * a client's own statement can still read them. A registration can show some of
+ * those columns with [unmasked][SqliteDb.unmasked]; a discovered file has no
+ * such exceptions.
  *
  * In the console, the tab lists the databases and their tables, and shows a
  * page of rows, which a client sorts, filters, and pages through, with a row

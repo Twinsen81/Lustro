@@ -488,7 +488,7 @@ request body with no `Content-Type` is stored as text, and its `requestContentTy
 Base path `/api/v1/logs`, when the app registers the Logs plugin (`LogsDebugTab.create()`; without
 it, the routes are an enveloped `404 Unknown tab: logs`). The authoritative contract is
 `lustro-logs/src/main/assets/lustro/logs.openapi.json`, version `1.0`. The tab runs
-`logcat -v threadtime -v UTC --pid=<the app's pid>` while Lustro is started, also in the background, from
+`logcat -b main -b system -b crash -v threadtime -v UTC --pid=<the app's pid>` while Lustro is started, also in the background, from
 the start of the app's process, and holds the newest lines in a buffer of a fixed size (4 MiB by
 default). The CLI has no `logs` commands: use `lustro api`.
 
@@ -557,8 +557,10 @@ it with `GET entry`.
 
 **Policies.** `policy` is `visible` (every value), `mask_sensitive` (every value but those of keys
 that look like they hold a secret, such as `auth_token`, `apiKey`, or `password`, by the network
-redaction's key check), or `keys_only` (no value). The keys always show. A discovered file is
-`mask_sensitive`. `encrypted` is `true` when the file on disk is encrypted: the app registered an
+redaction's key check), or `keys_only` (no value). The keys always show. Under `mask_sensitive`,
+the app can list keys whose values show although the check finds them sensitive, such as
+`auth_method`, by their exact names in any case; `files` does not list them, and such an item
+has its `value` and no `masked`. A discovered file is `mask_sensitive`, with no such keys. `encrypted` is `true` when the file on disk is encrypted: the app registered an
 `EncryptedSharedPreferences`, which shows plain values as its policy lets it, or the file has the
 keysets of one and a plain instance reads it, which is always `keys_only` and read-only.
 
@@ -597,9 +599,9 @@ Base path `/api/v1/sqlite`, when the app registers the SQLite plugin
 
 | Operation | Route | Notes |
 | --- | --- | --- |
-| List the databases | `GET databases` | `{ items: [{ name, registered, source, writable, path, sizeBytes, schemaVersion, error? }] }`: the databases that the app registered, in its order, then the files that the tab found in the app's `databases` directory, by file name. `source` is `support` (the app's `SupportSQLiteDatabase`, such as Room's), `framework` (the app's `SQLiteDatabase`), or `file` (opened read-only for each request). `schemaVersion` is `PRAGMA user_version`; Room and `SQLiteOpenHelper` set it to the schema's version. `path` and `sizeBytes` are `null` for a database in memory; `sizeBytes` leaves out the `-wal` file. `error` says why a database does not open. |
+| List the databases | `GET databases` | `{ items: [{ name, registered, source, writable, policy, path, sizeBytes, schemaVersion, error? }] }`: the databases that the app registered, in its order, then the files that the tab found in the app's `databases` directory, by file name. `source` is `support` (the app's `SupportSQLiteDatabase`, such as Room's), `framework` (the app's `SQLiteDatabase`), or `file` (opened read-only for each request). `schemaVersion` is `PRAGMA user_version`; Room and `SQLiteOpenHelper` set it to the schema's version. `policy` is the value policy, `visible` or `mask_sensitive` (see below). `path` and `sizeBytes` are `null` for a database in memory; `sizeBytes` leaves out the `-wal` file. `error` says why a database does not open. |
 | List the tables | `GET tables?db=` | `{ database, writable, items: [{ name, type, internal, hasRowId, rowCount, entity?, purpose?, error? }] }`, by name. `type` is `table` or `view`. A view has no `rowCount`: counting runs its query. `internal` flags `sqlite_*`, `android_metadata`, `room_master_table`, and the shadow tables of a full-text or R*Tree index. `entity` and `purpose` are the app's hint. |
-| Read a schema | `GET schema?db=&table=` | `{ database, table, type, internal, hasRowId, rowCount, sql, entity?, purpose?, columns: [{ name, type, notNull, defaultValue, primaryKey, generated }], foreignKeys: [{ table, from, to, onUpdate, onDelete }] }`. `primaryKey` is the column's place in the key, from 1, or 0. `generated` is `true` for a column that SQLite computes (`GENERATED ALWAYS AS`). A key over several columns has them in order in `from` and `to`; a `null` in `to` stands for the other table's primary key. |
+| Read a schema | `GET schema?db=&table=` | `{ database, table, type, internal, hasRowId, rowCount, sql, entity?, purpose?, columns: [{ name, type, notNull, defaultValue, primaryKey, generated, masked }], foreignKeys: [{ table, from, to, onUpdate, onDelete }] }`. `primaryKey` is the column's place in the key, from 1, or 0. `generated` is `true` for a column that SQLite computes (`GENERATED ALWAYS AS`). `masked` is `true` for a column whose values the value policy leaves out. A key over several columns has them in order in `from` and `to`; a `null` in `to` stands for the other table's primary key. |
 | Read rows | `GET rows?db=&table=&limit=&cursor=&filter=&sort=&dir=` | Pagination envelope `{ items, nextCursor }`. 50 rows by default, `limit` 1 to 500. Pass `nextCursor` as `cursor` for the next page; it is `null` on the last one. |
 | Run a statement that reads | `POST query` `{ db, sql }` | `{ database, columns, rows: [[cell]], truncated }`: a row is an array of cells in the order of `columns`, which can repeat a name. At most 1000 rows, and fewer when their texts pass 4 Mi characters in all; `truncated` says that rows were left out. A text comes whole; a blob is its size. |
 | Run a statement that writes | `POST exec` `{ db, sql }` | `{ status: "ok", changes }`: the rows that the statement inserted, updated, or deleted, without those of triggers and foreign key actions. Writable databases only. |
@@ -614,6 +616,22 @@ own: `{ type: "null" }`, `{ type: "integer", value }`, `{ type: "real", value }`
 2^53 - 1 either way is a string of its digits, and an infinite real the string `"Infinity"` or
 `"-Infinity"`. A text longer than 4096 characters is cut, with `truncated: true` and the whole
 `length` in characters. A blob is only its size, in any column, also in a `TEXT` one.
+
+**The value policy.** A database's `policy` is `mask_sensitive`, the default and always for a
+discovered file, or `visible`. With `mask_sensitive`, a cell of a column whose name looks like it
+holds a secret, such as `access_token`, `clientSecret`, or `password` (the network redaction's
+name check), is `{ type, masked: true }`, with its storage class and no value, length, or size; a
+`NULL` stays `{ type: "null" }`. A column named only `key`, the name column of a key-value table, is not masked. `GET rows` masks by the table's column, as `GET schema` marks it,
+and its `filter` does not search a masked column; a `sort` on one orders the rows by its values.
+`POST query` masks by the result's column name: SQLite names an expression without an alias by its
+text, so `length(access_token)` is masked, but `SELECT access_token AS t` shows the value, because
+Android does not say which table column a result column comes from. The policy keeps secrets out
+of what you read by accident; it does not stop a client that wants them. `edit` can write a
+masked column. The app can list columns whose values show under `mask_sensitive` although their
+names look like they hold a secret, such as `oauth_scopes`, by their exact names in any case:
+`GET schema` has `masked: false` for such a column, `GET rows` sends and filters its values, and
+`POST query` shows a result column of that name, but not an expression of it, such as
+`length(oauth_scopes)`. `GET databases` does not list these names; a discovered file has none.
 
 **Order, sort, and filter.** Without `sort`, a table's rows come by `rowid`, or by the primary key
 for a table `WITHOUT ROWID`, and a view's as SQLite gives them; `dir=desc` turns the order
@@ -647,7 +665,8 @@ because a longer read would make the app's writes fail with `SQLITE_BUSY`.
 **`POST exec`, `edit`, and `delete` write through the app's handle,** in a transaction of their
 own, and only to a database that the app registers with `writable = true`: any other answers
 `403` with `code: "read_only"` and `field: "db"`, whatever the rest of the body is. `exec` takes
-a statement that returns no rows; a `SELECT` is for `query`. `edit` and `delete` name one row by
+a statement that returns no rows: one that returns rows, such as a `SELECT` or a write with
+`RETURNING`, is a `400` with `code: "statement_refused"`, and does not run; read it with `query`. `edit` and `delete` name one row by
 `rowid` (as `GET rows` gives it) or by `key`, an object with each primary key column of the table
 and its value; a table `WITHOUT ROWID` takes `key` only. The row must be the only one that
 matches: `404` when none does, `400` when more than one does. A value binds by its JSON type, and
@@ -656,7 +675,9 @@ written with `exec` and a blob literal such as `x'00ff'`. A write that SQLite re
 a constraint, is rolled back. SQLite can't stop a write at the request timeout: it runs to its
 end and is then rolled back. Only a timeout during the commit itself can leave the change
 committed, so read the data again after a `504` before you send a write again. Room's observers, such as a
-`Flow` of a DAO, see the change at the app's next write through Room.
+`Flow` of a DAO, see the change at once when the app registers the database with
+`onWrite = { db.invalidationTracker.refreshVersionsAsync() }`, and otherwise at the app's next write
+through Room.
 
 **The statements that both routes refuse.** `BEGIN`, `COMMIT`, `END`, `ROLLBACK`, `SAVEPOINT`,
 `RELEASE`, `ATTACH`, `DETACH`, and `VACUUM`, in `exec` also every `PRAGMA`, and in `query` the
@@ -702,7 +723,10 @@ with `code: "work_unsupported"`.
 stopReason: { code, name }, output, progress, constraints, initialDelayMillis, periodicity?,
 nextScheduleTimeMillis? }`. `state` is a `WorkInfo.State` name: `ENQUEUED`, `RUNNING`,
 `SUCCEEDED`, `FAILED`, `BLOCKED` (waiting for the work before it in a chain), or `CANCELLED`.
-`tags` includes the worker's class name, which WorkManager adds. `uniqueName` is there only for a
+`tags` includes the worker's class name, which WorkManager adds. `runAttempts` is
+`WorkInfo.runAttemptCount`, how often the work started; for periodic work it counts only the
+current period, because WorkManager sets it back to 0 when a period ends, so the `finished` event
+of a periodic run has 0 and its `started` event has the attempt. `uniqueName` is there only for a
 name that the app registered, or the one that `name=` asked for: `WorkInfo` does not have it.
 `stopReason.name` is the `WorkInfo.STOP_REASON_*` constant without the prefix: `NOT_STOPPED`
 when the work never stopped, `UNKNOWN` when WorkManager does not know why, as after the app's
@@ -714,9 +738,11 @@ from its `finished` event. `nextScheduleTimeMillis` is left out when there is no
 type adds: `finished` has `result` (`success`, `failure`, or `retry`) and `output`; `stopped` has
 `stopReason`; `exception` has `exception: { type, message?, stackTrace, truncated? }`, the message
 at most 4096 characters and the stack trace at most 16384; `updated` has `previousGeneration`. `state` and `runAttempts` are
-the work's at the event. The schedule listener gives `enqueued`, `unblocked` (the work before it
-in a chain finished), `updated`, `cancelled`, and `prerequisiteFailed` (the work before it failed
-or was cancelled, so this work fails without a run); the execution listener gives `started`,
+the work's at the event. The schedule listener gives `enqueued`, `unblocked` (the work waits for
+no work before it: WorkManager sends it at the time of `enqueued` for work that has no
+prerequisites, or whose prerequisites all succeeded, and else when the last one succeeds),
+`updated`, `cancelled`, and `prerequisiteFailed` (the work before it failed or was cancelled, so
+this work fails without a run); the execution listener gives `started`,
 `stopped`, `finished`, and `exception`. A worker that throws ends its run with `exception`, not
 `finished`. A `finished` with `retry` leaves the work `ENQUEUED`, as does the end of a period of
 periodic work.
@@ -936,7 +962,7 @@ Errors use the shared envelope; key statuses:
   `SqliteDb`). On `sqlite/query`, with `field: "sql"`: SQLite refused a write, because `query`
   only reads.
 - **`400 bad_request` on `sqlite/query` or `exec`:** `code: "statement_refused"` for a statement
-  that the tab does not run (see above); `code: "sqlite_error"` with SQLite's message for one that
+  that the tab does not run (see above), and in `exec` for a statement that returns rows; `code: "sqlite_error"` with SQLite's message for one that
   SQLite can't run, such as a syntax error or a broken constraint; `code: "query_unavailable"` for
   a database that has no file for `query` to open read-only; `code: "row_too_big"` for a row that
   does not fit Android's cursor window, about 2 MB: read the value in parts with `substr()`.
@@ -950,7 +976,8 @@ Errors use the shared envelope; key statuses:
   a corrupt file or a view whose table is gone, or a client's statement failed on the file or the
   device; the message is SQLite's.
 - **`503` on a `work/` route:** `code: "work_unsupported"` when the app's WorkManager is older
-  than 2.12.0 or missing; `code: "work_not_initialized"` on `items`, `items/{id}`, `cancel`, and
+  than 2.12.0 or missing, with the app's version in the message when the APK has WorkManager's
+  version file (`META-INF/androidx.work_work-runtime.version`), which a build can leave out; `code: "work_not_initialized"` on `items`, `items/{id}`, `cancel`, and
   `prune` until the app initializes WorkManager. `404` with `code: "metrics_off"` on
   `work/metrics` when the app passed no work-analytics repository. **No work events:** check
   `state.listeners` and `state.reason` (see [WorkManager tab operations](#workmanager-tab-operations)).

@@ -23,6 +23,13 @@ import androidx.datastore.preferences.core.Preferences
  * @property policy what the tab shows of the values.
  * @property readOnly whether the tab refuses to edit, delete, and clear: those
  *   routes answer `403`.
+ * @param unmasked the keys whose values [ValuePolicy.MASK_SENSITIVE] shows
+ *   although they look like they hold a secret, such as an `oauth_scopes` key,
+ *   which has `auth` in its name but holds no secret. A name matches a key with
+ *   exactly that name, in any case: it is no pattern. It changes nothing under
+ *   [ValuePolicy.VISIBLE], which shows every value, or [ValuePolicy.KEYS_ONLY],
+ *   which shows none: the tab ignores it there, so that a change of the policy
+ *   never shows more than the policy says.
  * @throws IllegalArgumentException when [name] is empty or contains `/` or `\`.
  */
 public class PrefsDataStore @JvmOverloads constructor(
@@ -30,7 +37,11 @@ public class PrefsDataStore @JvmOverloads constructor(
     public val dataStore: DataStore<Preferences>,
     public val policy: ValuePolicy = ValuePolicy.MASK_SENSITIVE,
     public val readOnly: Boolean = false,
+    unmasked: Set<String> = emptySet(),
 ) {
+    /** The keys whose values [ValuePolicy.MASK_SENSITIVE] shows, as the app passed them. A key matches in any case. */
+    public val unmasked: Set<String> = unmasked.toSet()
+
     init {
         require(name.isNotEmpty() && '/' !in name && '\\' !in name) { "name must be a file name, without / or \\: \"$name\"" }
     }

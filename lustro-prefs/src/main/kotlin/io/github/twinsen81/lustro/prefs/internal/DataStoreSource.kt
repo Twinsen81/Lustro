@@ -28,7 +28,8 @@ internal class DataStoreSource(
     private val dataStore: DataStore<Preferences>,
     policy: ValuePolicy,
     readOnly: Boolean,
-) : PrefsSource(name, PrefsStore.PREFERENCES_DATASTORE, policy, readOnly, registered = true) {
+    unmasked: Set<String> = emptySet(),
+) : PrefsSource(name, PrefsStore.PREFERENCES_DATASTORE, policy, readOnly, registered = true, unmasked) {
     // Guarded by this. The scope that follows the store's data, while the tab listens.
     private var scope: CoroutineScope? = null
 
@@ -84,7 +85,7 @@ internal class DataStoreSource(
         // with, until the job has data of its own.
         seen.compareAndSet(null, data)
         followAgain()
-        return Contents(data.asMap().mapKeys { it.key.name }, encrypted = false, policy = policy, readOnly = readOnly)
+        return Contents(data.asMap().mapKeys { it.key.name }, encrypted = false, policy = policy, readOnly = readOnly, unmasked = unmasked)
     }
 
     // A store reads its file again after a failed read, such as an IOException or a migration

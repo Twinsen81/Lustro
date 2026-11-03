@@ -94,6 +94,9 @@ internal class SampleViewModel(application: Application) : AndroidViewModel(appl
     /** How many notes and products the app reads, after its last write. */
     val sqliteCounts: StateFlow<Pair<Long, Long>?> = demoSqlite.rowCounts
 
+    /** The tasks of the Room database, as its DAO's Flow emits them: a write of the SQLite tab shows here. */
+    val roomTasks: Flow<List<DemoRoom.Task>> = DemoRoom.get(application).tasks().all()
+
     val workActions: List<DemoAction> = DemoCatalog.work(demoWork)
 
     /** How many work requests WorkManager has in each state. */
@@ -129,6 +132,7 @@ internal class SampleViewModel(application: Application) : AndroidViewModel(appl
 
     init {
         demoSqlite.refresh()
+        io.execute { DemoRoom.seed(application) }
         flags?.let { source ->
             viewModelScope.launch {
                 var previous = source.value.associate { it.id to it.enabled }

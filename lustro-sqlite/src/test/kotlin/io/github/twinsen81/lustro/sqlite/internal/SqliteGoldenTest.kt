@@ -6,6 +6,7 @@ import androidx.sqlite.db.SupportSQLiteOpenHelper
 import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
 import androidx.test.core.app.ApplicationProvider
 import io.github.twinsen81.lustro.sqlite.SqliteDb
+import io.github.twinsen81.lustro.sqlite.SqliteValuePolicy
 import io.github.twinsen81.lustro.sqlite.TableHint
 import io.github.twinsen81.lustro.sqlite.internal.Fixtures.text
 import java.io.File
@@ -57,7 +58,7 @@ class SqliteGoldenTest {
                 SqliteRegistry(
                     listOf(
                         SqliteDb.support("app", writable = true, tableHints = HINTS) { helper.writableDatabase },
-                        SqliteDb.file("catalog", catalog),
+                        SqliteDb.file("catalog", catalog, valuePolicy = SqliteValuePolicy.VISIBLE),
                     ),
                     databases,
                 ),
@@ -77,7 +78,7 @@ class SqliteGoldenTest {
         db.execSQL("CREATE TABLE folders (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL DEFAULT 'Inbox')")
         db.execSQL(
             "CREATE TABLE notes (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, body TEXT, attachment BLOB, " +
-                "score REAL, created_at INTEGER NOT NULL, folder_id INTEGER REFERENCES folders(id) ON DELETE CASCADE)",
+                "score REAL, created_at INTEGER NOT NULL, folder_id INTEGER REFERENCES folders(id) ON DELETE CASCADE, share_token TEXT)",
         )
         db.execSQL("CREATE TABLE note_tags (note_id INTEGER NOT NULL, tag TEXT NOT NULL, PRIMARY KEY (note_id, tag)) WITHOUT ROWID")
         db.execSQL("CREATE VIEW recent_notes AS SELECT id, title FROM notes ORDER BY created_at DESC")
@@ -89,7 +90,8 @@ class SqliteGoldenTest {
         )
         // Any column holds any type: a blob in a TEXT column, and an id too large for a JavaScript number.
         db.execSQL("INSERT INTO notes (title, body, created_at) VALUES ('Imported', x'89504e47', 1792419760030)")
-        db.execSQL("INSERT INTO notes (id, title, score, created_at) VALUES (9007199254740993, 'Synced', 0.25, 1792419770040)")
+        // share_token looks like it holds a secret: the default value policy masks it.
+        db.execSQL("INSERT INTO notes (id, title, score, created_at, share_token) VALUES (9007199254740993, 'Synced', 0.25, 1792419770040, 'st_9f2c41')")
         db.execSQL("INSERT INTO note_tags VALUES (1, 'home'), (2, 'travel')")
     }
 
@@ -122,7 +124,7 @@ class SqliteGoldenTest {
         const val QUERY = "../wire-protocol/v1/golden/sqlite-query.json"
         const val EXEC = "../wire-protocol/v1/golden/sqlite-exec.json"
 
-        const val QUERY_SQL = "SELECT id, title, attachment, score, length(body) AS body_chars FROM notes ORDER BY id DESC"
+        const val QUERY_SQL = "SELECT id, title, attachment, score, length(body) AS body_chars, share_token FROM notes ORDER BY id DESC"
         const val EXEC_SQL = "UPDATE notes SET score = 5 WHERE folder_id = 1"
     }
 }

@@ -36,6 +36,9 @@ internal sealed class Cell {
 
     /** A blob: only its size, in bytes. */
     class Blob(val bytes: Long) : Cell()
+
+    /** A value that the database's value policy leaves out: only its storage class, as typeof() names it. */
+    class Masked(val type: String) : Cell()
 }
 
 /** A row; [rowid] is `null` for a table without one and for a view. */
@@ -160,27 +163,39 @@ internal class SqliteReader(private val connection: DbConnection, private val si
 
     fun count(table: Table): Long = query("SELECT COUNT(*) FROM ${quote(table.name)}") { if (it.moveToFirst()) it.getLong(0) else 0L }
 
-    /** A page of rows of [table], whose columns are [columns] and whose rowid [rowid] names, for [request]. */
-    fun rows(table: Table, columns: List<Column>, rowid: String?, request: RowsQuery): Page {
+    /**
+     * A page of rows of [table], whose columns are [columns] and whose rowid [rowid] names, for
+     * [request]. The value of a column that [masked] names is never read, and the filter does
+     * not search it.
+     */
+    fun rows(table: Table, columns: List<Column>, rowid: String?, request: RowsQuery, masked: (Column) -> Boolean = { false }): Page {
+        val hidden = columns.map(masked)
         val select =
             buildList {
                 if (rowid != null) add(rowid)
-                for (column in columns) {
+                columns.forEachIndexed { index, column ->
                     val name = quote(column.name)
                     // The storage class, per cell: any column can hold any type, a blob in a TEXT column too.
                     add("typeof($name)")
-                    // A blob is never loaded, and a text is cut. A number comes as it is.
-                    add("CASE typeof($name) WHEN 'text' THEN substr($name, 1, $MAX_TEXT_CHARS) WHEN 'blob' THEN NULL ELSE $name END")
-                    // length() of a text counts characters, of a blob bytes, and reads only the size of a blob.
-                    add("CASE WHEN typeof($name) IN ('text', 'blob') THEN length($name) END")
+                    if (hidden[index]) {
+                        add("NULL")
+                        add("NULL")
+                    } else {
+                        // A blob is never loaded, and a text is cut. A number comes as it is.
+                        add("CASE typeof($name) WHEN 'text' THEN substr($name, 1, $MAX_TEXT_CHARS) WHEN 'blob' THEN NULL ELSE $name END")
+                        // length() of a text counts characters, of a blob bytes, and reads only the size of a blob.
+                        add("CASE WHEN typeof($name) IN ('text', 'blob') THEN length($name) END")
+                    }
                 }
             }.joinToString(", ")
         val args = mutableListOf<String>()
+        val searched = columns.filterIndexed { index, _ -> !hidden[index] }
         val where =
             request.filter?.takeIf { it.isNotEmpty() }?.let { filter ->
+                if (searched.isEmpty()) return@let " WHERE 0"
                 args += "%" + escapeLike(filter) + "%"
                 // One parameter, ?1, for every column; a blob is left out, as its bytes are not text.
-                columns.joinToString(" OR ", prefix = " WHERE (", postfix = ")") {
+                searched.joinToString(" OR ", prefix = " WHERE (", postfix = ")") {
                     val name = quote(it.name)
                     "(typeof($name) != 'blob' AND CAST($name AS TEXT) LIKE ?1 ESCAPE '\\')"
                 }
@@ -189,7 +204,7 @@ internal class SqliteReader(private val connection: DbConnection, private val si
         val rows =
             query(sql, args.toTypedArray()) { cursor ->
                 buildList {
-                    while (size <= request.limit && cursor.moveToNext()) add(readRow(cursor, columns.size, rowid != null))
+                    while (size <= request.limit && cursor.moveToNext()) add(readRow(cursor, hidden, rowid != null))
                 }
             }
         return if (rows.size > request.limit) Page(rows.subList(0, request.limit), request.offset + request.limit) else Page(rows, null)
@@ -205,29 +220,32 @@ internal class SqliteReader(private val connection: DbConnection, private val si
         return if (terms.isEmpty()) "" else terms.joinToString(", ", prefix = " ORDER BY ") { it + direction }
     }
 
-    private fun readRow(cursor: Cursor, columnCount: Int, hasRowid: Boolean): Row {
+    private fun readRow(cursor: Cursor, hidden: List<Boolean>, hasRowid: Boolean): Row {
         var index = 0
         val rowid = if (hasRowid) cursor.getLong(index++) else null
-        val cells = ArrayList<Cell>(columnCount)
-        repeat(columnCount) {
+        val cells = ArrayList<Cell>(hidden.size)
+        for (masked in hidden) {
             val type = cursor.getString(index)
             val value = index + 1
             val length = index + 2
             index += CELL_COLUMNS
-            cells +=
-                when (type) {
-                    "integer" -> Cell.Integer(cursor.getLong(value))
-                    "real" -> Cell.Real(cursor.getDouble(value))
-                    "text" -> {
-                        val whole = cursor.getLong(length)
-                        Cell.Text(cursor.getString(value), whole.takeIf { it > MAX_TEXT_CHARS })
-                    }
-                    "blob" -> Cell.Blob(cursor.getLong(length))
-                    else -> Cell.Null
-                }
+            // A NULL holds no secret, and it says that the column is empty.
+            cells += if (masked && type != "null") Cell.Masked(type) else cell(cursor, type, value, length)
         }
         return Row(rowid, cells)
     }
+
+    private fun cell(cursor: Cursor, type: String, value: Int, length: Int): Cell =
+        when (type) {
+            "integer" -> Cell.Integer(cursor.getLong(value))
+            "real" -> Cell.Real(cursor.getDouble(value))
+            "text" -> {
+                val whole = cursor.getLong(length)
+                Cell.Text(cursor.getString(value), whole.takeIf { it > MAX_TEXT_CHARS })
+            }
+            "blob" -> Cell.Blob(cursor.getLong(length))
+            else -> Cell.Null
+        }
 
     private fun <T> query(sql: String, args: Array<String> = emptyArray(), read: (Cursor) -> T): T =
         if (limit == null) {

@@ -147,6 +147,7 @@
 .sqlite-cell--cut .sqlite-tag--cut { margin-right: 7px; cursor: pointer; }
 .sqlite-cell--cut:hover .sqlite-tag--cut { border-color: var(--accent-border); }
 .sqlite-tag--blob { color: var(--t3); }
+.sqlite-tag--masked { color: var(--t3); border-style: dashed; }
 .sqlite-th--actions, .sqlite-cell--actions { text-align: right; text-overflow: clip; }
 .sqlite-cell--actions { padding-top: 5px; padding-bottom: 5px; }
 
