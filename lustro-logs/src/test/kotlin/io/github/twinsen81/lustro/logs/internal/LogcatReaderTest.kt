@@ -190,6 +190,8 @@ class LogcatReaderTest {
         assertEquals(listOf("logcat", "-b", "main", "-b", "system", "-b", "crash", "-v", "threadtime", "-v", "UTC", "--pid=4321"), launcher.nextLaunch())
         second.emit("10-19 14:22:20.000  4321  4330 I App     : read")
         awaitMessages("read")
+        // Without -T, logd starts the run at its oldest line, so it needs no dump.
+        assertTrue(launcher.dumpLaunches.isEmpty())
     }
 
     @Test

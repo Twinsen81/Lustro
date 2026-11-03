@@ -31,10 +31,9 @@ import java.util.Locale
  * first line of the dump is the first line of the run, and the dump adds
  * nothing.
  *
- * When logcat ends, the reader starts
- * it again after [restartDelayMs]. After [MAX_RESTARTS] restarts in a row with
- * no line, it gives up and its [status] is [Status.FAILED]; the buffer keeps
- * what it has.
+ * When logcat ends, the reader starts it again after [restartDelayMs]. After
+ * [MAX_RESTARTS] restarts in a row with no line, it gives up and its [status]
+ * is [Status.FAILED]; the buffer keeps what it has.
  *
  * [start] and [stop] are safe to call from any thread.
  */
@@ -261,7 +260,10 @@ internal class LogcatReader(
 
         // Reads the run's lines once with logcat -d, and adds the ones before [first], the
         // run's first line. When the dump can't run or doesn't have [first], it adds none:
-        // without [first], it can't tell which of its lines the run reads too.
+        // without [first], it can't tell which of its lines the run reads too. The dump
+        // stops at the first line equal to [first]: when an equal line from the same
+        // millisecond and thread is among the missed lines, the lines from that one on
+        // stay missed, but none comes twice.
         private fun addMissedBefore(first: LogLine, since: Long, skipAtSince: Int) {
             val started =
                 try {
