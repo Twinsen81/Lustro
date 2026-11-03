@@ -487,7 +487,7 @@ request body with no `Content-Type` is stored as text, and its `requestContentTy
 
 Base path `/api/v1/logs`, when the app registers the Logs plugin (`LogsDebugTab.create()`; without
 it, the routes are an enveloped `404 Unknown tab: logs`). The authoritative contract is
-`lustro-logs/src/main/assets/lustro/logs.openapi.json`, version `1.0`. The tab runs
+`lustro-logs/src/main/assets/lustro/logs.openapi.json`, version `1.1` (`1.1` added `from` and `to`). The tab runs
 `logcat -b main -b system -b crash -v threadtime -v UTC --pid=<the app's pid>` while Lustro is started, also in the background, from
 the start of the app's process, and holds the newest lines in a buffer of a fixed size (4 MiB by
 default). The CLI has no `logs` commands: use `lustro api`.
@@ -527,7 +527,7 @@ with the reason in `readerError` (the buffer keeps what it has, and `entries` st
 Base path `/api/v1/prefs`, when the app registers the Preferences plugin
 (`PrefsDebugTab.create(context, ...)`; without it, the routes are an enveloped
 `404 Unknown tab: prefs`). The authoritative contract is
-`lustro-prefs/src/main/assets/lustro/prefs.openapi.json`, version `1.0`. The CLI has no `prefs`
+`lustro-prefs/src/main/assets/lustro/prefs.openapi.json`, version `1.1` (`1.1` sends a long past 2^53 - 1 as a string). The CLI has no `prefs`
 commands: use `lustro api`.
 
 | Operation | Route | Notes |
@@ -708,7 +708,7 @@ count.
 Base path `/api/v1/work`, when the app registers the WorkManager plugin
 (`WorkDebugTab.create(context, uniqueNames)`, or `createWithMetrics(context, metrics, uniqueNames)` with a
 work-analytics repository; without it, the routes are an enveloped `404 Unknown tab: work`). The
-authoritative contract is `lustro-work/src/main/assets/lustro/work.openapi.json`, version `1.0`.
+authoritative contract is `lustro-work/src/main/assets/lustro/work.openapi.json`, version `1.1` (`1.1` names the unique work of every work request).
 The CLI has no `work` commands: use `lustro api`. Only `POST cancel` and `POST prune` change
 anything. The app needs WorkManager 2.12.0 or newer: with an older one, every route is a `503`
 with `code: "work_unsupported"`.

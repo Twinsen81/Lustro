@@ -285,8 +285,9 @@ public class Lustro internal constructor(
     /**
      * Binds the loopback socket, honouring the port-collision policy. When
      * [DebugConfig.serverPort] is taken: with [DebugConfig.bindFallback] true,
-     * retry on an ephemeral port (`0`) and use the OS-assigned port; otherwise log
-     * a WARN and leave the server unbound. Emits the machine-parseable startup log
+     * retry on an ephemeral port (`0`) and use the OS-assigned port; otherwise leave
+     * the server unbound and try the same port again for [BIND_RETRY_WINDOW_MS] while
+     * the app is in the foreground. Emits the machine-parseable startup log
      * after a successful bind. Caller holds the monitor.
      */
     private fun bind() {
@@ -321,6 +322,13 @@ public class Lustro internal constructor(
             srv
         } catch (e: Throwable) {
             if (!quiet) Log.w(TAG, "Failed to bind debug server on ${config.bindAddress}:$port", e)
+            // NanoHTTPD opens its ServerSocket before the bind and keeps it after a failed one:
+            // stop() closes it, so that the retries leak no descriptor.
+            try {
+                srv.stop()
+            } catch (closeFailure: Throwable) {
+                Log.w(TAG, "Error closing the unbound debug server", closeFailure)
+            }
             srv.shutdownLimiter()
             null
         }

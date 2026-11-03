@@ -300,7 +300,7 @@ def test_logs_fixture_matches_the_logs_stream_envelope(fixture):
 def test_the_logs_schema_is_valid_and_has_its_own_version():
     logs = wire.load_openapi("logs")
     assert logs["openapi"].startswith("3.1")
-    assert logs["info"]["version"] == "1.0"
+    assert logs["info"]["version"] == "1.1"
     for name, schema in logs["components"]["schemas"].items():
         Draft202012Validator.check_schema(schema)
     # The error envelope is the same everywhere.
@@ -364,7 +364,7 @@ def test_prefs_files_fixture_matches_the_files_route():
 def test_the_prefs_schema_is_valid_and_has_its_own_version():
     prefs = wire.load_openapi("prefs")
     assert prefs["openapi"].startswith("3.1")
-    assert prefs["info"]["version"] == "1.0"
+    assert prefs["info"]["version"] == "1.1"
     for schema in prefs["components"]["schemas"].values():
         Draft202012Validator.check_schema(schema)
     # The error envelope is the same everywhere.
@@ -558,7 +558,7 @@ WORK_ROUTES = ("items", "items/{id}", "events", "metrics", "cancel", "prune")
 def test_the_work_schema_is_valid_and_has_its_own_version():
     work = wire.load_openapi("work")
     assert work["openapi"].startswith("3.1")
-    assert work["info"]["version"] == "1.0"
+    assert work["info"]["version"] == "1.1"
     for schema in work["components"]["schemas"].values():
         Draft202012Validator.check_schema(schema)
     assert work["components"]["schemas"]["ErrorEnvelope"] == wire.load_openapi()["components"]["schemas"]["ErrorEnvelope"]

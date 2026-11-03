@@ -34,14 +34,17 @@ see [DECISIONS.md](DECISIONS.md).
   every download, and the app's periodic and sync work, had its name, Cancel
   unique work needed no typed name, a download showed `running 2%` and its
   bar, and the link of a download that failed with HTTP 404 opened the Logs
-  tab with the 41 lines of the run, among them `Response code is 404`.
+  tab with the 41 lines of the run, among them `Response code is 404`. The
+  WorkManager schema is `1.1`.
 - **The Logs routes take a time range.** `GET entries` and `GET text` take
   `from` and `to`, in epoch milliseconds, both ends included, and a repeated
   line counts from its first time to its last; a value that is not a whole
   number, or a `from` after `to`, is a 400 with the parameter as `field`. The
   console reads the range from a link such as
   `/tab/logs#from=<ms>&to=<ms>`, as the WorkManager tab gives each run, and
-  shows it as a chip that clears it.
+  shows it as a chip that clears it. The console now takes only the token out
+  of a link's fragment, so a link with both keeps its range. The Logs schema
+  is `1.1`.
 
 - **The SQLite tab can tell the app about its writes, so Room's observers see
   them at once.** An open screen that a DAO's `Flow` filled did not show a row
@@ -878,7 +881,8 @@ see [DECISIONS.md](DECISIONS.md).
   app closes its server only after its own `onStop`, and the server did not
   try again until the app went to the background and back. Without
   `bindFallback`, the bind now tries the configured port again every 250 ms
-  for 10 s while the app is in the foreground, quietly, and logs the WARN
+  for 10 s while the app is in the foreground, quietly, closing the socket of
+  each failed attempt, which NanoHTTPD keeps open, and logs the WARN
   `is taken and bindFallback=false; not starting` only when that time ends.
   The retries stop when the app goes to the background or `stop()` runs.
   Verified on a physical Android 16 device: with a shell process on port
@@ -1457,7 +1461,8 @@ see [DECISIONS.md](DECISIONS.md).
   screens reload on, and one for WorkManager's `Configuration.Provider`.
 - **A long past 2^53 - 1 in the Preferences routes is the string of its
   digits,** as in the SQLite and WorkManager routes: a JavaScript client of
-  the routes lost its last digits. The console read it right already.
+  the routes lost its last digits. The console read it right already. The
+  Preferences schema is `1.1`.
 - **The SQLite console shows a date for an integer that looks like a time,
   and the rowid once.** An integer cell from 2000 to 2100 in epoch
   milliseconds, such as a publish date, has the date as its title, in the
