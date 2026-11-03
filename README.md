@@ -594,6 +594,11 @@ val lustro = Lustro.builder(application)
 - **From the start of the process.** The tab reads logcat from `start()` to `stop()`, also while
   the app is in the background, and starts with the lines that your process wrote before
   `start()`. `stop()` ends the `logcat` process; the next `start()` goes on after the newest line.
+  A line that never reached logd is not in the tab, as it is not in `adb logcat`: one physical
+  Android 16 device sets `log.tag` to `E` for about a second while an app starts, and drops the
+  lines below Error of every process in that time. The tab's `logcat` runs as your app, so it
+  also leaves out the lines that the process wrote as root before it became your app, such as
+  `libprocessgroup: Created cgroup ...`, which `adb logcat --pid` shows.
 - **A bounded buffer.** The newest lines stay in memory, at most `bufferBytes` (default 4 MiB, by
   the size of their text on the heap, about 12,000 lines of 100 characters):
   `LogsDebugTab.create(bufferBytes = 8 * 1024 * 1024)`. A line that repeats the line before folds

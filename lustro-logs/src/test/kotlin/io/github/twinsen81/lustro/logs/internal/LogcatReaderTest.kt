@@ -22,6 +22,7 @@ class LogcatReaderTest {
             restartDelayMs = 10,
             parser = ThreadtimeParser(utc) { now },
         )
+    private val arguments = listOf("logcat", "-b", "main", "-b", "system", "-b", "crash", "-v", "threadtime", "-v", "UTC", "--pid=4321")
 
     @After
     fun tearDown() {
@@ -36,11 +37,9 @@ class LogcatReaderTest {
 
         // The buffers are named: from Android 16 the default set has the kernel buffer, with which
         // logd can drop lines of a reader that has just started. One -b for each: logcat on API 24
-        // fails on a comma list.
-        assertEquals(
-            listOf("logcat", "-b", "main", "-b", "system", "-b", "crash", "-v", "threadtime", "-v", "UTC", "--pid=4321", "-T", "1792419680.010"),
-            launcher.nextLaunch(),
-        )
+        // fails on a comma list. No -T: logd can skip the lines of a -T reader that connects
+        // before logd has a line of its process, so the reader skips the older lines itself.
+        assertEquals(arguments, launcher.nextLaunch())
         logcat.emit(
             "--------- beginning of main",
             "10-19 14:22:20.000  4321  4330 I App     : started",
@@ -71,7 +70,7 @@ class LogcatReaderTest {
     }
 
     @Test
-    fun `lines from before the process started are skipped, as logcat on API 24 prints them all`() {
+    fun `logcat prints every line of the pid that logd has, and the ones from before the process started are skipped`() {
         val logcat = FakeLogcat()
         launcher.add(logcat)
         reader.start()
@@ -82,19 +81,6 @@ class LogcatReaderTest {
             "10-19 14:22:20.000  4321  4330 I App     : this process",
         )
         awaitMessages("this process")
-    }
-
-    @Test
-    fun `a logcat that rejects the time of -T is run without it`() {
-        launcher.add(FakeLogcat().emit("-T \"1792419680.010\" not in time format").end())
-        val second = FakeLogcat()
-        launcher.add(second)
-        reader.start()
-
-        assertTrue(launcher.nextLaunch().contains("-T"))
-        assertEquals(listOf("logcat", "-b", "main", "-b", "system", "-b", "crash", "-v", "threadtime", "-v", "UTC", "--pid=4321"), launcher.nextLaunch())
-        second.emit("10-19 14:22:20.000  4321  4330 I App     : read")
-        awaitMessages("read")
     }
 
     @Test
@@ -118,8 +104,9 @@ class LogcatReaderTest {
         val second = FakeLogcat()
         launcher.add(second)
         reader.start()
-        assertEquals("1792419740.005", launcher.nextLaunch().last())
-        // logcat repeats the lines at the time it starts from: those two were read.
+        assertEquals(arguments, launcher.nextLaunch())
+        // logcat prints the pid's lines again: the run skips the ones up to the newest line
+        // read, and the ones at that time that were read.
         second.emit(
             "10-19 14:22:20.000  4321  4330 I App     : one",
             "10-19 14:22:20.005  4321  4330 I App     : two",
@@ -138,8 +125,11 @@ class LogcatReaderTest {
         reader.start()
 
         launcher.nextLaunch()
-        assertEquals("1792419740.000", launcher.nextLaunch().last())
-        second.emit("10-19 14:22:21.000  4321  4330 I App     : two")
+        assertEquals(arguments, launcher.nextLaunch())
+        second.emit(
+            "10-19 14:22:20.000  4321  4330 I App     : one",
+            "10-19 14:22:21.000  4321  4330 I App     : two",
+        )
         awaitMessages("one", "two")
         assertEquals(LogcatReader.Status.RUNNING, reader.status)
     }
