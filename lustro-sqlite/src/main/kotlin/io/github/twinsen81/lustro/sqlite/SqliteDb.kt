@@ -61,7 +61,7 @@ public class SqliteDb private constructor(
          * such as the one that a `SQLiteOpenHelper` returns.
          *
          * @param onWrite called on a request's thread after each `POST exec`,
-         *   `edit`, or `delete` that committed a change to the database, so that
+         *   `edit`, or `delete` that committed, also when it changed no row, so that
          *   the app can tell its own readers, such as a cache. What it throws is
          *   logged: the write stays committed.
          * @param unmasked the names of the columns whose values the tab shows
@@ -105,7 +105,7 @@ public class SqliteDb private constructor(
          * next write through Room.
          *
          * @param onWrite called on a request's thread after each `POST exec`,
-         *   `edit`, or `delete` that committed a change to the database. What it
+         *   `edit`, or `delete` that committed, also when it changed no row. What it
          *   throws is logged: the write stays committed.
          * @param unmasked the names of the columns whose values the tab shows
          *   under [SqliteValuePolicy.MASK_SENSITIVE] although their names look
