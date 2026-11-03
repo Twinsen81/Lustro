@@ -278,7 +278,7 @@
       "get": {
         "operationId": "listWorkMetrics",
         "summary": "The history that work-analytics keeps on disk, also of the runs of earlier processes.",
-        "description": "Only when the app passed its WorkMetricsInfoRepository to WorkDebugTab.create: otherwise 404 with code metrics_off. work-analytics keeps the periods for 7 days by default. Oldest first, by enqueue time.",
+        "description": "Only when the app passed its WorkMetricsInfoRepository to WorkDebugTab.createWithMetrics: otherwise 404 with code metrics_off. work-analytics keeps the periods for 7 days by default. Oldest first, by enqueue time.",
         "parameters": [
           {
             "name": "id",
@@ -730,7 +730,7 @@
           },
           "uniqueName": {
             "type": "string",
-            "description": "The unique work name of the work: only for a name that the app registered with uniqueNames, or the name that the request asked for with name."
+            "description": "The unique work name that the app enqueued the work with. WorkInfo has none, so the tab reads it from WorkManager's own database; when the app's WorkManager does not have the call that reads it, only for a name that the app registered with uniqueNames, or the name that the request asked for with name."
           },
           "runAttempts": {
             "type": "integer",

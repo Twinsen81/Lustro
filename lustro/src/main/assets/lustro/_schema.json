@@ -85,7 +85,7 @@
               "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,30}$", "description": "Tab id." },
               "title": { "type": "string", "description": "Human-readable tab title." },
               "schemaUrl": { "type": "string", "description": "URL of the tab schema." },
-              "version": { "type": "string", "description": "Tab schema version." }
+              "version": { "type": "string", "description": "The info.version of the tab's own schema; the protocolVersion for a schema without one." }
             },
             "additionalProperties": false
           }

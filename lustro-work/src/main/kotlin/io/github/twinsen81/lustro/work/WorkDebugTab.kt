@@ -131,13 +131,18 @@ public class WorkDebugTab private constructor(private val source: WorkSource) : 
          * keeps: the times, attempts, and stop reasons of each run, also of the runs
          * of earlier processes.
          *
+         * It has a name of its own, not another overload of [create]: to choose
+         * between overloads with the same number of parameters, javac loads the
+         * types of all of them, and an app without work-analytics has no
+         * `WorkMetricsInfoRepository`.
+         *
          * @param metrics the app's repository, which the app also sets as its
          *   execution and schedule listeners, before [configure].
          * @see create
          */
         @JvmStatic
         @JvmOverloads
-        public fun create(
+        public fun createWithMetrics(
             context: Context,
             metrics: WorkMetricsInfoRepository,
             uniqueNames: List<String> = emptyList(),

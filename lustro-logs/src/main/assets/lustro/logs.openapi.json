@@ -74,6 +74,26 @@
             "description": "A Java regular expression found in the message, case-sensitive. 400 with field mq when it is longer than 200 characters or doesn't compile. The filters check the time between lines and stop with a 400 after 5 s. One match can't be stopped, so a regex that backtracks a lot, such as (a+)+$, can hold the request for long: keep tag and mq simple."
           },
           {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "The start of a time range, in epoch milliseconds, included: only the lines at or after it. A repeated line counts from its first time to its last (at to lastAt). 400 with field from when it is not a whole number, or when it is after to."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "The end of a time range, in epoch milliseconds, included: only the lines at or before it, such as the lines of one run of a worker. 400 with field to when it is not a whole number."
+          },
+          {
             "name": "limit",
             "in": "query",
             "required": false,
@@ -175,6 +195,26 @@
               "maxLength": 200
             },
             "description": "A Java regular expression found in the message, case-sensitive. 400 with field mq when it is longer than 200 characters or doesn't compile. The filters check the time between lines and stop with a 400 after 5 s. One match can't be stopped, so a regex that backtracks a lot, such as (a+)+$, can hold the request for long: keep tag and mq simple."
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "The start of a time range, in epoch milliseconds, included: only the lines at or after it. A repeated line counts from its first time to its last (at to lastAt). 400 with field from when it is not a whole number, or when it is after to."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "The end of a time range, in epoch milliseconds, included: only the lines at or before it, such as the lines of one run of a worker. 400 with field to when it is not a whole number."
           },
           {
             "name": "limit",

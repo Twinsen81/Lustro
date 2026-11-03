@@ -110,7 +110,10 @@ class PrefValuesTest {
     fun `an item has the value and the size of every type`() {
         assertEquals("""{"key":"name","type":"string","value":"Ann \"A\"","bytes":7}""", item("name", "Ann \"A\""))
         assertEquals("""{"key":"n","type":"int","value":-3,"bytes":4}""", item("n", -3))
-        assertEquals("""{"key":"n","type":"long","value":9007199254740993,"bytes":8}""", item("n", 9_007_199_254_740_993L))
+        // A long past 2^53 - 1, either way, is the string of its digits, which a JavaScript number can't hold.
+        assertEquals("""{"key":"n","type":"long","value":9007199254740991,"bytes":8}""", item("n", 9_007_199_254_740_991L))
+        assertEquals("""{"key":"n","type":"long","value":"9007199254740993","bytes":8}""", item("n", 9_007_199_254_740_993L))
+        assertEquals("""{"key":"n","type":"long","value":"-9223372036854775808","bytes":8}""", item("n", Long.MIN_VALUE))
         assertEquals("""{"key":"n","type":"float","value":0.25,"bytes":4}""", item("n", 0.25f))
         assertEquals("""{"key":"n","type":"boolean","value":true,"bytes":1}""", item("n", true))
         assertEquals("""{"key":"tags","type":"string_set","value":["a","bé","c"],"bytes":5}""", item("tags", setOf("c", "bé", "a")))

@@ -114,6 +114,13 @@
 .work-event__details { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 10px; font-size: 12px; color: var(--t2); line-height: 1.5; }
 .work-event__reason { color: var(--lvl-w); }
 .work-event__note { color: var(--t3); }
+.work-event__logs { margin-left: auto; font-size: 11px; color: var(--accent-2); text-decoration: none; }
+.work-event__logs:hover { text-decoration: underline; }
+.work-event__logs:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-sm); }
+.work-progress__line { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.work-progress { position: relative; display: inline-block; width: 160px; height: 6px; border-radius: 3px; background: var(--tag-border); overflow: hidden; vertical-align: middle; }
+.work-progress__bar { position: absolute; inset: 0 auto 0 0; background: var(--work-running); }
+.work-progress__text { font-size: 12px; color: var(--t2); font-variant-numeric: tabular-nums; }
 .work-event__exception { color: var(--danger); overflow-wrap: anywhere; }
 .work-result { font-size: 10px; }
 

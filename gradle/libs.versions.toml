@@ -10,6 +10,9 @@ lint = "32.2.1"
 # Android SDK levels.
 compileSdk = "35"
 minSdk = "24"
+# The no-op halves: they call no Android API, so an app with an older minSdk takes
+# them in its release build, and raises minSdk only for its debug variant.
+noopMinSdk = "21"
 targetSdk = "35"
 
 # Library runtime: the dependencies of the published :lustro / :lustro-noop

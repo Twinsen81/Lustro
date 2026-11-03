@@ -290,7 +290,7 @@ public object LustroBootstrap {
     @OptIn(ExperimentalEventsApi::class, ExperimentalWorkMetricsApi::class)
     private fun workTab(app: Application): WorkDebugTab =
         workTab ?: synchronized(this) {
-            workTab ?: WorkDebugTab.create(app, metrics = DemoWork.metrics(app), uniqueNames = DemoWork.UNIQUE_NAMES).also { workTab = it }
+            workTab ?: WorkDebugTab.createWithMetrics(app, metrics = DemoWork.metrics(app), uniqueNames = DemoWork.UNIQUE_NAMES).also { workTab = it }
         }
 
     private fun status(base: String, code: Int, meaning: String): DemoRequestSpec =

@@ -19,6 +19,8 @@ android {
     namespace = "io.github.twinsen81.lustro.noop"
 
     defaultConfig {
+        // Lower than the runtime's: see noopMinSdk in the version catalog.
+        minSdk = libs.versions.noopMinSdk.get().toInt()
         // R8 rules shipped to consumers (minimal: keep public facade entry points).
         consumerProguardFiles("consumer-rules.pro")
     }

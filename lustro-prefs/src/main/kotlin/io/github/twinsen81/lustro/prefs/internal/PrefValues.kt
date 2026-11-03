@@ -61,6 +61,7 @@ internal object PrefValues {
     private const val DOUBLE_BYTES = 8L
     private const val BOOLEAN_BYTES = 1L
     private const val LONG_DIGITS = 19
+    private const val MAX_SAFE_INTEGER = 9_007_199_254_740_991L
 
     // A base64 quantum: 4 characters for 3 bytes.
     private const val BASE64_CHARS = 4
@@ -149,8 +150,15 @@ internal object PrefValues {
     // Returns whether it cut the value.
     private fun StringBuilder.appendValue(type: PrefType, value: Any, maxChars: Int): Boolean =
         when (type) {
-            PrefType.INT, PrefType.LONG, PrefType.BOOLEAN -> {
+            PrefType.INT, PrefType.BOOLEAN -> {
                 append(value)
+                false
+            }
+            PrefType.LONG -> {
+                // A JavaScript number holds an integer exactly up to 2^53 - 1, so a larger one
+                // goes as the string of its digits, as in the SQLite and WorkManager routes.
+                val number = value as Long
+                if (number in -MAX_SAFE_INTEGER..MAX_SAFE_INTEGER) append(number) else append('"').append(number).append('"')
                 false
             }
             PrefType.FLOAT, PrefType.DOUBLE -> {

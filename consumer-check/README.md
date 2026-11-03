@@ -21,7 +21,14 @@ floor that moves up there makes this build fail until the floor is a decision.
   compiler. The app has no `androidx.sqlite`, which the SQLite plugin needs only
   for a `SupportSQLiteDatabase`.
 - `assembleWithLustroRelease` builds it with `lustro-noop`, `lustro-logs-noop`,
-  `lustro-prefs-noop`, `lustro-sqlite-noop`, and R8.
+  `lustro-prefs-noop`, `lustro-sqlite-noop`, `lustro-work-noop`, and R8.
+- With `-PappMinSdk=23`, below the runtime's 24, the release build takes the no-op halves at that
+  level, and the debug build raises its own to 24 with `androidComponents.beforeVariants`, as
+  README.md tells such an app. WorkManager 2.12.0 needs 24, so CI runs it with
+  `-PworkVersion=2.10.3`.
+- `JavaSetup.java` registers every tab from Java, with the overloads that a Java app calls,
+  against the runtime in debug and the no-op halves in release. The app has no work-analytics,
+  so a factory overload whose parameter is a work-analytics type fails the Java build here.
 - `checkLustroKeepsAppVersions` resolves the compile and runtime classpaths of
   each `withLustro` variant and of the `baseline` flavor, the same app without
   Lustro, and fails on any module that is in both at different versions. It

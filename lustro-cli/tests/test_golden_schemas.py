@@ -311,7 +311,8 @@ def test_the_logs_routes_are_declared():
     paths = wire.load_openapi("logs")["paths"]
     entries = paths["/api/v1/logs/entries"]["get"]
     params = {p["name"]: p for p in entries["parameters"]}
-    assert set(params) == {"cursor", "level", "tag", "q", "mq", "limit"}
+    assert set(params) == {"cursor", "level", "tag", "q", "mq", "from", "to", "limit"}
+    assert params["from"]["schema"]["type"] == params["to"]["schema"]["type"] == "integer"
     assert params["level"]["schema"]["enum"] == ["V", "D", "I", "W", "E", "F"]
     assert params["tag"]["schema"]["maxLength"] == params["mq"]["schema"]["maxLength"] == 200
     assert params["limit"]["schema"]["maximum"] == 5000
@@ -609,11 +610,13 @@ def test_the_golden_work_events_carry_what_each_type_adds():
     assert all("exception" not in e for e in events if e["type"] != "exception")
 
 
-def test_the_golden_work_items_label_a_registered_unique_name_and_keep_periodic_schedules():
+def test_the_golden_work_items_label_every_unique_name_and_keep_periodic_schedules():
     golden = wire.load_golden("work-items.json")
     items = {i["id"]: i for i in golden["items"]}
     named = [i for i in items.values() if "uniqueName" in i]
-    assert [i["uniqueName"] for i in named] == golden["state"]["uniqueNames"]
+    # The tab reads the names from WorkManager's database: a registered one and one that is not.
+    assert [i["uniqueName"] for i in named] == ["sync", "cleanup"]
+    assert golden["state"]["uniqueNames"] == ["sync"]
     periodic = [i for i in items.values() if "periodicity" in i]
     assert periodic and all("nextScheduleTimeMillis" in i for i in periodic)
     # Finished work has no next run.

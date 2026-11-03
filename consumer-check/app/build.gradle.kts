@@ -12,6 +12,10 @@ plugins {
 fun property(name: String): String = providers.gradleProperty(name).get()
 
 val compileSdkLevel = property("compileSdk").toInt()
+val appMinSdk = property("appMinSdk").toInt()
+
+// The minSdk of Lustro's runtime. An app below it takes the runtime in debug only.
+val lustroRuntimeMinSdk = 24
 
 // The Lustro version to build against: -PlustroVersion, or VERSION_NAME from the
 // root gradle.properties, which is what `./gradlew publishToMavenLocal` publishes.
@@ -33,7 +37,9 @@ android {
 
     defaultConfig {
         applicationId = "io.github.twinsen81.lustro.consumercheck"
-        minSdk = 24
+        // Can be below Lustro's runtime: the release build takes the no-op halves, whose
+        // minSdk is lower, and the debug build raises its own (see androidComponents below).
+        minSdk = appMinSdk
         targetSdk = compileSdkLevel
         versionCode = 1
         versionName = "1.0"
@@ -175,6 +181,13 @@ val checkLustroKeepsAppVersions =
     }
 
 androidComponents {
+    // As README.md tells an app with a minSdk below Lustro's runtime: raise it for the
+    // debug variant only, which takes the runtime.
+    if (appMinSdk < lustroRuntimeMinSdk) {
+        beforeVariants(selector().withBuildType("debug")) { variant ->
+            variant.minSdk = lustroRuntimeMinSdk
+        }
+    }
     onVariants { variant ->
         val roots =
             mapOf(

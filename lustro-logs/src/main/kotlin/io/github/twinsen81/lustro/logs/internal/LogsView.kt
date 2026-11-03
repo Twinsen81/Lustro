@@ -68,6 +68,7 @@ internal object LogsView {
                 </div>
                 <div class="logs-bar__row">
                     <button type="button" class="dc-chip" id="logs-fatal" data-action="toggleFatal" aria-pressed="false" title="Show only the lines at level F, the assert level of Log.println(Log.ASSERT, ...) and of a native fatal message that does not end the process. A Java crash and Log.wtf() are at level E: choose Error to see them. The tab can't show a crash that ends its own process, which ends the server too. Click again for the level before."><span class="dc-chip__dot" style="--c: var(--lvl-f)"></span>Fatal</button>
+                    <button type="button" class="dc-chip dc-chip--active" id="logs-range" data-action="clearRange" hidden title="Only the lines of this time range, such as the lines of one run of a worker that the WorkManager tab links to. Click to show all the lines again."><span class="dc-chip__dot" style="--c: var(--accent)"></span><span id="logs-range-label"></span> ×</button>
                     <span class="logs-paused" id="logs-paused" hidden>Stream paused</span>
                     <span class="logs-count" id="logs-count">0 lines</span>
                 </div>

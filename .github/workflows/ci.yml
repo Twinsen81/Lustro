@@ -162,6 +162,12 @@ jobs:
               -PokhttpVersion=5.4.0 -PlifecycleVersion=2.10.0
               -PcoroutinesVersion=1.11.0 -PannotationVersion=1.11.0
               -PextraDependencies=androidx.lifecycle:lifecycle-runtime-compose:2.10.0,androidx.lifecycle:lifecycle-viewmodel-compose:2.10.0
+          # An app below the runtime's minSdk: its release build takes the no-op
+          # halves at 23, and its debug build raises its own minSdk to 24.
+          # WorkManager 2.12.0 needs 24, so this app has 2.10.3, with which the
+          # WorkManager tab answers work_unsupported.
+          - name: app minSdk 23, WorkManager 2.10
+            overrides: "-PappMinSdk=23 -PworkVersion=2.10.3"
     steps:
       - uses: actions/checkout@v7
 

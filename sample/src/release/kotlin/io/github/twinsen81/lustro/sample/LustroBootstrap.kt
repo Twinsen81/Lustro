@@ -167,7 +167,7 @@ public object LustroBootstrap {
     @OptIn(ExperimentalEventsApi::class, ExperimentalWorkMetricsApi::class)
     private fun workTab(app: Application): WorkDebugTab =
         workTab ?: synchronized(this) {
-            workTab ?: WorkDebugTab.create(app, metrics = DemoWork.metrics(app), uniqueNames = DemoWork.UNIQUE_NAMES).also { workTab = it }
+            workTab ?: WorkDebugTab.createWithMetrics(app, metrics = DemoWork.metrics(app), uniqueNames = DemoWork.UNIQUE_NAMES).also { workTab = it }
         }
 
     /** False in this variant: there is no server, so the app hides its controls. */

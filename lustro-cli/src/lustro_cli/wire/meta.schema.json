@@ -36,7 +36,7 @@
           },
           "version": {
             "type": "string",
-            "description": "Tab schema version."
+            "description": "The info.version of the tab's own schema; the protocolVersion for a schema without one. A plugin tab's routes change at their own pace."
           }
         },
         "additionalProperties": false

@@ -76,8 +76,13 @@ class LustroError(Exception):
         line = " ".join(parts)
         if self.message:
             line += ": " + self.message
+        details = []
+        if self.code:
+            details.append("code: {}".format(self.code))
         if self.field:
-            line += " (field: {})".format(self.field)
+            details.append("field: {}".format(self.field))
+        if details:
+            line += " ({})".format(", ".join(details))
         if self.hint:
             line += "\n  hint: " + self.hint
         return line

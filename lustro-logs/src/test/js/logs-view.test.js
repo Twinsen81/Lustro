@@ -6,6 +6,9 @@
 // one that drops the cap or the dropped count misleads about what the app logged.
 'use strict';
 
+// The range chip shows local times: one zone keeps the tests the same everywhere.
+process.env.TZ = 'UTC';
+
 const test = require('node:test');
 const assert = require('node:assert');
 const { loadTabJs, golden } = require('../../../../lustro/src/test/js/harness.js');
@@ -144,6 +147,23 @@ test('the poll path has the filters and the cursor, escaped', () => {
     assert.strictEqual(
         logs.logsEntriesPath({ level: 'W', tag: '^(OkHttp|Sync)$', q: 'a b&c' }, 'Q1w=', 5000),
         'entries?cursor=Q1w%3D&level=W&tag=%5E(OkHttp%7CSync)%24&q=a%20b%26c&limit=5000');
+    assert.strictEqual(
+        logs.logsEntriesPath({ level: 'V', tag: '', q: '', from: 1792419740000, to: 1792419741000 }, null, 1000),
+        'entries?from=1792419740000&to=1792419741000&limit=1000');
+});
+
+test('the time range comes from the fragment of a link, and a bad one is no range', () => {
+    assert.deepStrictEqual(plain(logs.logsRangeFromHash('#from=1000&to=2000')), { from: 1000, to: 2000 });
+    assert.deepStrictEqual(plain(logs.logsRangeFromHash('#to=2000')), { from: null, to: 2000 });
+    assert.deepStrictEqual(plain(logs.logsRangeFromHash('#lustro_token=abc&from=5')), { from: 5, to: null });
+    assert.strictEqual(logs.logsRangeFromHash(''), null);
+    assert.strictEqual(logs.logsRangeFromHash('#from=noon'), null);
+    assert.strictEqual(logs.logsRangeFromHash('#from=3&to=2'), null);
+});
+
+test('the range chip says the times of day', () => {
+    assert.strictEqual(logs.logsRangeLabel({ from: 1792419740005, to: 1792419741250 }), '14:22:20.005 to 14:22:21.250');
+    assert.strictEqual(logs.logsRangeLabel({ from: 1792419740005, to: null }), 'from 14:22:20.005');
 });
 
 test('a line that holds markup shows as text', () => {

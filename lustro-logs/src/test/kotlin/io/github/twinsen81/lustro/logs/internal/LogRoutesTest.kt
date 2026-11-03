@@ -110,6 +110,23 @@ class LogRoutesTest {
     }
 
     @Test
+    fun `from and to keep the lines of a time range, both ends included, and a folded line by its whole span`() {
+        buffer.append(line("before", at = 999L))
+        buffer.append(line("start", at = 1_000L))
+        buffer.append(line("tick", at = 1_200L))
+        buffer.append(line("tick", at = 3_100L))
+        buffer.append(line("end", at = 2_000L, tag = "Other"))
+        buffer.append(line("after", at = 2_001L))
+
+        assertEquals(listOf("start", "tick", "end"), messages(entries("from" to "1000", "to" to "2000")))
+        // The repeat of tick at 3100 folds into the line of 1200, which now spans to 3100.
+        assertEquals(listOf("tick", "after"), messages(entries("from" to "2001")))
+        assertEquals(listOf("before", "start"), messages(entries("to" to "1000", "tag" to "^Tag")))
+        assertEquals(listOf("start"), messages(entries("from" to "1000", "to" to "1000")))
+        assertTrue(routes.handle(get("text", "from" to "1000", "to" to "1000"))!!.text().contains(" start"))
+    }
+
+    @Test
     fun `limit takes the last lines on a reset, and pages a delta from the oldest`() {
         append("a")
         val cursor = entries().getString("cursor")
@@ -133,6 +150,9 @@ class LogRoutesTest {
         assertBadRequest(get("entries", "tag" to "("), "tag")
         assertBadRequest(get("entries", "mq" to "[a"), "mq")
         assertBadRequest(get("text", "limit" to "-1"), "limit")
+        assertBadRequest(get("entries", "from" to "noon"), "from")
+        assertBadRequest(get("entries", "to" to "1.5"), "to")
+        assertBadRequest(get("entries", "from" to "2", "to" to "1"), "from")
     }
 
     @Test

@@ -18,7 +18,7 @@ internal class DbEntry(
     val hints: Map<String, TableHint>,
     val policy: SqliteValuePolicy,
     val source: DbSource,
-    val onWrite: (() -> Unit)? = null,
+    val onWrite: Runnable? = null,
     unmasked: Set<String> = emptySet(),
 ) {
     private val unmasked: Set<String> = unmasked.mapTo(HashSet()) { it.lowercase(Locale.ROOT) }

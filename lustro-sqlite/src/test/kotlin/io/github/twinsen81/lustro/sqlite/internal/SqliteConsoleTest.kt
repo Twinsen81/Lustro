@@ -510,7 +510,7 @@ class SqliteConsoleTest {
         // After the commit: the tab's transaction is over, and another thread of the app sees the change.
         val renamed = mutableListOf<Long>()
         val reader = Executors.newSingleThreadExecutor()
-        val onWrite = {
+        val onWrite = Runnable {
             assertFalse(live.inTransaction())
             renamed += reader.submit<Long> { live.compileStatement("SELECT count(*) FROM notes WHERE title = 'Renamed'").simpleQueryForLong() }.get()
             writes++

@@ -71,7 +71,7 @@ public class WorkDebugTab private constructor() : DebugTab() {
         @JvmStatic
         @JvmOverloads
         @Suppress("UNUSED_PARAMETER")
-        public fun create(
+        public fun createWithMetrics(
             context: Context,
             metrics: WorkMetricsInfoRepository,
             uniqueNames: List<String> = emptyList(),

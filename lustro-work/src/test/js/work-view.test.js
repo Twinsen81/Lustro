@@ -235,6 +235,41 @@ test('the end of a run of periodic work takes the attempt of its start, as WorkM
     assert.strictEqual(work.workEventAttempt(twoEnds, 2), 0);
 });
 
+test('the end of a run links to the Logs tab with the lines of the run, with a second around it', () => {
+    const [started, finished] = events();
+    const run = [started, finished];
+    assert.strictEqual(work.workRunLogsHref(run, 1), '/tab/logs#from=' + (started.at - 1000) + '&to=' + (finished.at + 1000));
+    // The start of a run links to nothing, nor does an end without its start in the buffer.
+    assert.strictEqual(work.workRunLogsHref(run, 0), null);
+    assert.strictEqual(work.workRunLogsHref([finished], 0), null);
+    // An end of another run between them stops the search.
+    const twoEnds = [started, Object.assign({}, finished, { type: 'stopped' }), Object.assign({}, finished, { type: 'exception' })];
+    assert.strictEqual(work.workRunLogsHref(twoEnds, 2), null);
+
+    const html = work.workEventHtml(finished, 1, work.workRunLogsHref(run, 1));
+    assert.match(html, /<a class="work-event__logs" href="\/tab\/logs#from=\d+&amp;to=\d+"/);
+    assert.doesNotMatch(work.workEventHtml(finished, 1), /work-event__logs/);
+});
+
+test('a progress of one number from 0 to 100 shows as a bar, in the details and next to running', () => {
+    assert.strictEqual(work.workProgressPercent({ progress: 38 }), 38);
+    assert.strictEqual(work.workProgressPercent({ done: 0 }), 0);
+    assert.strictEqual(work.workProgressPercent({ progress: 101 }), null);
+    assert.strictEqual(work.workProgressPercent({ progress: '38' }), null);
+    assert.strictEqual(work.workProgressPercent({ progress: 38, file: 'a' }), null);
+    assert.strictEqual(work.workProgressPercent({}), null);
+
+    const running = Object.assign(byClass('RetryWorker'), { state: 'RUNNING', progress: { progress: 37.6 } });
+    assert.match(work.workRowHtml(running, false, NOW), /work-next--running">running 38%</);
+    const details = work.workDetailsHtml(running, NOW);
+    assert.match(details, /<span class="work-progress__bar" style="width: 37\.6%"><\/span><\/span><span class="work-progress__text">38%</);
+    assert.match(details, /work-progress__line[\s\S]*<pre class="dc-code dc-json work-json">/);
+    // Any other progress shows as JSON only.
+    const other = work.workDetailsHtml(Object.assign(byClass('RetryWorker'), { state: 'RUNNING', progress: { bytes: 5000 } }), NOW);
+    assert.doesNotMatch(other, /work-progress__bar/);
+    assert.match(work.workRowHtml(Object.assign(byClass('RetryWorker'), { state: 'RUNNING', progress: { bytes: 5000 } }), false, NOW), /running<\/span>/);
+});
+
 test('the attempts of periodic work say that they count the current period', () => {
     const periodic = items().find((item) => item.periodicity);
     assert.match(work.workRowHtml(periodic, false, NOW), /work-cell--attempts" title="The attempts of the current period\. WorkManager sets the count back to 0 when a period ends\."/);

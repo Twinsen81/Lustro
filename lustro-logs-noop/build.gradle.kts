@@ -15,6 +15,8 @@ android {
     namespace = "io.github.twinsen81.lustro.logs.noop"
 
     defaultConfig {
+        // Lower than the runtime's: see noopMinSdk in the version catalog.
+        minSdk = libs.versions.noopMinSdk.get().toInt()
         consumerProguardFiles("consumer-rules.pro")
     }
 }

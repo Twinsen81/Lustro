@@ -17,9 +17,11 @@ import io.github.twinsen81.lustro.internal.network.NetworkCaptureProvider
 import io.github.twinsen81.lustro.internal.network.NoOpCaptureSink
 import io.github.twinsen81.lustro.network.NetworkCaptureSink
 import io.github.twinsen81.lustro.network.NetworkDebugTab
-import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.TimeUnit
 import okhttp3.Interceptor
 import okhttp3.WebSocket
 
@@ -47,8 +49,9 @@ import okhttp3.WebSocket
  * Binding: the socket binds to [DebugConfig.bindAddress]
  * (default `127.0.0.1`; `0.0.0.0` opts into LAN exposure) on
  * [DebugConfig.serverPort]. If that port is taken, [DebugConfig.bindFallback]
- * controls whether the server retries on an OS-assigned ephemeral port or refuses
- * to start.
+ * controls whether the server retries on an OS-assigned ephemeral port, or tries the
+ * same port again for 10 s while the app is in the foreground, as another app's debug
+ * server can still hold it for a moment after this app comes to the foreground.
  */
 public class Lustro internal constructor(
     application: Application,
@@ -90,12 +93,18 @@ public class Lustro internal constructor(
 
     // Single daemon thread for the lifecycle work that must stay off the main
     // thread, where the ProcessLifecycleOwner fires onStart/onStop: the background
-    // drain+close, and the endpoint log with its token read. Serial by
-    // construction, so overlapping background events drain in order.
-    private val workExecutor: ExecutorService =
-        Executors.newSingleThreadExecutor { runnable ->
+    // drain+close, the endpoint log with its token read, and the retries of a bind to
+    // a taken port. Serial by construction, so overlapping background events drain in order.
+    private val workExecutor: ScheduledExecutorService =
+        Executors.newSingleThreadScheduledExecutor { runnable ->
             Thread(runnable, "lustro-worker").apply { isDaemon = true }
         }
+
+    // The retries of a bind to the configured port while another process holds it, such
+    // as another app with Lustro, which closes its server only after its own onStop: a
+    // cold start of this app can come first. Guarded by the monitor.
+    private var bindRetry: ScheduledFuture<*>? = null
+    private var bindRetriesLeft = 0
 
     // The process-lifecycle observer installed by start(); foreground binds,
     // background drains+closes. Held so stop() can remove it.
@@ -221,6 +230,7 @@ public class Lustro internal constructor(
             } catch (e: Throwable) {
                 Log.w(TAG, "Error removing lifecycle observer", e)
             }
+            cancelBindRetry()
             closeServer()
             notifyTabs { it.onStop() }
             armed = false
@@ -253,6 +263,7 @@ public class Lustro internal constructor(
         val toClose =
             synchronized(this) {
                 if (!armed) return
+                cancelBindRetry()
                 server ?: return
             }
         try {
@@ -285,6 +296,12 @@ public class Lustro internal constructor(
             server = null
             return
         }
+        serve(bound)
+    }
+
+    /** Takes [bound] as the live server and announces it. Caller holds the monitor. */
+    private fun serve(bound: LustroServer) {
+        cancelBindRetry()
         server = bound
         val actualPort = bound.listeningPort
         // Hand the ACTUAL bind host:port to the network tab so its Send panel can
@@ -293,31 +310,82 @@ public class Lustro internal constructor(
         logEndpoint(actualPort)
     }
 
-    /** Attempts the configured-port bind; returns the live server or `null` on collision. */
-    private fun tryBind(port: Int): LustroServer? {
+    /**
+     * Attempts the bind; returns the live server or `null` on collision. A [quiet] attempt,
+     * one of the retries, logs nothing.
+     */
+    private fun tryBind(port: Int, quiet: Boolean = false): LustroServer? {
         val srv = newServer(port)
         return try {
             srv.start(NanoSocketReadTimeoutMs, false)
             srv
         } catch (e: Throwable) {
-            Log.w(TAG, "Failed to bind debug server on ${config.bindAddress}:$port", e)
+            if (!quiet) Log.w(TAG, "Failed to bind debug server on ${config.bindAddress}:$port", e)
             srv.shutdownLimiter()
             null
         }
     }
 
-    /** Applies the [DebugConfig.bindFallback] policy after a configured-port collision. */
+    /**
+     * Applies the [DebugConfig.bindFallback] policy after a configured-port collision.
+     * Without the fallback, the bind tries again for [BIND_RETRY_WINDOW_MS] while the app
+     * stays in the foreground.
+     */
     private fun fallbackBind(): LustroServer? {
         if (!config.bindFallback) {
-            Log.w(
-                TAG,
-                "Debug server port ${config.serverPort} is taken and bindFallback=false; not starting",
-            )
+            scheduleBindRetry()
             return null
         }
         // Ephemeral port 0 → the OS assigns a free port; we read it back via
         // listeningPort and surface it on the startup log.
         return tryBind(EPHEMERAL_PORT)
+    }
+
+    /** Caller holds the monitor. */
+    private fun scheduleBindRetry() {
+        if (bindRetry != null) return
+        bindRetriesLeft = (BIND_RETRY_WINDOW_MS / BIND_RETRY_MS).toInt()
+        Log.w(
+            TAG,
+            "Debug server port ${config.serverPort} is taken; trying again for ${BIND_RETRY_WINDOW_MS / MILLIS_PER_SECOND} s " +
+                "while the app is in the foreground, because another app's debug server may still be closing",
+        )
+        bindRetry =
+            try {
+                workExecutor.scheduleWithFixedDelay(::retryBind, BIND_RETRY_MS, BIND_RETRY_MS, TimeUnit.MILLISECONDS)
+            } catch (e: RejectedExecutionException) {
+                Log.w(TAG, "Worker rejected the bind retry", e)
+                null
+            }
+    }
+
+    // Never throws: a throwable escaping a workExecutor task reaches the default handler and
+    // kills the host app, and one from a periodic task would stop its later runs silently.
+    private fun retryBind() {
+        try {
+            synchronized(this) {
+                if (!armed || server?.isAlive == true || !lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+                    cancelBindRetry()
+                    return
+                }
+                val bound = tryBind(config.serverPort, quiet = true)
+                when {
+                    bound != null -> serve(bound)
+                    --bindRetriesLeft <= 0 -> {
+                        cancelBindRetry()
+                        Log.w(TAG, "Debug server port ${config.serverPort} is taken and bindFallback=false; not starting")
+                    }
+                }
+            }
+        } catch (e: Throwable) {
+            Log.w(TAG, "Error retrying the debug server bind", e)
+        }
+    }
+
+    /** Caller holds the monitor. */
+    private fun cancelBindRetry() {
+        bindRetry?.cancel(false)
+        bindRetry = null
     }
 
     private fun newServer(port: Int): LustroServer =
@@ -470,6 +538,13 @@ public class Lustro internal constructor(
         // finish before force-closing the socket.
         private const val DRAIN_TIMEOUT_MS = 5_000L
         private const val DRAIN_POLL_MS = 25L
+
+        // How long, and how often, a bind to a taken port tries again without the fallback.
+        // Another app with Lustro closes its server after its onStop, which Android sends some
+        // time after this app's activity shows, and the process lifecycle 700 ms after that.
+        private const val BIND_RETRY_WINDOW_MS = 10_000L
+        private const val BIND_RETRY_MS = 250L
+        private const val MILLIS_PER_SECOND = 1_000L
 
         /** Returns a new [Builder] bound to [application]. */
         @JvmStatic

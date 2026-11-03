@@ -15,8 +15,11 @@ import java.io.ByteArrayInputStream
 import java.io.InputStream
 import java.net.Socket
 import java.net.URI
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Semaphore
 import java.util.concurrent.TimeUnit
+import org.json.JSONException
+import org.json.JSONObject
 
 /**
  * Internal NanoHTTPD-backed HTTP server. The NanoHTTPD subclass stays fully
@@ -80,6 +83,9 @@ internal class LustroServer(
     requestQueueCapacity: Int = DEFAULT_REQUEST_QUEUE_CAPACITY,
     private val requestTimeoutMs: Long = DEFAULT_REQUEST_TIMEOUT_MS,
 ) : NanoHTTPD(hostname, port) {
+
+    // The info.version of each tab's static schema, by tab id; empty for one without it.
+    private val staticVersions = ConcurrentHashMap<String, String>()
 
     // Bounds concurrency, the wait queue, and the per-request timeout for the
     // debug API. Exposed counters drive the lifecycle drain in Lustro.
@@ -612,7 +618,7 @@ $tabsHtml
                 append("\"id\":\"").append(tab.id.escapeForJson()).append("\",")
                 append("\"title\":\"").append(tab.title.escapeForJson()).append("\",")
                 append("\"schemaUrl\":\"").append("/api/v1/${tab.id}/_schema".escapeForJson()).append("\",")
-                append("\"version\":\"").append(Versions.PROTOCOL_VERSION.escapeForJson()).append("\"")
+                append("\"version\":\"").append(tabVersion(tab).escapeForJson()).append("\"")
                 append("}")
             }
             append("]}")
@@ -622,6 +628,29 @@ $tabsHtml
 
     private fun hasSchema(tab: DebugTab): Boolean =
         tab.schema() != null || assetLoader.load("${tab.id}.openapi.json") != null
+
+    /**
+     * The version of the tab's own schema, its `info.version`: a plugin's routes change at
+     * their own pace, and only the Network schema has the protocol version. The protocol
+     * version stands in for a schema without one. A static schema's version is read once.
+     */
+    private fun tabVersion(tab: DebugTab): String {
+        val dynamic = tab.schema()
+        val version =
+            if (dynamic != null) {
+                infoVersion(dynamic)
+            } else {
+                staticVersions.getOrPut(tab.id) { assetLoader.load("${tab.id}.openapi.json")?.let(::infoVersion).orEmpty() }
+            }
+        return version?.takeIf { it.isNotEmpty() } ?: Versions.PROTOCOL_VERSION
+    }
+
+    private fun infoVersion(schema: String): String? =
+        try {
+            JSONObject(schema).optJSONObject("info")?.optString("version")
+        } catch (_: JSONException) {
+            null
+        }
 
     private fun handleSharedSchema(): Response {
         val schema = assetLoader.load("_schema.json")

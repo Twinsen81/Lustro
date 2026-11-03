@@ -88,8 +88,38 @@
         if (filters.level && filters.level !== 'V') params.push('level=' + encodeURIComponent(filters.level));
         if (filters.tag) params.push('tag=' + encodeURIComponent(filters.tag));
         if (filters.q) params.push('q=' + encodeURIComponent(filters.q));
+        if (filters.from != null) params.push('from=' + filters.from);
+        if (filters.to != null) params.push('to=' + filters.to);
         params.push('limit=' + limit);
         return 'entries?' + params.join('&');
+    }
+
+    // The time range of a link such as #from=1792419740000&to=1792419741000, which
+    // the WorkManager tab gives each run: { from, to }, either one null, or null
+    // without a range.
+    function rangeFromHash(hash) {
+        var range = { from: null, to: null };
+        String(hash || '').replace(/^#/, '').split('&').forEach(function(pair) {
+            var kv = pair.split('=');
+            var key = decodeURIComponent(kv[0] || '');
+            var value = decodeURIComponent(kv.slice(1).join('=') || '');
+            if ((key === 'from' || key === 'to') && /^-?\d+$/.test(value)) range[key] = Number(value);
+        });
+        if (range.from == null && range.to == null) return null;
+        if (range.from != null && range.to != null && range.from > range.to) return null;
+        return range;
+    }
+
+    function clockOf(at) {
+        var date = new Date(Number(at));
+        function pad(n, width) { return String(n).padStart(width || 2, '0'); }
+        return pad(date.getHours()) + ':' + pad(date.getMinutes()) + ':' + pad(date.getSeconds()) + '.' + pad(date.getMilliseconds(), 3);
+    }
+
+    // The chip's text, in this browser's time zone.
+    function rangeLabel(range) {
+        if (range.from != null && range.to != null) return clockOf(range.from) + ' to ' + clockOf(range.to);
+        return range.from != null ? 'from ' + clockOf(range.from) : 'to ' + clockOf(range.to);
     }
 
     // ── Rendering ───────────────────────────────────────────────
@@ -244,6 +274,8 @@
     window.logsNewView = newView;
     window.logsApplyEnvelope = applyEnvelope;
     window.logsEntriesPath = entriesPath;
+    window.logsRangeFromHash = rangeFromHash;
+    window.logsRangeLabel = rangeLabel;
     window.logsRowHtml = rowHtml;
     window.logsRowsText = rowsText;
     window.logsCountLabel = countLabel;
@@ -256,7 +288,7 @@
     // ── The page ────────────────────────────────────────────────
 
     var view = newView();
-    var filters = { level: 'V', tag: '', q: '' };
+    var filters = { level: 'V', tag: '', q: '', from: null, to: null };
     var levelBeforeFatal = 'V';
     // A tag regex the app rejected: the list leaves it out until it changes.
     var rejectedTag = null;
@@ -301,7 +333,7 @@
             requestGeneration = generation;
             requestTag = activeTag();
             var limit = view.cursor ? DELTA_LIMIT : RESET_LIMIT;
-            var query = { level: filters.level, tag: requestTag, q: filters.q };
+            var query = { level: filters.level, tag: requestTag, q: filters.q, from: filters.from, to: filters.to };
             return window.lustroApiUrl(entriesPath(query, view.cursor, limit));
         }, POLL_MS, function(data) {
             if (requestGeneration === generation) onEntries(data);
@@ -362,7 +394,7 @@
 
     function renderEmpty() {
         els.empty.hidden = view.entries.length > 0;
-        var filtered = filters.level !== 'V' || !!activeTag() || !!filters.q;
+        var filtered = filters.level !== 'V' || !!activeTag() || !!filters.q || filters.from != null || filters.to != null;
         els.empty.textContent = filtered ? '// no log lines match the filters' : '// no log lines yet';
     }
 
@@ -415,6 +447,25 @@
         hideTools();
         renderEmpty();
         startPolling();
+    }
+
+    function setRange(range) {
+        filters.from = range ? range.from : null;
+        filters.to = range ? range.to : null;
+        renderRange();
+    }
+
+    function renderRange() {
+        var on = filters.from != null || filters.to != null;
+        els.range.hidden = !on;
+        if (on) els.rangeLabel.textContent = rangeLabel(filters);
+    }
+
+    // The link's fragment goes with the range, so that a reload does not bring it back.
+    function clearRange() {
+        setRange(null);
+        try { window.history.replaceState(null, '', window.location.pathname + window.location.search); } catch(e) {}
+        filtersChanged();
     }
 
     function setLevel(level) {
@@ -730,6 +781,7 @@
         closeMenus: closeMenus,
         setLevel: function(el) { setLevel(el.dataset.level); },
         toggleFatal: function() { setLevel(filters.level === 'F' ? levelBeforeFatal : 'F'); },
+        clearRange: clearRange,
         toggleColumn: function(el) { toggleColumn(el.dataset.column); },
         clearField: function(el) {
             var input = document.getElementById(el.dataset.target);
@@ -840,6 +892,8 @@
             columnsMenu: document.getElementById('logs-columns-menu'),
             menuScrim: document.getElementById('logs-menu-scrim'),
             fatal: document.getElementById('logs-fatal'),
+            range: document.getElementById('logs-range'),
+            rangeLabel: document.getElementById('logs-range-label'),
             paused: document.getElementById('logs-paused'),
             count: document.getElementById('logs-count'),
             filterError: document.getElementById('logs-filter-error'),
@@ -860,6 +914,7 @@
         }
         jsonModal = window.debugModal('logs-json-modal');
         setupEvents();
+        setRange(rangeFromHash(window.location.hash));
         renderLevel();
         applyWidths();
         applyColumns();

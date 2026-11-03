@@ -262,6 +262,39 @@ class LustroLifecycleTest {
     }
 
     @Test
+    fun `without bindFallback, a port that another server frees soon after the foreground still binds`() {
+        // Such as another app with Lustro, which closes its server only after its own onStop.
+        val squatter = ServerSocket()
+        squatter.bind(java.net.InetSocketAddress("127.0.0.1", 0))
+        val takenPort = squatter.localPort
+        val config = DebugConfig.builder().serverPort(takenPort).bindFallback(false).build()
+        registry.currentState = Lifecycle.State.STARTED
+        val lustro = lustro(config)
+        assertEquals(LustroStatus.ENABLED, lustro.start())
+        assertFalse(lustro.isBound())
+
+        squatter.close()
+        awaitBound(lustro, expected = true, timeoutMs = 3_000)
+        assertEquals("the configured port, not an ephemeral one", takenPort, lustro.boundPort())
+        get(takenPort, "/shared.js").use { assertEquals(200, it.code) }
+    }
+
+    @Test
+    fun `the retries of a taken port stop when the app goes to the background`() {
+        val squatter = ServerSocket()
+        squatter.bind(java.net.InetSocketAddress("127.0.0.1", 0))
+        val config = DebugConfig.builder().serverPort(squatter.localPort).bindFallback(false).build()
+        registry.currentState = Lifecycle.State.STARTED
+        val lustro = lustro(config)
+        lustro.start()
+
+        registry.currentState = Lifecycle.State.CREATED
+        squatter.close()
+        Thread.sleep(1_000)
+        assertFalse("no bind in the background", lustro.isBound())
+    }
+
+    @Test
     fun `port collision with bindFallback true binds on an ephemeral port`() {
         ServerSocket().use { squatter ->
             squatter.bind(java.net.InetSocketAddress("127.0.0.1", 0))
