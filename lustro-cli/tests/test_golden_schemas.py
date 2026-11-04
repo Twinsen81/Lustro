@@ -558,7 +558,7 @@ WORK_ROUTES = ("items", "items/{id}", "events", "metrics", "cancel", "prune")
 def test_the_work_schema_is_valid_and_has_its_own_version():
     work = wire.load_openapi("work")
     assert work["openapi"].startswith("3.1")
-    assert work["info"]["version"] == "1.1"
+    assert work["info"]["version"] == "1.2"
     for schema in work["components"]["schemas"].values():
         Draft202012Validator.check_schema(schema)
     assert work["components"]["schemas"]["ErrorEnvelope"] == wire.load_openapi()["components"]["schemas"]["ErrorEnvelope"]

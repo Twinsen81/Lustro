@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Lustro WorkManager debug tab",
-    "version": "1.1",
+    "version": "1.2",
     "description": "The app's WorkManager work: every work request that WorkManager knows, with its state, tags, attempts, output, progress, constraints, and schedule; the events of WorkManager's execution and schedule listeners (WorkManager 2.12.0 and newer), with the result, the output, the stop reason, and the exception of each run; the history of work-analytics when the app has it; and cancel and prune. The events need the app's WorkManager configuration to go through WorkDebugTab.configure(), so the app initializes WorkManager on demand; the routes' state says whether it does. The tab records the events from Lustro.start() to Lustro.stop() and keeps them on the app's heap, so they end with the process. The tab never initializes WorkManager. Without WorkManager 2.12.0 or newer, every route answers 503 with code work_unsupported; the message names the app's WorkManager version when the APK has its version file (META-INF/androidx.work_work-runtime.version), which a build can leave out. All routes are token-authenticated (Bearer header or HttpOnly cookie) and live under /api/v1/work. Errors use the shared error envelope."
   },
   "servers": [
@@ -653,7 +653,32 @@
         "properties": {
           "network": {
             "type": "string",
-            "description": "The NetworkType name, such as NOT_REQUIRED, CONNECTED, or UNMETERED."
+            "description": "The NetworkType name, such as NOT_REQUIRED, CONNECTED, or UNMETERED. NOT_REQUIRED when the work needs a NetworkRequest instead: see networkRequest."
+          },
+          "networkRequest": {
+            "type": "object",
+            "description": "Only when the work needs a NetworkRequest, which Constraints.Builder.setRequiredNetworkRequest sets from API 28 in place of a NetworkType. The names of the NetworkCapabilities constants that the request has, without their TRANSPORT_ and NET_CAPABILITY_ prefixes, in the order of their values; a value that this version of Lustro does not know is its number as a string.",
+            "required": [
+              "transports",
+              "capabilities"
+            ],
+            "properties": {
+              "transports": {
+                "type": "array",
+                "description": "Such as WIFI, CELLULAR, ETHERNET, or VPN. Empty when the request takes any transport.",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "capabilities": {
+                "type": "array",
+                "description": "Such as INTERNET, NOT_METERED, or VALIDATED.",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "additionalProperties": false
           },
           "requiresCharging": {
             "type": "boolean"

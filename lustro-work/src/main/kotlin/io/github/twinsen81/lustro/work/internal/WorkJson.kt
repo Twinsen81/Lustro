@@ -1,5 +1,6 @@
 package io.github.twinsen81.lustro.work.internal
 
+import android.os.Build
 import androidx.work.Constraints
 import androidx.work.Data
 import androidx.work.ListenableWorker
@@ -136,6 +137,16 @@ internal object WorkJson {
 
     private fun appendConstraints(out: StringBuilder, constraints: Constraints) {
         out.append("{\"network\":\"").append(constraints.requiredNetworkType.name).append('"')
+        // From API 28, a NetworkRequest stands in for the NetworkType, which is then NOT_REQUIRED.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            constraints.requiredNetworkRequest?.let { request ->
+                out.append(",\"networkRequest\":{\"transports\":")
+                appendStrings(out, WorkNetworkRequest.transports(request))
+                out.append(",\"capabilities\":")
+                appendStrings(out, WorkNetworkRequest.capabilities(request))
+                out.append('}')
+            }
+        }
         out.append(",\"requiresCharging\":").append(constraints.requiresCharging())
         out.append(",\"requiresDeviceIdle\":").append(constraints.requiresDeviceIdle())
         out.append(",\"requiresBatteryNotLow\":").append(constraints.requiresBatteryNotLow())

@@ -19,8 +19,12 @@ package io.github.twinsen81.lustro
  * spelling: `Idempotency-Key`, `public_key`, and `vapid_key`; a token count or
  * limit, where `token` or `tokens` sits next to a word such as `max`, `total`,
  * `count`, `remaining`, `prompt`, or `input`, as in `prompt_tokens`,
- * `max_tokens`, and `totalTokenCount`; and a key that names a column, such as
- * `primary_key` and `partitionKey`.
+ * `max_tokens`, and `totalTokenCount`; a key that names a column, such as
+ * `primary_key` and `partitionKey`; and a yes-or-no flag about a secret, whose
+ * first word is `is`, `has`, `can`, or `should`, whose last word is `exist`,
+ * `exists`, `enabled`, `disabled`, `enforced`, `required`, or `protected`, or
+ * that asks for one, as in `is_password_protected`, `passwordEnforced`,
+ * `keys_exist`, and `ask_for_password`.
  *
  * It goes by the name only, so a secret under a name that none of these words
  * are in is not found.
@@ -56,6 +60,15 @@ public object SensitiveKeys {
         )
 
     private val TOKEN_WORDS = setOf("token", "tokens")
+
+    // A flag says whether there is a secret, or whether the app asks for one, and
+    // holds a boolean: `is_password_protected`, `sharing_password_enforced`,
+    // `keys_exist`, `ask_for_password`. The words are matched as listed, without
+    // INFLECTIONS, and only at the end of the name where they are listed for it:
+    // `existing_session_token` and `required_token` are credentials.
+    private val FLAG_FIRST_WORDS = setOf("is", "has", "can", "should")
+    private val FLAG_LAST_WORDS = setOf("exist", "exists", "enabled", "disabled", "enforced", "required", "protected")
+    private const val FLAG_ASK_WORD = "ask"
 
     // Ordinary words that contain a sensitive fragment. A word that only has a
     // fragment as part of one of these doesn't make its name sensitive.
@@ -104,6 +117,7 @@ public object SensitiveKeys {
         val parts = nameParts(name)
         if (PUBLIC_NAMES.containsIgnoringInflection(parts.joinToString("").lowercase())) return false
         val words = parts.map { camelCaseWords(it) }
+        if (isFlag(words.flatten())) return false
         val counted = words.any { part -> part.any { it in COUNT_WORDS } }
         return words.any { part ->
             val rest =
@@ -112,6 +126,9 @@ public object SensitiveKeys {
             SENSITIVE_KEY_FRAGMENTS.any { rest.contains(it) }
         }
     }
+
+    private fun isFlag(words: List<String>): Boolean =
+        words.size > 1 && (words.first() in FLAG_FIRST_WORDS || words.last() in FLAG_LAST_WORDS || FLAG_ASK_WORD in words)
 
     /**
      * Whether [word], or the base form it is an inflection of, is in this set.

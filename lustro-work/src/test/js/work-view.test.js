@@ -79,6 +79,17 @@ test('a worker shows by its simple name, and the tags without the one of its cla
     assert.deepStrictEqual(plain(work.workAppTags(byClass('RetryWorker'))), []);
 });
 
+test('tags that every work in the list has go after the tags of each row', () => {
+    const tagged = (id, tags) => ({ id, workerClass: 'x.W', tags: tags.concat(['x.W']) });
+    const list = [tagged('a', ['*', 'name:upload', 'user:me']), tagged('b', ['*', 'name:sync', 'user:me'])];
+    assert.deepStrictEqual(plain(Array.from(work.workSharedTags(list))), ['*', 'user:me']);
+    assert.deepStrictEqual(plain(work.workListTags(list[0], work.workSharedTags(list))), ['name:upload', '*', 'user:me']);
+    assert.match(work.workRowHtml(list[0], false, NOW, work.workSharedTags(list)), /title="name:upload, \*, user:me"><span class="dc-tag work-tag">name:upload</);
+    // One work shares nothing with another, and keeps its order.
+    assert.strictEqual(work.workSharedTags([list[0]]).size, 0);
+    assert.deepStrictEqual(plain(work.workListTags(list[0], work.workSharedTags([list[0]]))), ['*', 'name:upload', 'user:me']);
+});
+
 // ── Times and the details ───────────────────────────────────────
 
 test('a duration is in the largest unit that fits, with the next one', () => {
@@ -99,6 +110,34 @@ test('a time on the device is relative to the page clock, to the second', () => 
     assert.strictEqual(work.workRelativeText(NOW - 3000, NOW), '3 s ago');
 });
 
+test('enqueued work whose time has passed waits, and says for what', () => {
+    assert.strictEqual(work.workNextRunText(NOW + 252000, NOW), 'in 4 min 12 s');
+    assert.strictEqual(work.workNextRunText(NOW - 400, NOW), 'now');
+    // From the time that relativeText rounds to "1 s ago", it waits.
+    assert.strictEqual(work.workNextRunText(NOW - 500, NOW), 'now');
+    assert.strictEqual(work.workNextRunText(NOW - 700, NOW), 'waiting');
+    assert.strictEqual(work.workOverdue(NOW - 700, NOW), true);
+    assert.strictEqual(work.workNextRunText(NOW - 15000, NOW), 'waiting');
+
+    const observer = Object.assign(byClass('RetryWorker'), {
+        nextScheduleTimeMillis: NOW - 15000,
+        constraints: { network: 'NOT_REQUIRED', contentUriTriggers: [{ uri: 'content://media/external/file', descendants: true }] },
+    });
+    const row = work.workRowHtml(observer, false, NOW);
+    assert.match(row, /data-next="1792419725000" data-wait-title="Due [^"]*" title="Due 2026-10-19 14:22:05\.000\. WorkManager runs it when its constraints are met: 1 content URI trigger\.">waiting</);
+    // Before its time, the title is the time; the page swaps in the reason when it passes.
+    assert.match(work.workRowHtml(observer, false, NOW - 20000), /title="2026-10-19 14:22:05\.000">in 5 s</);
+    assert.match(work.workDetailsHtml(observer, NOW), /15 s ago<\/span><div class="dc-comment" data-wait="1792419725000">\/\/ WorkManager runs it when its constraints are met: 1 content URI trigger\.</);
+    // Before the time, the note is there but hidden, so that the page can show it when the time passes.
+    assert.match(work.workDetailsHtml(observer, NOW - 20000), /in 5 s<\/span><div class="dc-comment" data-wait="1792419725000" hidden>/);
+    assert.doesNotMatch(work.workDetailsHtml(Object.assign(byClass('RetryWorker'), { state: 'BLOCKED' }), NOW), /data-wait/);
+
+    const late = Object.assign(byClass('RetryWorker'), { nextScheduleTimeMillis: NOW - 15000 });
+    assert.match(work.workRowHtml(late, false, NOW), /the system decides when it runs\.">waiting</);
+    // Running and blocked work keep the time as it is.
+    assert.match(work.workRowHtml(Object.assign(byClass('RetryWorker'), { state: 'BLOCKED', nextScheduleTimeMillis: NOW - 15000 }), false, NOW), /data-at="1792419725000"[^>]*>15 s ago</);
+});
+
 test('the constraints name only what the work waits for', () => {
     assert.strictEqual(work.workConstraintsText(byClass('RetryWorker').constraints), 'none');
     const periodic = items().find((item) => item.periodicity);
@@ -106,6 +145,19 @@ test('the constraints name only what the work waits for', () => {
     assert.strictEqual(
         work.workConstraintsText({ network: 'NOT_ROAMING', requiresCharging: true, requiresDeviceIdle: true, requiresStorageNotLow: true, contentUriTriggers: [{}, {}] }),
         'network not roaming, charging, device idle, storage not low, 2 content URI triggers',
+    );
+    // From API 28, a NetworkRequest takes the place of the network type.
+    assert.strictEqual(
+        work.workConstraintsText({
+            network: 'NOT_REQUIRED',
+            networkRequest: { transports: ['CELLULAR', 'WIFI', 'WIFI_AWARE'], capabilities: ['INTERNET', 'TRUSTED'] },
+            requiresCharging: true,
+        }),
+        'network request: cellular or wifi or wifi aware, with internet, trusted, charging',
+    );
+    assert.strictEqual(
+        work.workConstraintsText({ network: 'NOT_REQUIRED', networkRequest: { transports: [], capabilities: [] } }),
+        'network request: any transport',
     );
 });
 
@@ -128,7 +180,7 @@ test('a row marks failed and selected work, a periodic work, and its next run', 
     const periodic = items().find((item) => item.periodicity);
     const row = work.workRowHtml(periodic, false, NOW);
     assert.match(row, /title="Periodic: every 15 min\.">↻/);
-    assert.match(row, /data-at="1792419740000"[^>]*>now</);
+    assert.match(row, /data-next="1792419740000"[^>]*>now</);
 
     const done = work.workRowHtml(byClass('StepWorker'), false, NOW);
     assert.match(done, /work-cell--name" title="sync">sync</);
@@ -330,6 +382,7 @@ test('the listeners banner says how to fix each state, with the reason of the ap
     assert.strictEqual(missing.kind, 'warn');
     assert.match(missing.title, /not installed/);
     assert.match(missing.fix, /Configuration\.Provider/);
+    assert.match(missing.fix, /WorkManager\.initialize\(\)/);
     assert.match(missing.fix, /WorkDebugTab\.configure\(builder\)/);
     assert.match(missing.fix, /WorkManagerInitializer/);
     assert.match(missing.reason, /did not go through/);

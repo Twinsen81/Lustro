@@ -103,7 +103,7 @@ class WorkDebugTabServerTest {
     @Test
     fun `the tab serves its schema with its own version, and _meta lists it`() {
         val schema = JSONObject(get("_schema").body!!.string())
-        assertEquals("1.1", schema.getJSONObject("info").getString("version"))
+        assertEquals("1.2", schema.getJSONObject("info").getString("version"))
         assertTrue(schema.getJSONObject("paths").has("/api/v1/work/items/{id}"))
         val tabs = JSONObject(call(Request.Builder().url("$root/api/v1/_meta")).body!!.string()).getJSONArray("tabs")
         val work = (0 until tabs.length()).map { tabs.getJSONObject(it) }.single { it.getString("id") == "work" }

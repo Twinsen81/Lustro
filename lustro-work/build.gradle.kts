@@ -49,6 +49,8 @@ dependencies {
     // that both name off the compile classpath, which checkKotlinFloor checks.
     compileOnly(libs.work.runtime.floor) { exclude(group = "org.jetbrains.kotlin") }
     compileOnly(libs.work.analytics.floor) { exclude(group = "org.jetbrains.kotlin") }
+    // @RequiresApi only: CLASS retention, so it stays off the runtime classpath.
+    compileOnly(libs.androidx.annotation) { exclude(group = "org.jetbrains.kotlin") }
 
     testImplementation(project(":lustro"))
     // The route tests bind the real server, which listens while ProcessLifecycleOwner

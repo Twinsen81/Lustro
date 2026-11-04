@@ -1071,10 +1071,14 @@ static synchronized WorkDebugTab work(Application app) {
   See [docs/AGENTS.md](docs/AGENTS.md#workmanager-tab-operations) and
   [`work.openapi.json`](lustro-work/src/main/assets/lustro/work.openapi.json).
 - **In the console.** The **WorkManager** tab lists the work with its state, worker, unique name,
-  tags, attempts, and next run. For periodic work, the attempts are those of the current period:
+  tags, attempts, and next run. A tag that every work in the list has, such as one that the app puts
+  on all its work, shows after the tags of each work. Enqueued work whose next run has passed shows
+  `waiting`, and says for which constraints: WorkManager runs it when they are met, such as at a
+  change of a content URI that it watches. For periodic work, the attempts are those of the current period:
   WorkManager sets the count back to 0 when a period ends, so it is 0 after a run that finished. The state chips show the count of each state and filter the list by
   it, and the tag, worker class, and unique name fields go to the route. A click on a work opens
-  it: **Details** has its id, class, tags, constraints, periodicity, initial delay, next run,
+  it: **Details** has its id, class, tags, constraints, with the transports and capabilities of a
+  `NetworkRequest` that the app set with `setRequiredNetworkRequest`, periodicity, initial delay, next run,
   attempts, generation, last stop reason, output, and progress, with a bar when the progress is
   one number from 0 to 100, which the list also shows next to `running`; **Timeline** has the
   events of its runs, with the result, the output, the stop reason, and a worker's exception with
@@ -1293,6 +1297,12 @@ For driving Lustro from agents, scripts, or the `lustro` CLI, see
 - **A WebSocket shows only its handshake.** The interceptor can't see messages. Create the socket
   with `lustro.webSocketFactory(httpClient)`, or give that factory to the library that creates it:
   see [WebSocket messages](#websocket-messages).
+- **`Dependency verification failed` for `org.nanohttpd`.** An app with Gradle dependency
+  verification (`gradle/verification-metadata.xml`) must add Lustro's artifacts and NanoHTTPD,
+  which `lustro` brings. NanoHTTPD 2.3.1 is signed with key `6132AAE95D8E9FE0`, which no key
+  server has, so the signature can't be checked. Let Gradle write the checksums, for the key that
+  it can't get, and check the diff before you commit it:
+  `./gradlew --write-verification-metadata pgp,sha256 --export-keys :app:assembleDebug`.
 
 ## Modules
 
