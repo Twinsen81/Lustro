@@ -1,8 +1,8 @@
 package io.github.twinsen81.lustro.work.internal
 
-import android.annotation.TargetApi
 import android.net.NetworkRequest
 import android.os.Build
+import androidx.annotation.RequiresApi
 
 /**
  * The transports and capabilities of the [NetworkRequest] that work needs, by the
@@ -34,7 +34,7 @@ internal object WorkNetworkRequest {
     private const val MAX_CONSTANT = 63
 
     /** The names of the request's transports, in the order of their constants. */
-    @TargetApi(Build.VERSION_CODES.P)
+    @RequiresApi(Build.VERSION_CODES.P)
     fun transports(request: NetworkRequest): List<String> {
         val values =
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) request.transportTypes.sorted() else (0..MAX_CONSTANT).filter { request.hasTransport(it) }
@@ -42,7 +42,7 @@ internal object WorkNetworkRequest {
     }
 
     /** The names of the request's capabilities, in the order of their constants. */
-    @TargetApi(Build.VERSION_CODES.P)
+    @RequiresApi(Build.VERSION_CODES.P)
     fun capabilities(request: NetworkRequest): List<String> {
         val values =
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) request.capabilities.sorted() else (0..MAX_CONSTANT).filter { request.hasCapability(it) }

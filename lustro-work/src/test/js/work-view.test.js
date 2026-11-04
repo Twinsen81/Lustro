@@ -113,6 +113,10 @@ test('a time on the device is relative to the page clock, to the second', () => 
 test('enqueued work whose time has passed waits, and says for what', () => {
     assert.strictEqual(work.workNextRunText(NOW + 252000, NOW), 'in 4 min 12 s');
     assert.strictEqual(work.workNextRunText(NOW - 400, NOW), 'now');
+    // From the time that relativeText rounds to "1 s ago", it waits.
+    assert.strictEqual(work.workNextRunText(NOW - 500, NOW), 'now');
+    assert.strictEqual(work.workNextRunText(NOW - 700, NOW), 'waiting');
+    assert.strictEqual(work.workOverdue(NOW - 700, NOW), true);
     assert.strictEqual(work.workNextRunText(NOW - 15000, NOW), 'waiting');
 
     const observer = Object.assign(byClass('RetryWorker'), {
@@ -120,7 +124,9 @@ test('enqueued work whose time has passed waits, and says for what', () => {
         constraints: { network: 'NOT_REQUIRED', contentUriTriggers: [{ uri: 'content://media/external/file', descendants: true }] },
     });
     const row = work.workRowHtml(observer, false, NOW);
-    assert.match(row, /data-next="1792419725000" title="Due 2026-10-19 14:22:05\.000\. WorkManager runs it when its constraints are met: 1 content URI trigger\.">waiting</);
+    assert.match(row, /data-next="1792419725000" data-wait-title="Due [^"]*" title="Due 2026-10-19 14:22:05\.000\. WorkManager runs it when its constraints are met: 1 content URI trigger\.">waiting</);
+    // Before its time, the title is the time; the page swaps in the reason when it passes.
+    assert.match(work.workRowHtml(observer, false, NOW - 20000), /title="2026-10-19 14:22:05\.000">in 5 s</);
     assert.match(work.workDetailsHtml(observer, NOW), /15 s ago<\/span><div class="dc-comment" data-wait="1792419725000">\/\/ WorkManager runs it when its constraints are met: 1 content URI trigger\.</);
     // Before the time, the note is there but hidden, so that the page can show it when the time passes.
     assert.match(work.workDetailsHtml(observer, NOW - 20000), /in 5 s<\/span><div class="dc-comment" data-wait="1792419725000" hidden>/);

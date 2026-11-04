@@ -33,8 +33,12 @@ import org.json.JSONTokener
  *   `Idempotency-Key`, `public_key`, and `vapid_key`; a token count or limit,
  *   where `token` or `tokens` sits next to a word such as `max`, `total`,
  *   `count`, `remaining`, `prompt`, or `input`, as in `prompt_tokens`,
- *   `max_tokens`, `totalTokenCount`, and `x-ratelimit-remaining-tokens`; and a
- *   key that names a column, such as `primary_key` and `partitionKey`. This
+ *   `max_tokens`, `totalTokenCount`, and `x-ratelimit-remaining-tokens`; a
+ *   key that names a column, such as `primary_key` and `partitionKey`; and a
+ *   yes-or-no flag about a secret, whose first word is `is`, `has`, `can`, or
+ *   `should`, whose last word is `exist`, `exists`, `enabled`, `disabled`,
+ *   `enforced`, `required`, or `protected`, or that asks for one, as in
+ *   `is_password_protected`, `passwordEnforced`, and `ask_for_password`. This
  *   name check is [SensitiveKeys.isSensitive], which other tabs use too.
  * - The parts of a `multipart/form-data` body: a part whose field name is
  *   sensitive is masked whole, and any other part is redacted as a body of its

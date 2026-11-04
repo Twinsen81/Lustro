@@ -176,8 +176,14 @@
         return overdue(at, now) ? 'waiting' : relativeText(at, now);
     }
 
+    // Rounded to the second as relativeText rounds it, so that a time never reads "1 s ago".
     function overdue(at, now) {
-        return Number(at) - now <= -1000;
+        return Math.round((Number(at) - now) / 1000) <= -1;
+    }
+
+    // The plain time until it has passed, and then what the work waits for.
+    function nextRunTitle(item, now) {
+        return overdue(item.nextScheduleTimeMillis, now) ? waitingTitle(item) : dateTimeText(item.nextScheduleTimeMillis);
     }
 
     function waitingReason(item) {
@@ -279,8 +285,8 @@
         if (item.nextScheduleTimeMillis == null || isFinished(item.state)) return '<span class="dc-comment">-</span>';
         var at = item.nextScheduleTimeMillis;
         if (item.state === 'ENQUEUED') {
-            return '<span class="work-next" data-next="' + esc(String(at)) + '" title="' + esc(waitingTitle(item)) + '">'
-                + esc(nextRunText(at, now)) + '</span>';
+            return '<span class="work-next" data-next="' + esc(String(at)) + '" data-wait-title="' + esc(waitingTitle(item))
+                + '" title="' + esc(nextRunTitle(item, now)) + '">' + esc(nextRunText(at, now)) + '</span>';
         }
         return '<span class="work-next" data-at="' + esc(String(at)) + '" title="' + esc(dateTimeText(at)) + '">'
             + esc(relativeText(at, now)) + '</span>';
@@ -675,6 +681,7 @@
     window.workSharedTags = sharedTags;
     window.workListTags = listTags;
     window.workNextRunText = nextRunText;
+    window.workOverdue = overdue;
     window.workDurationText = durationText;
     window.workRelativeText = relativeText;
     window.workConstraintsText = constraintsText;
@@ -855,7 +862,9 @@
             el.textContent = relativeText(Number(el.dataset.at), now);
         });
         els.root.querySelectorAll('[data-next]').forEach(function(el) {
-            el.textContent = nextRunText(Number(el.dataset.next), now);
+            var at = Number(el.dataset.next);
+            el.textContent = nextRunText(at, now);
+            el.title = overdue(at, now) ? el.dataset.waitTitle : dateTimeText(at);
         });
         els.root.querySelectorAll('[data-wait]').forEach(function(el) {
             el.hidden = !overdue(Number(el.dataset.wait), now);
