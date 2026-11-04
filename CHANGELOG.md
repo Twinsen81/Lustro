@@ -860,6 +860,32 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Fixed
 
+- **The WorkManager tab shows a network constraint that is a
+  `NetworkRequest`.** From API 28, `Constraints.Builder.setRequiredNetworkRequest`
+  keeps the request in place of a `NetworkType`, and `requiredNetworkType` is
+  then `NOT_REQUIRED`, so the tab said that the work had no constraints. A
+  file sync app sets such a request on its uploads, for any of seven
+  transports, also through a VPN. A work item's `constraints` now has
+  `networkRequest`, with the names of its transports and capabilities, and
+  Details shows them. The WorkManager schema is `1.2`. Verified on a
+  physical Android 16 device: an upload's Details showed `network request:
+  cellular or wifi or bluetooth or ethernet or vpn or wifi aware or usb, with
+  trusted, not vcn managed, not bandwidth constrained`, where it showed
+  `none`.
+- **A yes-or-no flag about a secret is not masked.** The sensitive-name check
+  that the Network redactor and the Preferences and SQLite value policies
+  share found `password` or `key` in the names of flags, so a file sync app's
+  capabilities table showed `masked` for `sharing_public_password_enforced`,
+  `sharing_public_ask_for_optional_password`, and
+  `end_to_end_encryption_keys_exist`, and its shares table for
+  `is_password_protected`, which hold 0 or 1. A name whose first word is
+  `is`, `has`, `can`, or `should`, whose last word is `exist`, `exists`,
+  `enabled`, `disabled`, `enforced`, `required`, or `protected`, or that has
+  the word `ask`, is now a flag. A flag word elsewhere in the name does not
+  count, so `existing_session_token` and `required_token` stay masked.
+  Verified on a physical device: the four columns show their values, and the
+  share `token` and the file list's `lock_token` stay masked.
+
 - **A Java app without work-analytics can pass unique names to the
   WorkManager tab.** `WorkDebugTab.create(context, uniqueNames)` and
   `create(context, uniqueNames, bufferBytes)` did not compile from Java:
@@ -1446,6 +1472,22 @@ see [DECISIONS.md](DECISIONS.md).
   body, and a gzip response over `HttpURLConnection`.
 
 ### Changed
+
+- **The WorkManager console says that enqueued work waits.** The next run of
+  enqueued work whose time had passed showed as `15 s ago`, which reads as a
+  run that happened, for work that waits for its constraints, such as a
+  content URI trigger. Such work now shows `waiting`, and its title, and
+  Details, say for which constraints, or that the system decides when it
+  runs. A tag that every work in the list has, such as the tag that an app
+  puts on all its work to find it again, now shows after each work's own
+  tags, so the list's tag column shows a tag that tells the rows apart. The
+  banner for missing listeners names `WorkManager.initialize()` as well as
+  `Configuration.Provider`.
+- **The README says how to add Lustro to an app with Gradle dependency
+  verification.** NanoHTTPD 2.3.1 is signed with a key that no key server
+  has, so such an app's build fails with `Dependency verification failed`
+  until it records the checksums, which
+  `--write-verification-metadata pgp,sha256` writes.
 
 - **The no-op halves need `minSdk` 21.** They call no Android API, but
   declared the runtime's 24, so an app with `minSdk` 23 could not build its

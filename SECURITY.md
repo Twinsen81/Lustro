@@ -100,8 +100,10 @@ build, and that even in debug builds it stays bound to the local device.
   `auth` in `author_name`, `sig` in `assignments`, or `key` in `keywords`,
   doesn't count, and neither do names that hold no secret: `Idempotency-Key`,
   `public_key`, and `vapid_key`; a token count or limit, such as
-  `prompt_tokens`, `max_tokens`, or `x-ratelimit-remaining-tokens`; and a key
-  that names a column, such as `primary_key`. A name-based rule cannot see a
+  `prompt_tokens`, `max_tokens`, or `x-ratelimit-remaining-tokens`; a key
+  that names a column, such as `primary_key`; and a yes-or-no flag about a
+  secret, such as `is_password_protected`, `password_enforced`, `keys_exist`, or
+  `ask_for_password`. A name-based rule cannot see a
   secret that is not keyed by a name it recognizes, so the default redactor
   reduces exposure rather than guaranteeing there is none. Known gaps, where
   the value is stored as it arrived:

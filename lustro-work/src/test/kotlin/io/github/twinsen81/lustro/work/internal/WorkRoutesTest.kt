@@ -1,6 +1,8 @@
 package io.github.twinsen81.lustro.work.internal
 
 import android.app.Application
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import androidx.test.core.app.ApplicationProvider
 import androidx.work.Constraints
 import androidx.work.ExistingWorkPolicy
@@ -26,6 +28,7 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
 class WorkRoutesTest {
@@ -97,6 +100,46 @@ class WorkRoutesTest {
         assertTrue(state.getBoolean("initialized"))
         assertFalse(state.getBoolean("metrics"))
         assertEquals("sync", state.getJSONArray("uniqueNames").getString(0))
+    }
+
+    @Test
+    fun `a network request in the constraints lists its transports and capabilities by name`() = assertNetworkRequest()
+
+    // Before API 31, a NetworkRequest lists neither, so the tab asks it for each one.
+    @Test
+    @Config(sdk = [28])
+    fun `a network request lists its transports and capabilities on API 28 too`() = assertNetworkRequest()
+
+    private fun assertNetworkRequest() {
+        // As a file sync app asks for any of several transports, also through a VPN.
+        val request =
+            NetworkRequest.Builder()
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                .removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+                .removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_RESTRICTED)
+                .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+                .addTransportType(NetworkCapabilities.TRANSPORT_CELLULAR)
+                .addTransportType(NetworkCapabilities.TRANSPORT_VPN)
+                .build()
+        val upload =
+            OneTimeWorkRequestBuilder<StepWorker>()
+                .setInputData(workDataOf("step" to 1))
+                .setInitialDelay(1, TimeUnit.HOURS)
+                .setConstraints(Constraints.Builder().setRequiredNetworkRequest(request, NetworkType.CONNECTED).build())
+                .build()
+        workManager.enqueue(upload).result.get()
+        workManager.enqueue(step(2)).result.get()
+
+        val items = byId(items(WorkFixtures.get(routes, "items")))
+        val constraints = items.getValue(upload.id.toString()).getJSONObject("constraints")
+        // WorkManager keeps the request in place of the network type.
+        assertEquals("NOT_REQUIRED", constraints.getString("network"))
+        val networkRequest = constraints.getJSONObject("networkRequest")
+        assertEquals(listOf("CELLULAR", "WIFI", "VPN"), networkRequest.getJSONArray("transports").toList())
+        val capabilities = networkRequest.getJSONArray("capabilities").toList()
+        assertTrue(capabilities.toString(), capabilities.containsAll(listOf("INTERNET", "TRUSTED")))
+        assertFalse(capabilities.toString(), capabilities.contains("NOT_VPN") || capabilities.contains("NOT_RESTRICTED"))
+        assertFalse(items.values.single { it.getString("id") != upload.id.toString() }.getJSONObject("constraints").has("networkRequest"))
     }
 
     @Test

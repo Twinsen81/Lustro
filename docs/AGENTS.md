@@ -708,7 +708,7 @@ count.
 Base path `/api/v1/work`, when the app registers the WorkManager plugin
 (`WorkDebugTab.create(context, uniqueNames)`, or `createWithMetrics(context, metrics, uniqueNames)` with a
 work-analytics repository; without it, the routes are an enveloped `404 Unknown tab: work`). The
-authoritative contract is `lustro-work/src/main/assets/lustro/work.openapi.json`, version `1.1` (`1.1` names the unique work of every work request).
+authoritative contract is `lustro-work/src/main/assets/lustro/work.openapi.json`, version `1.2` (`1.1` names the unique work of every work request, and `1.2` adds the `networkRequest` of a work's constraints).
 The CLI has no `work` commands: use `lustro api`. Only `POST cancel` and `POST prune` change
 anything. The app needs WorkManager 2.12.0 or newer: with an older one, every route is a `503`
 with `code: "work_unsupported"`.
@@ -738,7 +738,14 @@ that `name=` asked for.
 when the work never stopped, `UNKNOWN` when WorkManager does not know why, as after the app's
 process died. `output` and `progress` are `Data` as JSON: a long beyond 2^53 - 1 and a NaN or an
 infinity are strings. Periodic work loses its output when its period ends, so read a run's output
-from its `finished` event. `nextScheduleTimeMillis` is left out when there is no next run.
+from its `finished` event. `nextScheduleTimeMillis` is left out when there is no next run; a time
+in the past on `ENQUEUED` work means that WorkManager waits for its constraints, such as a content
+URI trigger, or for the system to run it. `constraints` is `{ network, requiresCharging,
+requiresDeviceIdle, requiresBatteryNotLow, requiresStorageNotLow, contentUriTriggers?,
+networkRequest? }`: `network` is the `NetworkType` name, and `networkRequest`, `{ transports,
+capabilities }` by the names of their `NetworkCapabilities` constants, comes when the app set a
+`NetworkRequest` with `setRequiredNetworkRequest`, which takes the place of `network` from API 28,
+so that `network` is then `NOT_REQUIRED`.
 
 **An event.** `{ seq, at, type, id, workerClass, state, runAttempts, generation }` and what the
 type adds: `finished` has `result` (`success`, `failure`, or `retry`) and `output`; `stopped` has

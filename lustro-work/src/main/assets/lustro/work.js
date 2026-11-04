@@ -104,6 +104,27 @@
         return (item.tags || []).filter(function(tag) { return tag !== item.workerClass; });
     }
 
+    // The tags that every one of [items] has, such as a tag that an app puts on all of
+    // its work to find it again. They tell no row from another, so a row shows them
+    // after its own. One work shares nothing.
+    function sharedTags(items) {
+        if (!items || items.length < 2) return new Set();
+        var shared = new Set(appTags(items[0]));
+        items.slice(1).forEach(function(item) {
+            var tags = new Set(appTags(item));
+            shared.forEach(function(tag) { if (!tags.has(tag)) shared.delete(tag); });
+        });
+        return shared;
+    }
+
+    // The app's tags of [item], with those in [shared] last.
+    function listTags(item, shared) {
+        var tags = appTags(item);
+        if (!shared || !shared.size) return tags;
+        return tags.filter(function(tag) { return !shared.has(tag); })
+            .concat(tags.filter(function(tag) { return shared.has(tag); }));
+    }
+
     function stateLabel(state) {
         var text = String(state || '').toLowerCase().replace(/_/g, ' ');
         return text.charAt(0).toUpperCase() + text.slice(1);
@@ -149,6 +170,23 @@
         return diff > 0 ? 'in ' + durationText(diff) : durationText(-diff) + ' ago';
     }
 
+    // The next run of enqueued work. A time that has passed means that WorkManager
+    // waits: for the constraints, such as a content URI trigger, or for the system.
+    function nextRunText(at, now) {
+        return Number(at) - now <= -1000 ? 'waiting' : relativeText(at, now);
+    }
+
+    function waitingReason(item) {
+        var constraints = constraintsText(item.constraints);
+        return constraints === 'none'
+            ? 'WorkManager has not started it yet: the system decides when it runs.'
+            : 'WorkManager runs it when its constraints are met: ' + constraints + '.';
+    }
+
+    function waitingTitle(item) {
+        return 'Due ' + dateTimeText(item.nextScheduleTimeMillis) + '. ' + waitingReason(item);
+    }
+
     function clockText(at) {
         var date = new Date(Number(at));
         return pad(date.getHours()) + ':' + pad(date.getMinutes()) + ':' + pad(date.getSeconds()) + '.' + pad(date.getMilliseconds(), 3);
@@ -161,11 +199,22 @@
 
     // ── What the details say ────────────────────────────────────
 
+    function constantText(name) {
+        return String(name).toLowerCase().replace(/_/g, ' ');
+    }
+
     function constraintsText(constraints) {
         if (!constraints) return 'none';
         var parts = [];
         if (constraints.network && constraints.network !== 'NOT_REQUIRED') {
-            parts.push('network ' + constraints.network.toLowerCase().replace(/_/g, ' '));
+            parts.push('network ' + constantText(constraints.network));
+        }
+        var request = constraints.networkRequest;
+        if (request) {
+            var transports = (request.transports || []).map(constantText);
+            var capabilities = (request.capabilities || []).map(constantText);
+            parts.push('network request: ' + (transports.length ? transports.join(' or ') : 'any transport')
+                + (capabilities.length ? ', with ' + capabilities.join(', ') : ''));
         }
         if (constraints.requiresCharging) parts.push('charging');
         if (constraints.requiresDeviceIdle) parts.push('device idle');
@@ -225,18 +274,22 @@
         }
         if (item.nextScheduleTimeMillis == null || isFinished(item.state)) return '<span class="dc-comment">-</span>';
         var at = item.nextScheduleTimeMillis;
+        if (item.state === 'ENQUEUED') {
+            return '<span class="work-next" data-next="' + esc(String(at)) + '" title="' + esc(waitingTitle(item)) + '">'
+                + esc(nextRunText(at, now)) + '</span>';
+        }
         return '<span class="work-next" data-at="' + esc(String(at)) + '" title="' + esc(dateTimeText(at)) + '">'
             + esc(relativeText(at, now)) + '</span>';
     }
 
     // One row of the list. Every value from the app is escaped: a tag, a name, or
     // a class can hold any text.
-    function rowHtml(item, selected, now) {
+    function rowHtml(item, selected, now, shared) {
         var cls = 'dc-row work-row';
         if (item.state === 'FAILED') cls += ' dc-row--error';
         if (selected) cls += ' dc-row--selected';
         var worker = simpleClass(item.workerClass) || '?';
-        var tags = appTags(item);
+        var tags = listTags(item, shared);
         var tagsHtml = tags.map(function(tag) { return '<span class="dc-tag work-tag">' + esc(tag) + '</span>'; }).join('');
         var periodic = item.periodicity ? '<span class="work-periodic" title="Periodic: ' + esc(periodicityText(item.periodicity)) + '.">↻</span>' : '';
         return '<tr class="' + cls + '" data-id="' + esc(item.id) + '" aria-selected="' + (selected ? 'true' : 'false') + '">'
@@ -279,7 +332,10 @@
             : item.nextScheduleTimeMillis == null || isFinished(item.state)
             ? '<span class="dc-comment">// none</span>'
             : esc(dateTimeText(item.nextScheduleTimeMillis)) + ' <span class="dc-comment" data-at="'
-                + esc(String(item.nextScheduleTimeMillis)) + '">' + esc(relativeText(item.nextScheduleTimeMillis, now)) + '</span>';
+                + esc(String(item.nextScheduleTimeMillis)) + '">' + esc(relativeText(item.nextScheduleTimeMillis, now)) + '</span>'
+                + (item.state === 'ENQUEUED' && item.nextScheduleTimeMillis - now <= -1000
+                    ? '<div class="dc-comment">// ' + esc(waitingReason(item)) + '</div>'
+                    : '');
         var name = item.uniqueName ? esc(item.uniqueName) : '<span class="dc-comment">// none</span>';
         var stopped = !item.stopReason || item.stopReason.name === 'NOT_STOPPED';
         var rows = [
@@ -452,8 +508,8 @@
     function listenersBanner(state) {
         if (!state || !state.listeners || state.listeners === 'installed') return null;
         var fix = state.listeners === 'missing'
-            ? 'Initialize WorkManager on demand: implement Configuration.Provider, pass its Configuration.Builder '
-                + 'through WorkDebugTab.configure(builder) last, right before build(), and remove '
+            ? 'Initialize WorkManager on demand: implement Configuration.Provider or call WorkManager.initialize(), pass '
+                + 'the Configuration.Builder through WorkDebugTab.configure(builder) last, right before build(), and remove '
                 + 'WorkManagerInitializer from the manifest.'
             : 'The tab needs WorkManager 2.12.0 or newer, and a Lustro version that forwards each method of '
                 + 'its listeners. Update Lustro when the reason names methods that it does not forward.';
@@ -610,6 +666,9 @@
     window.workVisibleItems = visibleItems;
     window.workSimpleClass = simpleClass;
     window.workAppTags = appTags;
+    window.workSharedTags = sharedTags;
+    window.workListTags = listTags;
+    window.workNextRunText = nextRunText;
     window.workDurationText = durationText;
     window.workRelativeText = relativeText;
     window.workConstraintsText = constraintsText;
@@ -750,16 +809,18 @@
     function renderRows() {
         var now = Date.now();
         var shown = visibleItems(list.items, states);
-        var keys = shown.map(function(item) { return JSON.stringify(item) + (item.id === selectedId ? '|selected' : ''); });
+        var shared = sharedTags(shown);
+        var sharedKey = Array.from(shared).join('\n');
+        var keys = shown.map(function(item) { return JSON.stringify(item) + (item.id === selectedId ? '|selected' : '') + '|' + sharedKey; });
         var rows = els.rows.children;
         var sameRows = rows.length === shown.length && shown.every(function(item, i) { return rows[i].dataset.id === item.id; });
         if (!sameRows) {
-            els.rows.innerHTML = shown.map(function(item) { return rowHtml(item, item.id === selectedId, now); }).join('');
+            els.rows.innerHTML = shown.map(function(item) { return rowHtml(item, item.id === selectedId, now, shared); }).join('');
         } else {
             shown.forEach(function(item, i) {
                 if (rowKeys.get(item.id) === keys[i]) return;
                 var body = document.createElement('tbody');
-                body.innerHTML = rowHtml(item, item.id === selectedId, now);
+                body.innerHTML = rowHtml(item, item.id === selectedId, now, shared);
                 els.rows.replaceChild(body.firstElementChild, rows[i]);
             });
         }
@@ -786,6 +847,9 @@
         var now = Date.now();
         els.root.querySelectorAll('[data-at]').forEach(function(el) {
             el.textContent = relativeText(Number(el.dataset.at), now);
+        });
+        els.root.querySelectorAll('[data-next]').forEach(function(el) {
+            el.textContent = nextRunText(Number(el.dataset.next), now);
         });
     }
 
