@@ -173,7 +173,11 @@
     // The next run of enqueued work. A time that has passed means that WorkManager
     // waits: for the constraints, such as a content URI trigger, or for the system.
     function nextRunText(at, now) {
-        return Number(at) - now <= -1000 ? 'waiting' : relativeText(at, now);
+        return overdue(at, now) ? 'waiting' : relativeText(at, now);
+    }
+
+    function overdue(at, now) {
+        return Number(at) - now <= -1000;
     }
 
     function waitingReason(item) {
@@ -333,8 +337,10 @@
             ? '<span class="dc-comment">// none</span>'
             : esc(dateTimeText(item.nextScheduleTimeMillis)) + ' <span class="dc-comment" data-at="'
                 + esc(String(item.nextScheduleTimeMillis)) + '">' + esc(relativeText(item.nextScheduleTimeMillis, now)) + '</span>'
-                + (item.state === 'ENQUEUED' && item.nextScheduleTimeMillis - now <= -1000
-                    ? '<div class="dc-comment">// ' + esc(waitingReason(item)) + '</div>'
+                // The note shows once the time has passed, also while the drawer stays open.
+                + (item.state === 'ENQUEUED'
+                    ? '<div class="dc-comment" data-wait="' + esc(String(item.nextScheduleTimeMillis)) + '"'
+                        + (overdue(item.nextScheduleTimeMillis, now) ? '' : ' hidden') + '>// ' + esc(waitingReason(item)) + '</div>'
                     : '');
         var name = item.uniqueName ? esc(item.uniqueName) : '<span class="dc-comment">// none</span>';
         var stopped = !item.stopReason || item.stopReason.name === 'NOT_STOPPED';
@@ -850,6 +856,9 @@
         });
         els.root.querySelectorAll('[data-next]').forEach(function(el) {
             el.textContent = nextRunText(Number(el.dataset.next), now);
+        });
+        els.root.querySelectorAll('[data-wait]').forEach(function(el) {
+            el.hidden = !overdue(Number(el.dataset.wait), now);
         });
     }
 

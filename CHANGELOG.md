@@ -883,8 +883,8 @@ see [DECISIONS.md](DECISIONS.md).
   `enabled`, `disabled`, `enforced`, `required`, or `protected`, or that has
   the word `ask`, is now a flag. A flag word elsewhere in the name does not
   count, so `existing_session_token` and `required_token` stay masked.
-  Verified on a physical device: the four columns show their values, and the
-  share `token` and the file list's `lock_token` stay masked.
+  Verified on a physical device: `GET sqlite/schema` masks none of the four
+  columns, and the share `token` and the file list's `lock_token` stay masked.
 
 - **A Java app without work-analytics can pass unique names to the
   WorkManager tab.** `WorkDebugTab.create(context, uniqueNames)` and

@@ -121,7 +121,10 @@ test('enqueued work whose time has passed waits, and says for what', () => {
     });
     const row = work.workRowHtml(observer, false, NOW);
     assert.match(row, /data-next="1792419725000" title="Due 2026-10-19 14:22:05\.000\. WorkManager runs it when its constraints are met: 1 content URI trigger\.">waiting</);
-    assert.match(work.workDetailsHtml(observer, NOW), /15 s ago<\/span><div class="dc-comment">\/\/ WorkManager runs it when its constraints are met: 1 content URI trigger\.</);
+    assert.match(work.workDetailsHtml(observer, NOW), /15 s ago<\/span><div class="dc-comment" data-wait="1792419725000">\/\/ WorkManager runs it when its constraints are met: 1 content URI trigger\.</);
+    // Before the time, the note is there but hidden, so that the page can show it when the time passes.
+    assert.match(work.workDetailsHtml(observer, NOW - 20000), /in 5 s<\/span><div class="dc-comment" data-wait="1792419725000" hidden>/);
+    assert.doesNotMatch(work.workDetailsHtml(Object.assign(byClass('RetryWorker'), { state: 'BLOCKED' }), NOW), /data-wait/);
 
     const late = Object.assign(byClass('RetryWorker'), { nextScheduleTimeMillis: NOW - 15000 });
     assert.match(work.workRowHtml(late, false, NOW), /the system decides when it runs\.">waiting</);
