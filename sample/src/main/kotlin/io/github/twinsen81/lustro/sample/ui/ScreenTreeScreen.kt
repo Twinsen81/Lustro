@@ -4,6 +4,7 @@ import android.app.AlertDialog as ViewAlertDialog
 import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -29,18 +30,20 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import io.github.twinsen81.lustro.sample.Tone
 
 /**
- * What the console's Screen tab reads: a form with a field, a password field, a
- * switch, and a button that counts its taps; a Compose dialog and a View dialog,
- * each a window of its own; and a list taller than its box.
+ * What the console's Screen tab reads and acts on: a form with a field, a password
+ * field, a switch, a button that counts its taps, and a disabled button; a Compose
+ * dialog and a View dialog, each a window of its own; and a list taller than its box.
  */
 @Composable
 internal fun ScreenTreeScreen(onBack: () -> Unit) {
@@ -90,6 +93,21 @@ internal fun ScreenTreeScreen(onBack: () -> Unit) {
                         modifier = Modifier.weight(1f).testTag("screen taps"),
                     )
                     ActionControl(tag = "screen tap", text = "Tap", event = null, onClick = { taps++ }, style = ControlStyle.ACCENT)
+                }
+                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("A disabled button", style = SampleText.body, modifier = Modifier.weight(1f))
+                    Text(
+                        "Unavailable",
+                        style = SampleText.chip,
+                        color = palette.textFaint,
+                        modifier =
+                            Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .border(1.dp, palette.border, RoundedCornerShape(10.dp))
+                                .clickable(enabled = false, role = Role.Button) { taps++ }
+                                .testTag("screen disabled")
+                                .padding(horizontal = 14.dp, vertical = 8.dp),
+                    )
                 }
             }
             SectionLabel("WINDOWS")

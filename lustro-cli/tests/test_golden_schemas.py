@@ -658,16 +658,20 @@ def _screen_tree_validator():
 def test_the_screen_schema_is_valid_and_has_its_own_version():
     screen = wire.load_openapi("screen")
     assert screen["openapi"].startswith("3.1")
-    assert screen["info"]["version"] == "1.0"
+    assert screen["info"]["version"] == "1.1"
     for schema in screen["components"]["schemas"].values():
         Draft202012Validator.check_schema(schema)
     assert screen["components"]["schemas"]["ErrorEnvelope"] == wire.load_openapi()["components"]["schemas"]["ErrorEnvelope"]
 
 
-def test_the_screen_tree_is_declared_and_only_read():
+def test_the_screen_routes_are_declared_and_only_the_actions_take_post():
     paths = wire.load_openapi("screen")["paths"]
-    assert set(paths) == {"/api/v1/screen/tree"}
+    assert set(paths) == {"/api/v1/screen/" + route for route in ("tree", "click", "set-text", "scroll")}
     assert set(paths["/api/v1/screen/tree"]) == {"get"}
+    for route in ("click", "set-text", "scroll"):
+        op = paths["/api/v1/screen/" + route]
+        assert set(op) == {"post"}, route
+        assert {"200", "400", "404", "409", "500", "504"} <= set(op["post"]["responses"]), route
     params = {p["name"]: p for p in paths["/api/v1/screen/tree"]["get"]["parameters"]}
     assert set(params) == {"merged", "settle"}
     assert params["merged"]["schema"] == {"type": "boolean", "default": True}
@@ -736,3 +740,62 @@ def test_a_settled_tree_validates_and_a_node_takes_no_other_key():
     window = dict(golden["windows"][0], nodes=[dict(golden["windows"][0]["nodes"][0], label="x")])
     with pytest.raises(ValidationError):
         validator.validate(dict(golden, windows=[window]))
+
+
+def _screen_body(route):
+    screen = wire.load_openapi("screen")
+    schema = dict(screen["paths"]["/api/v1/screen/" + route]["post"]["requestBody"]["content"]["application/json"]["schema"])
+    schema["components"] = screen["components"]
+    return Draft202012Validator(schema)
+
+
+@pytest.mark.parametrize(
+    "route, body, valid",
+    [
+        ("click", {"tag": "save"}, True),
+        ("click", {"id": "c5.23", "force": True, "merged": False, "settle": 100}, True),
+        ("click", {}, False),
+        ("click", {"tag": "save", "text": "Save"}, False),
+        ("click", {"tag": "save", "value": "x"}, False),
+        ("click", {"tag": ""}, False),
+        ("click", {"tag": "save", "settle": 0}, False),
+        ("set-text", {"tag": "name", "value": "Ada"}, True),
+        ("set-text", {"tag": "name"}, False),
+        ("scroll", {"tag": "list", "index": 30}, True),
+        ("scroll", {"tag": "list", "dy": -120.5}, True),
+        ("scroll", {"tag": "list", "dx": 10, "dy": 0}, True),
+        ("scroll", {"tag": "list"}, False),
+        ("scroll", {"tag": "list", "index": 3, "dy": 2}, False),
+        ("scroll", {"tag": "list", "index": -1}, False),
+    ],
+)
+def test_the_screen_action_bodies_take_one_selector_and_their_own_keys(route, body, valid):
+    validator = _screen_body(route)
+    if valid:
+        validator.validate(body)
+    else:
+        with pytest.raises(ValidationError):
+            validator.validate(body)
+
+
+def test_the_golden_click_ran_the_click_and_carries_the_tree_after_it():
+    result = wire.load_golden("screen-click.json")
+    _component_validator(wire.load_openapi("screen"), "ScreenActionResult").validate(result)
+    assert result["action"] == "OnClick" and result["handled"] is True
+    assert result["tree"]["settle"]["settled"] is True and result["tree"]["settle"]["frames"] >= 1
+    ids = {n["id"] for w in result["tree"]["windows"] for n in w["nodes"]}
+    assert result["target"] in ids and result["matched"] in ids
+
+
+def test_a_golden_refusal_is_a_conflict_in_the_shared_envelope():
+    refusal = wire.load_golden("screen-click-under-dialog.json")
+    Draft202012Validator(wire.load_schema("error-envelope.schema.json")).validate(refusal)
+    _component_validator(wire.load_openapi("screen"), "ErrorEnvelope").validate(refusal)
+    assert refusal["error"] == "conflict" and refusal["code"] == "not_in_focused_window"
+
+
+def test_every_tab_carries_the_conflict_error_type_of_protocol_1_11():
+    assert wire.load_golden("meta.json")["protocolVersion"] == "1.11"
+    for tab in ("network", "logs", "prefs", "sqlite", "work", "screen"):
+        assert "conflict" in wire.load_openapi(tab)["components"]["schemas"]["ErrorEnvelope"]["properties"]["error"]["enum"], tab
+    assert "conflict" in wire.load_schema("error-envelope.schema.json")["properties"]["error"]["enum"]
