@@ -23,10 +23,24 @@ your own tabs against a stable plugin contract.
 ## With a coding agent
 
 A coding agent can add Lustro from this README. Give it the repository, for example "Add Lustro
-to this app, following https://github.com/Twinsen81/Lustro". [`llms.txt`](llms.txt) summarizes
-Lustro for agents and links the rest of the docs, and [`context7.json`](context7.json) tells
-[Context7](https://context7.com) which parts of this repository to index. To use a running Lustro
-from an agent or a script, see [docs/AGENTS.md](docs/AGENTS.md).
+to this app, following https://github.com/Twinsen81/Lustro, and check the integration".
+[`llms.txt`](llms.txt) summarizes Lustro for agents and links the rest of the docs, and
+[`context7.json`](context7.json) tells [Context7](https://context7.com) which parts of this
+repository to index. To use a running Lustro from an agent or a script, see
+[docs/AGENTS.md](docs/AGENTS.md).
+
+The [`lustro` skill](skills/lustro/SKILL.md) teaches an agent to debug the app through the
+[`lustro` CLI](#the-lustro-cli): its requests, logs, preferences, databases, and background work.
+It also adds Lustro to an app and checks the integration. An agent in your project does not see a
+skill that is only in this repository, so install it into the project:
+
+```bash
+npx skills add Twinsen81/Lustro --skill lustro
+```
+
+[`skills`](https://github.com/vercel-labs/skills) asks which agents you use. You can also copy
+`skills/lustro/` to `.claude/skills/` for Claude Code, or to `.agents/skills/` for Codex, Cursor,
+GitHub Copilot, and Gemini CLI.
 
 ## Install
 
@@ -237,6 +251,32 @@ adb port forwarding:
 The server runs only while the app is **foregrounded**. When the app goes to the background the
 server drains in-flight requests and closes the socket; it rebinds when the app returns to the
 foreground.
+
+## Check the integration
+
+A build that compiles does not show that Lustro captures anything, or that the release build is
+free of it. After you add Lustro, or after a coding agent does, check these. The commands use the
+[`lustro` CLI](#the-lustro-cli) and an app module named `app`. With product flavors, use the
+names of one variant, such as `assembleFreeDebug` and `freeReleaseRuntimeClasspath`.
+
+1. **Both build types build:** `./gradlew :app:assembleDebug :app:assembleRelease`.
+2. **The release build has no runtime:**
+   `./gradlew -q :app:dependencies --configuration releaseRuntimeClasspath | grep -E 'twinsen81|nanohttpd'`
+   lists only `lustro-api` and the `-noop` artifacts. Each other build type also needs one of the
+   two, such as `stagingImplementation(libs.lustro.noop)`.
+3. **The server starts.** Install the debug build, start the app, and keep it in the foreground.
+   `adb logcat -d -s LustroToken` has the line `Lustro ready endpoint=... token=...`, and
+   `lustro meta` lists the tabs that the app registers.
+4. **Capture works.** Use the app so that it sends a request: `lustro net list --last 5` shows it.
+   When it does not, the interceptor is on another `OkHttpClient` than the one that sends: see
+   [Troubleshooting](#troubleshooting).
+5. **Each plugin tab has data.** For the tabs that the app registers:
+   - `lustro api GET logs/text --param limit=20` prints the app's last log lines.
+   - `lustro api GET prefs/files` lists the app's SharedPreferences files and DataStores.
+   - `lustro api GET sqlite/databases` lists the databases, and none has an `error`.
+   - `lustro api GET work/items | jq .state` shows `"listeners": "installed"`.
+6. **Custom tabs are in `src/debug`.** When you wrote a `DebugTab`, it is in `src/debug`, and
+   `./gradlew :app:lintDebug` reports no `LustroDebugUsageInRelease`.
 
 ## OkHttp capture setup
 

@@ -99,8 +99,8 @@ facadeParity {
 }
 
 // Registers `checkDocsVersion`: the coordinates that README.md, docs/index.md,
-// llms.txt, and context7.json give to people and agents must match GROUP and
-// VERSION_NAME.
+// llms.txt, context7.json, and the lustro skill give to people and agents must
+// match GROUP and VERSION_NAME.
 // See gradle/docs-version.gradle.kts.
 apply(from = "gradle/docs-version.gradle.kts")
 

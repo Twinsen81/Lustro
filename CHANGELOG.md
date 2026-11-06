@@ -14,6 +14,21 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Added
 
+- **An Agent Skill for coding agents, and a check of the integration.**
+  `skills/lustro/` is an Agent Skill that debugs an app through the `lustro`
+  CLI: its requests and WebSocket messages, mock rules and throttling, and its
+  log, preferences, databases, and work. Its `references/integrate.md` adds
+  Lustro to an app and ends with a check of the integration.
+  `npx skills add Twinsen81/Lustro --skill lustro` installs it into a project,
+  so that an agent there knows the CLI. The README has a new section, "Check
+  the integration": a build that compiles does not show that capture works or
+  that the release build has no runtime, so it lists six checks, from the
+  release classpath to a captured request and the plugin tabs. `llms.txt` has
+  the check and links the skill, and `checkDocsVersion` also checks the
+  coordinates in the skill. Verified on an emulator: a coding agent with only
+  the skill added Lustro, with all five tabs, to an open-source push
+  notification app with Groovy build files and product flavors, and every
+  check passed.
 - **A documentation site.** `zensical.toml` builds the Markdown in `docs/`
   with [Zensical](https://zensical.org) into a site with search, a light and a
   dark theme, and an edit link on each page. `.github/workflows/docs.yml`
