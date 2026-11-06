@@ -812,7 +812,7 @@ has no route that changes the app.
 
 | Operation | Route | Notes |
 | --- | --- | --- |
-| Read the screen | `GET tree?merged=&settle=` | `{ windows, merged, density, compose, windowSource, context, settle?, contextError?, composeError? }`. `merged=false` gives the unmerged semantics tree, in which each text is a node of its own; a node has the same id in both. `settle=MS`, from 1 to 10000, reads on each frame until two reads in a row are the same and the window focus is at rest (the top visible window that can take the focus has it), for up to MS, and adds `settle: { requestedMs, settled, waitedMs, frames }`. |
+| Read the screen | `GET tree?merged=&settle=` | `{ windows, merged, density, compose, windowSource, context, settle?, contextError?, composeError? }`. `merged=false` gives the unmerged semantics tree, in which each text is a node of its own; a node has the same id in both. `settle=MS`, from 1 to 10000, reads on each frame until two reads in a row are the same and the window focus is at rest (the top visible window that can take the focus has it, and no other window does), for up to MS, and adds `settle: { requestedMs, settled, waitedMs, frames }`. |
 
 **A window.** `{ id, type, kind, title, hasWindowFocus, focusable, visible, bounds, nodes }`, in the order the
 app added the windows: the activity first, then each dialog, popup, and bottom sheet over it.

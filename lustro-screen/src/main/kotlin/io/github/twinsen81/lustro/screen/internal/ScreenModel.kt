@@ -93,11 +93,18 @@ internal data class ScreenWindows(
 ) {
     /**
      * Whether the window focus has come to rest: the top visible window that can take the
-     * focus has it. The window manager moves the focus some frames after a dialog opens
-     * or closes, 200 ms and more on a physical device, so a read before then has the focus
-     * on a window that will lose it. With no such window, there is nothing to wait for.
+     * focus has it, and no other window does. The window manager moves the focus some
+     * frames after a dialog opens or closes, 200 ms and more on a physical device, so a
+     * read before then has the focus on a window that will lose it; and on API 24 the
+     * window under a new dialog still says that it has the focus for some frames after
+     * the dialog has it. With no visible window that can take the focus, there is nothing
+     * to wait for.
      */
-    val focusSettled: Boolean get() = windows.lastOrNull { it.visible && it.focusable }?.hasWindowFocus ?: true
+    val focusSettled: Boolean
+        get() {
+            val top = windows.lastOrNull { it.visible && it.focusable } ?: return true
+            return top.hasWindowFocus && windows.none { it !== top && it.hasWindowFocus }
+        }
 }
 
 /** How a `settle` wait ended: whether two reads in a row were equal, after how long and how many frames. */

@@ -38,7 +38,7 @@
               "maximum": 10000,
               "default": 0
             },
-            "description": "Read the tree on each frame until two reads in a row are the same and the window focus is at rest, the top visible window that can take the focus having it, for up to this many milliseconds, and return the last read with settle. The window manager moves the focus some frames after a dialog opens or closes. 0 reads once. 400 with field settle for any other value."
+            "description": "Read the tree on each frame until two reads in a row are the same and the window focus is at rest, the top visible window that can take the focus having it and no other window, for up to this many milliseconds, and return the last read with settle. The window manager moves the focus some frames after a dialog opens or closes. 0 reads once. 400 with field settle for any other value."
           }
         ],
         "responses": {

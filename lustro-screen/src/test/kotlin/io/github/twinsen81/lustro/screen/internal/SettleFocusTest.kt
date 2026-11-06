@@ -41,6 +41,21 @@ class SettleFocusTest {
     }
 
     @Test
+    fun `a settle waits while the window under the dialog still says that it has the focus`() {
+        ScreenFixtures.composeActivity(dialog = true)
+        val roots = android.view.inspector.WindowInspector.getGlobalWindowViews()
+        val dialog = roots.last()
+        var reads = 0
+        // As on API 24: the dialog has the focus, and the activity's window loses it some reads later.
+        val both: (View) -> Boolean = { root -> root === dialog || ++reads <= MOVE_AFTER_CALLS / 2 }
+        val tree = json(ScreenFixtures.getOffMain(tab(focus = both), "tree", "settle" to "2000"))
+        assertTrue(tree.getJSONObject("settle").getBoolean("settled"))
+        val windows = tree.getJSONArray("windows")
+        assertFalse(windows.getJSONObject(0).getBoolean("hasWindowFocus"))
+        assertTrue(windows.getJSONObject(1).getBoolean("hasWindowFocus"))
+    }
+
+    @Test
     fun `a settle while no window of the app has the focus runs to its end and says so`() {
         ScreenFixtures.composeActivity(dialog = true)
         val tree = json(ScreenFixtures.getOffMain(tab(focus = { false }), "tree", "settle" to "200"))
