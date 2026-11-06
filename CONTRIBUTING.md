@@ -271,7 +271,7 @@ Every commit in a pull request must carry a sign-off line.
 5. Make sure the full local gate passes:
 
    ```bash
-   ./gradlew test :build-logic:test detekt apiCheck checkFacadeParity checkDocsVersion
+   ./gradlew test :build-logic:test detekt apiCheck checkFacadeParity checkDocsVersion checkCliVersion
    ```
 
 6. Open the PR, fill in the template, and confirm every commit is signed off.
@@ -341,6 +341,24 @@ build the app in [`consumer-check/`](consumer-check/), which is what CI does:
 cd consumer-check
 ./gradlew :app:assembleWithLustroDebug :app:assembleWithLustroRelease :app:checkLustroKeepsAppVersions
 ```
+
+## Releasing
+
+One tag publishes the library to Maven Central and the CLI to PyPI, with one
+version. `main` takes changes only through pull requests.
+
+1. In a pull request, set `VERSION_NAME` in `gradle.properties` to the release,
+   such as `0.2.0`, and `__version__` in `lustro-cli/src/lustro_cli/__init__.py`
+   to the same version. Update the coordinates in the docs (`checkDocsVersion`
+   says where), and move the `[Unreleased]` entries of `CHANGELOG.md` under the
+   version.
+2. After the merge, push the tag `v<version>` on the merge commit. Before it
+   publishes anything, `release.yml` stops when the tag differs from
+   `VERSION_NAME`, when the version ends with `-SNAPSHOT`, or when
+   `checkCliVersion` fails.
+3. In the next pull request, set `VERSION_NAME` to the next `-SNAPSHOT`, such as
+   `0.2.1-SNAPSHOT`, and `__version__` to the same version without `-SNAPSHOT`.
+   The docs can keep the release until the next release.
 
 ## Code of Conduct
 

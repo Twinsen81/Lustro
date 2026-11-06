@@ -1540,6 +1540,19 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Changed
 
+- **The CLI installs with uv or pipx, and runs as `uvx lustro-cli`.** The
+  PyPI package `lustro` is a different project that also installs a `lustro`
+  command, so `pip install lustro` and `uvx lustro` install that project. The
+  CLI's package, `lustro-cli`, now installs its command under that name too,
+  so `uvx lustro-cli net list` runs the CLI without an install. The README has
+  a section on the CLI, and the README, `docs/AGENTS.md`, `llms.txt`, and the
+  CLI's README give `uv tool install lustro-cli` and `pipx install lustro-cli`,
+  and say not to install `lustro`. The package's only version is now
+  `__version__`, which `pyproject.toml` reads. `./gradlew checkCliVersion`
+  fails when it is not `VERSION_NAME` without `-SNAPSHOT`, in CI and in the
+  release workflow before it publishes anything: PyPI refuses a version that it
+  has, so a release that did not change the CLI's version would have failed
+  after Maven Central had published. CONTRIBUTING.md says how to release.
 - **The docs say more about the WorkManager tab's events and integration.**
   WorkManager also sends `cancelled` for finished work: when the app enqueues
   work of a unique name with `APPEND_OR_REPLACE` while some of it failed,

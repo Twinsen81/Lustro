@@ -33,12 +33,16 @@ This document is about using a running Lustro. To add Lustro to an app, follow t
 ## Use the `lustro` CLI
 
 Agents should drive Lustro with the `lustro` CLI. It is a Python client in `lustro-cli/`, and each
-release publishes it to PyPI; until the first release, install it from a checkout with
-`pip install ./lustro-cli`. It reads the token and the endpoint from the `LustroToken` log line,
-and it prints much less than the routes return: `GET transactions` returns every captured
-transaction with all its fields, up to 1,000 of them, and `lustro net list` prints 50 short rows.
-The wire protocol in the sections below stays the stable contract, and the curl examples use it
-directly.
+release publishes it to PyPI as `lustro-cli`. Install it with `uv tool install lustro-cli` or
+`pipx install lustro-cli`, or run it without an install as `uvx lustro-cli <command>`. The PyPI
+package `lustro` is a different project with a `lustro` command of its own: do not install it, and
+do not run `uvx lustro`. Until the first release, install the CLI from a checkout with
+`uv tool install ./lustro-cli` or `pip install ./lustro-cli`.
+
+The CLI reads the token and the endpoint from the `LustroToken` log line, and it prints much less
+than the routes return: `GET transactions` returns every captured transaction with all its fields,
+up to 1,000 of them, and `lustro net list` prints 50 short rows. The wire protocol in the sections
+below stays the stable contract, and the curl examples use it directly.
 
 ```bash
 lustro open --print-only          # forward the port; exits 1 when adb forward fails

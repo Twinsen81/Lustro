@@ -122,6 +122,23 @@ toolchain, and fails when a published artifact would change any version the app 
 builds it with `minSdk` 23, with its debug variant raised as above, and it registers every tab
 from Java too.
 
+### The `lustro` CLI
+
+The `lustro` command opens the console with its token, and drives every tab from a terminal, a
+script, or a coding agent: see [docs/AGENTS.md](docs/AGENTS.md#use-the-lustro-cli). It is a
+Python package on PyPI, `lustro-cli`, that needs Python 3.9 or newer and no other package. Each
+release publishes it with the library's version.
+
+```bash
+uv tool install lustro-cli    # or: pipx install lustro-cli
+lustro open                   # forwards the port, and opens the console with the token
+uvx lustro-cli net list       # runs the CLI without an install
+```
+
+The PyPI package `lustro` is a different project that also installs a `lustro` command, so do not
+install it. Until the first release, install the CLI from a checkout of this repository:
+`uv tool install ./lustro-cli`.
+
 ## Quick start
 
 Build the runtime once (typically in your `Application`), register tabs, wire the OkHttp
@@ -211,7 +228,7 @@ adb port forwarding:
    them on its own when the log has no line.
 
 4. Authenticate the browser with that token, either by:
-   - using the `lustro` CLI (`lustro open`, see [docs/AGENTS.md](docs/AGENTS.md)); or
+   - using the `lustro` CLI (`lustro open`, see [The `lustro` CLI](#the-lustro-cli)); or
    - appending `#lustro_token=<token>` to the URL **once**
      (`http://localhost:8080/#lustro_token=<token>`). The page posts the token to set an
      `HttpOnly; SameSite=Strict` cookie, then strips the fragment from the address bar.
