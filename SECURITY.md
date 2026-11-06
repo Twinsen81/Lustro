@@ -173,8 +173,9 @@ build, and that even in debug builds it stays bound to the local device.
 - **SharedPreferences values show as their policy lets them.** The Preferences
   plugin (`:lustro-prefs`) serves and edits the app's SharedPreferences files
   and Preferences DataStores under `/api/v1/prefs/`. A file's `ValuePolicy` decides what of its values a
-  client sees. The default, `MASK_SENSITIVE`, goes by the key's name only, with
-  the same check as the network redaction, so a secret under a key such as
+  client sees. The default, `MASK_SENSITIVE`, goes by the key's name, with
+  the same check as the network redaction, and never masks a boolean, a float,
+  or a double, which can't hold a secret. So a secret under a key such as
   `cache` or `blob` shows, and so does the value of a key that the app lists in
   `unmasked`: list only keys that hold no secret. A registered `EncryptedSharedPreferences` that
   decrypts shows its plain values to every client with the token: register it

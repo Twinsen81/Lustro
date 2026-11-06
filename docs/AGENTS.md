@@ -560,7 +560,8 @@ it with `GET entry`.
 
 **Policies.** `policy` is `visible` (every value), `mask_sensitive` (every value but those of keys
 that look like they hold a secret, such as `auth_token`, `apiKey`, or `password`, by the network
-redaction's key check), or `keys_only` (no value). The keys always show. Under `mask_sensitive`,
+redaction's key check; a `boolean`, `float`, or `double` value always shows, as it can't hold a
+secret), or `keys_only` (no value). The keys always show. Under `mask_sensitive`,
 the app can list keys whose values show although the check finds them sensitive, such as
 `auth_method`, by their exact names in any case; `files` does not list them, and such an item
 has its `value` and no `masked`. A discovered file is `mask_sensitive`, with no such keys. `encrypted` is `true` when the file on disk is encrypted: the app registered an

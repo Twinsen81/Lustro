@@ -6,9 +6,11 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.byteArrayPreferencesKey
 import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.test.core.app.ApplicationProvider
@@ -111,6 +113,31 @@ class DataStoreRoutesTest {
         assertEquals(4, item(entries, "avatar_hash").getInt("bytes"))
         assertTrue(item(entries, "auth_token").getBoolean("masked"))
         assertFalse(item(entries, "auth_token").has("value"))
+    }
+
+    @Test
+    fun `a store shows a boolean, a float, or a double under a sensitive key, also a store found on disk`() {
+        edit(appState) {
+            it[booleanPreferencesKey("biometric_key")] = true
+            it[floatPreferencesKey("volume_key")] = 0.5f
+            it[doublePreferencesKey("zoom_key")] = 1.75
+        }
+        val sdk = store("sdk_state")
+        edit(sdk) {
+            it[booleanPreferencesKey("token_refreshed")] = true
+            it[stringPreferencesKey("api_key")] = "k-9"
+        }
+        val routes = routes(PrefsDataStore("app_state", appState))
+
+        val entries = get(routes, "entries", "store" to STORE, "file" to "app_state")
+        assertTrue(item(entries, "biometric_key").getBoolean("value"))
+        assertEquals(0.5, item(entries, "volume_key").getDouble("value"), 0.0)
+        assertEquals(1.75, item(entries, "zoom_key").getDouble("value"), 0.0)
+        assertTrue(item(entries, "auth_token").getBoolean("masked"))
+
+        val discovered = get(routes, "entries", "store" to STORE, "file" to "sdk_state")
+        assertTrue(item(discovered, "token_refreshed").getBoolean("value"))
+        assertTrue(item(discovered, "api_key").getBoolean("masked"))
     }
 
     @Test

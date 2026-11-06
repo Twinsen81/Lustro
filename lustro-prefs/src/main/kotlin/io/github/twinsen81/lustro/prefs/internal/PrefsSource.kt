@@ -100,9 +100,16 @@ internal class Contents(
     fun masked(key: String): Boolean =
         when (policy) {
             ValuePolicy.VISIBLE -> false
-            ValuePolicy.MASK_SENSITIVE -> SensitiveKeys.isSensitive(key) && key.lowercase(Locale.ROOT) !in unmasked
+            ValuePolicy.MASK_SENSITIVE ->
+                !holdsNoSecret(entries[key]) && SensitiveKeys.isSensitive(key) && key.lowercase(Locale.ROOT) !in unmasked
             ValuePolicy.KEYS_ONLY -> true
         }
+
+    // A flag or a fraction can't be a secret, whatever its key is named. Apps that
+    // name each setting's key after its string resource, such as `autoplay_key`,
+    // would else lose the value of every switch and slider to the word `key`. An
+    // int or a long stays masked: it can be a PIN or an account's id.
+    private fun holdsNoSecret(value: Any?): Boolean = value is Boolean || value is Float || value is Double
 }
 
 /** A change that the tab makes to a file. */

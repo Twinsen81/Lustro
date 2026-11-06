@@ -699,7 +699,11 @@ val lustro = Lustro.builder(application)
   `double` values and, from DataStore 1.1, `bytes`.
 - **Value policies.** `VISIBLE` shows every value. `MASK_SENSITIVE`, the default, leaves out the
   value of a key that looks like it holds a secret, such as `auth_token`, `apiKey`, or `password`,
-  by the same key check as the Network tab's redaction (`SensitiveKeys.isSensitive`). `KEYS_ONLY`
+  by the same key check as the Network tab's redaction (`SensitiveKeys.isSensitive`). It never
+  leaves out a `boolean`, a `float`, or a `double`, which can't hold a secret: an app that names
+  each setting's key after its string resource, such as `autoplay_key`, keeps the values of its
+  switches. A string, an int, a long, or a set under such a key stays masked: register a
+  settings file that holds no secret as `VISIBLE`, or list those keys in `unmasked`. `KEYS_ONLY`
   leaves out every value. The keys, the types, and the sizes always show. `unmasked` on a
   `PrefsFile` or a `PrefsDataStore` lists the keys whose values `MASK_SENSITIVE` shows although the
   check finds them sensitive, such as `auth_method`, which holds no secret. A name there matches
