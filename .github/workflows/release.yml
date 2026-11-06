@@ -38,6 +38,12 @@ jobs:
             exit 1
           fi
 
+      # The pypi job publishes lustro-cli with its own __version__, after this
+      # job has published to Central. PyPI refuses a version that it has, so
+      # check the CLI's version before anything is published.
+      - name: Verify the CLI version
+        run: ./gradlew checkCliVersion --console=plain --stacktrace
+
       # Signed staging + automatic release on the Central Portal. This is the
       # release counterpart of snapshot.yml's publishToMavenCentral.
       - name: Publish + release to Central (signed)

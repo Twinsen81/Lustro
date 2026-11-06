@@ -104,6 +104,10 @@ facadeParity {
 // See gradle/docs-version.gradle.kts.
 apply(from = "gradle/docs-version.gradle.kts")
 
+// Registers `checkCliVersion`: the version of lustro-cli must be VERSION_NAME
+// without -SNAPSHOT. See gradle/cli-version.gradle.kts.
+apply(from = "gradle/cli-version.gradle.kts")
+
 // The published modules are the ones that apply lustro.publishing, so a new
 // module needs no entry here or in release.yml:
 //   - `./gradlew dokkaGenerate` renders the API docs of those with Dokka (all but

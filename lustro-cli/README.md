@@ -10,15 +10,35 @@ Target: Python 3.9+.
 
 ## Install
 
+Each Lustro release publishes the CLI to PyPI as `lustro-cli`, with the version
+of the library. Install it with [uv](https://docs.astral.sh/uv/) or
+[pipx](https://pipx.pypa.io/), which keep it apart from other Python packages.
+uv also installs a Python when the computer has none.
+
 ```bash
-pip install lustro-cli
-# or, from a checkout:
-pip install -e 'lustro-cli[test]'   # includes pytest + jsonschema for contract tests
+uv tool install lustro-cli    # or: pipx install lustro-cli, or: pip install lustro-cli
+lustro open
+uvx lustro-cli net list       # runs the CLI without an install
 ```
 
-This installs a `lustro` console entry point and bundles the wire-protocol
-schemas, the Network OpenAPI document, and the golden fixtures inside the wheel
-(`lustro_cli/wire/`).
+The package installs one command under two names, `lustro` and `lustro-cli`, so
+that `uvx lustro-cli` finds it by the package's name.
+
+> **`lustro` on PyPI is a different project.** It also installs a `lustro`
+> command, so `pip install lustro` and `uvx lustro` install that project, not
+> this CLI.
+
+Until the first release, the CLI is not on PyPI. Install it from GitHub, or from
+a checkout:
+
+```bash
+uv tool install "git+https://github.com/Twinsen81/Lustro#subdirectory=lustro-cli"   # pipx takes the same URL
+uv tool install ./lustro-cli         # from a checkout; or: pipx install ./lustro-cli
+pip install -e 'lustro-cli[test]'    # to work on the CLI: adds pytest and jsonschema for the contract tests
+```
+
+The wheel bundles the wire-protocol schemas, the Network OpenAPI document, and
+the golden fixtures (`lustro_cli/wire/`).
 
 ## Endpoint and token discovery
 
