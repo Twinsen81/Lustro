@@ -823,8 +823,10 @@ and `id` a node's id from `GET tree`. The tab looks in the unmerged tree, so it 
 text inside a clickable parent, and runs the action on the matched node or the nearest node above
 it that has the action, as a tap on the text would. It acts as a user can: only in the window that
 has the focus, and only on a target that has a visible part, unless the body says `"force": true`.
-Before it looks, it waits up to 500 ms for the window focus to come to rest, so an action right
-after a tap that opened a dialog finds the dialog, which gets the focus some frames later.
+Before it looks, it waits for the next frame, and then up to 500 ms for the window focus to come
+to rest, so an action right after a tap that opened a dialog finds the dialog: a Compose dialog
+comes on the frame after the tap, and gets the focus some frames later. A dialog that the app
+shows later, such as after a network call, is not there yet: read the tree until it shows.
 `merged` and `settle` (from 1 to 10000 ms, 500 by default) are for the tree of the response: after
 the action, the tab reads it on each frame until two reads in a row are the same and the window
 focus is at rest, at least one frame, so the response shows what the action did, also a dialog
