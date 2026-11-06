@@ -28,7 +28,7 @@ internal class ScreenSource(
     private val contextProvider: ScreenContextProvider?,
     private val mainThreadTimeoutMs: Long = MAIN_THREAD_TIMEOUT_MS,
     composeAvailable: Boolean = ComposeSupport.isAvailable(ScreenSource::class.java.classLoader),
-    windowFocus: (View) -> Boolean = View::hasWindowFocus,
+    private val windowFocus: (View) -> Boolean = View::hasWindowFocus,
 ) {
     private val roots = WindowRoots(activities)
     private val compose = if (composeAvailable) ComposeReader() else null
@@ -46,33 +46,112 @@ internal class ScreenSource(
      */
     fun tree(request: DebugRequest, merged: Boolean, settleMs: Int): ScreenTree {
         if (Looper.myLooper() == Looper.getMainLooper()) return readOnMainThread(merged, settleMs)
-        val result = AtomicReference<Result<ScreenTree>>()
+        return onMain(request, settleMs) { cancelled, complete ->
+            if (settleMs > 0) {
+                Settle(merged, settleMs, cancelled, complete).start()
+            } else {
+                complete(Result.success(finish(readNow(merged), merged, settle = null)))
+            }
+        }
+    }
+
+    /**
+     * Runs the action of [action] on the node that its selector finds, in a read of the
+     * unmerged tree, and reads the tree after it on each frame until two reads in a row
+     * are equal, for up to its settle time, at least one frame.
+     *
+     * @throws ActionRefused when no node, or more than one, can take the action.
+     * @throws ActionFailed when the app's action throws.
+     * @throws MainThreadBlocked when the main thread does not start or finish in time.
+     * @throws InterruptedException when the runtime gives up on the request.
+     */
+    fun act(request: DebugRequest, action: ActionRequest): ActionResult {
+        val ran = AtomicReference<Pair<ActionTargets.Target, Boolean>>()
+        val onMainThread = Looper.myLooper() == Looper.getMainLooper()
+        val tree: ScreenTree =
+            if (onMainThread) {
+                ran.set(performOnMainThread(action))
+                readOnMainThread(action.merged, action.settleMs)
+            } else {
+                onMain(request, action.settleMs + FOCUS_WAIT_MS.toInt()) { cancelled, complete ->
+                    // A tap that just opened or closed a dialog has the window focus still on
+                    // its way: the action waits for it, so that it acts on the window on top.
+                    FocusWait(cancelled, complete) {
+                        ran.set(perform(action))
+                        Settle(action.merged, action.settleMs, cancelled, complete).start()
+                    }.start()
+                }
+            }
+        val (target, handled) = ran.get()
+        return ActionResult(action.action, target.matched.id, target.node.id, handled, tree)
+    }
+
+    // Only a test calls a tab on the main thread: the read after the action comes before a frame.
+    private fun performOnMainThread(action: ActionRequest): Pair<ActionTargets.Target, Boolean> =
+        try {
+            perform(action)
+        } catch (e: ActionRefused) {
+            throw e
+        } catch (e: ActionFailed) {
+            throw e
+        } catch (t: Throwable) {
+            throw ReadFailed(t)
+        }
+
+    /** Finds the target and runs the action, on the main thread. */
+    private fun perform(action: ActionRequest): Pair<ActionTargets.Target, Boolean> {
+        val live = HashMap<String, Any>()
+        val (views, source) = roots.roots()
+        val read = reader.read(views, source, merged = false, live = live)
+        val target = ActionTargets.resolve(read, action)
+        val node = live[target.node.id] ?: throw ActionRefused(404, "no_match", "${target.node.id} left the screen during the read")
+        val handled =
+            try {
+                if (node is View) {
+                    ViewActions.perform(node, action.action)
+                } else {
+                    // Only a ComposeReader gives a node that is not a View.
+                    (compose ?: error("No Compose reader for $node")).perform(node, action.action)
+                }
+            } catch (t: Throwable) {
+                throw ActionFailed(target.node.id, action.action.needs, t)
+            }
+        return target to handled
+    }
+
+    /**
+     * Runs [task] on the main thread, and waits for what it hands to `complete`, at most
+     * [mainThreadTimeoutMs] plus [settleMs]. What the task throws, from a View of the app
+     * among others, goes to this thread: on the main looper it would end the app's process.
+     */
+    private fun <T> onMain(request: DebugRequest, settleMs: Int, task: (cancelled: AtomicBoolean, complete: (Result<T>) -> Unit) -> Unit): T {
+        val result = AtomicReference<Result<T>>()
         val started = AtomicBoolean(false)
         val cancelled = AtomicBoolean(false)
         val done = CountDownLatch(1)
         request.onCancel { cancelled.set(true) }
-        val complete = { outcome: Result<ScreenTree> ->
-            result.set(outcome)
-            done.countDown()
+        val complete = { outcome: Result<T> ->
+            if (result.compareAndSet(null, outcome)) done.countDown()
         }
         main.post {
             if (cancelled.get()) return@post
             started.set(true)
-            // What the read throws, from a View of the app among others, goes to the
-            // request's thread: on the main looper it would end the app's process.
-            contained(complete) {
-                if (settleMs > 0) {
-                    Settle(merged, settleMs, cancelled, complete).start()
-                } else {
-                    complete(Result.success(finish(readNow(merged), merged, settle = null)))
-                }
+            try {
+                task(cancelled, complete)
+            } catch (t: Throwable) {
+                complete(Result.failure(t))
             }
         }
         if (!done.await(mainThreadTimeoutMs + settleMs, TimeUnit.MILLISECONDS)) {
             cancelled.set(true)
             throw MainThreadBlocked(if (started.get()) mainThreadTimeoutMs + settleMs else mainThreadTimeoutMs, started.get())
         }
-        return result.get().getOrElse { throw ReadFailed(it) }
+        return result.get().getOrElse { failure ->
+            throw when (failure) {
+                is ActionRefused, is ActionFailed -> failure
+                else -> ReadFailed(failure)
+            }
+        }
     }
 
     // Only a test calls a tab on the main thread; a frame can't come while it waits.
@@ -82,14 +161,6 @@ internal class ScreenSource(
             finish(readNow(merged), merged, settle)
         } catch (t: Throwable) {
             throw ReadFailed(t)
-        }
-    }
-
-    private inline fun contained(noinline complete: (Result<ScreenTree>) -> Unit, block: () -> Unit) {
-        try {
-            block()
-        } catch (t: Throwable) {
-            complete(Result.failure(t))
         }
     }
 
@@ -115,6 +186,43 @@ internal class ScreenSource(
     }
 
     /**
+     * Whether the top visible window that can take the focus has it, and no other window
+     * does, from the windows' roots alone: as [ScreenWindows.focusSettled], without the nodes.
+     */
+    private fun focusAtRest(): Boolean {
+        val views = roots.roots().first
+        val top = views.lastOrNull { TreeReader.isShownWindow(it) && TreeReader.isFocusable(it) } ?: return true
+        return windowFocus(top) && views.none { it !== top && windowFocus(it) }
+    }
+
+    /** Runs [next] on the first frame on which the window focus is at rest, or after [FOCUS_WAIT_MS]. Runs on the main thread. */
+    private inner class FocusWait(
+        private val cancelled: AtomicBoolean,
+        private val complete: (Result<ScreenTree>) -> Unit,
+        private val next: () -> Unit,
+    ) : Choreographer.FrameCallback {
+        private val startedAt = SystemClock.uptimeMillis()
+
+        fun start() {
+            if (focusAtRest()) next() else Choreographer.getInstance().postFrameCallback(this)
+        }
+
+        override fun doFrame(frameTimeNanos: Long) {
+            if (cancelled.get()) return
+            try {
+                if (focusAtRest() || SystemClock.uptimeMillis() - startedAt >= FOCUS_WAIT_MS) {
+                    next()
+                } else {
+                    Choreographer.getInstance().postFrameCallback(this)
+                }
+            } catch (t: Throwable) {
+                // A frame callback that throws would end the app's process.
+                complete(Result.failure(t))
+            }
+        }
+    }
+
+    /**
      * Reads on each frame until two reads in a row are equal and the window focus is at
      * rest, or the time is over. Runs on the main thread.
      */
@@ -135,7 +243,7 @@ internal class ScreenSource(
 
         override fun doFrame(frameTimeNanos: Long) {
             if (cancelled.get()) return
-            contained(complete) {
+            try {
                 frames++
                 val read = readNow(merged)
                 val waited = SystemClock.uptimeMillis() - startedAt
@@ -148,6 +256,9 @@ internal class ScreenSource(
                     last = read
                     Choreographer.getInstance().postFrameCallback(this)
                 }
+            } catch (t: Throwable) {
+                // A frame callback that throws would end the app's process.
+                complete(Result.failure(t))
             }
         }
     }
@@ -182,6 +293,9 @@ internal class ScreenSource(
 
     private class InvalidContext(message: String) : Exception(message)
 
+    /** The app's [action] on the node [target] threw [cause]. */
+    class ActionFailed(val target: String, val action: String, cause: Throwable) : Exception("The $action action of $target threw $cause", cause)
+
     /** The read threw [cause] on the main thread, such as a View of the app whose getter throws. */
     class ReadFailed(cause: Throwable) : Exception("The read of the windows threw $cause", cause)
 
@@ -195,5 +309,12 @@ internal class ScreenSource(
 
         /** The longest settle that a request may ask for. */
         const val MAX_SETTLE_MS: Int = 10_000
+
+        /**
+         * How long an action waits for the window focus to come to rest before it finds its
+         * node: on a physical device the focus reaches a new dialog 170 to 240 ms after the
+         * tap that opened it. A window of another app on top keeps it away the whole time.
+         */
+        const val FOCUS_WAIT_MS: Long = 500
     }
 }

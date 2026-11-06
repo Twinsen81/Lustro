@@ -100,6 +100,33 @@ class SettleFocusTest {
         assertFalse(windows.getJSONObject(0).getBoolean("hasWindowFocus"))
     }
 
+    @Test
+    fun `an action waits for the focus to reach a new dialog, and so refuses the node under it`() {
+        var saved = 0
+        ScreenFixtures.composeActivity(dialog = true, onSave = { saved++ })
+        val roots = android.view.inspector.WindowInspector.getGlobalWindowViews()
+        val activity = roots.first()
+        val dialog = roots.last()
+        var reads = 0
+        // Right after the tap that opened the dialog, the activity still has the focus.
+        val moving: (View) -> Boolean = { root -> if (++reads <= MOVE_AFTER_CALLS) root === activity else root === dialog }
+        val response = ScreenFixtures.postOffMain(tab(focus = moving), "click", """{"tag":"save"}""")
+        assertEquals(409, response.status)
+        assertEquals("not_in_focused_window", json(response).getString("code"))
+        assertEquals(0, saved)
+    }
+
+    @Test
+    fun `an action takes the top window as the focused one while the window under it still says that it has the focus`() {
+        var saved = 0
+        ScreenFixtures.composeActivity(dialog = true, onSave = { saved++ })
+        // As on API 24 for some frames after the dialog got the focus, past the action's wait: both windows say so.
+        val response = ScreenFixtures.postOffMain(tab(focus = { true }), "click", """{"tag":"save"}""")
+        assertEquals(409, response.status)
+        assertEquals("not_in_focused_window", json(response).getString("code"))
+        assertEquals(0, saved)
+    }
+
     private companion object {
         // Two windows, so two calls for each read: the focus moves on the fourth read.
         const val MOVE_AFTER_CALLS = 8

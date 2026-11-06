@@ -23,16 +23,20 @@ internal class TreeReader(
     private val compose: ComposeReader?,
     private val hasWindowFocus: (View) -> Boolean = View::hasWindowFocus,
 ) {
-    fun read(roots: List<View>, source: String, merged: Boolean): ScreenWindows {
+    /**
+     * Reads the windows of [roots]. With [live], it also puts each node's View, or Compose
+     * semantics node, under the node's id, for an action to run on.
+     */
+    fun read(roots: List<View>, source: String, merged: Boolean, live: MutableMap<String, Any>? = null): ScreenWindows {
         val errors = ArrayList<String>(0)
         val groups = WindowFocus.groups(roots)
-        val windows = roots.mapIndexed { index, root -> window(root, merged, errors).copy(group = groups[index]) }
+        val windows = roots.mapIndexed { index, root -> window(root, merged, errors, live).copy(group = groups[index]) }
         return ScreenWindows(windows, source, errors.firstOrNull())
     }
 
-    private fun window(root: View, merged: Boolean, errors: MutableList<String>): ScreenWindow {
+    private fun window(root: View, merged: Boolean, errors: MutableList<String>, live: MutableMap<String, Any>?): ScreenWindow {
         val nodes = ArrayList<ScreenNode>()
-        walk(root, parent = null, merged, nodes, errors)
+        walk(root, parent = null, merged, nodes, errors, live)
         val params = root.layoutParams as? WindowManager.LayoutParams
         val onScreen = IntArray(2).also(root::getLocationOnScreen)
         return ScreenWindow(
@@ -41,26 +45,36 @@ internal class TreeReader(
             kind = windowKind(params?.type),
             title = params?.title?.toString()?.takeIf { it.isNotEmpty() },
             hasWindowFocus = hasWindowFocus(root),
-            focusable = params == null || params.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE == 0,
-            visible = root.isShown && root.windowVisibility == View.VISIBLE,
+            focusable = isFocusable(root),
+            visible = isShownWindow(root),
             pending = isPendingWindow(root),
             bounds = ScreenRect(onScreen[0], onScreen[1], onScreen[0] + root.width, onScreen[1] + root.height),
             nodes = nodes,
         )
     }
 
-    private fun walk(view: View, parent: String?, merged: Boolean, out: MutableList<ScreenNode>, errors: MutableList<String>) {
+    private fun walk(
+        view: View,
+        parent: String?,
+        merged: Boolean,
+        out: MutableList<ScreenNode>,
+        errors: MutableList<String>,
+        live: MutableMap<String, Any>?,
+    ) {
         if (view.visibility == View.GONE) return
         val host = compose?.takeIf { it.isHost(view) }
         val node = viewNode(view, parent, scrolls = host == null)
         out += node
+        live?.put(node.id, view)
         if (host != null) {
             // A Compose UI that is older or newer than the tab knows can lack a call that
             // the tab makes: the host then has no semantics nodes, and the read goes on.
             val semantics = ArrayList<ScreenNode>()
+            val hostLive = if (live == null) null else HashMap<String, Any>()
             try {
-                host.read(view, node, merged, semantics)
+                host.read(view, node, merged, semantics, hostLive)
                 out += semantics
+                if (hostLive != null) live?.putAll(hostLive)
             } catch (e: LinkageError) {
                 errors += "Could not read the Compose semantics tree: $e"
             } catch (e: RuntimeException) {
@@ -69,7 +83,7 @@ internal class TreeReader(
         }
         if (view is ViewGroup) {
             for (index in 0 until view.childCount) {
-                view.getChildAt(index)?.let { walk(it, node.id, merged, out, errors) }
+                view.getChildAt(index)?.let { walk(it, node.id, merged, out, errors, live) }
             }
         }
     }
@@ -91,6 +105,7 @@ internal class TreeReader(
         val horizontal = if (scrolls) scroll(view, horizontal = true) else null
         val vertical = if (scrolls) scroll(view, horizontal = false) else null
         if (horizontal != null || vertical != null) actions += ScreenNode.ACTION_SCROLL_BY
+        if (scrolls && ViewActions.scrollsToIndex(view)) actions += ScreenNode.ACTION_SCROLL_TO_INDEX
         return ScreenNode(
             id = viewId(view),
             parent = parent,
@@ -201,6 +216,15 @@ internal class TreeReader(
          * Compose host's semantics nodes take it as their prefix.
          */
         fun viewId(view: View): String = "v" + viewNumbers.getOrPut(view) { ++lastViewNumber }
+
+        /** Whether the window of [root] can take the focus: it has no FLAG_NOT_FOCUSABLE. */
+        fun isFocusable(root: View): Boolean {
+            val params = root.layoutParams as? WindowManager.LayoutParams ?: return true
+            return params.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE == 0
+        }
+
+        /** Whether the window of [root] is shown: its root View is, and the window is visible. */
+        fun isShownWindow(root: View): Boolean = root.isShown && root.windowVisibility == View.VISIBLE
 
         /**
          * Whether the app has added the window of [root] and the window has not had its first
