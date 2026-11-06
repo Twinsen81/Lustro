@@ -131,12 +131,33 @@ internal object ScreenFixtures {
      * until the call returns: the read posts to the main thread, and a settle waits for
      * frames, which come as Robolectric's clock moves.
      */
-    fun getOffMain(tab: ScreenDebugTab, path: String, vararg params: Pair<String, String>, frameMs: Long = 16): DebugResponse {
+    fun getOffMain(
+        tab: ScreenDebugTab,
+        path: String,
+        vararg params: Pair<String, String>,
+        frameMs: Long = 16,
+        beforeMain: (() -> Unit)? = null,
+    ): DebugResponse = offMain(frameMs, beforeMain) { get(tab, path, *params) }
+
+    /**
+     * Runs [call] on another thread and the main looper until it returns. [beforeMain]
+     * runs on the main thread after the call has posted its work there and before that
+     * work runs, as an input event that the app handled just before the request came.
+     */
+    private fun offMain(frameMs: Long, beforeMain: (() -> Unit)?, call: () -> DebugResponse): DebugResponse {
+        val looper = shadowOf(Looper.getMainLooper())
         var result: Result<DebugResponse>? = null
-        val thread = Thread { result = runCatching { get(tab, path, *params) } }
+        val thread = Thread { result = runCatching(call) }
+        if (beforeMain != null) looper.idle()
         thread.start()
+        if (beforeMain != null) {
+            // After the idle, the call's work is the only message that can come.
+            val deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(5)
+            while (looper.isIdle && thread.isAlive && System.nanoTime() < deadline) Thread.sleep(1)
+            beforeMain()
+        }
         while (thread.isAlive) {
-            shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(frameMs))
+            looper.idleFor(java.time.Duration.ofMillis(frameMs))
             thread.join(1)
         }
         return result!!.getOrThrow()

@@ -15,11 +15,16 @@ import android.view.WindowManager
  * the focus; the group itself can be any, as with two activities side by side, or one in
  * picture-in-picture. While no window has the focus, it is at rest only when no window can
  * take it: otherwise a window of another app is on top, or the focus is on its way.
+ *
+ * A window that is [pending][Entry.pending] has the focus still to come: the app has added
+ * it, and it is not visible before its first frame. Compose adds a dialog's window on the
+ * frame after the tap that opened it, before the window's own first frame.
  */
 internal object WindowFocus {
-    class Entry(val group: Int, val visible: Boolean, val focusable: Boolean, val hasFocus: Boolean)
+    class Entry(val group: Int, val visible: Boolean, val focusable: Boolean, val hasFocus: Boolean, val pending: Boolean = false)
 
     fun atRest(entries: List<Entry>): Boolean {
+        if (entries.any { it.pending }) return false
         val focused = entries.filter { it.hasFocus }
         if (focused.size > 1) return false
         val window = focused.firstOrNull() ?: return entries.none { it.visible && it.focusable }

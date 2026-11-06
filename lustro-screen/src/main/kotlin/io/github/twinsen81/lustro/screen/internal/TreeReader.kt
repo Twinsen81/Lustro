@@ -43,6 +43,7 @@ internal class TreeReader(
             hasWindowFocus = hasWindowFocus(root),
             focusable = params == null || params.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE == 0,
             visible = root.isShown && root.windowVisibility == View.VISIBLE,
+            pending = isPendingWindow(root),
             bounds = ScreenRect(onScreen[0], onScreen[1], onScreen[0] + root.width, onScreen[1] + root.height),
             nodes = nodes,
         )
@@ -200,6 +201,12 @@ internal class TreeReader(
          * Compose host's semantics nodes take it as their prefix.
          */
         fun viewId(view: View): String = "v" + viewNumbers.getOrPut(view) { ++lastViewNumber }
+
+        /**
+         * Whether the app has added the window of [root] and the window has not had its first
+         * frame yet: the root is in the window, and the frame attaches it to the window.
+         */
+        fun isPendingWindow(root: View): Boolean = root.isShown && !root.isAttachedToWindow
 
         /** One dot for each character, as the screen shows a password. */
         fun mask(text: String): String = "•".repeat(text.length)

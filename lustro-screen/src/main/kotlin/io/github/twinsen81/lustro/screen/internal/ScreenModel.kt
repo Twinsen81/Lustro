@@ -85,6 +85,8 @@ internal data class ScreenWindow(
     val nodes: List<ScreenNode>,
     /** The index of the first window of the same activity: see [WindowFocus.groups]. */
     val group: Int = 0,
+    /** Whether the app has added the window and it has not had its first frame yet: see [TreeReader.isPendingWindow]. */
+    val pending: Boolean = false,
 )
 
 /** What a read of all the windows found, before the app's context is added. */
@@ -95,7 +97,7 @@ internal data class ScreenWindows(
 ) {
     /** Whether the window focus has come to rest: see [WindowFocus.atRest]. */
     val focusSettled: Boolean
-        get() = WindowFocus.atRest(windows.map { WindowFocus.Entry(it.group, it.visible, it.focusable, it.hasWindowFocus) })
+        get() = WindowFocus.atRest(windows.map { WindowFocus.Entry(it.group, it.visible, it.focusable, it.hasWindowFocus, it.pending) })
 }
 
 /** How a `settle` wait ended: whether two reads in a row were equal, after how long and how many frames. */

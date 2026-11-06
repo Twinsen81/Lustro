@@ -86,8 +86,26 @@ class SettleFocusTest {
         assertEquals(2, tree.getJSONArray("windows").length())
     }
 
+    @Test
+    fun `a settle does not end on a window that has not had its first frame yet`() {
+        val activity = ScreenFixtures.composeActivity()
+        val dialog = android.app.Dialog(activity).apply { setContentView(android.widget.TextView(activity).apply { text = "Sure?" }) }
+        // Shown, and so in the windows, but not visible before its first frame.
+        val tree = json(ScreenFixtures.getOffMain(tab(focus = ::topAttached), "tree", "settle" to "2000", beforeMain = dialog::show))
+        assertTrue(tree.getJSONObject("settle").getBoolean("settled"))
+        val windows = tree.getJSONArray("windows")
+        assertEquals(2, windows.length())
+        assertTrue(windows.getJSONObject(1).getBoolean("visible"))
+        assertTrue(windows.getJSONObject(1).getBoolean("hasWindowFocus"))
+        assertFalse(windows.getJSONObject(0).getBoolean("hasWindowFocus"))
+    }
+
     private companion object {
         // Two windows, so two calls for each read: the focus moves on the fourth read.
         const val MOVE_AFTER_CALLS = 8
+
+        // As the window manager does, a frame after a window's first frame at the soonest: the top window that has had one has the focus.
+        fun topAttached(root: View): Boolean =
+            root === android.view.inspector.WindowInspector.getGlobalWindowViews().lastOrNull { it.isAttachedToWindow }
     }
 }
