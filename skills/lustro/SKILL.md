@@ -19,6 +19,13 @@ this file is for an app that has Lustro.
 lustro-cli --version || uv tool install lustro-cli    # or: pipx install lustro-cli
 ```
 
+Until the first Lustro release, `lustro-cli` is not on PyPI, and the install above fails. Install
+it from GitHub instead; pipx takes the same URL:
+
+```bash
+uv tool install "git+https://github.com/Twinsen81/Lustro#subdirectory=lustro-cli"
+```
+
 The package installs one command under two names, `lustro` and `lustro-cli`; this file uses
 `lustro`. `uvx lustro-cli <command>` runs it without an install. The PyPI package `lustro` is a
 different project with a `lustro` command of its own: never install it, and never run
@@ -69,14 +76,18 @@ These tabs have no commands of their own. `lustro api METHOD PATH` reaches each 
 `lustro schema <tab>` prints the tab's whole OpenAPI document, which is large:
 `lustro schema prefs | jq -r '.paths | keys[]'` lists the routes.
 
+`prefs/files` gives each file's `store`: `shared_prefs` for SharedPreferences, or
+`preferences_datastore` for a DataStore. Pass it in each route of that file. A route without it
+uses `shared_prefs`, so a DataStore's name gets a 404, or the SharedPreferences file of that name.
+
 ```bash
 lustro api GET logs/text --param level=W --param limit=200     # warnings and errors, as logcat prints them
 lustro api GET logs/text --param q=timeout --param limit=100   # lines whose message contains the text
-lustro api GET prefs/files                                      # SharedPreferences files and DataStores
-lustro api GET prefs/entries --param file=<name>
-lustro api GET prefs/entry --param file=<name> --param key=<key>  # read the value before you change it
-lustro api POST prefs/edit --body '{"file":"<name>","key":"<key>","type":"boolean","value":true}'
-lustro api POST prefs/delete --body '{"file":"<name>","key":"<key>"}'   # undoes an edit that added a key
+lustro api GET prefs/files                                      # each file's name and store
+lustro api GET prefs/entries --param store=<store> --param file=<name>
+lustro api GET prefs/entry --param store=<store> --param file=<name> --param key=<key>   # read it before you change it
+lustro api POST prefs/edit --body '{"store":"<store>","file":"<name>","key":"<key>","type":"boolean","value":true}'
+lustro api POST prefs/delete --body '{"store":"<store>","file":"<name>","key":"<key>"}'   # undoes an edit that added a key
 lustro api GET sqlite/databases
 lustro api GET sqlite/tables --param db=<name>
 lustro api POST sqlite/query --body '{"db":"<name>","sql":"SELECT * FROM orders LIMIT 20"}'
