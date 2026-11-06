@@ -644,3 +644,95 @@ def test_the_golden_work_items_label_every_unique_name_and_keep_periodic_schedul
     assert all("nextScheduleTimeMillis" not in i for i in items.values() if i["state"] in ("SUCCEEDED", "FAILED", "CANCELLED"))
     # A long beyond what JavaScript holds exactly is a string.
     assert any(isinstance(v, str) and v.isdigit() for i in items.values() for v in i["output"].values())
+
+
+# ── Screen tab ────────────────────────────────────────────────────────────────
+
+SCREEN_FIXTURES = ("screen-tree.json", "screen-tree-views.json")
+
+
+def _screen_tree_validator():
+    return _component_validator(wire.load_openapi("screen"), "ScreenTree")
+
+
+def test_the_screen_schema_is_valid_and_has_its_own_version():
+    screen = wire.load_openapi("screen")
+    assert screen["openapi"].startswith("3.1")
+    assert screen["info"]["version"] == "1.0"
+    for schema in screen["components"]["schemas"].values():
+        Draft202012Validator.check_schema(schema)
+    assert screen["components"]["schemas"]["ErrorEnvelope"] == wire.load_openapi()["components"]["schemas"]["ErrorEnvelope"]
+
+
+def test_the_screen_tree_is_declared_and_only_read():
+    paths = wire.load_openapi("screen")["paths"]
+    assert set(paths) == {"/api/v1/screen/tree"}
+    assert set(paths["/api/v1/screen/tree"]) == {"get"}
+    params = {p["name"]: p for p in paths["/api/v1/screen/tree"]["get"]["parameters"]}
+    assert set(params) == {"merged", "settle"}
+    assert params["merged"]["schema"] == {"type": "boolean", "default": True}
+    assert params["settle"]["schema"] == {"type": "integer", "minimum": 0, "maximum": 10000, "default": 0}
+
+
+@pytest.mark.parametrize("fixture", SCREEN_FIXTURES)
+def test_screen_fixture_matches_the_tree(fixture):
+    _screen_tree_validator().validate(wire.load_golden(fixture))
+
+
+@pytest.mark.parametrize("fixture", SCREEN_FIXTURES)
+def test_a_golden_window_starts_with_its_root_and_lists_each_parent_before_its_children(fixture):
+    for window in wire.load_golden(fixture)["windows"]:
+        nodes = window["nodes"]
+        assert nodes[0]["id"] == window["id"] and "parent" not in nodes[0]
+        seen = set()
+        for node in nodes:
+            assert node["id"] not in seen
+            if node is not nodes[0]:
+                assert node["parent"] in seen
+            seen.add(node["id"])
+
+
+def test_the_golden_compose_tree_has_the_dialog_window_the_merged_texts_and_a_masked_password():
+    tree = wire.load_golden("screen-tree.json")
+    assert tree["merged"] is True and tree["compose"] is True
+    assert [w["kind"] for w in tree["windows"]] == ["activity", "dialog"]
+    nodes = {n.get("testTag"): n for w in tree["windows"] for n in w["nodes"] if "testTag" in n}
+    assert nodes["save"]["text"] == ["Save"] and nodes["save"]["role"] == "Button" and nodes["save"]["clickable"] is True
+    assert nodes["dark"]["toggle"] == "off" and nodes["dark"]["role"] == "Switch"
+    assert nodes["secret"]["password"] is True and set(nodes["secret"]["editableText"]) == {"•"}
+    assert nodes["confirm"]["text"] == ["Delete the profile?"]
+    # A row out of view, and a node of no size, have no visible part.
+    assert nodes["avatar"]["visibleBounds"] is None
+    # A Compose node's id starts with the number of its host's View, which is in the same window.
+    for window in tree["windows"]:
+        ids = {n["id"] for n in window["nodes"]}
+        for node in window["nodes"]:
+            if node["kind"] == "compose":
+                assert "v" + node["id"][1:].split(".")[0] in ids
+    assert tree["context"] == {"route": "profile", "stack": ["home", "profile"]}
+
+
+def test_the_golden_view_tree_has_classes_a_scroll_range_and_clipped_rows():
+    tree = wire.load_golden("screen-tree-views.json")
+    nodes = tree["windows"][0]["nodes"]
+    assert all(n["kind"] == "view" and "className" in n for n in nodes)
+    scroll = next(n for n in nodes if n["className"] == "android.widget.ScrollView")
+    assert scroll["verticalScroll"]["max"] > 0 and scroll["verticalScroll"]["forward"] is True
+    rows = [n for n in nodes if n.get("text", [""])[0].startswith("Item ")]
+    assert rows[0]["visibleBounds"] is not None and rows[-1]["visibleBounds"] is None
+    password = next(n for n in nodes if n["className"] == "android.widget.EditText")
+    assert password["password"] is True and set(password["editableText"]) == {"•"}
+
+
+def test_a_settled_tree_validates_and_a_node_takes_no_other_key():
+    golden = wire.load_golden("screen-tree.json")
+    validator = _screen_tree_validator()
+    validator.validate(dict(golden, settle={"requestedMs": 500, "settled": False, "waitedMs": 500, "frames": 30}, contextError="x"))
+    with pytest.raises(ValidationError):
+        validator.validate(dict(golden, settle={"requestedMs": 0, "settled": True, "waitedMs": 0, "frames": 0}))
+    window = dict(golden["windows"][0], nodes=[dict(golden["windows"][0]["nodes"][0], clickable=False)])
+    with pytest.raises(ValidationError):
+        validator.validate(dict(golden, windows=[window]))
+    window = dict(golden["windows"][0], nodes=[dict(golden["windows"][0]["nodes"][0], label="x")])
+    with pytest.raises(ValidationError):
+        validator.validate(dict(golden, windows=[window]))

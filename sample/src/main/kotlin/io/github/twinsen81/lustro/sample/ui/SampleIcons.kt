@@ -25,6 +25,8 @@ internal object SampleIcons {
     val ChevronLeft = lineIcon("chevron-left", "M14.5 6.5L9 12l5.5 5.5")
     val ChevronRight = lineIcon("chevron-right", "M10 7l5 5-5 5")
     val Clock = lineIcon("clock", CIRCLE, "M12 7.5V12l3 2")
+    val Window =
+        lineIcon("window", "M4.5 4.5h15a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-15a1 1 0 0 1-1-1v-13a1 1 0 0 1 1-1z", "M3.5 9h17", "M7 6.75v0.01", "M9.5 6.75v0.01")
     val Check = lineIcon("check", "M5.5 12.5l4 4L18.5 7.5")
     val Close = lineIcon("close", "M7 7l10 10", "M17 7L7 17")
     val Alert = lineIcon("alert", "M12 6.5v7", "M12 17.5v0.01")

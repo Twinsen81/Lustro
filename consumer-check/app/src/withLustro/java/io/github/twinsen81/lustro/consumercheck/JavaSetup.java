@@ -11,6 +11,7 @@ import io.github.twinsen81.lustro.network.NetworkDebugTab;
 import io.github.twinsen81.lustro.prefs.PrefsDebugTab;
 import io.github.twinsen81.lustro.prefs.PrefsFile;
 import io.github.twinsen81.lustro.prefs.ValuePolicy;
+import io.github.twinsen81.lustro.screen.ScreenDebugTab;
 import io.github.twinsen81.lustro.sqlite.SqliteDb;
 import io.github.twinsen81.lustro.sqlite.SqliteDebugTab;
 import io.github.twinsen81.lustro.sqlite.SqliteValuePolicy;
@@ -39,6 +40,7 @@ final class JavaSetup {
         work.configure(new Configuration.Builder()).build();
         LogsDebugTab.create(64 * 1024);
         PrefsDebugTab.create(app);
+        ScreenDebugTab.create(app);
         return Lustro.builder(app)
                 .addTab(NetworkDebugTab.create(new OkHttpClient()))
                 .addTab(LogsDebugTab.create())
@@ -53,6 +55,7 @@ final class JavaSetup {
                         SqliteDb.framework("plain", helper::getReadableDatabase),
                         SqliteDb.file("cache", app.getDatabasePath("cache.db"))), app))
                 .addTab(work)
+                .addTab(ScreenDebugTab.create(app, () -> "{\"screen\":\"main\"}"))
                 .build();
     }
 }

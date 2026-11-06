@@ -30,6 +30,7 @@ desktop browser. Every tab is also a JSON API, so AI agents, scripts, and the
 | **Preferences** | Reads and edits the app's SharedPreferences and Preferences DataStores. |
 | **SQLite** | Reads the app's SQLite and Room databases, and runs SQL. Writes only to the databases that the app allows. |
 | **WorkManager** | The app's work, the events of each run, and Cancel and Prune. |
+| **Screen** | For agents and scripts, through the API only: every window of the app and the UI tree in each, the classic Views and the Compose semantics nodes, read in the app's process in milliseconds. |
 | **Your own tabs** | A `DebugTab` subclass with JSON routes and, if you want, a view in the browser. |
 
 The Network tab is in the main artifact. Each of the other built-in tabs is a

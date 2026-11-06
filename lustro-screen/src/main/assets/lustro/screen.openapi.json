@@ -1,0 +1,501 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Lustro Screen debug tab",
+    "version": "1.0",
+    "description": "The app's windows and the UI tree in each: the classic Views, and the Compose semantics nodes of each Compose host, read in the app's process on the main thread. A read takes milliseconds, sees every test tag, and does not wait for the screen to stop changing, as uiautomator dump does; ?settle waits for two reads in a row to be the same, with the window focus at rest. The tree has the app's own windows only: a permission dialog, the chooser, the keyboard, a notification, and a toast are not in it, and a WebView is a View without its page. When no window has hasWindowFocus, a window of another app is on top. The text of a password field comes as one dot for each character. The tab has no console view, so it is not in the tab bar; _meta lists it. All routes are token-authenticated (Bearer header or HttpOnly cookie) and live under /api/v1/screen. Errors use the shared error envelope."
+  },
+  "servers": [
+    {
+      "url": "/",
+      "description": "The Lustro debug server (loopback by default)."
+    }
+  ],
+  "paths": {
+    "/api/v1/screen/tree": {
+      "get": {
+        "operationId": "getScreenTree",
+        "summary": "The app's windows, and the nodes of each.",
+        "description": "Reads every window of the app's process on the main thread, and calls the app's ScreenContextProvider after the read. GET changes nothing. When the main thread does not start the read in 5000 ms, or does not finish it in 5000 ms and the settle time, the request answers 504 with code main_thread_blocked. When the read throws, as with a View of the app whose getter throws, it answers 500 with code read_failed, and the app goes on.",
+        "parameters": [
+          {
+            "name": "merged",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true
+            },
+            "description": "true for the merged semantics tree, in which a clickable node carries the text of its children, as accessibility services see it; false for the unmerged one, in which each text is a node of its own. A node has the same id in both. 400 with field merged for any other value."
+          },
+          {
+            "name": "settle",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10000,
+              "default": 0
+            },
+            "description": "Read the tree on each frame until two reads in a row are the same and the window focus is at rest, the top visible window that can take the focus having it and no other window, for up to this many milliseconds, and return the last read with settle. The window manager moves the focus some frames after a dialog opens or closes. 0 reads once. 400 with field settle for any other value."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The windows.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScreenTree"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "405": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          },
+          "504": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "responses": {
+      "Error": {
+        "description": "Error envelope.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorEnvelope"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "ScreenTree": {
+        "type": "object",
+        "required": [
+          "windows",
+          "merged",
+          "density",
+          "compose",
+          "windowSource",
+          "context"
+        ],
+        "properties": {
+          "windows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScreenWindow"
+            },
+            "description": "The app's windows, in the order the app added them: the activity, then the dialogs and popups over it."
+          },
+          "merged": {
+            "type": "boolean",
+            "description": "Whether the Compose nodes are the merged semantics tree."
+          },
+          "density": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "description": "The display density, pixels for each dp."
+          },
+          "compose": {
+            "type": "boolean",
+            "description": "Whether the app has Compose UI, so that the tree has the semantics nodes of its Compose hosts."
+          },
+          "windowSource": {
+            "enum": [
+              "inspector",
+              "reflection",
+              "activities"
+            ],
+            "description": "How the tab found the windows: WindowInspector from API 29; WindowManagerGlobal before; or, when that failed, the started activities, without their dialogs and popups."
+          },
+          "composeError": {
+            "type": "string",
+            "description": "Why the tab could not read a Compose host's semantics tree, such as a Compose UI without a call that the tab makes. The host's View is in the tree without semantics nodes."
+          },
+          "settle": {
+            "$ref": "#/components/schemas/Settle"
+          },
+          "context": {
+            "description": "What the app's ScreenContextProvider returned, such as its navigation back stack: any JSON value, or null when the app registered none, it returned null, or it failed (see contextError)."
+          },
+          "contextError": {
+            "type": "string",
+            "description": "Why context is null: the provider threw, or returned text that is not JSON."
+          }
+        },
+        "additionalProperties": false
+      },
+      "ScreenWindow": {
+        "type": "object",
+        "description": "A window of the app's process: an activity, or a dialog, popup, or bottom sheet over it.",
+        "required": [
+          "id",
+          "type",
+          "kind",
+          "title",
+          "hasWindowFocus",
+          "focusable",
+          "visible",
+          "bounds",
+          "nodes"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The id of the window's root View, its first node."
+          },
+          "type": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "The window type of the root View's WindowManager.LayoutParams, such as 1 for an activity and 2 for a dialog."
+          },
+          "kind": {
+            "enum": [
+              "activity",
+              "dialog",
+              "popup",
+              "system",
+              "other"
+            ],
+            "description": "The group of the type: activity for TYPE_BASE_APPLICATION; dialog for TYPE_APPLICATION and TYPE_APPLICATION_ATTACHED_DIALOG, which Dialog, DialogFragment, Compose's Dialog, and bottom sheet dialogs use; popup for the other sub-windows, which PopupWindow, Compose's Popup, menus, and spinners use; system for system window types, such as an overlay."
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The window's title, such as the package and class of an activity."
+          },
+          "hasWindowFocus": {
+            "type": "boolean",
+            "description": "Whether the window has the window focus. A window of another app, such as a permission dialog or the chooser, can cover the app while the server still answers, and then no window of the app has the focus: read that window with uiautomator."
+          },
+          "focusable": {
+            "type": "boolean",
+            "description": "Whether the window can take the focus: false for a window with FLAG_NOT_FOCUSABLE, such as a popup that does not take the keys."
+          },
+          "visible": {
+            "type": "boolean",
+            "description": "Whether the window's root View is shown and the window is visible."
+          },
+          "bounds": {
+            "$ref": "#/components/schemas/Rect",
+            "description": "The window on the screen."
+          },
+          "nodes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScreenNode"
+            },
+            "description": "The window's nodes, each before its children, the children in the order of their parent."
+          }
+        },
+        "additionalProperties": false
+      },
+      "ScreenNode": {
+        "type": "object",
+        "description": "A node of a window: a classic View, or a Compose semantics node. A key that the node does not have is left out: a text, a role, a state that is not set, enabled when the node is enabled, and clickable, focused, password, and clipped when they are false.",
+        "required": [
+          "id",
+          "kind",
+          "bounds",
+          "screenBounds",
+          "visibleBounds"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^(v[0-9]+|c[0-9]+\\.-?[0-9]+)$",
+            "description": "v and a number for a View, which stays the same while the View lives; c, the number of the Compose host's View, a dot, and the semantics id for a Compose node, the same in the merged and the unmerged tree."
+          },
+          "parent": {
+            "type": "string",
+            "description": "The id of the node's parent. A window's first node has none. The parent of a Compose host's root semantics node is the host's View; the Views of an AndroidView in a Compose host follow the host's semantics nodes, with the host as their parent."
+          },
+          "kind": {
+            "enum": [
+              "view",
+              "compose"
+            ]
+          },
+          "className": {
+            "type": "string",
+            "description": "The class of a View, such as android.widget.Button. Compose nodes have none: see role."
+          },
+          "resourceId": {
+            "type": "string",
+            "description": "The resource name of a View's id, such as com.example:id/save. Generated ids have none."
+          },
+          "testTag": {
+            "type": "string",
+            "description": "A Compose node's Modifier.testTag, or a View's tag when it is a string. Every test tag is here, whether the app sets testTagsAsResourceId or not."
+          },
+          "text": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "description": "The node's text, one string for each text of a merged node, in order. A field's text is in editableText."
+          },
+          "contentDescription": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          },
+          "editableText": {
+            "type": "string",
+            "description": "The text in a text field, which can be empty."
+          },
+          "password": {
+            "const": true,
+            "description": "The node is a password field: editableText and text have one dot for each character, as the screen shows them."
+          },
+          "role": {
+            "type": "string",
+            "description": "A Compose node's Role, such as Button, Checkbox, Switch, RadioButton, Tab, Image, or DropdownList."
+          },
+          "stateDescription": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string",
+            "description": "The error that a field shows, from Compose's error semantics or TextView.setError()."
+          },
+          "bounds": {
+            "$ref": "#/components/schemas/Rect",
+            "description": "The node in its window, before any clipping."
+          },
+          "screenBounds": {
+            "$ref": "#/components/schemas/Rect",
+            "description": "The node on the screen, before any clipping."
+          },
+          "visibleBounds": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Rect"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The part of the node that is on the screen after its parents and its window clip it; null when no part of it is, as a View that is INVISIBLE, a node of zero size, or a row scrolled out of view."
+          },
+          "clipped": {
+            "const": true,
+            "description": "A parent or the window cuts the node, so only a part of it is on the screen."
+          },
+          "enabled": {
+            "const": false,
+            "description": "The node is disabled."
+          },
+          "focused": {
+            "const": true
+          },
+          "selected": {
+            "type": "boolean",
+            "description": "Whether the node is selected, as a tab: present for a Compose node that is selectable, and for a View only when it is selected."
+          },
+          "toggle": {
+            "type": "string",
+            "description": "The toggle state of a switch or check box: on, off, or indeterminate."
+          },
+          "clickable": {
+            "const": true,
+            "description": "The node has a click action: OnClick is in actions."
+          },
+          "actions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "description": "The semantics actions that drive the node, by their Compose names: OnClick, OnLongClick, SetText, PerformImeAction, ScrollBy, ScrollToIndex, PageUp, PageDown, PageLeft, PageRight, SetProgress, Expand, Collapse, and Dismiss. A View has OnClick when it is clickable, OnLongClick when it is long-clickable, SetText when it is an enabled EditText, and ScrollBy when it can scroll."
+          },
+          "horizontalScroll": {
+            "$ref": "#/components/schemas/ScrollRange"
+          },
+          "verticalScroll": {
+            "$ref": "#/components/schemas/ScrollRange"
+          },
+          "collection": {
+            "type": "object",
+            "description": "A Compose list or grid: how many rows and columns it has, or null when it does not say.",
+            "required": [
+              "rows",
+              "columns"
+            ],
+            "properties": {
+              "rows": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 0
+              },
+              "columns": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 0
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "Rect": {
+        "type": "object",
+        "description": "A rectangle in pixels: left and top inside it, right and bottom just outside.",
+        "required": [
+          "left",
+          "top",
+          "right",
+          "bottom"
+        ],
+        "properties": {
+          "left": {
+            "type": "integer"
+          },
+          "top": {
+            "type": "integer"
+          },
+          "right": {
+            "type": "integer"
+          },
+          "bottom": {
+            "type": "integer"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ScrollRange": {
+        "type": "object",
+        "description": "The scroll position of a node on one axis, in pixels.",
+        "required": [
+          "value",
+          "max",
+          "reverse",
+          "forward",
+          "backward"
+        ],
+        "properties": {
+          "value": {
+            "type": "number",
+            "description": "How far the node is scrolled."
+          },
+          "max": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "How far it can scroll; null when the node does not say, as a View that is not a scroll container's."
+          },
+          "reverse": {
+            "type": "boolean",
+            "description": "Whether the node scrolls in reverse, as a list that starts at its end."
+          },
+          "forward": {
+            "type": "boolean",
+            "description": "Whether it can scroll further forward: down or right, or up or left when reverse."
+          },
+          "backward": {
+            "type": "boolean",
+            "description": "Whether it can scroll back."
+          }
+        },
+        "additionalProperties": false
+      },
+      "Settle": {
+        "type": "object",
+        "description": "How a settle wait ended. Present only when the request asked for one.",
+        "required": [
+          "requestedMs",
+          "settled",
+          "waitedMs",
+          "frames"
+        ],
+        "properties": {
+          "requestedMs": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10000
+          },
+          "settled": {
+            "type": "boolean",
+            "description": "Whether two reads on consecutive frames were the same and the window focus was at rest. false when the time was over first, and the tree is the last read, as while a window of another app has the focus."
+          },
+          "waitedMs": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "frames": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many frames the tab read after the first read."
+          }
+        },
+        "additionalProperties": false
+      },
+      "ErrorEnvelope": {
+        "type": "object",
+        "required": [
+          "error",
+          "message"
+        ],
+        "properties": {
+          "error": {
+            "type": "string",
+            "enum": [
+              "bad_request",
+              "unauthorized",
+              "forbidden",
+              "not_found",
+              "method_not_allowed",
+              "payload_too_large",
+              "internal_error",
+              "unavailable",
+              "timeout"
+            ],
+            "description": "Machine error type, e.g. bad_request, not_found, timeout."
+          },
+          "message": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "field": {
+            "type": "string"
+          },
+          "hint": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  }
+}

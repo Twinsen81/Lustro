@@ -96,6 +96,9 @@ dependencies {
     // The WorkManager plugin pair, split the same way.
     debugImplementation(project(":lustro-work"))
     releaseImplementation(project(":lustro-work-noop"))
+    // The Screen plugin pair, split the same way.
+    debugImplementation(project(":lustro-screen"))
+    releaseImplementation(project(":lustro-screen-noop"))
 
     // A mainstream HTTP client whose default transport is java.net.HttpURLConnection
     // (not OkHttp). The demo fires a request through it to show that platform-HTTP

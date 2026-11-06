@@ -111,6 +111,15 @@ internal fun HomeScreen(viewModel: SampleViewModel, flags: List<SampleFlag>?, la
             MetaText("·", palette.textFaint)
             MetaText("${viewModel.workActions.size} actions")
         }
+        ModuleCard(
+            SampleIcons.Window,
+            Tone.SLATE,
+            "Screen",
+            "This app's windows and UI tree, as agents read them",
+            onClick = { onOpen(Screen.SCREEN_TREE) },
+        ) {
+            MetaText("GET screen/tree", palette.textMuted)
+        }
         if (flags != null) {
             ModuleCard(SampleIcons.Flag, Tone.ORANGE, "Feature flags", "Change this app from the browser console", onClick = { onOpen(Screen.FLAGS) }) {
                 MetaText("${flags.count { it.enabled }} of ${flags.size} on", palette.orange)
@@ -172,5 +181,5 @@ private fun ConsoleStrip(viewModel: SampleViewModel, running: Boolean, latest: M
     }
 }
 
-private const val MODULES = 6
-private const val MODULES_WITH_FLAGS = 7
+private const val MODULES = 7
+private const val MODULES_WITH_FLAGS = 8

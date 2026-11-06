@@ -17,6 +17,7 @@ import io.github.twinsen81.lustro.prefs.PrefsDataStore
 import io.github.twinsen81.lustro.prefs.PrefsDebugTab
 import io.github.twinsen81.lustro.prefs.PrefsFile
 import io.github.twinsen81.lustro.prefs.ValuePolicy
+import io.github.twinsen81.lustro.screen.ScreenDebugTab
 import io.github.twinsen81.lustro.sqlite.SqliteDb
 import io.github.twinsen81.lustro.sqlite.SqliteDebugTab
 import io.github.twinsen81.lustro.sqlite.SqliteValuePolicy
@@ -33,7 +34,7 @@ import okhttp3.WebSocket
  * This file lives in `src/debug` and compiles against the REAL `:lustro`
  * runtime. It owns ALL Lustro registration for the sample: building [Lustro],
  * registering the built-in [NetworkDebugTab], the [LogsDebugTab],
- * [PrefsDebugTab], [SqliteDebugTab], and [WorkDebugTab] plugins, and the app's custom [SampleFlagsTab], starting the
+ * [PrefsDebugTab], [SqliteDebugTab], [WorkDebugTab], and [ScreenDebugTab] plugins, and the app's custom [SampleFlagsTab], starting the
  * server, and exposing the [networkInterceptor] for the app's OkHttp client and
  * the [workManagerConfiguration] for its WorkManager.
  *
@@ -156,6 +157,10 @@ public object LustroBootstrap {
                 // workManagerConfiguration(). The release bootstrap registers the no-op
                 // half from :lustro-work-noop.
                 .addTab(workTab(app))
+                // The app's windows and UI tree, from :lustro-screen, with where the app
+                // is as the tree's context. The release bootstrap registers the no-op
+                // half from :lustro-screen-noop.
+                .addTab(ScreenDebugTab.create(app) { SampleNavigation.contextJson() })
                 // Custom, schema-backed tab. It is debug-only: it never appears in
                 // src/release, so the no-op variant has no Feature Flags tab.
                 .addTab(flags)

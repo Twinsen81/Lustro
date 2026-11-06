@@ -9,6 +9,7 @@
     "lustro-prefs/",
     "lustro-sqlite/",
     "lustro-work/",
+    "lustro-screen/",
     "docs/",
     "wire-protocol/",
     "lustro-cli/"

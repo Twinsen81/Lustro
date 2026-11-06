@@ -16,6 +16,7 @@ import io.github.twinsen81.lustro.prefs.PrefsDataStore
 import io.github.twinsen81.lustro.prefs.PrefsDebugTab
 import io.github.twinsen81.lustro.prefs.PrefsFile
 import io.github.twinsen81.lustro.prefs.ValuePolicy
+import io.github.twinsen81.lustro.screen.ScreenDebugTab
 import io.github.twinsen81.lustro.sqlite.SqliteDb
 import io.github.twinsen81.lustro.sqlite.SqliteDebugTab
 import io.github.twinsen81.lustro.sqlite.SqliteValuePolicy
@@ -41,7 +42,8 @@ import okhttp3.WebSocket
  * debug-only `DebugTab` and does not exist in this source set. It registers the
  * no-op [LogsDebugTab] from `:lustro-logs-noop`, the no-op [PrefsDebugTab]
  * from `:lustro-prefs-noop`, the no-op [SqliteDebugTab] from
- * `:lustro-sqlite-noop`, and the no-op [WorkDebugTab] from `:lustro-work-noop`, which checks
+ * `:lustro-sqlite-noop`, the no-op [WorkDebugTab] from `:lustro-work-noop`, and the no-op
+ * [ScreenDebugTab] from `:lustro-screen-noop`, which checks
  * the plugin pairs' facades the same way. Everything here
  * is a no-op at runtime: nothing binds, nothing is captured,
  * [Lustro.networkInterceptor] returns a pass-through interceptor, and
@@ -134,6 +136,9 @@ public object LustroBootstrap {
                 // The no-op half of :lustro-work, created as the debug bootstrap creates
                 // it: it reads no work, and its configure() returns the builder.
                 .addTab(workTab(app))
+                // The no-op half of :lustro-screen: it reads no window, and never calls
+                // the context provider.
+                .addTab(ScreenDebugTab.create(app) { SampleNavigation.contextJson() })
                 .build()
 
         val interceptor = instance.networkInterceptor()

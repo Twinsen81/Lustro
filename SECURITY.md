@@ -327,6 +327,34 @@ the events of each run under `/api/v1/work/`.
   the app's builder as it is, so release WorkManager runs the app's own
   configuration. Neither artifact depends on WorkManager at runtime.
 
+### The screen
+
+The Screen plugin (`:lustro-screen`) serves the app's windows and the UI tree in
+each under `/api/v1/screen/`.
+
+- **Every client with the token reads what the app's windows show.** The tree
+  has the text, the content descriptions, the text of fields, and the test tags
+  of every node, also of the nodes that are scrolled out of view or that a
+  dialog covers, and the JSON that the app's `ScreenContextProvider` returns.
+  The text of a password field comes as one dot for each character: a Compose
+  node with the `Password` semantics property, and a `TextView` with a password
+  input type or a `PasswordTransformationMethod`. Any other text, such as a code
+  that the screen shows, comes as it is. With the default loopback binding this
+  adds little, because `adb shell uiautomator dump` reads the same text. With
+  `DebugConfig.bindAddress` set for LAN access, every client with the token can
+  read it. Keep secrets out of the context that the provider returns.
+- **The tab only reads.** `GET tree` changes nothing in the app: it reads the
+  windows on the main thread and calls the app's provider there. A main thread
+  that does not run the read in time gets the client a `504`; the read that the
+  main thread runs later sees that the request is over and does nothing.
+- **Hidden API before API 29.** On API 24 to 28 the tab lists the windows
+  through `WindowManagerGlobal`'s list of root views, by reflection, as Espresso
+  does: that field is on the list of hidden API that apps may use. From API 29 it
+  uses `WindowInspector`, a public API.
+- **Release builds get none of it.** `lustro-screen-noop`'s tab reads no window,
+  registers no callback, and never calls the provider. Neither artifact depends
+  on Compose at runtime.
+
 ## NanoHTTPD Vendor-Patch Process
 
 Lustro's server engine is **NanoHTTPD, pinned at version 2.3.1**. NanoHTTPD is
