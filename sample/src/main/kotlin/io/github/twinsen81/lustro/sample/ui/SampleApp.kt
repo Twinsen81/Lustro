@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -32,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import io.github.twinsen81.lustro.sample.SampleFlags
+import io.github.twinsen81.lustro.sample.SampleNavigation
 import io.github.twinsen81.lustro.sample.SampleViewModel
 
 /**
@@ -54,6 +56,8 @@ internal fun SampleApp(viewModel: SampleViewModel, systemBars: @Composable (dark
         val open: (Screen) -> Unit = { screen = it }
         val back = { screen = Screen.HOME }
 
+        // The Screen tab's context: where the app is.
+        SideEffect { SampleNavigation.update(screen.name.lowercase(), historyOpen) }
         BackHandler(enabled = historyOpen || screen != Screen.HOME) {
             if (historyOpen) historyOpen = false else back()
         }
@@ -84,6 +88,7 @@ internal fun SampleApp(viewModel: SampleViewModel, systemBars: @Composable (dark
                             Screen.PREFS -> PrefsScreen(viewModel, latest, back)
                             Screen.SQLITE -> SqliteScreen(viewModel, latest, back)
                             Screen.WORK -> WorkScreen(viewModel, latest, back)
+                            Screen.SCREEN_TREE -> ScreenTreeScreen(back)
                             Screen.FLAGS -> FlagsScreen(viewModel, flags.orEmpty(), back)
                             Screen.CONSOLE -> ConsoleScreen(viewModel, latest, back)
                         }
