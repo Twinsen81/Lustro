@@ -185,14 +185,15 @@ internal class ScreenSource(
         return ScreenTree(read, merged, context.resources.displayMetrics.density, composeAvailable, settle, json, error)
     }
 
-    /**
-     * Whether the top visible window that can take the focus has it, and no other window
-     * does, from the windows' roots alone: as [ScreenWindows.focusSettled], without the nodes.
-     */
+    /** Whether the window focus has come to rest, from the windows' roots alone: as [ScreenWindows.focusSettled], without the nodes. */
     private fun focusAtRest(): Boolean {
         val views = roots.roots().first
-        val top = views.lastOrNull { TreeReader.isShownWindow(it) && TreeReader.isFocusable(it) } ?: return true
-        return windowFocus(top) && views.none { it !== top && windowFocus(it) }
+        val groups = WindowFocus.groups(views)
+        return WindowFocus.atRest(
+            views.mapIndexed { index, view ->
+                WindowFocus.Entry(groups[index], TreeReader.isShownWindow(view), TreeReader.isFocusable(view), windowFocus(view))
+            },
+        )
     }
 
     /** Runs [next] on the first frame on which the window focus is at rest, or after [FOCUS_WAIT_MS]. Runs on the main thread. */
