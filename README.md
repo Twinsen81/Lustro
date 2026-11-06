@@ -745,10 +745,11 @@ val lustro = Lustro.builder(application)
   `lustro api GET prefs/entries --param file=settings`. See
   [docs/AGENTS.md](docs/AGENTS.md#preferences-tab-operations) and
   [`prefs.openapi.json`](lustro-prefs/src/main/assets/lustro/prefs.openapi.json).
-- **In the console.** The **Preferences** tab shows each file as a tab, the fullest first, with
-  its store (a data store's tab has a `DS` mark), its policy, whether the app registered it or the
-  tab found it, and whether it is read-only. A
-  key search can also search the values. A boolean, an int, or a short string changes in its row;
+- **In the console.** The **Preferences** tab shows each file as a tab: the files that the app
+  registered first, then the ones that the tab found, each group the fullest first. It shows
+  each file with its store (a data store's tab has a `DS` mark), its policy, whether the app
+  registered it or the tab found it, and whether it is read-only. A key search can also search
+  the values. A boolean, an int, or a short string changes in its row;
   any other value opens a dialog, with an indented preview of a JSON string or a string set.
   **Add key**, **Delete**, and **Clear file** ask the routes, and are off, with the reason, for a
   read-only file. Auto-refresh, on by default every 3 s, shows the app's changes: a poll reads
@@ -832,7 +833,9 @@ val lustro = Lustro.builder(application)
   Preferences tab: the tab leaves out the values of a column whose name looks like it holds a
   secret, such as `access_token`, `clientSecret`, or `password`, by the same name check as the
   Network tab's redaction (`SensitiveKeys.isSensitive`). `VISIBLE` shows every value. A
-  discovered file is `MASK_SENSITIVE`. A masked cell has only its storage class,
+  discovered file is `MASK_SENSITIVE`. The check reads only the column's name, so a table that
+  keeps the name of a secret in a row, such as HTTP headers in `name` and `value` columns, shows
+  the value of an `Authorization` row. A masked cell has only its storage class,
   `{ "type": "text", "masked": true }`, and the tab never sends its value (`GET rows` does not
   read it at all); a `NULL` stays `NULL`. `GET rows` masks by the table's column, and its filter
   does not search a masked column.
@@ -1072,7 +1075,10 @@ static synchronized WorkDebugTab work(Application app) {
   [`work.openapi.json`](lustro-work/src/main/assets/lustro/work.openapi.json).
 - **In the console.** The **WorkManager** tab lists the work with its state, worker, unique name,
   tags, attempts, and next run. A tag that every work in the list has, such as one that the app puts
-  on all its work, shows after the tags of each work. Enqueued work whose next run has passed shows
+  on all its work, shows after the tags of each work. A tag that is the work's unique name, which
+  apps add because `WorkInfo` has none, shows only in Details. Blocked work shows `after others`:
+  WorkManager runs it when the work before it in its chain has succeeded, and `WorkInfo` does not
+  say which work that is. Enqueued work whose next run has passed shows
   `waiting`, and says for which constraints: WorkManager runs it when they are met, such as at a
   change of a content URI that it watches. For periodic work, the attempts are those of the current period:
   WorkManager sets the count back to 0 when a period ends, so it is 0 after a run that finished. The state chips show the count of each state and filter the list by

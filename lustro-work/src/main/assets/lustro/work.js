@@ -117,9 +117,11 @@
         return shared;
     }
 
-    // The app's tags of [item], with those in [shared] last.
+    // The app's tags of [item], with those in [shared] last. A tag that is the work's
+    // unique name is left out: the row shows the name in its own column, and apps add
+    // it as a tag because WorkInfo has no unique name. Details lists every tag.
     function listTags(item, shared) {
-        var tags = appTags(item);
+        var tags = appTags(item).filter(function(tag) { return tag !== item.uniqueName; });
         if (!shared || !shared.size) return tags;
         return tags.filter(function(tag) { return !shared.has(tag); })
             .concat(tags.filter(function(tag) { return shared.has(tag); }));
@@ -196,6 +198,11 @@
     function waitingTitle(item) {
         return 'Due ' + dateTimeText(item.nextScheduleTimeMillis) + '. ' + waitingReason(item);
     }
+
+    // WorkInfo does not say which work a blocked one waits for, so the console can only
+    // say what blocked means.
+    var BLOCKED_REASON = 'WorkManager runs it when the work before it in its chain (beginWith() and then()) has succeeded. '
+        + 'When that work fails or is cancelled, this work ends the same way.';
 
     function clockText(at) {
         var date = new Date(Number(at));
@@ -282,6 +289,7 @@
             var percent = progressPercent(item.progress);
             return '<span class="work-next work-next--running">running' + (percent == null ? '' : ' ' + esc(String(Math.round(percent))) + '%') + '</span>';
         }
+        if (item.state === 'BLOCKED') return '<span class="dc-comment" title="' + esc(BLOCKED_REASON) + '">after others</span>';
         if (item.nextScheduleTimeMillis == null || isFinished(item.state)) return '<span class="dc-comment">-</span>';
         var at = item.nextScheduleTimeMillis;
         if (item.state === 'ENQUEUED') {
@@ -339,6 +347,8 @@
         }).join('');
         var next = item.state === 'RUNNING'
             ? '<span class="dc-comment">// running now</span>'
+            : item.state === 'BLOCKED'
+            ? '<span class="dc-comment">// ' + esc(BLOCKED_REASON) + '</span>'
             : item.nextScheduleTimeMillis == null || isFinished(item.state)
             ? '<span class="dc-comment">// none</span>'
             : esc(dateTimeText(item.nextScheduleTimeMillis)) + ' <span class="dc-comment" data-at="'

@@ -158,10 +158,14 @@
         view.entries = sortEntries(Array.from(view.byKey.values()));
     }
 
-    // The ids of the files in the order of their tabs: by key count, the fullest
-    // first, and in the app's order for the same count (sort is stable). A poll
-    // keeps the order the page has, so that a tab doesn't move under the pointer;
-    // a new or a gone file, or Refresh, sorts them again.
+    // The ids of the files in the order of their tabs: the files that the app
+    // registered first, then the ones that the tab found on disk, each group by key
+    // count, the fullest first, and in the route's order for the same count (sort is
+    // stable). A found file can hold more keys than the app's own, such as the
+    // default file that an androidx settings screen fills, and the first tab is the
+    // one that a first visit opens. A poll keeps the order the page has, so that a
+    // tab doesn't move under the pointer; a new or a gone file, or Refresh, sorts
+    // them again.
     function orderFiles(files, order, resort) {
         var ids = files.map(fileId);
         if (!resort && order && order.length === ids.length
@@ -169,7 +173,10 @@
             return order.slice();
         }
         return files.slice()
-            .sort(function(a, b) { return (b.keyCount || 0) - (a.keyCount || 0); })
+            .sort(function(a, b) {
+                if (!!a.registered !== !!b.registered) return a.registered ? -1 : 1;
+                return (b.keyCount || 0) - (a.keyCount || 0);
+            })
             .map(fileId);
     }
 

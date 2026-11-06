@@ -90,6 +90,18 @@ test('tags that every work in the list has go after the tags of each row', () =>
     assert.deepStrictEqual(plain(work.workListTags(list[0], work.workSharedTags([list[0]]))), ['*', 'name:upload', 'user:me']);
 });
 
+test('a row leaves out the tag that is the work\'s unique name, which its own column shows', () => {
+    // Apps tag work with its unique name, because WorkInfo has none.
+    const item = { id: 'a', workerClass: 'x.PollWorker', uniqueName: 'PollWorkerPeriodic', tags: ['PollWorker', 'PollWorkerPeriodic', 'x.PollWorker'] };
+    assert.deepStrictEqual(plain(work.workListTags(item, new Set())), ['PollWorker']);
+    assert.match(work.workRowHtml(item, false, NOW), /work-cell--tags" title="PollWorker"><span class="dc-tag work-tag">PollWorker<\/span><\/td>/);
+    // The details list every tag.
+    assert.match(work.workDetailsHtml(item, NOW), /<span class="dc-tag work-tag">PollWorkerPeriodic<\/span>/);
+    // A tag that only looks like another work's name stays.
+    const other = Object.assign({}, item, { uniqueName: 'Other' });
+    assert.deepStrictEqual(plain(work.workListTags(other, new Set())), ['PollWorker', 'PollWorkerPeriodic']);
+});
+
 // ── Times and the details ───────────────────────────────────────
 
 test('a duration is in the largest unit that fits, with the next one', () => {
@@ -134,8 +146,8 @@ test('enqueued work whose time has passed waits, and says for what', () => {
 
     const late = Object.assign(byClass('RetryWorker'), { nextScheduleTimeMillis: NOW - 15000 });
     assert.match(work.workRowHtml(late, false, NOW), /the system decides when it runs\.">waiting</);
-    // Running and blocked work keep the time as it is.
-    assert.match(work.workRowHtml(Object.assign(byClass('RetryWorker'), { state: 'BLOCKED', nextScheduleTimeMillis: NOW - 15000 }), false, NOW), /data-at="1792419725000"[^>]*>15 s ago</);
+    // Blocked work waits for other work, not for its time.
+    assert.match(work.workRowHtml(Object.assign(byClass('RetryWorker'), { state: 'BLOCKED', nextScheduleTimeMillis: NOW - 15000 }), false, NOW), />after others</);
 });
 
 test('the constraints name only what the work waits for', () => {
@@ -219,6 +231,13 @@ test('the details show the output as JSON, and say when a value is empty', () =>
     // A run's own schedule time is in the past: running work says so instead.
     const running = work.workDetailsHtml(Object.assign(byClass('RetryWorker'), { state: 'RUNNING' }), NOW);
     assert.match(running, /Next run<\/th><td class="dc-kv__value"><span class="dc-comment">\/\/ running now</);
+});
+
+test('blocked work says that it runs after the work before it in its chain', () => {
+    // WorkInfo has no next run for blocked work, and does not name the work it waits for.
+    const blocked = Object.assign(byClass('RetryWorker'), { state: 'BLOCKED', nextScheduleTimeMillis: null });
+    assert.match(work.workRowHtml(blocked, false, NOW), /work-cell--next"><span class="dc-comment" title="WorkManager runs it when the work before it in its chain[^"]*">after others<\/span>/);
+    assert.match(work.workDetailsHtml(blocked, NOW), /Next run<\/th><td class="dc-kv__value"><span class="dc-comment">\/\/ WorkManager runs it when the work before it in its chain \(beginWith\(\) and then\(\)\) has succeeded\./);
 });
 
 // ── The timeline ────────────────────────────────────────────────

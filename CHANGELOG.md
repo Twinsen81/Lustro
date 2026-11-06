@@ -860,6 +860,36 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Fixed
 
+- **The Preferences tab opens a file that the app registered, not one that it
+  found.** The console sorted all files by key count, so a file that the tab
+  found on disk came first when it had more keys. A push notification app
+  registers its own settings file, and its androidx settings screen fills the
+  default file with the same keys, so the console opened that read-only file,
+  whose values the app does not read. The files that the app registered now
+  come first, then the found ones, each group the fullest first, as the
+  SQLite tab lists its databases. Verified on a physical Android 10 device:
+  the console opens the app's file of 13 keys, and the found file of 15 keys
+  is the second tab.
+- **The WorkManager list leaves out the tag that is a work's unique name, and
+  says what blocked work waits for.** Apps tag work with its unique name,
+  because `WorkInfo` has none, so the Tags column of a periodic work repeated
+  its Unique name column. Details still lists every tag. Blocked work showed
+  `-` as its next run, with nothing about why it does not run: a push
+  notification app downloads an attachment and then its icon as one chain,
+  and the icon's download stayed blocked while the attachment's ran. It now
+  shows `after others`, and Details says that WorkManager runs it when the
+  work before it in its chain has succeeded. `WorkInfo` does not say which
+  work that is. Verified with that chain on a physical Android 10 device and
+  on an Android 16 emulator.
+- **The SQLite tab gives `VACUUM` its own reason.** `POST query` and `POST exec`
+  refused a plain `VACUUM` with the reason of `VACUUM INTO`, "writes a copy of
+  the database to a new file". A plain `VACUUM` now says that it rebuilds the
+  whole file while the app's writes wait, and that SQLite does not run it in
+  the transaction of a write; `VACUUM INTO` keeps its reason.
+- **The README says that the SQLite mask reads only column names.** A table
+  that keeps the name of a secret in a row, such as HTTP headers in `name`
+  and `value` columns, shows the value of an `Authorization` row.
+
 - **The WorkManager tab shows a network constraint that is a
   `NetworkRequest`.** From API 28, `Constraints.Builder.setRequiredNetworkRequest`
   keeps the request in place of a `NetworkType`, and `requiredNetworkType` is

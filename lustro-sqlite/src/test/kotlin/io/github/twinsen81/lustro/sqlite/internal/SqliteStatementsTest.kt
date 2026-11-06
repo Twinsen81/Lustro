@@ -22,6 +22,17 @@ class SqliteStatementsTest {
     }
 
     @Test
+    fun `VACUUM and VACUUM INTO are refused each with its own reason`() {
+        for (sql in listOf("VACUUM", "vacuum main", "VACUUM \"main\"", "/* x */ VACUUM;")) {
+            val reason = SqliteStatements.refusal(sql, exec = true)
+            assertTrue("$sql: $reason", reason!!.startsWith("VACUUM is refused: it rebuilds the whole database file"))
+        }
+        for (sql in listOf("VACUUM INTO '/tmp/copy.db'", "vacuum into '/tmp/copy.db'", "VACUUM main INTO '/tmp/copy.db'", "VACUUM \"main\" /* x */ INTO '/tmp/copy.db'")) {
+            assertEquals(sql, "VACUUM INTO is refused: it writes a copy of the database to a new file", SqliteStatements.refusal(sql, exec = false))
+        }
+    }
+
+    @Test
     fun `the keyword is found past white space, comments, empty statements, and EXPLAIN`() {
         val disguised =
             listOf(
