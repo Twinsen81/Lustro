@@ -13,7 +13,9 @@ the [README](https://github.com/Twinsen81/Lustro/blob/main/README.md).
   product flavors.
 - `minSdk`, `compileSdk`, the Android Gradle Plugin, Kotlin, and OkHttp. Lustro needs
   `compileSdk` 35, AGP 8.6, Kotlin 2.0, OkHttp 4.12.0, and, for the debug build only, `minSdk` 24
-  (step 3). It does not raise the app's own versions.
+  (step 3). When the app's `compileSdk`, AGP, Kotlin, or OkHttp is older, it needs an upgrade,
+  which changes its release build too: ask the user before you upgrade. Lustro's artifacts do not
+  raise the versions of the app's dependencies.
 - Each `OkHttpClient` that sends the app's requests, where the app builds it (often a dependency
   injection module), and its interceptors. Retrofit, Coil, and Ktor's OkHttp engine use one.
 - How the app makes WebSockets, and its other HTTP clients, also those of its libraries, such as
@@ -138,9 +140,11 @@ Add every tab before `build()`: after `start()`, `addTab()` throws. The other ty
 - **The Send form.** `NetworkDebugTab.create(senders = listOf(OkHttpSender.create("API", baseUrl = "https://api.example.com", client = client)))`,
   where `client` is a `() -> OkHttpClient`, lets the console send requests through the app's
   client. Lustro calls it only at the first send.
-- **Other clients.** For `HttpURLConnection`, pass `capturePlatformHttp = true` to
-  `NetworkDebugTab.create`, with `@OptIn(ExperimentalPlatformCapture::class)`. For another client,
-  report each request to `lustro.networkCaptureSink()`.
+- **Other clients.** For `HttpURLConnection`, create the tab with
+  `NetworkDebugTab.create(senderClient = null, capturePlatformHttp = true)`, or with `senders` in
+  place of `senderClient`, and `@OptIn(ExperimentalPlatformCapture::class)`. The overloads that take
+  `capturePlatformHttp` have no default for the first parameter. For another client, report each
+  request to `lustro.networkCaptureSink()`.
 - **Plugin tabs.**
   - Preferences: `PrefsDebugTab.create(app)` lists every file, masked and read-only. Register a
     file to see its values and edit them: `files = listOf(PrefsFile("settings", prefs, ValuePolicy.VISIBLE))`.

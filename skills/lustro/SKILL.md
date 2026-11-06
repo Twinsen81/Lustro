@@ -102,8 +102,8 @@ lustro api GET work/events --param type=finished,exception     # the result or e
   `src/debug` only.
 - The token gives access to the app's data: do not write it into files, commits, or reports.
 - A mock rule, a throttle, an edit, an SQL `exec`, and a work `cancel` change what the app does.
-  Tell the user what you changed, and undo it when you are done. An app can read a preference
-  only when it starts or connects, so restart it after an edit and after the undo.
+  Tell the user what you changed, and undo it when you are done. Many apps read a preference once,
+  for example when they start, so restart the app after an edit and after the undo.
 - Keep the output small: `--last N`, `--no-body`, `--fields id,statusCode,url`, `--param limit=N`,
   and `head -c`. Bodies and log text can be large.
 
