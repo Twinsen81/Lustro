@@ -1061,6 +1061,9 @@ Errors use the shared envelope; key statuses:
   `screen/tree`, with `code: "main_thread_blocked"`: the app's main thread did not start the read
   within 5 s, or did not finish it within 5 s and the settle time, because the app is busy or does
   not respond. Try again, or look for an ANR in the log.
+- **`500 internal_error` with `code: "read_failed"`** on `screen/tree`: the read threw on the main
+  thread, as with a View of the app whose getter throws. The message names the exception; the app
+  goes on.
 - **`404 not_found`** — unknown route, missing transaction, a body that wasn't kept, or `send` with
   no sender configured. Also a WebSocket connection that the app cleared or evicted, and a message
   with no stored payload. Also every `logs/` route when the app did not register the Logs plugin

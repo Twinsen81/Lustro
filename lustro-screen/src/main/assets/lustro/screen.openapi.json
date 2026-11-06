@@ -16,7 +16,7 @@
       "get": {
         "operationId": "getScreenTree",
         "summary": "The app's windows, and the nodes of each.",
-        "description": "Reads every window of the app's process on the main thread, and calls the app's ScreenContextProvider after the read. GET changes nothing. When the main thread does not start the read in 5000 ms, or does not finish it in 5000 ms and the settle time, the request answers 504 with code main_thread_blocked.",
+        "description": "Reads every window of the app's process on the main thread, and calls the app's ScreenContextProvider after the read. GET changes nothing. When the main thread does not start the read in 5000 ms, or does not finish it in 5000 ms and the settle time, the request answers 504 with code main_thread_blocked. When the read throws, as with a View of the app whose getter throws, it answers 500 with code read_failed, and the app goes on.",
         "parameters": [
           {
             "name": "merged",
@@ -59,6 +59,9 @@
             "$ref": "#/components/responses/Error"
           },
           "405": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
             "$ref": "#/components/responses/Error"
           },
           "504": {
