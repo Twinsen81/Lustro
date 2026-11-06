@@ -2,7 +2,7 @@
 
 The console is a terminal-flavored developer tool: dark-first, one blue accent,
 monospace everywhere, dense and high-contrast. Everything below ships in
-[`shared.css`](../lustro/src/main/assets/lustro/shared.css), which the chrome
+[`shared.css`](https://github.com/Twinsen81/Lustro/blob/main/lustro/src/main/assets/lustro/shared.css), which the chrome
 loads on every tab page — **built-in tabs and third-party tabs get the same
 design system with zero setup**. This document is the contract for anyone
 writing a tab.

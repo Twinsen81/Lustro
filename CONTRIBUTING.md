@@ -93,6 +93,25 @@ replaces the sample's mock rules with one rule that mocks `GET /get`, and it
 sets the device to stay awake while it charges. CI runs both on API 24, 35, and
 36 emulators.
 
+## Documentation site
+
+The user docs are Markdown in `docs/`, and [Zensical](https://zensical.org)
+builds them into the site that `.github/workflows/docs.yml` publishes to
+GitHub Pages; `zensical.toml` sets the navigation and the theme. To preview a
+change, with Python 3.11 or later:
+
+```bash
+python -m pip install -r docs/requirements.txt
+zensical serve                  # http://localhost:8000, rebuilt on each save
+zensical build --clean --strict # what CI runs: fails on a broken link or anchor
+```
+
+A link between pages is relative and names the Markdown file, such as
+`[Agents](AGENTS.md#use-the-lustro-cli)`, so that the strict build checks it. A
+link to a file outside `docs/`, such as a source file, is a full GitHub URL.
+The Kotlin API reference is not in the preview: CI adds the Dokka output under
+`api/` when it publishes.
+
 ## Module layout
 
 - **`:lustro-api`** — pure-Kotlin JAR with the public SPI only: `DebugTab`,
