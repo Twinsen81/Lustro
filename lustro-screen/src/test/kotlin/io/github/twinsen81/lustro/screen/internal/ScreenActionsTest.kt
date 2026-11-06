@@ -171,6 +171,24 @@ class ScreenActionsTest {
     }
 
     @Test
+    fun `a scroll by pixels moves a ListView's rows, and back`() {
+        val controller = Robolectric.buildActivity(android.app.Activity::class.java)
+        controller.get().setTheme(android.R.style.Theme_Material_Light_NoActionBar)
+        val activity = controller.setup().get()
+        val list = android.widget.ListView(activity).apply { tag = "rows" }
+        list.adapter = android.widget.ArrayAdapter(activity, android.R.layout.simple_list_item_1, (1..50).map { "Row $it" })
+        activity.setContentView(list, android.view.ViewGroup.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, 400))
+        ScreenFixtures.idle()
+        assertEquals(0, list.firstVisiblePosition)
+        assertEquals(200, postOffMain(everyWindow, "scroll", """{"tag":"rows","dy":600}""").status)
+        assertTrue("first row ${list.firstVisiblePosition}", list.firstVisiblePosition > 0)
+        // The rows moved, not the View's own content.
+        assertEquals(0, list.scrollY)
+        assertEquals(200, postOffMain(everyWindow, "scroll", """{"tag":"rows","dy":-600}""").status)
+        assertEquals(0, list.firstVisiblePosition)
+    }
+
+    @Test
     fun `an action that throws gives a 500 with action_failed, and the main thread goes on`() {
         actions(throwOnTap = true)
         val response = postOffMain(everyWindow, "click", """{"tag":"counter"}""")
