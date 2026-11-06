@@ -65,3 +65,10 @@ updates:
         update-types:
           - "minor"
           - "patch"
+
+  # The Zensical pin of the docs site build (docs.yml).
+  - package-ecosystem: "pip"
+    directory: "/docs"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5

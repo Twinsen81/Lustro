@@ -1,0 +1,33 @@
+/* The teal of the Lustro logo, for links, the active page, and other accents. */
+[data-md-color-primary="custom"] {
+  --md-primary-fg-color: #1f6f6b;
+  --md-primary-fg-color--light: #2c8a85;
+  --md-primary-fg-color--dark: #164f4c;
+  --md-primary-bg-color: #ffffff;
+  --md-primary-bg-color--light: rgba(255, 255, 255, 0.7);
+}
+
+[data-md-color-accent="custom"] {
+  --md-accent-fg-color: #1f6f6b;
+  --md-accent-fg-color--transparent: rgba(31, 111, 107, 0.1);
+}
+
+[data-md-color-scheme="default"][data-md-color-primary="custom"] {
+  --md-typeset-a-color: #1f6f6b;
+}
+
+[data-md-color-scheme="slate"][data-md-color-primary="custom"] {
+  --md-primary-fg-color: #6fc7c2;
+  --md-typeset-a-color: #6fc7c2;
+}
+
+[data-md-color-scheme="slate"][data-md-color-accent="custom"] {
+  --md-accent-fg-color: #6fc7c2;
+  --md-accent-fg-color--transparent: rgba(111, 199, 194, 0.12);
+}
+
+.lustro-wordmark {
+  display: block;
+  width: min(420px, 100%);
+  margin: 0 auto 1.5rem;
+}

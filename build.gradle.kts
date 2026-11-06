@@ -98,8 +98,9 @@ facadeParity {
     )
 }
 
-// Registers `checkDocsVersion`: the coordinates that README.md, llms.txt, and
-// context7.json give to people and agents must match GROUP and VERSION_NAME.
+// Registers `checkDocsVersion`: the coordinates that README.md, docs/index.md,
+// llms.txt, and context7.json give to people and agents must match GROUP and
+// VERSION_NAME.
 // See gradle/docs-version.gradle.kts.
 apply(from = "gradle/docs-version.gradle.kts")
 
@@ -107,7 +108,7 @@ apply(from = "gradle/docs-version.gradle.kts")
 // module needs no entry here or in release.yml:
 //   - `./gradlew dokkaGenerate` renders the API docs of those with Dokka (all but
 //     lustro-wire-schema, which has no Kotlin API) into one site in
-//     build/dokka/html, which release.yml deploys to gh-pages;
+//     build/dokka/html, which docs.yml publishes under api/ on the docs site;
 //   - `./gradlew collectReleaseArtifacts` copies the AAR of each Android module and
 //     the jar of each JVM module into build/release-artifacts, which release.yml
 //     attaches to the GitHub Release.

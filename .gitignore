@@ -27,3 +27,7 @@ dist/
 *.keystore
 *.jks
 secrets.properties
+
+# Docs site (zensical build)
+site/
+.cache/

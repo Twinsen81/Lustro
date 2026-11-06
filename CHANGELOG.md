@@ -14,6 +14,19 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Added
 
+- **A documentation site.** `zensical.toml` builds the Markdown in `docs/`
+  with [Zensical](https://zensical.org) into a site with search, a light and a
+  dark theme, and an edit link on each page. `.github/workflows/docs.yml`
+  builds it with `--strict` in each pull request that changes the docs, so a
+  link to a page or an anchor that is not there fails the build, and at each
+  push to `main` publishes it to GitHub Pages, at
+  `https://twinsen81.github.io/Lustro/`, with the Dokka API reference of the
+  published modules under `api/` and the wire-protocol schemas under
+  `wire-protocol/`, at the URLs that their `$id` fields name. The site has a
+  home page with a quick start, `docs/AGENTS.md`, and `docs/STYLEGUIDE.md`. A
+  release no longer pushes Dokka to a `gh-pages` branch, and `checkDocsVersion`
+  also checks the coordinates in `docs/index.md`.
+
 - **The WorkManager tab names the unique work of every work request, and
   links each run to its log lines.** `WorkInfo` has no unique name, so the tab
   labelled only the work of the names that the app listed in `uniqueNames`.
