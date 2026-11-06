@@ -19,7 +19,10 @@ import java.util.WeakHashMap
  * app without Compose UI. A View that is `GONE` is left out with its children; one
  * that is `INVISIBLE` is in the tree with no visible part.
  */
-internal class TreeReader(private val compose: ComposeReader?) {
+internal class TreeReader(
+    private val compose: ComposeReader?,
+    private val hasWindowFocus: (View) -> Boolean = View::hasWindowFocus,
+) {
     fun read(roots: List<View>, source: String, merged: Boolean): ScreenWindows {
         val errors = ArrayList<String>(0)
         val windows = roots.map { window(it, merged, errors) }
@@ -36,7 +39,8 @@ internal class TreeReader(private val compose: ComposeReader?) {
             type = params?.type,
             kind = windowKind(params?.type),
             title = params?.title?.toString()?.takeIf { it.isNotEmpty() },
-            hasWindowFocus = root.hasWindowFocus(),
+            hasWindowFocus = hasWindowFocus(root),
+            focusable = params == null || params.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE == 0,
             visible = root.isShown && root.windowVisibility == View.VISIBLE,
             bounds = ScreenRect(onScreen[0], onScreen[1], onScreen[0] + root.width, onScreen[1] + root.height),
             nodes = nodes,

@@ -42,8 +42,10 @@ see [DECISIONS.md](DECISIONS.md).
   Each window says whether it has the window focus, so a client sees when a
   window of another app, such as a permission dialog, is on top: the server
   still answers then. `merged=false` gives the unmerged semantics tree, and
-  `settle=MS` reads on each frame until two reads in a row are the same, for up
-  to MS. A `ScreenContextProvider` adds what only the app knows, such as its
+  `settle=MS` reads on each frame until two reads in a row are the same and the
+  window focus is at rest, for up to MS: the window manager moves the focus to a
+  new dialog some frames after it shows, 170 to 240 ms on a physical device. A
+  `ScreenContextProvider` adds what only the app knows, such as its
   navigation back stack, as `context`. The tab reads on the main thread, and a
   main thread that does not run the read within 5 s answers `504` with code
   `main_thread_blocked`. From API 29 the tab lists the windows with

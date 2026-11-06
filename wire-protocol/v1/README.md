@@ -212,7 +212,7 @@ with the core wire.
 - **Screen `1.0`** (`:lustro-screen`) - the app's windows and the UI tree in
   each under `/api/v1/screen/`. `GET tree` returns the windows of the app's
   process in the order the app added them, each `{ id, type, kind, title,
-  hasWindowFocus, visible, bounds, nodes }`, and the nodes of each, a parent
+  hasWindowFocus, focusable, visible, bounds, nodes }`, and the nodes of each, a parent
   before its children: the classic Views and the Compose semantics nodes of
   each Compose host, the merged tree by default and the unmerged one with
   `merged=false`. A node has its `id`, `parent`, and `kind`, its `bounds` in the
@@ -220,8 +220,8 @@ with the core wire.
   no part of it is there, and leaves out what it does not have: its
   `className` and `resourceId`, `testTag`, `text`, `contentDescription`,
   `editableText`, `role`, `toggle`, `selected`, `actions`, and scroll ranges.
-  `settle=MS` reads on each frame until two reads in a row are the same, and
-  adds `settle`. `context` is what the app's `ScreenContextProvider` returned.
+  `settle=MS` reads on each frame until two reads in a row are the same and
+  the window focus is at rest, and adds `settle`. `context` is what the app's `ScreenContextProvider` returned.
   A main thread that does not run the read answers `504` with the code
   `main_thread_blocked`.
 

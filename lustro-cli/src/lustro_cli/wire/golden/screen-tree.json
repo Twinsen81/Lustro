@@ -6,6 +6,7 @@
       "kind": "activity",
       "title": "io.github.twinsen81.lustro.screen.test\/androidx.activity.ComponentActivity",
       "hasWindowFocus": false,
+      "focusable": true,
       "visible": true,
       "bounds": {
         "left": 0,
@@ -464,6 +465,7 @@
       "kind": "dialog",
       "title": "io.github.twinsen81.lustro.screen.test\/androidx.activity.ComponentActivity",
       "hasWindowFocus": false,
+      "focusable": true,
       "visible": true,
       "bounds": {
         "left": 0,

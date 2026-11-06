@@ -1193,7 +1193,9 @@ val lustro = Lustro.builder(application)
   its navigation back stack, as JSON. The tab calls it on the main thread after each read, and
   the tree carries it as `context`.
 - **On the main thread.** `settle=500` reads the tree on each frame until two reads in a row are
-  the same, for up to 500 ms, for a screen that still changes. A main thread that does not run
+  the same and the window focus is at rest, for up to 500 ms, for a screen that still changes:
+  the window manager moves the focus some frames after a dialog opens or closes, 200 ms and more
+  on a physical device. A main thread that does not run
   the read within five seconds gets the client a `504` with the code `main_thread_blocked`, so a
   script does not wait for an app that does not respond.
 - **The CLI.** `lustro screen tree` prints each window and the nodes on the screen that have a

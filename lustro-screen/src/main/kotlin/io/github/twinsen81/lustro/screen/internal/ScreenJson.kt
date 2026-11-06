@@ -37,6 +37,7 @@ internal object ScreenJson {
         out.append(",\"title\":")
         if (window.title == null) out.append("null") else out.appendString(window.title)
         out.append(",\"hasWindowFocus\":").append(window.hasWindowFocus)
+        out.append(",\"focusable\":").append(window.focusable)
         out.append(",\"visible\":").append(window.visible)
         out.append(",\"bounds\":").appendRect(window.bounds)
         out.append(",\"nodes\":[")

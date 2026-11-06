@@ -5,6 +5,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.view.Choreographer
+import android.view.View
 import io.github.twinsen81.lustro.DebugRequest
 import io.github.twinsen81.lustro.screen.ScreenContextProvider
 import java.util.concurrent.CountDownLatch
@@ -27,17 +28,18 @@ internal class ScreenSource(
     private val contextProvider: ScreenContextProvider?,
     private val mainThreadTimeoutMs: Long = MAIN_THREAD_TIMEOUT_MS,
     composeAvailable: Boolean = ComposeSupport.isAvailable(ScreenSource::class.java.classLoader),
+    windowFocus: (View) -> Boolean = View::hasWindowFocus,
 ) {
     private val roots = WindowRoots(activities)
     private val compose = if (composeAvailable) ComposeReader() else null
-    private val reader = TreeReader(compose)
+    private val reader = TreeReader(compose, windowFocus)
     private val main = Handler(Looper.getMainLooper())
 
     val composeAvailable: Boolean get() = compose != null
 
     /**
      * Reads the tree. With [settleMs] above zero, reads it on each frame until two
-     * reads in a row are equal, for up to [settleMs].
+     * reads in a row are equal and the window focus is at rest, for up to [settleMs].
      *
      * @throws MainThreadBlocked when the main thread does not start the read in time.
      * @throws InterruptedException when the runtime gives up on the request.
@@ -112,7 +114,10 @@ internal class ScreenSource(
         return ScreenTree(read, merged, context.resources.displayMetrics.density, composeAvailable, settle, json, error)
     }
 
-    /** Reads on each frame until two reads in a row are equal, or the time is over. Runs on the main thread. */
+    /**
+     * Reads on each frame until two reads in a row are equal and the window focus is at
+     * rest, or the time is over. Runs on the main thread.
+     */
     private inner class Settle(
         private val merged: Boolean,
         private val settleMs: Int,
@@ -134,7 +139,9 @@ internal class ScreenSource(
                 frames++
                 val read = readNow(merged)
                 val waited = SystemClock.uptimeMillis() - startedAt
-                val settled = read == last
+                // Equal reads before the window focus has moved are not at rest: the next
+                // frames move it, and a client would act on the window that loses it.
+                val settled = read == last && read.focusSettled
                 if (settled || waited >= settleMs) {
                     complete(Result.success(finish(read, merged, SettleResult(settleMs, settled, waited, frames))))
                 } else {

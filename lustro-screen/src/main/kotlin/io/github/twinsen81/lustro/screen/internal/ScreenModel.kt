@@ -79,6 +79,7 @@ internal data class ScreenWindow(
     val kind: String,
     val title: String?,
     val hasWindowFocus: Boolean,
+    val focusable: Boolean,
     val visible: Boolean,
     val bounds: ScreenRect,
     val nodes: List<ScreenNode>,
@@ -89,7 +90,15 @@ internal data class ScreenWindows(
     val windows: List<ScreenWindow>,
     val source: String,
     val composeError: String?,
-)
+) {
+    /**
+     * Whether the window focus has come to rest: the top visible window that can take the
+     * focus has it. The window manager moves the focus some frames after a dialog opens
+     * or closes, 200 ms and more on a physical device, so a read before then has the focus
+     * on a window that will lose it. With no such window, there is nothing to wait for.
+     */
+    val focusSettled: Boolean get() = windows.lastOrNull { it.visible && it.focusable }?.hasWindowFocus ?: true
+}
 
 /** How a `settle` wait ended: whether two reads in a row were equal, after how long and how many frames. */
 internal class SettleResult(val requestedMs: Int, val settled: Boolean, val waitedMs: Long, val frames: Int)

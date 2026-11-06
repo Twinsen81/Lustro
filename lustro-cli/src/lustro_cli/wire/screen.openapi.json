@@ -3,7 +3,7 @@
   "info": {
     "title": "Lustro Screen debug tab",
     "version": "1.0",
-    "description": "The app's windows and the UI tree in each: the classic Views, and the Compose semantics nodes of each Compose host, read in the app's process on the main thread. A read takes milliseconds, sees every test tag, and does not wait for the screen to stop changing, as uiautomator dump does; ?settle waits for two reads in a row to be the same. The tree has the app's own windows only: a permission dialog, the chooser, the keyboard, a notification, and a toast are not in it, and a WebView is a View without its page. When no window has hasWindowFocus, a window of another app is on top. The text of a password field comes as one dot for each character. The tab has no console view, so it is not in the tab bar; _meta lists it. All routes are token-authenticated (Bearer header or HttpOnly cookie) and live under /api/v1/screen. Errors use the shared error envelope."
+    "description": "The app's windows and the UI tree in each: the classic Views, and the Compose semantics nodes of each Compose host, read in the app's process on the main thread. A read takes milliseconds, sees every test tag, and does not wait for the screen to stop changing, as uiautomator dump does; ?settle waits for two reads in a row to be the same, with the window focus at rest. The tree has the app's own windows only: a permission dialog, the chooser, the keyboard, a notification, and a toast are not in it, and a WebView is a View without its page. When no window has hasWindowFocus, a window of another app is on top. The text of a password field comes as one dot for each character. The tab has no console view, so it is not in the tab bar; _meta lists it. All routes are token-authenticated (Bearer header or HttpOnly cookie) and live under /api/v1/screen. Errors use the shared error envelope."
   },
   "servers": [
     {
@@ -38,7 +38,7 @@
               "maximum": 10000,
               "default": 0
             },
-            "description": "Read the tree on each frame until two reads in a row are the same, for up to this many milliseconds, and return the last read with settle. 0 reads once. 400 with field settle for any other value."
+            "description": "Read the tree on each frame until two reads in a row are the same and the window focus is at rest, the top visible window that can take the focus having it, for up to this many milliseconds, and return the last read with settle. The window manager moves the focus some frames after a dialog opens or closes. 0 reads once. 400 with field settle for any other value."
           }
         ],
         "responses": {
@@ -150,6 +150,7 @@
           "kind",
           "title",
           "hasWindowFocus",
+          "focusable",
           "visible",
           "bounds",
           "nodes"
@@ -186,6 +187,10 @@
           "hasWindowFocus": {
             "type": "boolean",
             "description": "Whether the window has the window focus. A window of another app, such as a permission dialog or the chooser, can cover the app while the server still answers, and then no window of the app has the focus: read that window with uiautomator."
+          },
+          "focusable": {
+            "type": "boolean",
+            "description": "Whether the window can take the focus: false for a window with FLAG_NOT_FOCUSABLE, such as a popup that does not take the keys."
           },
           "visible": {
             "type": "boolean",
@@ -440,7 +445,7 @@
           },
           "settled": {
             "type": "boolean",
-            "description": "Whether two reads on consecutive frames were the same. false when the time was over first, and the tree is the last read."
+            "description": "Whether two reads on consecutive frames were the same and the window focus was at rest. false when the time was over first, and the tree is the last read, as while a window of another app has the focus."
           },
           "waitedMs": {
             "type": "integer",

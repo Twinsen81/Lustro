@@ -812,13 +812,13 @@ has no route that changes the app.
 
 | Operation | Route | Notes |
 | --- | --- | --- |
-| Read the screen | `GET tree?merged=&settle=` | `{ windows, merged, density, compose, windowSource, context, settle?, contextError?, composeError? }`. `merged=false` gives the unmerged semantics tree, in which each text is a node of its own; a node has the same id in both. `settle=MS`, from 1 to 10000, reads on each frame until two reads in a row are the same, for up to MS, and adds `settle: { requestedMs, settled, waitedMs, frames }`. |
+| Read the screen | `GET tree?merged=&settle=` | `{ windows, merged, density, compose, windowSource, context, settle?, contextError?, composeError? }`. `merged=false` gives the unmerged semantics tree, in which each text is a node of its own; a node has the same id in both. `settle=MS`, from 1 to 10000, reads on each frame until two reads in a row are the same and the window focus is at rest (the top visible window that can take the focus has it), for up to MS, and adds `settle: { requestedMs, settled, waitedMs, frames }`. |
 
-**A window.** `{ id, type, kind, title, hasWindowFocus, visible, bounds, nodes }`, in the order the
+**A window.** `{ id, type, kind, title, hasWindowFocus, focusable, visible, bounds, nodes }`, in the order the
 app added the windows: the activity first, then each dialog, popup, and bottom sheet over it.
 `kind` is `activity`, `dialog`, `popup`, `system`, or `other`, from the window `type` of the root
 View's `WindowManager.LayoutParams`. `id` is the id of the window's first node, its root View.
-`hasWindowFocus` is `true` for the window that gets the keys and the touches first. The server
+`hasWindowFocus` is `true` for the window that gets the keys and the touches first, and `focusable` is `false` for a window that can't take the focus, such as a popup that does not take the keys. The window manager moves the focus some frames after a dialog opens or closes, 200 ms and more on a physical device, so a read right after a tap can still have it on the window under the dialog: read with `settle` after a tap. The server
 answers while the app's process is started, so it also answers while a permission dialog, the
 chooser, or a translucent activity of another app covers the app, and for at least 700 ms after a
 full-screen activity of another app covers it. Then no window of the app has the focus: read that

@@ -6,6 +6,7 @@
       "kind": "activity",
       "title": "io.github.twinsen81.lustro.screen.test\/android.app.Activity",
       "hasWindowFocus": false,
+      "focusable": true,
       "visible": true,
       "bounds": {
         "left": 0,

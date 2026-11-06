@@ -49,8 +49,12 @@ import org.robolectric.Shadows.shadowOf
 internal object ScreenFixtures {
     val app: Application get() = ApplicationProvider.getApplicationContext()
 
-    fun tab(contextProvider: ScreenContextProvider? = null, timeoutMs: Long = ScreenSource.MAIN_THREAD_TIMEOUT_MS, compose: Boolean = true): ScreenDebugTab =
-        ScreenDebugTab.create(ScreenSource(app, ActivityTracker(), contextProvider, timeoutMs, composeAvailable = compose))
+    fun tab(
+        contextProvider: ScreenContextProvider? = null,
+        timeoutMs: Long = ScreenSource.MAIN_THREAD_TIMEOUT_MS,
+        compose: Boolean = true,
+        focus: (android.view.View) -> Boolean = android.view.View::hasWindowFocus,
+    ): ScreenDebugTab = ScreenDebugTab.create(ScreenSource(app, ActivityTracker(), contextProvider, timeoutMs, composeAvailable = compose, windowFocus = focus))
 
     /** A Compose screen: a title, a field, a password field, a switch, a button, a list; and, when [dialog], a dialog over it. */
     fun composeActivity(dialog: Boolean = false, onSave: () -> Unit = {}): ComponentActivity {
