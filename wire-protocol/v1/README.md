@@ -11,7 +11,7 @@ the protocol a stable public contract independent of the library's Kotlin API.
   A future incompatible revision becomes `/api/v2/`, and the old major stays
   alive for at least one major release.
 - The **minor** protocol version is reported at runtime in
-  `GET /api/v1/_meta` as `_meta.protocolVersion` (currently `1.10`).
+  `GET /api/v1/_meta` as `_meta.protocolVersion` (currently `1.11`).
 
 ## Contents
 
@@ -153,6 +153,11 @@ client got them.
   each counted with the copies it had replaced in turn. It is `0` when the
   transaction replaced none.
 
+- **1.11** - The error envelope's `error` has the type `conflict`, for a
+  `409`: a request that conflicts with the state of the app, such as an action
+  on a node that a dialog covers. Every tab's schema has the same envelope, so
+  each lists the type; only the routes that answer `409` send it.
+
 ## Plugin tabs
 
 A plugin tab ships in its own artifact pair and versions its routes in its own
@@ -209,7 +214,7 @@ with the core wire.
   `installed`, `missing`, or `unsupported`. Every route answers `503` with the
   code `work_unsupported` below WorkManager 2.12.0, and the routes that read
   work `503` with `work_not_initialized` until the app initializes WorkManager.
-- **Screen `1.0`** (`:lustro-screen`) - the app's windows and the UI tree in
+- **Screen `1.1`** (`:lustro-screen`) - the app's windows and the UI tree in
   each under `/api/v1/screen/`. `GET tree` returns the windows of the app's
   process in the order the app added them, each `{ id, type, kind, title,
   hasWindowFocus, focusable, visible, bounds, nodes }`, and the nodes of each, a parent
@@ -223,7 +228,14 @@ with the core wire.
   `settle=MS` reads on each frame until two reads in a row are the same and
   the window focus is at rest, and adds `settle`. `context` is what the app's `ScreenContextProvider` returned.
   A main thread that does not run the read answers `504` with the code
-  `main_thread_blocked`.
+  `main_thread_blocked`. From `1.1`, `POST click`, `POST set-text` (with
+  `value`), and `POST scroll` (with `index`, or `dx` and `dy`) take one selector,
+  `tag`, `text`, `contentDescription`, or `id`, run the target node's semantics
+  action, and return `{ status, action, matched, target, handled, tree }`.
+  They answer `409 conflict` with the codes `ambiguous`,
+  `not_in_focused_window`, `no_window_focus`, `not_on_screen`, `disabled`, and
+  `no_action`, unless `force` skips the window and screen checks; `404` with
+  `no_match`; and `500` with `action_failed`.
 
 ## Status
 
