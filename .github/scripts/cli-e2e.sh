@@ -433,4 +433,44 @@ fi
 cat "$OUT/work-cancel-none.txt"
 grep -q "^error: 404 not_found" "$OUT/work-cancel-none.txt"
 
+# The Screen tab reads the sample's windows: the home screen, the Screen page, and the
+# Compose dialog over it, a window of its own that takes the focus. The taps go to the
+# middle of each node's visible bounds, as a user's would.
+step "lustro --json schema screen"
+lustro --json schema screen > "$OUT/schema-screen.json"
+check schema-screen < "$OUT/schema-screen.json"
+echo "matches the CLI's copy ($(wc -c < "$OUT/schema-screen.json") bytes)"
+
+lustro_to screen-home.json --json screen tree --settle 1000
+check screen-home < "$OUT/screen-home.json"
+lustro_to screen-home.txt screen tree
+check screen-text < "$OUT/screen-home.txt"
+
+# tap_tag TAG: scrolls until a window with the focus shows the node with test tag TAG, and taps it.
+tap_tag() {
+  local xy=""
+  for _ in $(seq 8); do
+    lustro --json screen tree --settle 1000 > "$OUT/screen-find.json"
+    xy="$(CLI_E2E_TAG="$1" check screen-center < "$OUT/screen-find.json" 2> /dev/null)" && break
+    xy=""
+    adb shell input swipe 500 1500 500 900 300
+  done
+  if [ -z "$xy" ]; then
+    echo "error: no window with the focus shows the node tagged $1" >&2
+    exit 1
+  fi
+  # shellcheck disable=SC2086
+  adb shell input tap $xy
+}
+
+step "Open the Screen page, then its Compose dialog"
+tap_tag "Screen"
+lustro_to screen-page.json --json screen tree --settle 1000
+check screen-page < "$OUT/screen-page.json"
+tap_tag "screen compose dialog"
+lustro_to screen-dialog.json --json screen tree --settle 1000
+check screen-dialog < "$OUT/screen-dialog.json"
+adb shell input keyevent KEYCODE_BACK
+adb shell input keyevent KEYCODE_BACK
+
 step "The CLI end to end passed"

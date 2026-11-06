@@ -115,6 +115,7 @@ discovery), `--json` (JSON output). They go before or after the command:
 | `lustro mock sync <file.json>` | `POST network/rules/_/sync` (atomic) |
 | `lustro senders` | `GET network/senders`: the clients that `send` can use, the default first |
 | `lustro send --url … [--sender NAME]` | `POST network/send` (synchronous), through the first sender or the one named |
+| `lustro screen tree [--unmerged] [--settle MS] [--all]` | `GET screen/tree`: each window of the app, and its nodes on the screen with a text, a tag, a role, or an action, one line each (see [The screen](#the-screen)) |
 | `lustro api METHOD PATH [--param K=V] [--body JSON \| --input FILE]` | any route: prints the response body (see [Any route](#any-route)) |
 
 > **Live use of `lustro open`** requires a running app: the server only listens
@@ -222,6 +223,26 @@ runs it after its first poll:
 ```bash
 lustro net wait --url /v1/orders --errors -- adb shell input tap 540 1200
 ```
+
+## The screen
+
+`lustro screen tree` reads the Screen tab, when the app registers it: each window of the app,
+the activity first and each dialog and popup after it, and in each the nodes on the screen that
+have a text, a tag, a role, an action, or a state. A line has the node's id, its role or class,
+its text, `#tag`, its states and actions, and its visible bounds in uiautomator's format:
+
+```text
+window 0  activity  com.example/com.example.MainActivity  no-focus  [0,0][1080,2400]
+  c5.15  Button  "Save"  #save  click  [53,1585][985,1667]
+window 1  dialog  com.example/com.example.MainActivity  focus  [120,963][960,1510]
+  c13.267  Button  "OK"  #dialog-ok  click  [745,1332][897,1437]
+```
+
+`--all` prints every node, also the containers and the nodes that are not on the screen.
+`--unmerged` reads the unmerged Compose semantics tree, `--settle MS` waits until two reads in a
+row are the same, for up to MS milliseconds, and `--json` prints the whole response. Each call
+looks up the token and the port again, so a script that reads the screen often sends the GET
+itself (see [docs/AGENTS.md](../docs/AGENTS.md#screen-tab-operations)).
 
 ## Any route
 
