@@ -25,7 +25,7 @@ desktop browser. Every tab is also a JSON API, so AI agents, scripts, and the
 
 | Tab | What it shows and does |
 | --- | --- |
-| **Network** | Captures OkHttp and `HttpURLConnection` traffic and the messages of WebSockets. Mocks responses, throttles requests, sends requests through the app's own clients, and exports HAR files. |
+| **Network** | Captures OkHttp traffic, the messages of WebSockets, and, when you opt in, `HttpURLConnection` traffic. Mocks responses, throttles requests, sends requests through the app's own clients, and exports HAR files. |
 | **Logs** | The app's own logcat, with filters for level, tag, text, and time. |
 | **Preferences** | Reads and edits the app's SharedPreferences and Preferences DataStores. |
 | **SQLite** | Reads the app's SQLite and Room databases, and runs SQL. Writes only to the databases that the app allows. |
