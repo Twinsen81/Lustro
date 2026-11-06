@@ -360,6 +360,10 @@ version. `main` takes changes only through pull requests.
    `0.2.1-SNAPSHOT`, and `__version__` to the same version without `-SNAPSHOT`.
    The docs can keep the release until the next release.
 
+For the first release, the pull request of step 1 also removes each sentence that says that the
+CLI is not on PyPI yet, and this paragraph. `git grep -n 'not on PyPI' -- ':!CONTRIBUTING.md'`
+finds them. `lustro-cli/README.md` is also the CLI's page on PyPI.
+
 ## Code of Conduct
 
 By participating you agree to abide by our
