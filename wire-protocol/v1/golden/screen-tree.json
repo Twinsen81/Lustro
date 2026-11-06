@@ -1,0 +1,687 @@
+{
+  "windows": [
+    {
+      "id": "v1",
+      "type": 1,
+      "kind": "activity",
+      "title": "io.github.twinsen81.lustro.screen.test\/androidx.activity.ComponentActivity",
+      "hasWindowFocus": false,
+      "visible": true,
+      "bounds": {
+        "left": 0,
+        "top": 0,
+        "right": 720,
+        "bottom": 1280
+      },
+      "nodes": [
+        {
+          "id": "v1",
+          "kind": "view",
+          "className": "com.android.internal.policy.DecorView",
+          "bounds": {
+            "left": 0,
+            "top": 0,
+            "right": 720,
+            "bottom": 1280
+          },
+          "screenBounds": {
+            "left": 0,
+            "top": 0,
+            "right": 720,
+            "bottom": 1280
+          },
+          "visibleBounds": {
+            "left": 0,
+            "top": 0,
+            "right": 720,
+            "bottom": 1280
+          }
+        },
+        {
+          "id": "v2",
+          "parent": "v1",
+          "kind": "view",
+          "className": "android.widget.LinearLayout",
+          "bounds": {
+            "left": 0,
+            "top": 0,
+            "right": 720,
+            "bottom": 1280
+          },
+          "screenBounds": {
+            "left": 0,
+            "top": 0,
+            "right": 720,
+            "bottom": 1280
+          },
+          "visibleBounds": {
+            "left": 0,
+            "top": 0,
+            "right": 720,
+            "bottom": 1280
+          }
+        },
+        {
+          "id": "v3",
+          "parent": "v2",
+          "kind": "view",
+          "className": "android.widget.FrameLayout",
+          "resourceId": "android:id\/content",
+          "bounds": {
+            "left": 0,
+            "top": 0,
+            "right": 720,
+            "bottom": 1280
+          },
+          "screenBounds": {
+            "left": 0,
+            "top": 0,
+            "right": 720,
+            "bottom": 1280
+          },
+          "visibleBounds": {
+            "left": 0,
+            "top": 0,
+            "right": 720,
+            "bottom": 1280
+          }
+        },
+        {
+          "id": "v4",
+          "parent": "v3",
+          "kind": "view",
+          "className": "androidx.compose.ui.platform.ComposeView",
+          "bounds": {
+            "left": 0,
+            "top": 0,
+            "right": 200,
+            "bottom": 369
+          },
+          "screenBounds": {
+            "left": 0,
+            "top": 0,
+            "right": 200,
+            "bottom": 369
+          },
+          "visibleBounds": {
+            "left": 0,
+            "top": 0,
+            "right": 200,
+            "bottom": 369
+          }
+        },
+        {
+          "id": "v5",
+          "parent": "v4",
+          "kind": "view",
+          "className": "androidx.compose.ui.platform.AndroidComposeView",
+          "bounds": {
+            "left": 0,
+            "top": 0,
+            "right": 200,
+            "bottom": 369
+          },
+          "screenBounds": {
+            "left": 0,
+            "top": 0,
+            "right": 200,
+            "bottom": 369
+          },
+          "visibleBounds": {
+            "left": 0,
+            "top": 0,
+            "right": 200,
+            "bottom": 369
+          }
+        },
+        {
+          "id": "c5.1",
+          "parent": "v5",
+          "kind": "compose",
+          "bounds": {
+            "left": 0,
+            "top": 0,
+            "right": 200,
+            "bottom": 369
+          },
+          "screenBounds": {
+            "left": 0,
+            "top": 0,
+            "right": 200,
+            "bottom": 369
+          },
+          "visibleBounds": {
+            "left": 0,
+            "top": 0,
+            "right": 200,
+            "bottom": 369
+          }
+        },
+        {
+          "id": "c5.4",
+          "parent": "c5.1",
+          "kind": "compose",
+          "testTag": "title",
+          "text": [
+            "Profile"
+          ],
+          "bounds": {
+            "left": 0,
+            "top": 0,
+            "right": 81,
+            "bottom": 33
+          },
+          "screenBounds": {
+            "left": 0,
+            "top": 0,
+            "right": 81,
+            "bottom": 33
+          },
+          "visibleBounds": {
+            "left": 0,
+            "top": 0,
+            "right": 81,
+            "bottom": 33
+          }
+        },
+        {
+          "id": "c5.5",
+          "parent": "c5.1",
+          "kind": "compose",
+          "testTag": "name",
+          "editableText": "Ada",
+          "bounds": {
+            "left": 0,
+            "top": 33,
+            "right": 200,
+            "bottom": 66
+          },
+          "screenBounds": {
+            "left": 0,
+            "top": 33,
+            "right": 200,
+            "bottom": 66
+          },
+          "visibleBounds": {
+            "left": 0,
+            "top": 33,
+            "right": 200,
+            "bottom": 66
+          },
+          "clickable": true,
+          "actions": [
+            "OnClick",
+            "OnLongClick",
+            "SetText",
+            "PerformImeAction"
+          ]
+        },
+        {
+          "id": "c5.9",
+          "parent": "c5.1",
+          "kind": "compose",
+          "testTag": "secret",
+          "editableText": "•••••••",
+          "password": true,
+          "bounds": {
+            "left": 0,
+            "top": 66,
+            "right": 200,
+            "bottom": 99
+          },
+          "screenBounds": {
+            "left": 0,
+            "top": 66,
+            "right": 200,
+            "bottom": 99
+          },
+          "visibleBounds": {
+            "left": 0,
+            "top": 66,
+            "right": 200,
+            "bottom": 99
+          },
+          "clickable": true,
+          "actions": [
+            "OnClick",
+            "OnLongClick",
+            "SetText",
+            "PerformImeAction"
+          ]
+        },
+        {
+          "id": "c5.13",
+          "parent": "c5.1",
+          "kind": "compose",
+          "testTag": "dark",
+          "text": [
+            "Dark theme"
+          ],
+          "role": "Switch",
+          "bounds": {
+            "left": 0,
+            "top": 99,
+            "right": 174,
+            "bottom": 164
+          },
+          "screenBounds": {
+            "left": 0,
+            "top": 99,
+            "right": 174,
+            "bottom": 164
+          },
+          "visibleBounds": {
+            "left": 0,
+            "top": 99,
+            "right": 174,
+            "bottom": 164
+          },
+          "toggle": "off",
+          "clickable": true,
+          "actions": [
+            "OnClick"
+          ]
+        },
+        {
+          "id": "c5.15",
+          "parent": "c5.1",
+          "kind": "compose",
+          "testTag": "save",
+          "text": [
+            "Save"
+          ],
+          "role": "Button",
+          "bounds": {
+            "left": 0,
+            "top": 164,
+            "right": 93,
+            "bottom": 229
+          },
+          "screenBounds": {
+            "left": 0,
+            "top": 164,
+            "right": 93,
+            "bottom": 229
+          },
+          "visibleBounds": {
+            "left": 0,
+            "top": 164,
+            "right": 93,
+            "bottom": 229
+          },
+          "clickable": true,
+          "actions": [
+            "OnClick"
+          ]
+        },
+        {
+          "id": "c5.17",
+          "parent": "c5.1",
+          "kind": "compose",
+          "testTag": "avatar",
+          "contentDescription": [
+            "Avatar"
+          ],
+          "bounds": {
+            "left": 0,
+            "top": 229,
+            "right": 0,
+            "bottom": 249
+          },
+          "screenBounds": {
+            "left": 0,
+            "top": 229,
+            "right": 0,
+            "bottom": 249
+          },
+          "visibleBounds": null
+        },
+        {
+          "id": "c5.18",
+          "parent": "c5.1",
+          "kind": "compose",
+          "testTag": "list",
+          "bounds": {
+            "left": 0,
+            "top": 249,
+            "right": 77,
+            "bottom": 369
+          },
+          "screenBounds": {
+            "left": 0,
+            "top": 249,
+            "right": 77,
+            "bottom": 369
+          },
+          "visibleBounds": {
+            "left": 0,
+            "top": 249,
+            "right": 77,
+            "bottom": 369
+          },
+          "actions": [
+            "ScrollBy",
+            "ScrollToIndex"
+          ],
+          "verticalScroll": {
+            "value": 0,
+            "max": 100,
+            "reverse": false,
+            "forward": true,
+            "backward": false
+          },
+          "collection": {
+            "rows": null,
+            "columns": 1
+          }
+        },
+        {
+          "id": "c5.20",
+          "parent": "c5.18",
+          "kind": "compose",
+          "testTag": "row 0",
+          "text": [
+            "Row 0"
+          ],
+          "bounds": {
+            "left": 0,
+            "top": 249,
+            "right": 77,
+            "bottom": 289
+          },
+          "screenBounds": {
+            "left": 0,
+            "top": 249,
+            "right": 77,
+            "bottom": 289
+          },
+          "visibleBounds": {
+            "left": 0,
+            "top": 249,
+            "right": 77,
+            "bottom": 289
+          }
+        },
+        {
+          "id": "c5.22",
+          "parent": "c5.18",
+          "kind": "compose",
+          "testTag": "row 1",
+          "text": [
+            "Row 1"
+          ],
+          "bounds": {
+            "left": 0,
+            "top": 289,
+            "right": 77,
+            "bottom": 329
+          },
+          "screenBounds": {
+            "left": 0,
+            "top": 289,
+            "right": 77,
+            "bottom": 329
+          },
+          "visibleBounds": {
+            "left": 0,
+            "top": 289,
+            "right": 77,
+            "bottom": 329
+          }
+        },
+        {
+          "id": "c5.24",
+          "parent": "c5.18",
+          "kind": "compose",
+          "testTag": "row 2",
+          "text": [
+            "Row 2"
+          ],
+          "bounds": {
+            "left": 0,
+            "top": 329,
+            "right": 77,
+            "bottom": 369
+          },
+          "screenBounds": {
+            "left": 0,
+            "top": 329,
+            "right": 77,
+            "bottom": 369
+          },
+          "visibleBounds": {
+            "left": 0,
+            "top": 329,
+            "right": 77,
+            "bottom": 369
+          }
+        }
+      ]
+    },
+    {
+      "id": "v6",
+      "type": 2,
+      "kind": "dialog",
+      "title": "io.github.twinsen81.lustro.screen.test\/androidx.activity.ComponentActivity",
+      "hasWindowFocus": false,
+      "visible": true,
+      "bounds": {
+        "left": 0,
+        "top": 0,
+        "right": 224,
+        "bottom": 33
+      },
+      "nodes": [
+        {
+          "id": "v6",
+          "kind": "view",
+          "className": "com.android.internal.policy.DecorView",
+          "bounds": {
+            "left": 0,
+            "top": 0,
+            "right": 224,
+            "bottom": 33
+          },
+          "screenBounds": {
+            "left": 0,
+            "top": 0,
+            "right": 224,
+            "bottom": 33
+          },
+          "visibleBounds": {
+            "left": 0,
+            "top": 0,
+            "right": 224,
+            "bottom": 33
+          }
+        },
+        {
+          "id": "v7",
+          "parent": "v6",
+          "kind": "view",
+          "className": "android.widget.FrameLayout",
+          "bounds": {
+            "left": 0,
+            "top": 0,
+            "right": 224,
+            "bottom": 33
+          },
+          "screenBounds": {
+            "left": 0,
+            "top": 0,
+            "right": 224,
+            "bottom": 33
+          },
+          "visibleBounds": {
+            "left": 0,
+            "top": 0,
+            "right": 224,
+            "bottom": 33
+          }
+        },
+        {
+          "id": "v8",
+          "parent": "v7",
+          "kind": "view",
+          "className": "android.widget.FrameLayout",
+          "resourceId": "android:id\/content",
+          "bounds": {
+            "left": 0,
+            "top": 0,
+            "right": 224,
+            "bottom": 33
+          },
+          "screenBounds": {
+            "left": 0,
+            "top": 0,
+            "right": 224,
+            "bottom": 33
+          },
+          "visibleBounds": {
+            "left": 0,
+            "top": 0,
+            "right": 224,
+            "bottom": 33
+          }
+        },
+        {
+          "id": "v9",
+          "parent": "v8",
+          "kind": "view",
+          "className": "androidx.compose.ui.window.DialogLayout",
+          "bounds": {
+            "left": 0,
+            "top": 0,
+            "right": 224,
+            "bottom": 33
+          },
+          "screenBounds": {
+            "left": 0,
+            "top": 0,
+            "right": 224,
+            "bottom": 33
+          },
+          "visibleBounds": {
+            "left": 0,
+            "top": 0,
+            "right": 224,
+            "bottom": 33
+          }
+        },
+        {
+          "id": "v10",
+          "parent": "v9",
+          "kind": "view",
+          "className": "androidx.compose.ui.platform.AndroidComposeView",
+          "bounds": {
+            "left": 0,
+            "top": 0,
+            "right": 224,
+            "bottom": 33
+          },
+          "screenBounds": {
+            "left": 0,
+            "top": 0,
+            "right": 224,
+            "bottom": 33
+          },
+          "visibleBounds": {
+            "left": 0,
+            "top": 0,
+            "right": 224,
+            "bottom": 33
+          }
+        },
+        {
+          "id": "c10.2",
+          "parent": "v10",
+          "kind": "compose",
+          "bounds": {
+            "left": 0,
+            "top": 0,
+            "right": 224,
+            "bottom": 33
+          },
+          "screenBounds": {
+            "left": 0,
+            "top": 0,
+            "right": 224,
+            "bottom": 33
+          },
+          "visibleBounds": {
+            "left": 0,
+            "top": 0,
+            "right": 224,
+            "bottom": 33
+          }
+        },
+        {
+          "id": "c10.25",
+          "parent": "c10.2",
+          "kind": "compose",
+          "bounds": {
+            "left": 0,
+            "top": 0,
+            "right": 224,
+            "bottom": 33
+          },
+          "screenBounds": {
+            "left": 0,
+            "top": 0,
+            "right": 224,
+            "bottom": 33
+          },
+          "visibleBounds": {
+            "left": 0,
+            "top": 0,
+            "right": 224,
+            "bottom": 33
+          }
+        },
+        {
+          "id": "c10.26",
+          "parent": "c10.25",
+          "kind": "compose",
+          "testTag": "confirm",
+          "text": [
+            "Delete the profile?"
+          ],
+          "role": "Button",
+          "bounds": {
+            "left": 0,
+            "top": 0,
+            "right": 224,
+            "bottom": 33
+          },
+          "screenBounds": {
+            "left": 0,
+            "top": 0,
+            "right": 224,
+            "bottom": 33
+          },
+          "visibleBounds": {
+            "left": 0,
+            "top": 0,
+            "right": 224,
+            "bottom": 33
+          },
+          "clickable": true,
+          "actions": [
+            "OnClick"
+          ]
+        }
+      ]
+    }
+  ],
+  "merged": true,
+  "density": 2,
+  "compose": true,
+  "windowSource": "inspector",
+  "context": {
+    "route": "profile",
+    "stack": [
+      "home",
+      "profile"
+    ]
+  }
+}

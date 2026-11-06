@@ -96,6 +96,11 @@ facadeParity {
         noop = ":lustro-work-noop",
         packages = listOf("io.github.twinsen81.lustro.work"),
     )
+    pair(
+        runtime = ":lustro-screen",
+        noop = ":lustro-screen-noop",
+        packages = listOf("io.github.twinsen81.lustro.screen"),
+    )
 }
 
 // Registers `checkDocsVersion`: the coordinates that README.md, docs/index.md,
