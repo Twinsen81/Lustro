@@ -8,8 +8,9 @@ runtime.
 
 __all__ = ["__version__", "LustroError", "LustroClient", "CursorState", "main"]
 
-# Tied to the Lustro library/wire-protocol version. Keep in lockstep with
-# gradle.properties VERSION_NAME (the SemVer-governed wire protocol).
+# The package's only version: pyproject.toml reads it from here. It is
+# VERSION_NAME in gradle.properties without -SNAPSHOT, so a release publishes the
+# CLI with the version of the library; `./gradlew checkCliVersion` fails when not.
 __version__ = "0.1.0"
 
 from .client import CursorState, LustroClient, LustroError  # noqa: E402

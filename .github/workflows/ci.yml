@@ -69,6 +69,12 @@ jobs:
       - name: Integration docs name the current coordinates
         run: ./gradlew checkDocsVersion --console=plain --stacktrace
 
+      # A release publishes lustro-cli with the library's version, so its
+      # __version__ must be VERSION_NAME without -SNAPSHOT (see
+      # gradle/cli-version.gradle.kts). It also reads text only.
+      - name: The CLI has the library's version
+        run: ./gradlew checkCliVersion --console=plain --stacktrace
+
       - name: Assemble all modules
         run: ./gradlew assemble --console=plain --stacktrace
 

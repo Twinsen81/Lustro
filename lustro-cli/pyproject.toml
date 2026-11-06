@@ -4,7 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "lustro-cli"
-version = "0.1.0"
+# The version is __version__ in src/lustro_cli/__init__.py: see [tool.hatch.version].
+dynamic = ["version"]
 description = "Command-line client for the Lustro Android debug server (HTTP wire protocol)."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -32,6 +33,12 @@ test = ["pytest>=7", "jsonschema>=4"]
 
 [project.scripts]
 lustro = "lustro_cli.cli:main"
+# The same command under the package's name, so that `uvx lustro-cli` runs it. The
+# PyPI package `lustro` is a different project, and `uvx lustro` would run its command.
+lustro-cli = "lustro_cli.cli:main"
+
+[tool.hatch.version]
+path = "src/lustro_cli/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 # The package tree (src layout) is bundled wholesale; the vendored wire-protocol
