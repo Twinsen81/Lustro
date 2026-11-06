@@ -860,6 +860,54 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Fixed
 
+- **The Preferences tab opens a file that the app registered, not one that it
+  found.** The console sorted all files by key count, so a file that the tab
+  found on disk came first when it had more keys. A push notification app
+  registers its own settings file, and its androidx settings screen fills the
+  default file with the same keys, so the console opened that read-only file,
+  whose values the app does not read. The files that the app registered now
+  come first, then the found ones, each group the fullest first, as the
+  SQLite tab lists its databases. Verified on a physical Android 10 device:
+  the console opens the app's file of 13 keys, and the found file of 15 keys
+  is the second tab.
+- **The WorkManager tab names the work that blocked work waits for, and the
+  list leaves out the tag that is a work's unique name.** Blocked work showed
+  `-` as its next run, with nothing about why it does not run: a push
+  notification app downloads an attachment and then its icon as one chain,
+  and the icon's download stayed blocked while the attachment's ran.
+  `WorkInfo` has no dependencies, so the tab now reads the ids of the work
+  that each work waits for from WorkManager's own `DependencyDao`, through
+  WorkManager's connection, as it reads the unique names, once for each id.
+  A work item has them in `prerequisites`, sorted, and leaves the field out
+  for work that has none, and when the app's WorkManager does not have the
+  call. In the console, blocked work shows `after others`, and Details lists
+  the work under **Waits for**, each a link that opens it. Apps also tag work
+  with its unique name, because `WorkInfo` has none, so the Tags column of a
+  periodic work repeated its Unique name column: the list now leaves that
+  tag out, and Details still lists every tag. The WorkManager schema is
+  `1.3`. Verified with that chain on a physical Android 10 device: the
+  icon's download listed the attachment's download in `prerequisites` and
+  under Waits for, and the link opened it. The list's `after others` and tags
+  were also checked on an Android 16 emulator.
+- **The SQLite tab gives the size of a database's `-wal` file.** `sizeBytes`
+  is the size of the database file only, and in WAL mode, as Room keeps a
+  database, the changes are in the `-wal` file until a checkpoint: the
+  console said `4.0 KB` for a push notification app's database that held 25
+  notifications, and later `332.0 KB` next to a `-wal` file of 427 KB. `GET
+  databases` now has `walBytes`, the size of the `-wal` file, or `null` when
+  there is none, and the console shows it after the size. The SQLite schema
+  is `1.1`. Verified on a physical Android 10 device: the console showed
+  `1.1 MB + 512.0 KB WAL` for the app's database, and `walBytes` was the size
+  of the `-wal` file on the device.
+- **The SQLite tab gives `VACUUM` its own reason.** `POST query` and `POST exec`
+  refused a plain `VACUUM` with the reason of `VACUUM INTO`, "writes a copy of
+  the database to a new file". A plain `VACUUM` now says that it rebuilds the
+  whole file while the app's writes wait, and that SQLite does not run it in
+  the transaction of a write; `VACUUM INTO` keeps its reason.
+- **The README says that the SQLite mask reads only column names.** A table
+  that keeps the name of a secret in a row, such as HTTP headers in `name`
+  and `value` columns, shows the value of an `Authorization` row.
+
 - **The WorkManager tab shows a network constraint that is a
   `NetworkRequest`.** From API 28, `Constraints.Builder.setRequiredNetworkRequest`
   keeps the request in place of a `NetworkType`, and `requiredNetworkType` is

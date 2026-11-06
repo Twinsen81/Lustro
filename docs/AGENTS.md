@@ -596,13 +596,13 @@ A `file` that names no file is a `404`, and one with `/` or `\` a `400`, both wi
 Base path `/api/v1/sqlite`, when the app registers the SQLite plugin
 (`SqliteDebugTab.create(databases, discoverFrom)`; without it, the routes are an enveloped
 `404 Unknown tab: sqlite`). The authoritative contract is
-`lustro-sqlite/src/main/assets/lustro/sqlite.openapi.json`, version `1.0`. The CLI has no
+`lustro-sqlite/src/main/assets/lustro/sqlite.openapi.json`, version `1.1` (`1.1` adds `walBytes`). The CLI has no
 `sqlite` commands: use `lustro api`. The `GET` routes and `POST query` only read. `POST exec`,
 `edit`, and `delete` write, and only to a database that `GET databases` lists as `writable`.
 
 | Operation | Route | Notes |
 | --- | --- | --- |
-| List the databases | `GET databases` | `{ items: [{ name, registered, source, writable, policy, path, sizeBytes, schemaVersion, error? }] }`: the databases that the app registered, in its order, then the files that the tab found in the app's `databases` directory, by file name. `source` is `support` (the app's `SupportSQLiteDatabase`, such as Room's), `framework` (the app's `SQLiteDatabase`), or `file` (opened read-only for each request). `schemaVersion` is `PRAGMA user_version`; Room and `SQLiteOpenHelper` set it to the schema's version. `policy` is the value policy, `visible` or `mask_sensitive` (see below). `path` and `sizeBytes` are `null` for a database in memory; `sizeBytes` leaves out the `-wal` file. `error` says why a database does not open. |
+| List the databases | `GET databases` | `{ items: [{ name, registered, source, writable, policy, path, sizeBytes, walBytes, schemaVersion, error? }] }`: the databases that the app registered, in its order, then the files that the tab found in the app's `databases` directory, by file name. `source` is `support` (the app's `SupportSQLiteDatabase`, such as Room's), `framework` (the app's `SQLiteDatabase`), or `file` (opened read-only for each request). `schemaVersion` is `PRAGMA user_version`; Room and `SQLiteOpenHelper` set it to the schema's version. `policy` is the value policy, `visible` or `mask_sensitive` (see below). `path` and `sizeBytes` are `null` for a database in memory; `sizeBytes` leaves out the `-wal` file, and `walBytes` is that file's size, or `null` when there is none. In WAL mode, as Room keeps a database, the `-wal` file holds the changes until SQLite copies them into the database file at a checkpoint, so it can be the larger one. `error` says why a database does not open. |
 | List the tables | `GET tables?db=` | `{ database, writable, items: [{ name, type, internal, hasRowId, rowCount, entity?, purpose?, error? }] }`, by name. `type` is `table` or `view`. A view has no `rowCount`: counting runs its query. `internal` flags `sqlite_*`, `android_metadata`, `room_master_table`, and the shadow tables of a full-text or R*Tree index. `entity` and `purpose` are the app's hint. |
 | Read a schema | `GET schema?db=&table=` | `{ database, table, type, internal, hasRowId, rowCount, sql, entity?, purpose?, columns: [{ name, type, notNull, defaultValue, primaryKey, generated, masked }], foreignKeys: [{ table, from, to, onUpdate, onDelete }] }`. `primaryKey` is the column's place in the key, from 1, or 0. `generated` is `true` for a column that SQLite computes (`GENERATED ALWAYS AS`). `masked` is `true` for a column whose values the value policy leaves out. A key over several columns has them in order in `from` and `to`; a `null` in `to` stands for the other table's primary key. |
 | Read rows | `GET rows?db=&table=&limit=&cursor=&filter=&sort=&dir=` | Pagination envelope `{ items, nextCursor }`. 50 rows by default, `limit` 1 to 500. Pass `nextCursor` as `cursor` for the next page; it is `null` on the last one. |
@@ -708,7 +708,7 @@ count.
 Base path `/api/v1/work`, when the app registers the WorkManager plugin
 (`WorkDebugTab.create(context, uniqueNames)`, or `createWithMetrics(context, metrics, uniqueNames)` with a
 work-analytics repository; without it, the routes are an enveloped `404 Unknown tab: work`). The
-authoritative contract is `lustro-work/src/main/assets/lustro/work.openapi.json`, version `1.2` (`1.1` names the unique work of every work request, and `1.2` adds the `networkRequest` of a work's constraints).
+authoritative contract is `lustro-work/src/main/assets/lustro/work.openapi.json`, version `1.3` (`1.1` names the unique work of every work request, `1.2` adds the `networkRequest` of a work's constraints, and `1.3` the `prerequisites` of a work).
 The CLI has no `work` commands: use `lustro api`. Only `POST cancel` and `POST prune` change
 anything. The app needs WorkManager 2.12.0 or newer: with an older one, every route is a `503`
 with `code: "work_unsupported"`.
@@ -722,7 +722,7 @@ with `code: "work_unsupported"`.
 | Cancel | `POST cancel` `{ id }` or `{ name }` or `{ tag }` | Exactly one key, and no other (`400` with the key as `field`): `WorkManager.cancelWorkById`, `cancelUniqueWork`, or `cancelAllWorkByTag`. Returns `{ status: "ok", cancelled }`, the number of matched requests that were not finished; finished work stays as it is, and the work that depends on cancelled work is cancelled too, uncounted. `404` with the key as `field` when nothing matches. Cancelling work that is `RUNNING` in an app whose listeners are a work-analytics 2.12.0 repository (`state.metrics` is a hint) ends the app's process, through a bug of work-analytics, unless the app catches it. |
 | Prune | `POST prune` | `WorkManager.pruneWork()`: deletes finished work that no unfinished work depends on. Returns `{ status: "ok", pruned }`. The events stay in the buffer. |
 
-**A work item.** `{ id, workerClass, state, tags, uniqueName?, runAttempts, generation,
+**A work item.** `{ id, workerClass, state, tags, uniqueName?, prerequisites?, runAttempts, generation,
 stopReason: { code, name }, output, progress, constraints, initialDelayMillis, periodicity?,
 nextScheduleTimeMillis? }`. `state` is a `WorkInfo.State` name: `ENQUEUED`, `RUNNING`,
 `SUCCEEDED`, `FAILED`, `BLOCKED` (waiting for the work before it in a chain), or `CANCELLED`.
@@ -733,7 +733,11 @@ of a periodic run has 0 and its `started` event has the attempt. `uniqueName` is
 the app enqueued the work with, such as the URL of a download; `WorkInfo` does not have it, so
 the tab reads it from WorkManager's own database. When the app's WorkManager does not have the
 call that reads it, `uniqueName` is there only for a name that the app registered, or the one
-that `name=` asked for.
+that `name=` asked for. `prerequisites` are the ids of the work that this work waits for, the work
+before it in a chain of `beginWith()` and `then()`, sorted: `BLOCKED` work runs when all of them
+have succeeded. The tab reads them from WorkManager's database in the same way, once for each
+work, as WorkManager records them when the app enqueues it, and leaves the field out for work
+that has none, and when the app's WorkManager does not have the call.
 `stopReason.name` is the `WorkInfo.STOP_REASON_*` constant without the prefix: `NOT_STOPPED`
 when the work never stopped, `UNKNOWN` when WorkManager does not know why, as after the app's
 process died. `output` and `progress` are `Data` as JSON: a long beyond 2^53 - 1 and a NaN or an

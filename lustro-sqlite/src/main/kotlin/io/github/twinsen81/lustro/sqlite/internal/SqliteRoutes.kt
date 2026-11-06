@@ -147,8 +147,12 @@ internal class SqliteRoutes(private val registry: SqliteRegistry, private val li
                     error = e.message ?: e.javaClass.simpleName
                 }
                 val size = path?.let { File(it) }?.takeIf { it.isFile }?.length()
+                // In WAL mode, the changes since the last checkpoint are in the -wal file, which
+                // can be larger than the database file.
+                val walSize = path?.let { File("$it-wal") }?.takeIf { it.isFile }?.length()
                 append(",\"path\":").appendString(path)
                 append(",\"sizeBytes\":").append(size)
+                append(",\"walBytes\":").append(walSize)
                 append(",\"schemaVersion\":").append(version)
                 if (error != null) append(",\"error\":").appendString(error)
                 append('}')

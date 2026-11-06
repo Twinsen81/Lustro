@@ -52,12 +52,13 @@ internal class WorkRoutes(private val source: WorkSource) {
         if (tag != null) query.addTags(listOf(tag))
         if (name != null) query.addUniqueWorkNames(listOf(name))
         val infos = workManager.getWorkInfos(query.build()).get().filter { matchesClass(it.workerClassName, workerClass) }
-        val names = source.names.of(workManager, infos)
+        val records = source.records.of(workManager, infos)
         val items =
             buildString {
                 infos.forEachIndexed { index, info ->
                     if (index > 0) append(',')
-                    WorkJson.appendItem(this, info, names[info.id] ?: name)
+                    val record = records[info.id]
+                    WorkJson.appendItem(this, info, record?.uniqueName ?: name, record?.prerequisites.orEmpty())
                 }
             }
         // The list is the snapshot of one moment, so the cursor is the hash of what it
@@ -75,10 +76,10 @@ internal class WorkRoutes(private val source: WorkSource) {
         if (info == null && events.isEmpty() && periods.isNullOrEmpty()) {
             throw RouteException("No work has the id $id, and the tab has no events of it", status = 404, field = "id")
         }
-        val name = if (info == null) null else source.names.of(workManager, listOf(info))[id]
+        val record = if (info == null) null else source.records.of(workManager, listOf(info))[id]
         return DebugResponse.json {
             append("{\"item\":")
-            if (info == null) append("null") else WorkJson.appendItem(this, info, name)
+            if (info == null) append("null") else WorkJson.appendItem(this, info, record?.uniqueName, record?.prerequisites.orEmpty())
             append(",\"events\":[")
             events.forEachIndexed { index, event ->
                 if (index > 0) append(',')

@@ -23,13 +23,27 @@ internal object SqliteStatements {
         return when {
             keyword in TRANSACTION -> "$keyword is refused: a transaction that a request starts would stay open on the connection after it"
             keyword == "ATTACH" || keyword == "DETACH" -> "$keyword is refused: it changes the databases of the connection, and ATTACH can create a file"
-            keyword == "VACUUM" -> "VACUUM is refused: VACUUM INTO writes a copy of the database to a new file"
+            keyword == "VACUUM" && vacuumInto(sql, word.end) -> "VACUUM INTO is refused: it writes a copy of the database to a new file"
+            keyword == "VACUUM" ->
+                "VACUUM is refused: it rebuilds the whole database file while the app's writes wait, " +
+                    "and SQLite does not run it inside the transaction of a write"
             keyword != "PRAGMA" -> null
             exec ->
                 "PRAGMA is refused in exec: a pragma can change a setting of the app's connection, such as foreign_keys or query_only. " +
                     "Read a pragma with POST query"
             else -> processPragma(sql, word.end)
         }
+    }
+
+    // VACUUM [schema] [INTO file]. Both forms are refused; only the reason differs.
+    private fun vacuumInto(sql: String, from: Int): Boolean {
+        var start = skip(sql, from, semicolons = false)
+        repeat(2) {
+            val end = nameEnd(sql, start) ?: return false
+            if (sql.substring(start, end).equals("INTO", ignoreCase = true)) return true
+            start = skip(sql, end, semicolons = false)
+        }
+        return false
     }
 
     // A few pragmas set a value for every connection of the process, the app's too, and SQLite

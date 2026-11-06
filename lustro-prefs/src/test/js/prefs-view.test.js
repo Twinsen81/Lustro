@@ -131,13 +131,13 @@ test('a write from the page replaces its entry and keeps the cursor', () => {
 
 // ── Files ───────────────────────────────────────────────────────
 
-test('the file tabs sort by key count, the fullest first, and a poll keeps their order', () => {
+test('the file tabs sort the registered files first, each group the fullest first, and a poll keeps their order', () => {
     const files = golden('prefs-files.json').items;
 
     const order = prefs.prefsOrderFiles(files, null, false);
     assert.deepStrictEqual(plain(order), [
-        'shared_prefs/settings', 'shared_prefs/sdk_cache', 'shared_prefs/secure_store',
-        'shared_prefs/session', 'preferences_datastore/app_state', 'preferences_datastore/sdk_state',
+        'shared_prefs/settings', 'shared_prefs/session', 'preferences_datastore/app_state',
+        'shared_prefs/sdk_cache', 'shared_prefs/secure_store', 'preferences_datastore/sdk_state',
     ]);
 
     const grown = files.map((f) => (f.name === 'session' ? Object.assign({}, f, { keyCount: 20 }) : f));
@@ -146,6 +146,19 @@ test('the file tabs sort by key count, the fullest first, and a poll keeps their
 
     const gone = files.filter((f) => f.name !== 'settings');
     assert.deepStrictEqual(plain(prefs.prefsOrderFiles(gone, order, false)), plain(order).slice(1));
+});
+
+test('a found file with more keys than the registered ones still comes after them', () => {
+    // As the default file that an androidx settings screen fills, next to the file that the app registered.
+    const files = [
+        file({ name: 'com.example_preferences', registered: false, readOnly: true, keyCount: 15 }),
+        file({ name: 'MainPreferences', keyCount: 13 }),
+        file({ name: 'lustro_debug', registered: false, readOnly: true, keyCount: 3 }),
+    ];
+
+    assert.deepStrictEqual(plain(prefs.prefsOrderFiles(files, null, false)), [
+        'shared_prefs/MainPreferences', 'shared_prefs/com.example_preferences', 'shared_prefs/lustro_debug',
+    ]);
 });
 
 test('a SharedPreferences file and a DataStore of the same name are two files', () => {

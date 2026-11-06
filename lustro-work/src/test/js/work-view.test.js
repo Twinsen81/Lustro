@@ -90,6 +90,18 @@ test('tags that every work in the list has go after the tags of each row', () =>
     assert.deepStrictEqual(plain(work.workListTags(list[0], work.workSharedTags([list[0]]))), ['*', 'name:upload', 'user:me']);
 });
 
+test('a row leaves out the tag that is the work\'s unique name, which its own column shows', () => {
+    // Apps tag work with its unique name, because WorkInfo has none.
+    const item = { id: 'a', workerClass: 'x.PollWorker', uniqueName: 'PollWorkerPeriodic', tags: ['PollWorker', 'PollWorkerPeriodic', 'x.PollWorker'] };
+    assert.deepStrictEqual(plain(work.workListTags(item, new Set())), ['PollWorker']);
+    assert.match(work.workRowHtml(item, false, NOW), /work-cell--tags" title="PollWorker"><span class="dc-tag work-tag">PollWorker<\/span><\/td>/);
+    // The details list every tag.
+    assert.match(work.workDetailsHtml(item, NOW), /<span class="dc-tag work-tag">PollWorkerPeriodic<\/span>/);
+    // A tag that only looks like another work's name stays.
+    const other = Object.assign({}, item, { uniqueName: 'Other' });
+    assert.deepStrictEqual(plain(work.workListTags(other, new Set())), ['PollWorker', 'PollWorkerPeriodic']);
+});
+
 // ── Times and the details ───────────────────────────────────────
 
 test('a duration is in the largest unit that fits, with the next one', () => {
@@ -134,8 +146,8 @@ test('enqueued work whose time has passed waits, and says for what', () => {
 
     const late = Object.assign(byClass('RetryWorker'), { nextScheduleTimeMillis: NOW - 15000 });
     assert.match(work.workRowHtml(late, false, NOW), /the system decides when it runs\.">waiting</);
-    // Running and blocked work keep the time as it is.
-    assert.match(work.workRowHtml(Object.assign(byClass('RetryWorker'), { state: 'BLOCKED', nextScheduleTimeMillis: NOW - 15000 }), false, NOW), /data-at="1792419725000"[^>]*>15 s ago</);
+    // Blocked work waits for other work, not for its time.
+    assert.match(work.workRowHtml(Object.assign(byClass('RetryWorker'), { state: 'BLOCKED', nextScheduleTimeMillis: NOW - 15000 }), false, NOW), />after others</);
 });
 
 test('the constraints name only what the work waits for', () => {
@@ -219,6 +231,32 @@ test('the details show the output as JSON, and say when a value is empty', () =>
     // A run's own schedule time is in the past: running work says so instead.
     const running = work.workDetailsHtml(Object.assign(byClass('RetryWorker'), { state: 'RUNNING' }), NOW);
     assert.match(running, /Next run<\/th><td class="dc-kv__value"><span class="dc-comment">\/\/ running now</);
+});
+
+test('blocked work says that it runs after the work before it in its chain', () => {
+    // WorkInfo has no next run for blocked work, and does not name the work it waits for.
+    const blocked = Object.assign(byClass('RetryWorker'), { state: 'BLOCKED', nextScheduleTimeMillis: null });
+    assert.match(work.workRowHtml(blocked, false, NOW), /work-cell--next"><span class="dc-comment" title="WorkManager runs it when the work before it in its chain[^"]*">after others<\/span>/);
+    assert.match(work.workDetailsHtml(blocked, NOW), /Next run<\/th><td class="dc-kv__value"><span class="dc-comment">\/\/ WorkManager runs it when the work before it in its chain \(beginWith\(\) and then\(\)\) has succeeded\./);
+    // Without prerequisites, as from a WorkManager whose database the tab can't read, there is no Waits for.
+    assert.doesNotMatch(work.workDetailsHtml(blocked, NOW), /Waits for/);
+});
+
+test('the details list the work that a step of a chain waits for, each a link that opens it', () => {
+    const attachment = Object.assign(byClass('StepWorker'), { id: 'a1', workerClass: 'x.DownloadAttachmentWorker' });
+    const icon = Object.assign(byClass('RetryWorker'), { id: 'b2', state: 'BLOCKED', nextScheduleTimeMillis: null, prerequisites: ['a1', 'gone'] });
+    const lookup = (id) => (id === 'a1' ? attachment : undefined);
+
+    const details = work.workDetailsHtml(icon, NOW, lookup);
+    assert.match(details, /<th class="dc-kv__key" title="The work before this one in its chain\.[^"]*">Waits for<\/th>/);
+    assert.match(details, /data-action="selectWork" data-id="a1" title="Open a1\.">DownloadAttachmentWorker<\/button> <span class="dc-comment work-mono">a1<\/span>/);
+    // Work that the list does not have, such as filtered-out work, shows by its id, and still opens.
+    assert.match(details, /data-action="selectWork" data-id="gone" title="Open gone\.">gone<\/button><\/div>/);
+    // Without a lookup, every prerequisite shows by its id.
+    assert.match(work.workDetailsHtml(icon, NOW), /data-id="a1" title="Open a1\.">a1</);
+
+    const hostile = Object.assign({}, icon, { prerequisites: ['"><img src=x onerror=alert(1)>'] });
+    assert.doesNotMatch(work.workDetailsHtml(hostile, NOW), /<img/);
 });
 
 // ── The timeline ────────────────────────────────────────────────

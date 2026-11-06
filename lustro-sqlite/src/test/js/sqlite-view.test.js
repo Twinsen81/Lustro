@@ -625,3 +625,14 @@ test('an untouched text compares with what its field showed, so a CR LF or a fir
     assert.deepStrictEqual(plain(sqlite.sqliteEditChanges([field('\nhello', '\nhello', '\nhello')])), {});
     assert.deepStrictEqual(plain(sqlite.sqliteEditChanges([field('a\r\nb', 'a\nb', 'a\nc')])), { body: 'a\nc' });
 });
+
+test('a database in WAL mode shows the size of its -wal file next to its own', () => {
+    // As Room keeps a database: until a checkpoint, the -wal file can hold most of the data.
+    const app = sqlite.sqliteDbItemHtml(database('app'), 0, true);
+    assert.match(app, /<span class="sqlite-db__meta">SupportSQLite · 56\.0 KB \+ 128\.8 KB WAL<\/span>/);
+    assert.match(app, /title="[^"]*Size: 56\.0 KB in the database file and 128\.8 KB in its -wal file/);
+
+    const catalog = sqlite.sqliteDbItemHtml(database('catalog'), 1, false);
+    assert.match(catalog, /<span class="sqlite-db__meta">[^<]*24\.0 KB<\/span>/);
+    assert.doesNotMatch(catalog, /WAL|-wal/);
+});

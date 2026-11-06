@@ -117,9 +117,11 @@
         return shared;
     }
 
-    // The app's tags of [item], with those in [shared] last.
+    // The app's tags of [item], with those in [shared] last. A tag that is the work's
+    // unique name is left out: the row shows the name in its own column, and apps add
+    // it as a tag because WorkInfo has no unique name. Details lists every tag.
     function listTags(item, shared) {
-        var tags = appTags(item);
+        var tags = appTags(item).filter(function(tag) { return tag !== item.uniqueName; });
         if (!shared || !shared.size) return tags;
         return tags.filter(function(tag) { return !shared.has(tag); })
             .concat(tags.filter(function(tag) { return shared.has(tag); }));
@@ -196,6 +198,11 @@
     function waitingTitle(item) {
         return 'Due ' + dateTimeText(item.nextScheduleTimeMillis) + '. ' + waitingReason(item);
     }
+
+    // Blocked work waits for the work before it in its chain, which Details lists under
+    // Waits for when the tab could read it from WorkManager's database.
+    var BLOCKED_REASON = 'WorkManager runs it when the work before it in its chain (beginWith() and then()) has succeeded. '
+        + 'When that work fails or is cancelled, this work ends the same way.';
 
     function clockText(at) {
         var date = new Date(Number(at));
@@ -282,6 +289,7 @@
             var percent = progressPercent(item.progress);
             return '<span class="work-next work-next--running">running' + (percent == null ? '' : ' ' + esc(String(Math.round(percent))) + '%') + '</span>';
         }
+        if (item.state === 'BLOCKED') return '<span class="dc-comment" title="' + esc(BLOCKED_REASON) + '">after others</span>';
         if (item.nextScheduleTimeMillis == null || isFinished(item.state)) return '<span class="dc-comment">-</span>';
         var at = item.nextScheduleTimeMillis;
         if (item.state === 'ENQUEUED') {
@@ -331,7 +339,20 @@
         return (percent == null ? '' : '<div class="work-progress__line">' + progressBarHtml(percent) + '</div>') + jsonHtml(progress, 'work-json');
     }
 
-    function details(item, now) {
+    // The work that [item] waits for, each a link that opens it. [lookup] finds a work of
+    // the list by its id; one that the list does not have, such as filtered-out work,
+    // shows by its id and opens all the same.
+    function prerequisitesHtml(item, lookup) {
+        return (item.prerequisites || []).map(function(id) {
+            var other = lookup ? lookup(id) : null;
+            var label = other ? simpleClass(other.workerClass) || '?' : id;
+            return '<div class="work-prereq"><button type="button" class="work-prereq__link" data-action="selectWork" data-id="' + esc(id)
+                + '" title="Open ' + esc(id) + '.">' + esc(label) + '</button>'
+                + (other ? ' <span class="dc-comment work-mono">' + esc(id) + '</span>' : '') + '</div>';
+        }).join('');
+    }
+
+    function details(item, now, lookup) {
         var tags = (item.tags || []).map(function(tag) {
             var own = tag === item.workerClass;
             return '<span class="dc-tag work-tag' + (own ? ' work-tag--class' : '') + '"'
@@ -339,6 +360,8 @@
         }).join('');
         var next = item.state === 'RUNNING'
             ? '<span class="dc-comment">// running now</span>'
+            : item.state === 'BLOCKED'
+            ? '<span class="dc-comment">// ' + esc(BLOCKED_REASON) + '</span>'
             : item.nextScheduleTimeMillis == null || isFinished(item.state)
             ? '<span class="dc-comment">// none</span>'
             : esc(dateTimeText(item.nextScheduleTimeMillis)) + ' <span class="dc-comment" data-at="'
@@ -360,6 +383,9 @@
             kvRow('Periodicity', esc(periodicityText(item.periodicity))),
             kvRow('Initial delay', item.initialDelayMillis ? esc(durationText(item.initialDelayMillis)) : '<span class="dc-comment">// none</span>'),
             kvRow('Next run', next, 'When WorkManager runs the work next, on the device\'s clock.'),
+            item.prerequisites && item.prerequisites.length
+                ? kvRow('Waits for', prerequisitesHtml(item, lookup), 'The work before this one in its chain. WorkInfo does not have it: the tab reads it from WorkManager\'s database.')
+                : '',
             kvRow('Run attempts', esc(String(item.runAttempts)), item.periodicity
                 ? PERIOD_ATTEMPTS
                 : 'How many times WorkManager started the work: a retry and a stop by the system each start it again.'),
@@ -1006,7 +1032,9 @@
         var gone = !!detail && !detail.item && !list.byId.has(selectedId);
         if (json !== shownItemJson || !item) {
             shownItemJson = json;
-            els.detailsPanel.innerHTML = item ? details(item, Date.now()) : '<div class="work-empty">// reading the work…</div>';
+            els.detailsPanel.innerHTML = item
+                ? details(item, Date.now(), function(id) { return list.byId.get(id); })
+                : '<div class="work-empty">// reading the work…</div>';
         }
         var state = item ? item.state : null;
         els.headState.hidden = !item;
@@ -1226,7 +1254,8 @@
         confirmOk: runPending,
         closeConfirm: function() { pending = null; confirmModal.hide(); },
         copyId: function() { if (selectedId) window.debugCopyToClipboard(selectedId); },
-        copyTrace: function(el) { copyTrace(el.dataset.seq); }
+        copyTrace: function(el) { copyTrace(el.dataset.seq); },
+        selectWork: function(el) { select(el.dataset.id); }
     };
 
     function typing(target) {

@@ -40,9 +40,10 @@ import io.github.twinsen81.lustro.work.internal.WorkView
  *
  * The tab reads the work through WorkManager's public API: its state, tags,
  * attempts, output, progress, constraints, and schedule. `WorkInfo` has no unique
- * name, so the tab reads the name of each work from WorkManager's own database,
- * through WorkManager's connection, and falls back to the names that the app lists
- * in `uniqueNames` when the app's WorkManager does not have the call. It asks for
+ * name and no prerequisites, so the tab reads the name of each work, and the work
+ * that it waits for in a chain, from WorkManager's own database, through
+ * WorkManager's connection, and falls back to the names that the app lists in
+ * `uniqueNames` when the app's WorkManager does not have the calls. It asks for
  * the WorkManager instance only after the app has initialized it, so it never
  * changes when WorkManager starts.
  *
