@@ -76,7 +76,8 @@ internal class ScreenSource(
             } else {
                 onMain(request, action.settleMs + FOCUS_WAIT_MS.toInt()) { cancelled, complete ->
                     // A tap that just opened or closed a dialog has the window focus still on
-                    // its way: the action waits for it, so that it acts on the window on top.
+                    // its way, and a Compose dialog comes only on the next frame: the action
+                    // waits for both, so that it acts on the window on top.
                     FocusWait(cancelled, complete) {
                         ran.set(perform(action))
                         Settle(action.merged, action.settleMs, cancelled, complete).start()
@@ -192,12 +193,22 @@ internal class ScreenSource(
         val groups = WindowFocus.groups(views)
         return WindowFocus.atRest(
             views.mapIndexed { index, view ->
-                WindowFocus.Entry(groups[index], TreeReader.isShownWindow(view), TreeReader.isFocusable(view), windowFocus(view))
+                WindowFocus.Entry(
+                    groups[index],
+                    TreeReader.isShownWindow(view),
+                    TreeReader.isFocusable(view),
+                    windowFocus(view),
+                    TreeReader.isPendingWindow(view),
+                )
             },
         )
     }
 
-    /** Runs [next] on the first frame on which the window focus is at rest, or after [FOCUS_WAIT_MS]. Runs on the main thread. */
+    /**
+     * Runs [next] on the first frame on which the window focus is at rest, or after
+     * [FOCUS_WAIT_MS]. Never before a frame: a tap that the app has handled can add its
+     * window on the next one, as a Compose dialog does. Runs on the main thread.
+     */
     private inner class FocusWait(
         private val cancelled: AtomicBoolean,
         private val complete: (Result<ScreenTree>) -> Unit,
@@ -206,7 +217,7 @@ internal class ScreenSource(
         private val startedAt = SystemClock.uptimeMillis()
 
         fun start() {
-            if (focusAtRest()) next() else Choreographer.getInstance().postFrameCallback(this)
+            Choreographer.getInstance().postFrameCallback(this)
         }
 
         override fun doFrame(frameTimeNanos: Long) {
