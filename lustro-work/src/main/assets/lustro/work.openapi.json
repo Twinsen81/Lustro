@@ -960,7 +960,7 @@
               "finished",
               "exception"
             ],
-            "description": "enqueued, unblocked (the work waits for no work before it: WorkManager sends it at the time of enqueued for work that has no prerequisites, or whose prerequisites all succeeded, and else when the last one succeeds), updated (updateWork), cancelled, and prerequisiteFailed (a step before it in the chain failed or was cancelled) come from the schedule listener; started, stopped, finished, and exception from the execution listener. A worker that throws ends its run with exception, not finished."
+            "description": "enqueued, unblocked (the work waits for no work before it: WorkManager sends it at the time of enqueued for work that has no prerequisites, or whose prerequisites all succeeded, and else when the last one succeeds), updated (updateWork), cancelled, and prerequisiteFailed (a step before it in the chain failed or was cancelled) come from the schedule listener; started, stopped, finished, and exception from the execution listener. A worker that throws ends its run with exception, not finished. WorkManager also sends cancelled, with the state CANCELLED, for finished work that an enqueue with APPEND_OR_REPLACE deletes because work of its unique name failed or was cancelled."
           },
           "id": {
             "type": "string",

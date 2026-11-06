@@ -762,7 +762,11 @@ prerequisites, or whose prerequisites all succeeded, and else when the last one 
 `updated`, `cancelled`, and `prerequisiteFailed` (the work before it failed or was cancelled, so
 this work fails without a run); the execution listener gives `started`,
 `stopped`, `finished`, and `exception`. A worker that throws ends its run with `exception`, not
-`finished`. A `finished` with `retry` leaves the work `ENQUEUED`, as does the end of a period of
+`finished`. WorkManager also sends `cancelled` for finished work: when the app enqueues work of a
+unique name with `APPEND_OR_REPLACE` while some of that name's work failed or was cancelled,
+WorkManager deletes all of it and starts a new chain, and the `cancelled` event of each deleted
+work has `state: "CANCELLED"`, also after its `finished` event. The work is then gone from
+`items`, and `items/{id}` has its events with `item: null`. A `finished` with `retry` leaves the work `ENQUEUED`, as does the end of a period of
 periodic work.
 
 **A period.** `{ id, generation, workerClass, tags, state, enqueueTimeMillis?, unblockTimeMillis?,

@@ -1005,6 +1005,11 @@ fun start(app: Application) {
 </provider>
 ```
 
+An app whose debug build already has an `Application` of its own in `src/debug`, a subclass of
+the one in `src/main`, can implement `Configuration.Provider` there instead, with the tab in a
+field of it, and remove `WorkManagerInitializer` in `src/debug/AndroidManifest.xml` only. The
+release build then keeps WorkManager's default initializer, and `src/main` does not change.
+
 From Java, the provider is a method, and every factory has overloads without the trailing
 parameters:
 

@@ -860,6 +860,33 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Fixed
 
+- **The Preferences tab shows a boolean, a float, or a double under a key that
+  looks sensitive.** `MASK_SENSITIVE` goes by the key's name, and a video
+  player names each setting's key after its string resource, such as
+  `autoplay_key` or `playback_speed_key`, so the word `key` masked 22 of its 70
+  settings, among them 14 switches, which the console could not toggle in
+  their rows. Such a value can't hold a secret, so `MASK_SENSITIVE` now shows
+  every `boolean`, `float`, and `double`, in SharedPreferences files and in
+  DataStores. A string, an int, a long, a set, or bytes under such a key stay
+  masked, and `KEYS_ONLY` still shows no value. The README says to register a
+  settings file that holds no secret as `VISIBLE`, or to list its keys in
+  `unmasked`. Verified on a physical Android 17 device in that app: 7 of its
+  81 keys stay masked, all strings, and a switch that was masked toggles in
+  its row.
+- **The SQLite console shows a time in epoch milliseconds whole.** An
+  `INTEGER` column was 120 px wide by default, and a 13-digit time, such as a
+  video player's `access_date`, needs 123 px, so every such cell was cut, for
+  example `17939657674…`. The default is now 136 px. Verified on a physical
+  Android 17 device: `stream_history.access_date` shows `1793965767475`.
+- **The docs say more about the WorkManager tab's events and integration.**
+  WorkManager also sends `cancelled` for finished work: when the app enqueues
+  work of a unique name with `APPEND_OR_REPLACE` while some of it failed,
+  WorkManager deletes all of it, and reports each one as cancelled. A video
+  player's subscription import showed `finished failure`, then `cancelled`, for
+  the same work, and the work was gone from the list. `docs/AGENTS.md` and the
+  schema now say so. The README also says that an app with an `Application` of
+  its own in `src/debug` can implement `Configuration.Provider` there, and
+  remove `WorkManagerInitializer` in the debug manifest only.
 - **The Preferences tab opens a file that the app registered, not one that it
   found.** The console sorted all files by key count, so a file that the tab
   found on disk came first when it had more keys. A push notification app
