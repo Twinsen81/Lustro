@@ -406,6 +406,42 @@ def check_screen_dialog(text: str, rules: List[dict]) -> None:
     expect(settle is not None and settle["requestedMs"] == 1000, "settle {}".format(settle))
 
 
+def _screen_action(text: str, action: str) -> Dict[str, Any]:
+    body = json.loads(text)
+    result = SCREEN_OPENAPI["components"]["schemas"]["ScreenActionResult"]
+    Draft202012Validator(dict(result, components=SCREEN_OPENAPI["components"])).validate(body)
+    expect(body["action"] == action, "action {}".format(body["action"]))
+    return body
+
+
+def _focused_node(tree: Dict[str, Any], tag: str) -> Dict[str, Any]:
+    for window in tree["windows"]:
+        if window["hasWindowFocus"]:
+            for node in _tagged(window, tag):
+                return node
+    raise CheckFailed("no window with the focus has the node tagged {}".format(tag))
+
+
+def check_screen_click(text: str, rules: List[dict]) -> None:
+    """A click on the Tap button runs its counter: the tree after it says so."""
+    body = _screen_action(text, "OnClick")
+    expect(body["handled"] is True, "the click was not handled")
+    taps = _focused_node(body["tree"], "screen taps")
+    expect(taps.get("text") == ["Tapped once"], "the counter after the click {}".format(taps.get("text")))
+
+
+def check_screen_set_text(text: str, rules: List[dict]) -> None:
+    body = _screen_action(text, "SetText")
+    field = _focused_node(body["tree"], "screen name")
+    expect(field.get("editableText") == "Grace Hopper", "the Name field {}".format(field.get("editableText")))
+
+
+def check_screen_scroll(text: str, rules: List[dict]) -> None:
+    """A lazy list composes the rows in view: row 31 is in the tree after the scroll to index 30."""
+    body = _screen_action(text, "ScrollToIndex")
+    _focused_node(body["tree"], "screen row 31")
+
+
 def check_sync(text: str, rules: List[dict]) -> None:
     result = json.loads(text)
     response("/api/v1/network/rules/_/sync", "post").validate(result)
@@ -588,6 +624,9 @@ CHECKS: Dict[str, Callable[[str, List[dict]], None]] = {
     "screen-center": screen_center,
     "screen-page": check_screen_page,
     "screen-dialog": check_screen_dialog,
+    "screen-click": check_screen_click,
+    "screen-set-text": check_screen_set_text,
+    "screen-scroll": check_screen_scroll,
     "sqlite-query": check_sqlite_query,
     "sqlite-exec": check_sqlite_exec,
     "sqlite-accounts-schema": check_sqlite_accounts_schema,

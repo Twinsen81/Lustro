@@ -1,6 +1,7 @@
 package io.github.twinsen81.lustro.screen.internal
 
 import android.view.View
+import androidx.compose.runtime.mutableStateOf
 import io.github.twinsen81.lustro.screen.internal.ScreenFixtures.json
 import io.github.twinsen81.lustro.screen.internal.ScreenFixtures.tab
 import org.junit.Assert.assertEquals
@@ -98,6 +99,61 @@ class SettleFocusTest {
         assertTrue(windows.getJSONObject(1).getBoolean("visible"))
         assertTrue(windows.getJSONObject(1).getBoolean("hasWindowFocus"))
         assertFalse(windows.getJSONObject(0).getBoolean("hasWindowFocus"))
+    }
+
+    @Test
+    fun `an action waits for the focus to reach a new dialog, and so refuses the node under it`() {
+        var saved = 0
+        ScreenFixtures.composeActivity(dialog = true, onSave = { saved++ })
+        val roots = android.view.inspector.WindowInspector.getGlobalWindowViews()
+        val activity = roots.first()
+        val dialog = roots.last()
+        var reads = 0
+        // Right after the tap that opened the dialog, the activity still has the focus.
+        val moving: (View) -> Boolean = { root -> if (++reads <= MOVE_AFTER_CALLS) root === activity else root === dialog }
+        val response = ScreenFixtures.postOffMain(tab(focus = moving), "click", """{"tag":"save"}""")
+        assertEquals(409, response.status)
+        assertEquals("not_in_focused_window", json(response).getString("code"))
+        assertEquals(0, saved)
+    }
+
+    @Test
+    fun `an action right after the tap that opens a Compose dialog waits for the dialog, and so refuses the node under it`() {
+        var saved = 0
+        val show = mutableStateOf(false)
+        ScreenFixtures.composeActivity(show, onSave = { saved++ })
+        // The tap was handled before the request came: Compose adds the dialog's window on the next frame.
+        val response = ScreenFixtures.postOffMain(tab(focus = ::topAttached), "click", """{"tag":"save"}""", beforeMain = { show.value = true })
+        assertEquals(json(response).toString(), 409, response.status)
+        assertEquals("not_in_focused_window", json(response).getString("code"))
+        assertEquals(0, saved)
+    }
+
+    @Test
+    fun `an action takes the top window as the focused one while the window under it still says that it has the focus`() {
+        var saved = 0
+        ScreenFixtures.composeActivity(dialog = true, onSave = { saved++ })
+        // As on API 24 for some frames after the dialog got the focus, past the action's wait: both windows say so.
+        val response = ScreenFixtures.postOffMain(tab(focus = { true }), "click", """{"tag":"save"}""")
+        assertEquals(409, response.status)
+        assertEquals("not_in_focused_window", json(response).getString("code"))
+        assertEquals(0, saved)
+    }
+
+    @Test
+    fun `with two activities on the screen, an action on the earlier one that has the focus does not wait for the focus to move`() {
+        val first = ScreenFixtures.viewActivity()
+        ScreenFixtures.composeActivity()
+        val firstRoot = first.window.decorView
+        first.findViewById<View>(android.R.id.content).let { content ->
+            (content as android.view.ViewGroup).getChildAt(0).tag = "first screen"
+        }
+        val started = System.nanoTime()
+        val response = ScreenFixtures.postOffMain(tab(focus = { it === firstRoot }), "scroll", """{"text":"Item 1","dy":40}""")
+        assertEquals(200, response.status)
+        // No wait for the focus: it is at rest on the earlier activity.
+        assertTrue(json(response).getJSONObject("tree").getJSONObject("settle").getBoolean("settled"))
+        assertTrue((System.nanoTime() - started) / 1_000_000 < ScreenSource.FOCUS_WAIT_MS * 4)
     }
 
     private companion object {

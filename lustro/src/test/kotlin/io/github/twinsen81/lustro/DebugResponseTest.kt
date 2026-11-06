@@ -312,6 +312,7 @@ class DebugResponseTest {
                 403 to "forbidden",
                 404 to "not_found",
                 405 to "method_not_allowed",
+                409 to "conflict",
                 413 to "payload_too_large",
                 500 to "internal_error",
                 503 to "unavailable",

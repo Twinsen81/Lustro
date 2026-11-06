@@ -1,0 +1,6 @@
+{
+  "error": "conflict",
+  "message": "c15.42 matches tag \"save\" in the activity window, which does not have the focus: a window over it, such as a dialog, gets the touches",
+  "code": "not_in_focused_window",
+  "hint": "Close the window on top first: a user can't tap the node now. \"force\": true acts on it anyway"
+}

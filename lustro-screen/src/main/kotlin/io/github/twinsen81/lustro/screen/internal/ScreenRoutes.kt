@@ -13,10 +13,15 @@ internal class ScreenRoutes(private val source: ScreenSource) {
         return try {
             when (request.path) {
                 "tree" -> tree(request)
+                "click", "set-text", "scroll" -> act(request)
                 else -> null
             }
         } catch (e: RouteException) {
             DebugResponse.error(e.message.orEmpty(), status = e.status, code = e.code, field = e.field, hint = e.hint)
+        } catch (e: ActionRefused) {
+            DebugResponse.error(e.message.orEmpty(), status = e.status, code = e.code, hint = e.hint)
+        } catch (e: ScreenSource.ActionFailed) {
+            DebugResponse.error(e.message.orEmpty(), status = 500, code = "action_failed")
         } catch (e: ScreenSource.ReadFailed) {
             DebugResponse.error(e.message.orEmpty(), status = 500, code = "read_failed")
         } catch (e: ScreenSource.MainThreadBlocked) {
@@ -38,6 +43,12 @@ internal class ScreenRoutes(private val source: ScreenSource) {
         val settle = settle(request.queryParam("settle"))
         val tree = source.tree(request, merged, settle)
         return DebugResponse.json { ScreenJson.appendTree(this, tree) }
+    }
+
+    private fun act(request: DebugRequest): DebugResponse {
+        val body = ActionBodies.parse(request.path, request.bodyAsString())
+        val result = source.act(request, body)
+        return DebugResponse.json { ScreenJson.appendActionResult(this, result) }
     }
 
     private fun boolean(request: DebugRequest, name: String, default: Boolean): Boolean =
@@ -67,6 +78,6 @@ internal class ScreenRoutes(private val source: ScreenSource) {
     ) : Exception(message)
 
     private companion object {
-        val METHODS: Map<String, String> = mapOf("tree" to "GET")
+        val METHODS: Map<String, String> = mapOf("tree" to "GET", "click" to "POST", "set-text" to "POST", "scroll" to "POST")
     }
 }

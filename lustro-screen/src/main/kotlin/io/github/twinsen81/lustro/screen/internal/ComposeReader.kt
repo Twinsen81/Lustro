@@ -9,6 +9,7 @@ import androidx.compose.ui.semantics.ScrollAxisRange
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.text.AnnotatedString
 import kotlin.math.roundToInt
 
 /**
@@ -52,22 +53,42 @@ internal class ComposeReader {
 
     fun isHost(view: View): Boolean = view is ViewRootForTest
 
-    /** Adds the nodes of [view]'s tree to [out], under [host], the host's View node. */
-    fun read(view: View, host: ScreenNode, merged: Boolean, out: MutableList<ScreenNode>) {
+    /**
+     * Adds the nodes of [view]'s tree to [out], under [host], the host's View node, and,
+     * with [live], each node's `SemanticsNode` under its id.
+     */
+    fun read(view: View, host: ScreenNode, merged: Boolean, out: MutableList<ScreenNode>, live: MutableMap<String, Any>? = null) {
         val owner = (view as ViewRootForTest).semanticsOwner
         val root = if (merged) owner.rootSemanticsNode else owner.unmergedRootSemanticsNode
         val inWindow = IntArray(2).also(view::getLocationInWindow)
         val onScreen = IntArray(2).also(view::getLocationOnScreen)
         val place = Place("c${host.id.removePrefix("v")}.", onScreen[0] - inWindow[0], onScreen[1] - inWindow[1], host.visibleBounds)
-        visit(root, host.id, place, out)
+        visit(root, host.id, place, out, live)
+    }
+
+    /**
+     * Runs [action] on [node], a `SemanticsNode` that a read with live nodes gave, and
+     * returns what the action's lambda returned: whether it did anything. Throws
+     * [IllegalStateException] when the node has no such action now.
+     */
+    fun perform(node: Any, action: ScreenAction): Boolean {
+        val config = (node as SemanticsNode).config
+        fun missing(name: String): Nothing = error("The node has no $name now")
+        return when (action) {
+            is ScreenAction.Click -> config.getOrNull(SemanticsActions.OnClick)?.action?.invoke() ?: missing("OnClick")
+            is ScreenAction.SetText -> config.getOrNull(SemanticsActions.SetText)?.action?.invoke(AnnotatedString(action.value)) ?: missing("SetText")
+            is ScreenAction.ScrollToIndex -> config.getOrNull(SemanticsActions.ScrollToIndex)?.action?.invoke(action.index) ?: missing("ScrollToIndex")
+            is ScreenAction.ScrollBy -> config.getOrNull(SemanticsActions.ScrollBy)?.action?.invoke(action.dx, action.dy) ?: missing("ScrollBy")
+        }
     }
 
     private class Place(val prefix: String, val dx: Int, val dy: Int, val hostVisible: ScreenRect?)
 
-    private fun visit(node: SemanticsNode, parent: String, place: Place, out: MutableList<ScreenNode>) {
+    private fun visit(node: SemanticsNode, parent: String, place: Place, out: MutableList<ScreenNode>, live: MutableMap<String, Any>?) {
         val id = place.prefix + node.id
         out += node(node, id, parent, place)
-        for (child in node.children) visit(child, id, place, out)
+        live?.put(id, node)
+        for (child in node.children) visit(child, id, place, out, live)
     }
 
     private fun node(node: SemanticsNode, id: String, parent: String, place: Place): ScreenNode {

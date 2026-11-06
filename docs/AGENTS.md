@@ -807,12 +807,47 @@ A new process starts a new stream: a cursor from before gets a `reset`.
 Base path `/api/v1/screen`, when the app registers the Screen plugin
 (`ScreenDebugTab.create(context)`, or `create(context) { contextJson }` with a context provider;
 without it, the routes are an enveloped `404 Unknown tab: screen`). The authoritative contract is
-`lustro-screen/src/main/assets/lustro/screen.openapi.json`, version `1.0`. The tab only reads: it
-has no route that changes the app.
+`lustro-screen/src/main/assets/lustro/screen.openapi.json`, version `1.1` (`1.1` adds the actions).
+`GET tree` only reads; the `POST` routes run a node's own semantics action, as the app's code.
 
 | Operation | Route | Notes |
 | --- | --- | --- |
 | Read the screen | `GET tree?merged=&settle=` | `{ windows, merged, density, compose, windowSource, context, settle?, contextError?, composeError? }`. `merged=false` gives the unmerged semantics tree, in which each text is a node of its own; a node has the same id in both. `settle=MS`, from 1 to 10000, reads on each frame until two reads in a row are the same and the window focus is at rest (the top visible window that can take the focus has it, and no other window does), for up to MS, and adds `settle: { requestedMs, settled, waitedMs, frames }`. |
+| Click a node | `POST click` `{ tag \| text \| contentDescription \| id }` | Runs the node's `OnClick` semantics action, or `performClick()` of a View. Returns `{ status: "ok", action, matched, target, handled, tree }`: the node that the selector matched, the node whose action ran, what the action returned, and the tree after it. |
+| Type into a field | `POST set-text` `{ <selector>, value }` | Runs `SetText` with `value`, which replaces the text, or `setText()` of an `EditText`, with the cursor at the end. |
+| Scroll | `POST scroll` `{ <selector>, index }` or `{ <selector>, dx?, dy? }` | `index` runs `ScrollToIndex` of a Compose list, `setSelection()` of a `ListView`, or `scrollToPosition()` of a `RecyclerView`; `dx` and `dy`, pixels, run `ScrollBy`, or `scrollBy()` of a View. |
+
+**The actions.** A body has exactly one selector key, which matches exactly: `tag` a test tag,
+`text` any text of a node or the text of a field, `contentDescription` any content description,
+and `id` a node's id from `GET tree`. The tab looks in the unmerged tree, so it finds a tag or a
+text inside a clickable parent, and runs the action on the matched node or the nearest node above
+it that has the action, as a tap on the text would. It acts as a user can: only in the window that
+has the focus, and only on a target that has a visible part, unless the body says `"force": true`.
+Before it looks, it waits for the next frame, and then up to 500 ms for the window focus to come
+to rest, so an action right after a tap that opened a dialog finds the dialog: a Compose dialog
+comes on the frame after the tap, and gets the focus some frames later. A dialog that the app
+shows later, such as after a network call, is not there yet: read the tree until it shows.
+`merged` and `settle` (from 1 to 10000 ms, 500 by default) are for the tree of the response: after
+the action, the tab reads it on each frame until two reads in a row are the same and the window
+focus is at rest, at least one frame, so the response shows what the action did, also a dialog
+that it opened, with the focus. A key that the route does not take is a `400`
+with that key as `field`, so a misspelled key never acts on another node.
+
+**Refusals.** `404` with `code: "no_match"` when no node matches. `409 conflict` with
+`code: "ambiguous"` when nodes with different targets match (the message lists their ids:
+select one with `id`), `not_in_focused_window` when the node is only in a window that does not
+have the focus, such as the activity under a dialog, `no_window_focus` when no window of the app
+has the focus, `not_on_screen` when the target has no visible part (scroll first),
+`disabled` when the target is disabled, and `no_action` when neither the node nor a node above
+it has the action. `500` with `code: "action_failed"` when the app's own action throws: a real
+tap would have ended the app there.
+
+**Tap, or click?** A click runs the node's callback without the system's hit test. It refuses the
+nodes that a user can't tap now, but it can't see everything that a hit test sees, such as a View
+drawn over the node in the same window, or a node whose bounds move under the finger. To check
+what a user can do, tap the middle of the node's `visibleBounds` with `adb shell input tap`, as
+below; use the click when the tap's coordinates are not reliable, or for speed.
+
 
 **A window.** `{ id, type, kind, title, hasWindowFocus, focusable, visible, bounds, nodes }`, in the order the
 app added the windows: the activity first, then each dialog, popup, and bottom sheet over it.
@@ -1061,9 +1096,14 @@ Errors use the shared envelope; key statuses:
   `screen/tree`, with `code: "main_thread_blocked"`: the app's main thread did not start the read
   within 5 s, or did not finish it within 5 s and the settle time, because the app is busy or does
   not respond. Try again, or look for an ANR in the log.
-- **`500 internal_error` with `code: "read_failed"`** on `screen/tree`: the read threw on the main
-  thread, as with a View of the app whose getter throws. The message names the exception; the app
-  goes on.
+- **`500 internal_error` with `code: "read_failed"`** on `screen/tree` and the screen actions: the
+  read threw on the main thread, as with a View of the app whose getter throws. The message names
+  the exception; the app goes on. With `code: "action_failed"`: the app's own click, `SetText`, or
+  scroll threw.
+- **`409 conflict`** on `screen/click`, `set-text`, and `scroll`: the action can't run on one node
+  that a user can reach now. `code` says why: `ambiguous`, `not_in_focused_window`,
+  `no_window_focus`, `not_on_screen`, `disabled`, or `no_action` (see
+  [Screen tab operations](#screen-tab-operations)).
 - **`404 not_found`** — unknown route, missing transaction, a body that wasn't kept, or `send` with
   no sender configured. Also a WebSocket connection that the app cleared or evicted, and a message
   with no stored payload. Also every `logs/` route when the app did not register the Logs plugin
