@@ -28,10 +28,12 @@ that `uvx lustro-cli` finds it by the package's name.
 > command, so `pip install lustro` and `uvx lustro` install that project, not
 > this CLI.
 
-Until the first release, the CLI is not on PyPI. Install it from a checkout:
+Until the first release, the CLI is not on PyPI. Install it from GitHub, or from
+a checkout:
 
 ```bash
-uv tool install ./lustro-cli         # or: pipx install ./lustro-cli
+uv tool install "git+https://github.com/Twinsen81/Lustro#subdirectory=lustro-cli"   # pipx takes the same URL
+uv tool install ./lustro-cli         # from a checkout; or: pipx install ./lustro-cli
 pip install -e 'lustro-cli[test]'    # to work on the CLI: adds pytest and jsonschema for the contract tests
 ```
 

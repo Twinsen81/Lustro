@@ -136,8 +136,9 @@ uvx lustro-cli net list       # runs the CLI without an install
 ```
 
 The PyPI package `lustro` is a different project that also installs a `lustro` command, so do not
-install it. Until the first release, install the CLI from a checkout of this repository:
-`uv tool install ./lustro-cli`.
+install it. Until the first release, the CLI is not on PyPI. Install it from GitHub with
+`uv tool install "git+https://github.com/Twinsen81/Lustro#subdirectory=lustro-cli"`, which pipx also takes, or from a checkout
+of this repository with `uv tool install ./lustro-cli`.
 
 ## Quick start
 

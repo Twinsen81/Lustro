@@ -36,8 +36,8 @@ Agents should drive Lustro with the `lustro` CLI. It is a Python client in `lust
 release publishes it to PyPI as `lustro-cli`. Install it with `uv tool install lustro-cli` or
 `pipx install lustro-cli`, or run it without an install as `uvx lustro-cli <command>`. The PyPI
 package `lustro` is a different project with a `lustro` command of its own: do not install it, and
-do not run `uvx lustro`. Until the first release, install the CLI from a checkout with
-`uv tool install ./lustro-cli` or `pip install ./lustro-cli`.
+do not run `uvx lustro`. Until the first release, the CLI is not on PyPI. Install it from GitHub
+with `uv tool install "git+https://github.com/Twinsen81/Lustro#subdirectory=lustro-cli"`, which pipx also takes.
 
 The CLI reads the token and the endpoint from the `LustroToken` log line, and it prints much less
 than the routes return: `GET transactions` returns every captured transaction with all its fields,
