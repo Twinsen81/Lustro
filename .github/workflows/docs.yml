@@ -16,11 +16,11 @@ on:
 permissions:
   contents: read
 
-# A pull request's run gives way to a newer one. On main, a deploy that has
+# A run on a branch gives way to a newer one. On main, a deploy that has
 # started is never cancelled, so the site does not stop halfway.
 concurrency:
   group: docs-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   build:
@@ -42,29 +42,30 @@ jobs:
         run: zensical build --clean --strict
 
       # The Kotlin API reference of every module that applies lustro.publishing
-      # (see the root build.gradle.kts). A pull request that changes only the
-      # docs does not need it.
+      # (see the root build.gradle.kts). Only a run on main, which deploys,
+      # needs it: a pull request, or a manual run on another branch, stops at
+      # the strict build above and never publishes that branch.
       - name: Set up JDK + Gradle
-        if: ${{ github.event_name != 'pull_request' }}
+        if: ${{ github.ref == 'refs/heads/main' }}
         uses: ./.github/actions/setup
 
       - name: Generate Dokka HTML
-        if: ${{ github.event_name != 'pull_request' }}
+        if: ${{ github.ref == 'refs/heads/main' }}
         run: ./gradlew dokkaGenerate --console=plain --stacktrace
 
       - name: Add the API reference to the site
-        if: ${{ github.event_name != 'pull_request' }}
+        if: ${{ github.ref == 'refs/heads/main' }}
         run: cp -R build/dokka/html site/api
 
       - name: Upload the site
-        if: ${{ github.event_name != 'pull_request' }}
+        if: ${{ github.ref == 'refs/heads/main' }}
         uses: actions/upload-pages-artifact@v5
         with:
           path: site
 
   deploy:
     name: Deploy to GitHub Pages
-    if: ${{ github.event_name != 'pull_request' }}
+    if: ${{ github.ref == 'refs/heads/main' }}
     needs: build
     runs-on: ubuntu-latest
     permissions:
