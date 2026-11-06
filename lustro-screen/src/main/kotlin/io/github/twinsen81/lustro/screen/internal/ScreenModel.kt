@@ -83,6 +83,8 @@ internal data class ScreenWindow(
     val visible: Boolean,
     val bounds: ScreenRect,
     val nodes: List<ScreenNode>,
+    /** The index of the first window of the same activity: see [WindowFocus.groups]. */
+    val group: Int = 0,
 )
 
 /** What a read of all the windows found, before the app's context is added. */
@@ -91,20 +93,9 @@ internal data class ScreenWindows(
     val source: String,
     val composeError: String?,
 ) {
-    /**
-     * Whether the window focus has come to rest: the top visible window that can take the
-     * focus has it, and no other window does. The window manager moves the focus some
-     * frames after a dialog opens or closes, 200 ms and more on a physical device, so a
-     * read before then has the focus on a window that will lose it; and on API 24 the
-     * window under a new dialog still says that it has the focus for some frames after
-     * the dialog has it. With no visible window that can take the focus, there is nothing
-     * to wait for.
-     */
+    /** Whether the window focus has come to rest: see [WindowFocus.atRest]. */
     val focusSettled: Boolean
-        get() {
-            val top = windows.lastOrNull { it.visible && it.focusable } ?: return true
-            return top.hasWindowFocus && windows.none { it !== top && it.hasWindowFocus }
-        }
+        get() = WindowFocus.atRest(windows.map { WindowFocus.Entry(it.group, it.visible, it.focusable, it.hasWindowFocus) })
 }
 
 /** How a `settle` wait ended: whether two reads in a row were equal, after how long and how many frames. */

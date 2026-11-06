@@ -56,6 +56,27 @@ class SettleFocusTest {
     }
 
     @Test
+    fun `with two activities on the screen, the focus is at rest on the earlier one too`() {
+        val first = ScreenFixtures.viewActivity()
+        ScreenFixtures.composeActivity()
+        // As in split screen or picture-in-picture: the user's tap gave the earlier activity the focus.
+        val firstRoot = first.window.decorView
+        val tree = json(ScreenFixtures.getOffMain(tab(focus = { it === firstRoot }), "tree", "settle" to "2000"))
+        val settle = tree.getJSONObject("settle")
+        assertTrue(settle.toString(), settle.getBoolean("settled"))
+        assertTrue(settle.getLong("waitedMs") < 2000)
+        assertEquals(2, tree.getJSONArray("windows").length())
+    }
+
+    @Test
+    fun `a dialog is in the group of its activity, and a second activity in its own`() {
+        ScreenFixtures.composeActivity(dialog = true)
+        ScreenFixtures.viewActivity()
+        val roots = android.view.inspector.WindowInspector.getGlobalWindowViews()
+        assertEquals(listOf(0, 0, 2), WindowFocus.groups(roots).toList())
+    }
+
+    @Test
     fun `a settle while no window of the app has the focus runs to its end and says so`() {
         ScreenFixtures.composeActivity(dialog = true)
         val tree = json(ScreenFixtures.getOffMain(tab(focus = { false }), "tree", "settle" to "200"))

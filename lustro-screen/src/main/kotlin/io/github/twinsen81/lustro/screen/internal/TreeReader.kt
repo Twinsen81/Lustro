@@ -25,7 +25,8 @@ internal class TreeReader(
 ) {
     fun read(roots: List<View>, source: String, merged: Boolean): ScreenWindows {
         val errors = ArrayList<String>(0)
-        val windows = roots.map { window(it, merged, errors) }
+        val groups = WindowFocus.groups(roots)
+        val windows = roots.mapIndexed { index, root -> window(root, merged, errors).copy(group = groups[index]) }
         return ScreenWindows(windows, source, errors.firstOrNull())
     }
 

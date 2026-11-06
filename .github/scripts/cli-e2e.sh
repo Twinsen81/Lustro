@@ -441,7 +441,15 @@ lustro --json schema screen > "$OUT/schema-screen.json"
 check schema-screen < "$OUT/schema-screen.json"
 echo "matches the CLI's copy ($(wc -c < "$OUT/schema-screen.json") bytes)"
 
-lustro_to screen-home.json --json screen tree --settle 1000
+# The steps above sent intents to the sample, and on some emulators the window
+# transition of each ends only after a few seconds: until then no window of the app
+# has the focus, and the tree says so. Read it until the activity's window has it.
+step "lustro --json screen tree --settle 2000, until the activity's window has the focus"
+for _ in $(seq 10); do
+  lustro --json screen tree --settle 2000 > "$OUT/screen-home.json"
+  check screen-home < "$OUT/screen-home.json" 2> /dev/null && break
+done
+cat "$OUT/screen-home.json"
 check screen-home < "$OUT/screen-home.json"
 lustro_to screen-home.txt screen tree
 check screen-text < "$OUT/screen-home.txt"
