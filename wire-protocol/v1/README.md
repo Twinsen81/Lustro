@@ -209,11 +209,26 @@ with the core wire.
   `installed`, `missing`, or `unsupported`. Every route answers `503` with the
   code `work_unsupported` below WorkManager 2.12.0, and the routes that read
   work `503` with `work_not_initialized` until the app initializes WorkManager.
+- **Screen `1.0`** (`:lustro-screen`) - the app's windows and the UI tree in
+  each under `/api/v1/screen/`. `GET tree` returns the windows of the app's
+  process in the order the app added them, each `{ id, type, kind, title,
+  hasWindowFocus, visible, bounds, nodes }`, and the nodes of each, a parent
+  before its children: the classic Views and the Compose semantics nodes of
+  each Compose host, the merged tree by default and the unmerged one with
+  `merged=false`. A node has its `id`, `parent`, and `kind`, its `bounds` in the
+  window, its `screenBounds`, and its `visibleBounds` on the screen, `null` when
+  no part of it is there, and leaves out what it does not have: its
+  `className` and `resourceId`, `testTag`, `text`, `contentDescription`,
+  `editableText`, `role`, `toggle`, `selected`, `actions`, and scroll ranges.
+  `settle=MS` reads on each frame until two reads in a row are the same, and
+  adds `settle`. `context` is what the app's `ScreenContextProvider` returned.
+  A main thread that does not run the read answers `504` with the code
+  `main_thread_blocked`.
 
 ## Status
 
 The concrete schema files (`*.schema.json`), the Network, Logs, Preferences,
-SQLite, and WorkManager OpenAPI documents, and the golden fixtures (`golden/`) are present: envelopes + tab
+SQLite, WorkManager, and Screen OpenAPI documents, and the golden fixtures (`golden/`) are present: envelopes + tab
 schemas, and the golden response corpus (CLI contract tests). See
 `SCHEMA_INDEX.md` for the full set. The golden fixtures are also vendored into
 the `lustro-cli` wheel under `lustro_cli/wire/` so the installed CLI ships its

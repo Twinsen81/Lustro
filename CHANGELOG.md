@@ -27,6 +27,39 @@ see [DECISIONS.md](DECISIONS.md).
   release no longer pushes Dokka to a `gh-pages` branch, and `checkDocsVersion`
   also checks the coordinates in `docs/index.md`.
 
+- **A Screen tab gives agents and scripts the app's UI as a tree.** A new
+  plugin pair, `lustro-screen` and `lustro-screen-noop`, registered with
+  `ScreenDebugTab.create(context)`, serves `GET /api/v1/screen/tree`: every
+  window of the app's process, the activity and each dialog, popup, and bottom
+  sheet over it, in the order the app added them, and in each the classic Views
+  and the Compose semantics nodes of each Compose host. A node has its id, which
+  stays the same from read to read, its test tag, text, content description,
+  editable text, and role, its bounds in the window and on the screen, the part
+  of it that is visible on the screen, its enabled, focused, selected, and
+  toggle states, the actions that drive it, and its scroll position and range.
+  Every test tag is in the tree, whether the app sets `testTagsAsResourceId` or
+  not, and the text of a password field comes as one dot for each character.
+  Each window says whether it has the window focus, so a client sees when a
+  window of another app, such as a permission dialog, is on top: the server
+  still answers then. `merged=false` gives the unmerged semantics tree, and
+  `settle=MS` reads on each frame until two reads in a row are the same, for up
+  to MS. A `ScreenContextProvider` adds what only the app knows, such as its
+  navigation back stack, as `context`. The tab reads on the main thread, and a
+  main thread that does not run the read within 5 s answers `504` with code
+  `main_thread_blocked`. From API 29 the tab lists the windows with
+  `WindowInspector`, and before that through `WindowManagerGlobal`, by
+  reflection. Compose UI is `compileOnly`, at 1.6.0: the tab reads the semantics
+  tree when the app has Compose, and the Views of any app. `lustro screen tree`
+  prints each window and its nodes on the screen, one line each, with their
+  bounds in uiautomator's format. The tab has no console view, so it stays out
+  of the tab bar. The sample has a Screen page with a form, a Compose dialog, a
+  View dialog, and a list. On two physical devices with API 37, and on API 24
+  and API 36 emulators, a read of the sample's tree over `adb forward` took 2
+  to 19 ms, where `uiautomator dump` with `cat` took 1.2 to 2.4 s. On each,
+  with the Compose dialog and then the View dialog open, the tree had both
+  windows, with the focus on the dialog, and with the share chooser on top, no
+  window of the app had the focus. On API 24 the tab lists the windows through
+  `WindowManagerGlobal`. The Screen schema is `1.0`.
 - **The WorkManager tab names the unique work of every work request, and
   links each run to its log lines.** `WorkInfo` has no unique name, so the tab
   labelled only the work of the names that the app listed in `uniqueNames`.

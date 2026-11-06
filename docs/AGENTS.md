@@ -26,8 +26,9 @@ This document is about using a running Lustro. To add Lustro to an app, follow t
 - **Plugin tabs.** An app can also register plugin tabs, such as `logs`, the app's own logcat
   (see [Logs tab operations](#logs-tab-operations)), and `prefs`, the app's SharedPreferences
   and Preferences DataStores (see [Preferences tab operations](#preferences-tab-operations)), `sqlite`, the app's SQLite and Room databases
-  (see [SQLite tab operations](#sqlite-tab-operations)), and `work`, the app's WorkManager work and
-  the events of each run (see [WorkManager tab operations](#workmanager-tab-operations)). `_meta` lists the ones the app registered,
+  (see [SQLite tab operations](#sqlite-tab-operations)), `work`, the app's WorkManager work and
+  the events of each run (see [WorkManager tab operations](#workmanager-tab-operations)), and
+  `screen`, the app's windows and UI tree (see [Screen tab operations](#screen-tab-operations)). `_meta` lists the ones the app registered,
   and each plugin's `_schema` has a version of its own in `info.version`.
 
 ## Use the `lustro` CLI
@@ -801,6 +802,82 @@ history has the run's times, and logcat has the exception (`lustro api GET logs/
 tag=WM-WorkerWrapper` while the Logs plugin is registered and the process lives, or `adb logcat`).
 A new process starts a new stream: a cursor from before gets a `reset`.
 
+## Screen tab operations
+
+Base path `/api/v1/screen`, when the app registers the Screen plugin
+(`ScreenDebugTab.create(context)`, or `create(context) { contextJson }` with a context provider;
+without it, the routes are an enveloped `404 Unknown tab: screen`). The authoritative contract is
+`lustro-screen/src/main/assets/lustro/screen.openapi.json`, version `1.0`. The tab only reads: it
+has no route that changes the app.
+
+| Operation | Route | Notes |
+| --- | --- | --- |
+| Read the screen | `GET tree?merged=&settle=` | `{ windows, merged, density, compose, windowSource, context, settle?, contextError?, composeError? }`. `merged=false` gives the unmerged semantics tree, in which each text is a node of its own; a node has the same id in both. `settle=MS`, from 1 to 10000, reads on each frame until two reads in a row are the same, for up to MS, and adds `settle: { requestedMs, settled, waitedMs, frames }`. |
+
+**A window.** `{ id, type, kind, title, hasWindowFocus, visible, bounds, nodes }`, in the order the
+app added the windows: the activity first, then each dialog, popup, and bottom sheet over it.
+`kind` is `activity`, `dialog`, `popup`, `system`, or `other`, from the window `type` of the root
+View's `WindowManager.LayoutParams`. `id` is the id of the window's first node, its root View.
+`hasWindowFocus` is `true` for the window that gets the keys and the touches first. The server
+answers while the app's process is started, so it also answers while a permission dialog, the
+chooser, or a translucent activity of another app covers the app, and for at least 700 ms after a
+full-screen activity of another app covers it. Then no window of the app has the focus: read that
+window with `uiautomator`.
+
+**A node.** `{ id, parent?, kind, bounds, screenBounds, visibleBounds }` and what it has:
+`className` and `resourceId` (Views), `testTag`, `text` (a list: a merged node carries the text
+of each child), `contentDescription` (a list), `editableText` (a field's text), `password: true`,
+`role` (Compose's `Role`: `Button`, `Checkbox`, `Switch`, `RadioButton`, `Tab`, `Image`,
+`DropdownList`), `stateDescription`, `error`, `enabled: false`, `focused: true`, `selected`,
+`toggle` (`on`, `off`, or `indeterminate`), `clickable: true`, `actions` (`OnClick`,
+`OnLongClick`, `SetText`, `PerformImeAction`, `ScrollBy`, `ScrollToIndex`, the page and progress
+actions, `Expand`, `Collapse`, and `Dismiss`), `horizontalScroll` and `verticalScroll`
+(`{ value, max, reverse, forward, backward }`, with `max: null` for a View that does not say), and
+`collection` (`{ rows, columns }` of a Compose list or grid). A key that the node does not have is
+left out. The nodes of a window come in a list, each parent before its children. `kind` is `view`
+or `compose`: a View's id is `v` and a number that stays the same while the View lives, and a
+Compose node's id is `c`, the number of its host's View, a dot, and its semantics id, such as
+`c5.23` under the host `v5`. The Views of an `AndroidView` in a Compose host come after the host's
+semantics nodes, with the host as their parent. All rectangles are `{ left, top, right, bottom }`
+in pixels; `bounds` is in the window, and `screenBounds` and `visibleBounds` are on the screen.
+`visibleBounds` is the part of the node that its parents and its window leave on the screen,
+`null` when they leave none, and `clipped: true` says that they cut a part of it. A lazy list
+composes the rows in view only, and a few more, so a row that is not in the tree needs a scroll
+first. The text of a password field has one dot for each character, as the screen shows it.
+
+**The context.** `context` is the JSON that the app's `ScreenContextProvider` returned after the
+read, such as `{"route":"settings","stack":["home","settings"]}`, or `null` when the app has none.
+A provider that throws, or returns text that is not JSON, gives `context: null` and the reason in
+`contextError`.
+
+**The CLI.** `lustro screen tree` prints each window, and each node on the screen that has a text,
+a tag, a role, an action, or a state, one line each: its id, its role or class, its text, `#tag`,
+its states and actions, and its visible bounds as `[left,top][right,bottom]`, as
+`uiautomator dump` writes them. `--all` prints every node, `--unmerged` reads the unmerged tree,
+`--settle MS` waits as above, and `--json` prints the response.
+
+**Read the screen in a loop.** The CLI looks up the token and the port on every call, with
+`adb logcat -d -s LustroToken` and `adb forward --list`, so each `lustro screen tree` costs two
+adb calls and a Python start. A script that reads the tree many times, such as a step runner,
+reads the token and makes the forward once, keeps both, and sends the GET itself:
+
+```bash
+TOKEN=$(adb logcat -d -s LustroToken | tail -1 | sed -n 's/.*token=\([^ ]*\).*/\1/p')
+adb forward --no-rebind tcp:18080 tcp:8080
+curl -s -H "Authorization: Bearer $TOKEN" "http://localhost:18080/api/v1/screen/tree?settle=500"
+```
+
+When the app goes to the background, the server closes its socket, and binds again when the app
+comes back: the first read after that can get a refused connection, and with `bindFallback` the
+port can change. On a refused connection or a `401`, look up the token and the port once more, and
+then read the screen with `uiautomator dump`. Read it with `uiautomator dump` too when no window
+has `hasWindowFocus`.
+
+**Tap what a user taps.** To press a node, tap the middle of its `visibleBounds` with
+`adb shell input tap X Y`. That goes through the system's hit test, as a finger does: a node that
+a dialog or a sheet covers gets no tap, so a check that the tap worked tells you what a user would
+see. A `null` `visibleBounds` means that a user can't tap the node now: scroll first.
+
 ## Common workflows
 
 **Mock a 500 for an endpoint**
@@ -980,14 +1057,18 @@ Errors use the shared envelope; key statuses:
 - **`413 payload_too_large`** — request body exceeds the configured max (1 MB by default; 1 KB for
   `POST /api/v1/_auth`).
 - **`503 unavailable`** — the server is at its concurrency + queue limit; back off and retry.
-- **`504 timeout`** — a handler (e.g. a slow `send`) exceeded the per-request timeout.
+- **`504 timeout`** — a handler (e.g. a slow `send`) exceeded the per-request timeout. On
+  `screen/tree`, with `code: "main_thread_blocked"`: the app's main thread did not start the read
+  within 5 s, or did not finish it within 5 s and the settle time, because the app is busy or does
+  not respond. Try again, or look for an ANR in the log.
 - **`404 not_found`** — unknown route, missing transaction, a body that wasn't kept, or `send` with
   no sender configured. Also a WebSocket connection that the app cleared or evicted, and a message
   with no stored payload. Also every `logs/` route when the app did not register the Logs plugin
   (`Unknown tab: logs`), every `prefs/` route without the Preferences plugin
   (`Unknown tab: prefs`), every `sqlite/` route without the SQLite plugin
-  (`Unknown tab: sqlite`), and every `work/` route without the WorkManager plugin
-  (`Unknown tab: work`). On `sqlite/` routes, also a `db` that the tab does not list, and a
+  (`Unknown tab: sqlite`), every `work/` route without the WorkManager plugin
+  (`Unknown tab: work`), and every `screen/` route without the Screen plugin
+  (`Unknown tab: screen`). On `sqlite/` routes, also a `db` that the tab does not list, and a
   `table` that the database does not have, each with its `field`.
 - **`403 forbidden` with `code: "read_only"`** on `prefs/edit`, `delete`, or `clear`: the file is
   read-only. `GET prefs/files` says which files are, and the app decides it in

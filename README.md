@@ -92,6 +92,7 @@ keeps your newer one.
 | `androidx.datastore` | none | `compileOnly` in `lustro-prefs` and `lustro-prefs-noop`. A registered `PrefsDataStore` needs DataStore 1.0, and a `bytes` value 1.1. |
 | `androidx.sqlite` | none | `compileOnly` in `lustro-sqlite` and `lustro-sqlite-noop`. A registered `SqliteDb.support` needs `androidx.sqlite` 2.0, which Room brings. |
 | `androidx.work` | none | `compileOnly` in `lustro-work` and `lustro-work-noop`. The WorkManager tab needs `work-runtime` 2.12.0, and its history `work-analytics` 2.12.0. |
+| `androidx.compose.ui` | none | `compileOnly` in `lustro-screen`. The Screen tab reads the Compose semantics tree with Compose UI 1.6.0 or newer, and the View tree in any app. |
 
 The runtime needs API 24, for `logcat --pid` among others. An app whose `minSdk` is lower keeps it
 for its release build, which takes the no-op halves, and raises it for the debug variant, which
@@ -1143,6 +1144,71 @@ static synchronized WorkDebugTab work(Application app) {
   hold user data. See [SECURITY.md](SECURITY.md#workmanager-work).
 - In `lustro-work-noop`, `configure()` returns the builder as it is, and the tab reads nothing.
 
+## Screen
+
+The Screen plugin gives an agent or a script your app's UI as a tree: each window of your app's
+process, and in each, the classic Views and the Compose semantics nodes, with their test tags,
+text, bounds, states, and actions. The tab reads them in your app's process, in milliseconds,
+where `uiautomator dump` takes a second or more for each read. It is a pair of artifacts, split
+by variant as `lustro` is:
+
+```toml
+lustro-screen      = { group = "io.github.twinsen81", name = "lustro-screen",      version.ref = "lustro" }
+lustro-screen-noop = { group = "io.github.twinsen81", name = "lustro-screen-noop", version.ref = "lustro" }
+```
+
+```kotlin
+dependencies {
+    debugImplementation(libs.lustro.screen)
+    releaseImplementation(libs.lustro.screen.noop)
+}
+
+val lustro = Lustro.builder(application)
+    .addTab(NetworkDebugTab.create(senderClient = client))
+    // The lambda is optional: what only your app knows about the screen, as JSON.
+    .addTab(ScreenDebugTab.create(application) { """{"route":"${navigator.currentRoute}"}""" })
+    .build()
+```
+
+- **Every window of the app.** `GET /api/v1/screen/tree` returns the activity's window and each
+  dialog, popup, and bottom sheet over it, in the order your app added them. From API 29 the tab
+  lists them with `WindowInspector`; before that it reads `WindowManagerGlobal` by reflection, as
+  Espresso does, and when that fails, the windows of the started activities, without their
+  dialogs and popups. Each window says whether it has the window focus. When none has it, a
+  window of another app is on top, such as a permission dialog or the chooser, and the tree does
+  not have that window.
+- **Compose and Views.** The tab reads the View tree of every window, and the semantics tree of
+  each Compose host in it: the merged tree by default, as accessibility services see it, and the
+  unmerged one with `merged=false`. Every test tag is in it, whether your app sets
+  `testTagsAsResourceId` or not. Compose is optional: the tab compiles against Compose UI 1.6.0
+  as `compileOnly`, checks at runtime that your app has Compose, and in an app without it reads
+  the Views only.
+- **What a node has.** Its id, which stays the same from read to read; its test tag, text,
+  content description, editable text, and role; its bounds in the window and on the screen; the
+  part of it that is visible on the screen, or `null` when no part of it is, as for a row
+  scrolled out of view; whether it is enabled, focused, selected, and on or off; the actions that
+  drive it, such as `OnClick`, `SetText`, and `ScrollBy`; and its scroll position and range. A
+  password field has one dot for each character, as the screen shows it.
+- **Your app's context.** A `ScreenContextProvider` returns what only your app knows, such as
+  its navigation back stack, as JSON. The tab calls it on the main thread after each read, and
+  the tree carries it as `context`.
+- **On the main thread.** `settle=500` reads the tree on each frame until two reads in a row are
+  the same, for up to 500 ms, for a screen that still changes. A main thread that does not run
+  the read within five seconds gets the client a `504` with the code `main_thread_blocked`, so a
+  script does not wait for an app that does not respond.
+- **The CLI.** `lustro screen tree` prints each window and the nodes on the screen that have a
+  text, a tag, a role, or an action, one line each, with their bounds in uiautomator's format;
+  `--json` prints the whole tree. A script that reads the tree in a loop sends the GET itself,
+  with a token and a forward that it keeps. See [docs/AGENTS.md](docs/AGENTS.md#screen-tab-operations)
+  and [`screen.openapi.json`](lustro-screen/src/main/assets/lustro/screen.openapi.json).
+- **Only the app's windows.** Permission dialogs, the chooser and the share sheet, the keyboard,
+  notifications, the text toasts that the system shows from API 30, and the page in a WebView
+  are not in the tree: read them with `uiautomator`.
+- **Every client with the token reads the screen**, with what it shows, but the text of password
+  fields. See [SECURITY.md](SECURITY.md#the-screen).
+- **No console view yet.** The tab is not in the tab bar; `_meta` lists it.
+- In `lustro-screen-noop`, the tab reads no window and never calls the provider.
+
 ## Security model
 
 Lustro deliberately surfaces app internals, so its defaults are conservative. See
@@ -1309,8 +1375,10 @@ the Preferences tab's is
 [`lustro-prefs/src/main/assets/lustro/prefs.openapi.json`](lustro-prefs/src/main/assets/lustro/prefs.openapi.json),
 the SQLite tab's is
 [`lustro-sqlite/src/main/assets/lustro/sqlite.openapi.json`](lustro-sqlite/src/main/assets/lustro/sqlite.openapi.json),
-and the WorkManager tab's is
+the WorkManager tab's is
 [`lustro-work/src/main/assets/lustro/work.openapi.json`](lustro-work/src/main/assets/lustro/work.openapi.json),
+and the Screen tab's is
+[`lustro-screen/src/main/assets/lustro/screen.openapi.json`](lustro-screen/src/main/assets/lustro/screen.openapi.json),
 each with a version of its own.
 
 For driving Lustro from agents, scripts, or the `lustro` CLI, see
@@ -1357,6 +1425,8 @@ For driving Lustro from agents, scripts, or the `lustro` CLI, see
 | `:lustro-sqlite-noop` | `io.github.twinsen81:lustro-sqlite-noop` | Release-safe no-op half of `:lustro-sqlite`. |
 | `:lustro-work` | `io.github.twinsen81:lustro-work` | The [WorkManager](#workmanager) plugin: the app's WorkManager work, its events, and cancel and prune under `/api/v1/work/`. |
 | `:lustro-work-noop` | `io.github.twinsen81:lustro-work-noop` | Release-safe no-op half of `:lustro-work`. |
+| `:lustro-screen` | `io.github.twinsen81:lustro-screen` | The [Screen](#screen) plugin: the app's windows and UI tree under `/api/v1/screen/`. |
+| `:lustro-screen-noop` | `io.github.twinsen81:lustro-screen-noop` | Release-safe no-op half of `:lustro-screen`. |
 | `lustro-cli/` | `lustro-cli` (PyPI) | Python CLI that wraps the HTTP API, installing a `lustro` command; published alongside each release. |
 
 See also: [CONTRIBUTING.md](CONTRIBUTING.md) · [SECURITY.md](SECURITY.md) ·
