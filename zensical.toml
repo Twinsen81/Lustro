@@ -1,6 +1,7 @@
 # The documentation site, built with Zensical (https://zensical.org) from the
 # Markdown in docs/. `.github/workflows/docs.yml` builds it with --strict and
-# publishes it to GitHub Pages, with the Dokka API reference under api/.
+# publishes it to GitHub Pages, with the Dokka API reference under api/ and the
+# wire-protocol schemas under wire-protocol/.
 #
 # Local preview:
 #   python -m pip install -r docs/requirements.txt

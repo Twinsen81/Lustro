@@ -1,8 +1,9 @@
 name: Docs
 
 # Builds the documentation site from docs/ with Zensical (zensical.toml) and,
-# on main, publishes it to GitHub Pages with the Dokka API reference under api/.
-# The repository's Pages source must be "GitHub Actions".
+# on main, publishes it to GitHub Pages with the Dokka API reference under api/
+# and the wire-protocol schemas under wire-protocol/. The repository's Pages
+# source must be "GitHub Actions".
 on:
   push:
     branches: [main]
@@ -56,6 +57,11 @@ jobs:
       - name: Add the API reference to the site
         if: ${{ github.ref == 'refs/heads/main' }}
         run: cp -R build/dokka/html site/api
+
+      # The schemas of the wire protocol, at the URLs that their $id fields name.
+      - name: Add the wire protocol to the site
+        if: ${{ github.ref == 'refs/heads/main' }}
+        run: cp -R wire-protocol site/wire-protocol
 
       - name: Upload the site
         if: ${{ github.ref == 'refs/heads/main' }}

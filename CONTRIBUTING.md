@@ -109,8 +109,8 @@ zensical build --clean --strict # what CI runs: fails on a broken link or anchor
 A link between pages is relative and names the Markdown file, such as
 `[Agents](AGENTS.md#use-the-lustro-cli)`, so that the strict build checks it. A
 link to a file outside `docs/`, such as a source file, is a full GitHub URL.
-The Kotlin API reference is not in the preview: CI adds the Dokka output under
-`api/` when it publishes.
+The Kotlin API reference and the wire-protocol schemas are not in the preview:
+CI adds the Dokka output under `api/` and `wire-protocol/` when it publishes.
 
 ## Module layout
 
