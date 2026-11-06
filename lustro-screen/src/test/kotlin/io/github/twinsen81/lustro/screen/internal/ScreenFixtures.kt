@@ -117,6 +117,18 @@ internal object ScreenFixtures {
         return activity
     }
 
+    /** POSTs [body] to [path] from another thread, as the server does, and runs the main looper meanwhile. */
+    fun postOffMain(tab: ScreenDebugTab, path: String, body: String, frameMs: Long = 16): DebugResponse {
+        var result: Result<DebugResponse>? = null
+        val thread = Thread { result = runCatching { tab.handle(DebugRequest(path, "POST", body = body.toByteArray())) ?: error("no route $path") } }
+        thread.start()
+        while (thread.isAlive) {
+            shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(frameMs))
+            thread.join(1)
+        }
+        return result!!.getOrThrow()
+    }
+
     fun idle() {
         shadowOf(Looper.getMainLooper()).idle()
     }

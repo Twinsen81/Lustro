@@ -65,6 +65,7 @@ internal data class ScreenNode(
         const val ACTION_LONG_CLICK: String = "OnLongClick"
         const val ACTION_SET_TEXT: String = "SetText"
         const val ACTION_SCROLL_BY: String = "ScrollBy"
+        const val ACTION_SCROLL_TO_INDEX: String = "ScrollToIndex"
     }
 }
 
