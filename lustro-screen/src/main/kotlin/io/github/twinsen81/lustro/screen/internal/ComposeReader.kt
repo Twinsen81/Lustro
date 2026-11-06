@@ -14,8 +14,10 @@ import kotlin.math.roundToInt
 /**
  * Reads the semantics tree of a Compose host, the merged one or the unmerged one.
  *
- * This class names Compose types, so the tab loads it only after [isAvailable] found
- * Compose UI in the app: in an app without Compose, nothing loads it.
+ * This class names Compose types, also in the properties that its constructor sets, so
+ * the tab creates it only after [ComposeSupport.isAvailable] found Compose UI in the
+ * app. It has no companion object and no static state: in an app without Compose,
+ * nothing initializes it.
  *
  * A Compose host is a View that implements `ViewRootForTest`; its `semanticsOwner`
  * gives the tree, and every call here is public API of Compose UI 1.6.0 and newer.
@@ -25,6 +27,29 @@ import kotlin.math.roundToInt
  */
 @SuppressLint("VisibleForTests")
 internal class ComposeReader {
+    /**
+     * The actions that drive a UI, by their semantics names. Each text node also has
+     * the accessibility actions of text substitution and layout, and each focusable
+     * one RequestFocus, which say nothing about what the node does.
+     */
+    private val drivingActions: List<SemanticsPropertyKey<*>> =
+        listOf(
+            SemanticsActions.OnClick,
+            SemanticsActions.OnLongClick,
+            SemanticsActions.SetText,
+            SemanticsActions.OnImeAction,
+            SemanticsActions.ScrollBy,
+            SemanticsActions.ScrollToIndex,
+            SemanticsActions.PageUp,
+            SemanticsActions.PageDown,
+            SemanticsActions.PageLeft,
+            SemanticsActions.PageRight,
+            SemanticsActions.SetProgress,
+            SemanticsActions.Expand,
+            SemanticsActions.Collapse,
+            SemanticsActions.Dismiss,
+        )
+
     fun isHost(view: View): Boolean = view is ViewRootForTest
 
     /** Adds the nodes of [view]'s tree to [out], under [host], the host's View node. */
@@ -60,7 +85,7 @@ internal class ComposeReader {
         val password = config.getOrNull(SemanticsProperties.Password) != null
         val text = config.getOrNull(SemanticsProperties.Text)?.map { if (password) TreeReader.mask(it.text) else it.text }.orEmpty()
         val editable = config.getOrNull(SemanticsProperties.EditableText)?.text?.let { if (password) TreeReader.mask(it) else it }
-        val actions = DRIVING_ACTIONS.filter { config.contains(it) }.map { it.name }
+        val actions = drivingActions.filter { config.contains(it) }.map { it.name }
         val collection = config.getOrNull(SemanticsProperties.CollectionInfo)
         return ScreenNode(
             id = id,
@@ -94,41 +119,5 @@ internal class ComposeReader {
         val value = range.value().takeIf { it.isFinite() } ?: 0f
         val max = range.maxValue().takeIf { it.isFinite() }
         return ScrollRange(value, max, range.reverseScrolling, forward = max == null || value < max, backward = value > 0f)
-    }
-
-    companion object {
-        /**
-         * The actions that drive a UI, by their semantics names. Each text node also has
-         * the accessibility actions of text substitution and layout, and each focusable
-         * one RequestFocus, which say nothing about what the node does.
-         */
-        private val DRIVING_ACTIONS: List<SemanticsPropertyKey<*>> =
-            listOf(
-                SemanticsActions.OnClick,
-                SemanticsActions.OnLongClick,
-                SemanticsActions.SetText,
-                SemanticsActions.OnImeAction,
-                SemanticsActions.ScrollBy,
-                SemanticsActions.ScrollToIndex,
-                SemanticsActions.PageUp,
-                SemanticsActions.PageDown,
-                SemanticsActions.PageLeft,
-                SemanticsActions.PageRight,
-                SemanticsActions.SetProgress,
-                SemanticsActions.Expand,
-                SemanticsActions.Collapse,
-                SemanticsActions.Dismiss,
-            )
-
-        /** Whether the app has Compose UI, asked of the class loader, so that an app without it never loads a Compose class. */
-        fun isAvailable(loader: ClassLoader?): Boolean =
-            try {
-                Class.forName("androidx.compose.ui.platform.ViewRootForTest", false, loader)
-                true
-            } catch (_: ClassNotFoundException) {
-                false
-            } catch (_: LinkageError) {
-                false
-            }
     }
 }

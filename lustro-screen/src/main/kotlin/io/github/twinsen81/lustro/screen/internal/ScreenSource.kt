@@ -26,7 +26,7 @@ internal class ScreenSource(
     activities: ActivityTracker,
     private val contextProvider: ScreenContextProvider?,
     private val mainThreadTimeoutMs: Long = MAIN_THREAD_TIMEOUT_MS,
-    composeAvailable: Boolean = ComposeReader.isAvailable(ScreenSource::class.java.classLoader),
+    composeAvailable: Boolean = ComposeSupport.isAvailable(ScreenSource::class.java.classLoader),
 ) {
     private val roots = WindowRoots(activities)
     private val compose = if (composeAvailable) ComposeReader() else null
@@ -43,34 +43,52 @@ internal class ScreenSource(
      * @throws InterruptedException when the runtime gives up on the request.
      */
     fun tree(request: DebugRequest, merged: Boolean, settleMs: Int): ScreenTree {
-        if (Looper.myLooper() == Looper.getMainLooper()) {
-            // Only a test calls a tab on the main thread; a frame can't come while it waits.
-            val settle = if (settleMs > 0) SettleResult(settleMs, settled = false, waitedMs = 0, frames = 0) else null
-            return finish(readNow(merged), merged, settle)
-        }
-        val result = AtomicReference<ScreenTree>()
+        if (Looper.myLooper() == Looper.getMainLooper()) return readOnMainThread(merged, settleMs)
+        val result = AtomicReference<Result<ScreenTree>>()
         val started = AtomicBoolean(false)
         val cancelled = AtomicBoolean(false)
         val done = CountDownLatch(1)
         request.onCancel { cancelled.set(true) }
+        val complete = { outcome: Result<ScreenTree> ->
+            result.set(outcome)
+            done.countDown()
+        }
         main.post {
             if (cancelled.get()) return@post
             started.set(true)
-            val complete = { tree: ScreenTree ->
-                result.set(tree)
-                done.countDown()
-            }
-            if (settleMs > 0) {
-                Settle(merged, settleMs, cancelled, complete).start()
-            } else {
-                complete(finish(readNow(merged), merged, settle = null))
+            // What the read throws, from a View of the app among others, goes to the
+            // request's thread: on the main looper it would end the app's process.
+            contained(complete) {
+                if (settleMs > 0) {
+                    Settle(merged, settleMs, cancelled, complete).start()
+                } else {
+                    complete(Result.success(finish(readNow(merged), merged, settle = null)))
+                }
             }
         }
         if (!done.await(mainThreadTimeoutMs + settleMs, TimeUnit.MILLISECONDS)) {
             cancelled.set(true)
             throw MainThreadBlocked(if (started.get()) mainThreadTimeoutMs + settleMs else mainThreadTimeoutMs, started.get())
         }
-        return result.get()
+        return result.get().getOrElse { throw ReadFailed(it) }
+    }
+
+    // Only a test calls a tab on the main thread; a frame can't come while it waits.
+    private fun readOnMainThread(merged: Boolean, settleMs: Int): ScreenTree {
+        val settle = if (settleMs > 0) SettleResult(settleMs, settled = false, waitedMs = 0, frames = 0) else null
+        return try {
+            finish(readNow(merged), merged, settle)
+        } catch (t: Throwable) {
+            throw ReadFailed(t)
+        }
+    }
+
+    private inline fun contained(noinline complete: (Result<ScreenTree>) -> Unit, block: () -> Unit) {
+        try {
+            block()
+        } catch (t: Throwable) {
+            complete(Result.failure(t))
+        }
     }
 
     private fun readNow(merged: Boolean): ScreenWindows {
@@ -86,8 +104,9 @@ internal class ScreenSource(
                 json = contextProvider.contextJson()?.let(::checkedJson)
             } catch (e: InvalidContext) {
                 error = e.message
-            } catch (e: RuntimeException) {
-                error = "The ScreenContextProvider threw $e"
+            } catch (t: Throwable) {
+                // The app's code: an Error such as the one that TODO() throws is its error too.
+                error = "The ScreenContextProvider threw $t"
             }
         }
         return ScreenTree(read, merged, context.resources.displayMetrics.density, composeAvailable, settle, json, error)
@@ -98,7 +117,7 @@ internal class ScreenSource(
         private val merged: Boolean,
         private val settleMs: Int,
         private val cancelled: AtomicBoolean,
-        private val complete: (ScreenTree) -> Unit,
+        private val complete: (Result<ScreenTree>) -> Unit,
     ) : Choreographer.FrameCallback {
         private val startedAt = SystemClock.uptimeMillis()
         private var last: ScreenWindows? = null
@@ -111,15 +130,17 @@ internal class ScreenSource(
 
         override fun doFrame(frameTimeNanos: Long) {
             if (cancelled.get()) return
-            frames++
-            val read = readNow(merged)
-            val waited = SystemClock.uptimeMillis() - startedAt
-            val settled = read == last
-            if (settled || waited >= settleMs) {
-                complete(finish(read, merged, SettleResult(settleMs, settled, waited, frames)))
-            } else {
-                last = read
-                Choreographer.getInstance().postFrameCallback(this)
+            contained(complete) {
+                frames++
+                val read = readNow(merged)
+                val waited = SystemClock.uptimeMillis() - startedAt
+                val settled = read == last
+                if (settled || waited >= settleMs) {
+                    complete(Result.success(finish(read, merged, SettleResult(settleMs, settled, waited, frames))))
+                } else {
+                    last = read
+                    Choreographer.getInstance().postFrameCallback(this)
+                }
             }
         }
     }
@@ -153,6 +174,9 @@ internal class ScreenSource(
         throw InvalidContext("The ScreenContextProvider returned text that is not JSON" + (reason?.let { ": $it" } ?: ""))
 
     private class InvalidContext(message: String) : Exception(message)
+
+    /** The read threw [cause] on the main thread, such as a View of the app whose getter throws. */
+    class ReadFailed(cause: Throwable) : Exception("The read of the windows threw $cause", cause)
 
     /** The main thread did not start the read, or did not finish it, in [waitedMs]. */
     class MainThreadBlocked(val waitedMs: Long, val started: Boolean) :

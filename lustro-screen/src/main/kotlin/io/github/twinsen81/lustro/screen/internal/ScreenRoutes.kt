@@ -17,6 +17,8 @@ internal class ScreenRoutes(private val source: ScreenSource) {
             }
         } catch (e: RouteException) {
             DebugResponse.error(e.message.orEmpty(), status = e.status, code = e.code, field = e.field, hint = e.hint)
+        } catch (e: ScreenSource.ReadFailed) {
+            DebugResponse.error(e.message.orEmpty(), status = 500, code = "read_failed")
         } catch (e: ScreenSource.MainThreadBlocked) {
             DebugResponse.error(
                 e.message.orEmpty(),
