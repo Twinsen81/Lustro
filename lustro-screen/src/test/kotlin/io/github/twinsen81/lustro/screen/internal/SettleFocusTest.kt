@@ -127,6 +127,22 @@ class SettleFocusTest {
         assertEquals(0, saved)
     }
 
+    @Test
+    fun `with two activities on the screen, an action acts at once on the earlier one that has the focus`() {
+        val first = ScreenFixtures.viewActivity()
+        ScreenFixtures.composeActivity()
+        val firstRoot = first.window.decorView
+        first.findViewById<View>(android.R.id.content).let { content ->
+            (content as android.view.ViewGroup).getChildAt(0).tag = "first screen"
+        }
+        val started = System.nanoTime()
+        val response = ScreenFixtures.postOffMain(tab(focus = { it === firstRoot }), "scroll", """{"text":"Item 1","dy":40}""")
+        assertEquals(200, response.status)
+        // No wait for the focus: it is at rest on the earlier activity.
+        assertTrue(json(response).getJSONObject("tree").getJSONObject("settle").getBoolean("settled"))
+        assertTrue((System.nanoTime() - started) / 1_000_000 < ScreenSource.FOCUS_WAIT_MS * 4)
+    }
+
     private companion object {
         // Two windows, so two calls for each read: the focus moves on the fourth read.
         const val MOVE_AFTER_CALLS = 8
