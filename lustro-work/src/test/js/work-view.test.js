@@ -238,6 +238,25 @@ test('blocked work says that it runs after the work before it in its chain', () 
     const blocked = Object.assign(byClass('RetryWorker'), { state: 'BLOCKED', nextScheduleTimeMillis: null });
     assert.match(work.workRowHtml(blocked, false, NOW), /work-cell--next"><span class="dc-comment" title="WorkManager runs it when the work before it in its chain[^"]*">after others<\/span>/);
     assert.match(work.workDetailsHtml(blocked, NOW), /Next run<\/th><td class="dc-kv__value"><span class="dc-comment">\/\/ WorkManager runs it when the work before it in its chain \(beginWith\(\) and then\(\)\) has succeeded\./);
+    // Without prerequisites, as from a WorkManager whose database the tab can't read, there is no Waits for.
+    assert.doesNotMatch(work.workDetailsHtml(blocked, NOW), /Waits for/);
+});
+
+test('the details list the work that a step of a chain waits for, each a link that opens it', () => {
+    const attachment = Object.assign(byClass('StepWorker'), { id: 'a1', workerClass: 'x.DownloadAttachmentWorker' });
+    const icon = Object.assign(byClass('RetryWorker'), { id: 'b2', state: 'BLOCKED', nextScheduleTimeMillis: null, prerequisites: ['a1', 'gone'] });
+    const lookup = (id) => (id === 'a1' ? attachment : undefined);
+
+    const details = work.workDetailsHtml(icon, NOW, lookup);
+    assert.match(details, /<th class="dc-kv__key" title="The work before this one in its chain\.[^"]*">Waits for<\/th>/);
+    assert.match(details, /data-action="selectWork" data-id="a1" title="Open a1\.">DownloadAttachmentWorker<\/button> <span class="dc-comment work-mono">a1<\/span>/);
+    // Work that the list does not have, such as pruned or filtered-out work, shows by its id, and still opens.
+    assert.match(details, /data-action="selectWork" data-id="gone" title="Open gone\.">gone<\/button><\/div>/);
+    // Without a lookup, every prerequisite shows by its id.
+    assert.match(work.workDetailsHtml(icon, NOW), /data-id="a1" title="Open a1\.">a1</);
+
+    const hostile = Object.assign({}, icon, { prerequisites: ['"><img src=x onerror=alert(1)>'] });
+    assert.doesNotMatch(work.workDetailsHtml(hostile, NOW), /<img/);
 });
 
 // ── The timeline ────────────────────────────────────────────────

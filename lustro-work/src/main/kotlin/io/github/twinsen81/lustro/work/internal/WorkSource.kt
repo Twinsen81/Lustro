@@ -25,8 +25,8 @@ internal class WorkSource(
     private val bufferBytes: Int,
     private val initialized: () -> WorkManager? = { if (WorkManager.isInitialized()) WorkManager.getInstance(context) else null },
 ) {
-    /** The unique name of each work request, from WorkManager's database or else from [uniqueNames]. */
-    val names: WorkNames = WorkNames(uniqueNames)
+    /** The unique name and the prerequisites of each work request, from WorkManager's database, or else the names of [uniqueNames]. */
+    val records: WorkRecords = WorkRecords(uniqueNames)
 
     @Volatile
     private var configured = false

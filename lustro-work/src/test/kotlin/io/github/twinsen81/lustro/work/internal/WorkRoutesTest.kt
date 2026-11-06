@@ -262,6 +262,29 @@ class WorkRoutesTest {
     }
 
     @Test
+    fun `items and item list the work that a step of a chain waits for`() {
+        // As an app that downloads an attachment and then its icon: the first step waits for its
+        // delay, which the test driver never meets, so the steps after it stay blocked.
+        val first = delayed("first")
+        val second = step(2)
+        val third = step(3)
+        val other = step(4)
+        workManager.beginUniqueWork("download", ExistingWorkPolicy.KEEP, first).then(listOf(second, other)).then(third).enqueue().result.get()
+
+        val items = byId(items(WorkFixtures.get(routes, "items")))
+        assertFalse(items.getValue(first.id.toString()).has("prerequisites"))
+        assertEquals("BLOCKED", items.getValue(second.id.toString()).getString("state"))
+        assertEquals(listOf(first.id.toString()), items.getValue(second.id.toString()).getJSONArray("prerequisites").toList())
+        // A step after two steps waits for both, sorted.
+        assertEquals(listOf(other.id.toString(), second.id.toString()).sorted(), items.getValue(third.id.toString()).getJSONArray("prerequisites").toList())
+        // Every step of the chain has the chain's unique name too.
+        assertEquals("download", items.getValue(third.id.toString()).getString("uniqueName"))
+
+        val item = WorkFixtures.get(routes, "items/${second.id}").json().getJSONObject("item")
+        assertEquals(listOf(first.id.toString()), item.getJSONArray("prerequisites").toList())
+    }
+
+    @Test
     fun `events follow the cursor, filter by id, class, and type, and page with limit`() {
         val first = step(1)
         workManager.enqueue(first).result.get()

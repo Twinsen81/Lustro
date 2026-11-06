@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Lustro SQLite debug tab",
-    "version": "1.0",
+    "version": "1.1",
     "description": "The app's SQLite and Room databases: the ones that the app registers, and, when the app turns discovery on, the other database files in its databases directory. A registered database is the app's own open handle, a framework SQLiteDatabase or an androidx SupportSQLiteDatabase such as Room's, or a file that the tab opens read-only for each request; a discovered file is opened the same way. The GET routes run only SQL that the tab builds: each database, table, and column that a client names is checked against the database's schema and quoted as an identifier, and a filter value is a bound parameter. Each database has a value policy, visible or mask_sensitive (the default, and always for a discovered file): mask_sensitive leaves out the values of the columns whose names look like they hold a secret, such as access_token or client_secret, by the same name check as the Network tab's redaction, in GET rows and POST query; such a cell is {type, masked: true}. A page of rows holds each cell with its storage class: at most 4096 characters of a text, with the whole length when it is cut, and only the size of a blob. POST query runs a client's statement on a connection that SQLite opens read-only for the request, so SQLite refuses every write. POST exec, edit, and delete write through the app's handle, only to a database that the app registers with writable = true, and answer 403 with code read_only for any other. Both query and exec refuse BEGIN, COMMIT, END, ROLLBACK, SAVEPOINT, RELEASE, ATTACH, DETACH, and VACUUM before they run; exec also refuses every PRAGMA, and query the pragmas that set a value for the whole process. Each read stops when the request times out, and the client then gets a 504. On a connection that the tab opens itself (a file database, registered or discovered, and every POST query), a database out of WAL mode makes the app's writes wait for the tab's lock, and Android's SQLite fails a write that waited 2.5 s: there a statement stops after 2 s, with a 504 with code read_limit. All routes are token-authenticated (Bearer header or HttpOnly cookie) and live under /api/v1/sqlite. Errors use the shared error envelope; a statement that SQLite refuses in a GET route, such as one on a corrupt file, is a 500 with code sqlite_error and SQLite's message."
   },
   "servers": [
@@ -704,6 +704,7 @@
           "policy",
           "path",
           "sizeBytes",
+          "walBytes",
           "schemaVersion"
         ],
         "properties": {
@@ -739,6 +740,14 @@
             ],
             "minimum": 0,
             "description": "The size of the database file, without its -wal file, or null when there is no file."
+          },
+          "walBytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "The size of the database's -wal file, or null when it has none: a database out of WAL mode, one in memory, or one whose WAL SQLite has removed. In WAL mode, SQLite writes each change to this file and copies it into the database file at a checkpoint, so until then the -wal file can hold most of the data, and the database file can be a few pages."
           },
           "schemaVersion": {
             "type": [

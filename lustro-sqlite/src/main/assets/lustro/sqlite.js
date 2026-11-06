@@ -484,13 +484,18 @@
     function dbMeta(db) {
         if (db.error) return db.error;
         var parts = [db.registered ? SOURCE_LABELS[db.source] || db.source : 'found on disk'];
-        parts.push(db.path == null ? 'in memory' : bytesLabel(db.sizeBytes));
+        parts.push(db.path == null ? 'in memory' : bytesLabel(db.sizeBytes) + (db.walBytes ? ' + ' + bytesLabel(db.walBytes) + ' WAL' : ''));
         return parts.join(' · ');
     }
 
     function dbTitle(db) {
         var lines = [db.name];
         if (db.path) lines.push(db.path);
+        if (db.walBytes) {
+            lines.push('Size: ' + bytesLabel(db.sizeBytes) + ' in the database file and ' + bytesLabel(db.walBytes)
+                + ' in its -wal file. In WAL mode, SQLite writes each change to the -wal file first, and copies it into the database file'
+                + ' at a checkpoint; after that, it writes over the -wal file from its start, so the file keeps its size.');
+        }
         lines.push(SOURCE_TITLES[db.source] || db.source);
         if (!db.registered) lines.push('The tab found it in the app\'s databases directory.');
         if (db.schemaVersion != null) lines.push('PRAGMA user_version: ' + db.schemaVersion + '. Room and SQLiteOpenHelper set it to the schema\'s version.');
@@ -749,6 +754,7 @@
     window.sqliteHeadHtml = headHtml;
     window.sqliteRowHtml = rowHtml;
     window.sqliteDbLockReason = dbLockReason;
+    window.sqliteDbItemHtml = dbItemHtml;
     window.sqliteRowLockReason = rowLockReason;
     window.sqliteDbItemHtml = dbItemHtml;
     window.sqliteShownTables = shownTables;

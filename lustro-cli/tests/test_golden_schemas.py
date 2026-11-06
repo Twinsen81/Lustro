@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from jsonschema import Draft202012Validator
+from jsonschema import Draft202012Validator, ValidationError
 from jsonschema.validators import validator_for
 
 from lustro_cli import wire
@@ -454,7 +454,7 @@ def test_sqlite_post_fixture_matches_its_route(route, fixture):
 def test_the_sqlite_schema_is_valid_and_has_its_own_version():
     sqlite = wire.load_openapi("sqlite")
     assert sqlite["openapi"].startswith("3.1")
-    assert sqlite["info"]["version"] == "1.0"
+    assert sqlite["info"]["version"] == "1.1"
     for schema in sqlite["components"]["schemas"].values():
         Draft202012Validator.check_schema(schema)
     assert sqlite["components"]["schemas"]["ErrorEnvelope"] == wire.load_openapi()["components"]["schemas"]["ErrorEnvelope"]
@@ -462,6 +462,16 @@ def test_the_sqlite_schema_is_valid_and_has_its_own_version():
     page = sqlite["components"]["schemas"]["SqliteRowsPage"]
     pagination = wire.load_schema("pagination.schema.json")
     assert page["required"] == pagination["required"] and page["additionalProperties"] is False
+
+
+def test_a_database_gives_the_size_of_its_wal_file_or_null():
+    database = wire.load_openapi("sqlite")["components"]["schemas"]["SqliteDatabase"]
+    assert "walBytes" in database["required"]
+    assert database["properties"]["walBytes"]["type"] == ["integer", "null"]
+    golden = {d["name"]: d for d in wire.load_golden("sqlite-databases.json")["items"]}
+    # A Room database in WAL mode, and two files out of it.
+    assert golden["app"]["walBytes"] > 0
+    assert golden["catalog"]["walBytes"] is None
 
 
 def test_the_sqlite_routes_are_declared_and_only_the_post_ones_take_sql_or_write():
@@ -558,7 +568,7 @@ WORK_ROUTES = ("items", "items/{id}", "events", "metrics", "cancel", "prune")
 def test_the_work_schema_is_valid_and_has_its_own_version():
     work = wire.load_openapi("work")
     assert work["openapi"].startswith("3.1")
-    assert work["info"]["version"] == "1.2"
+    assert work["info"]["version"] == "1.3"
     for schema in work["components"]["schemas"].values():
         Draft202012Validator.check_schema(schema)
     assert work["components"]["schemas"]["ErrorEnvelope"] == wire.load_openapi()["components"]["schemas"]["ErrorEnvelope"]
@@ -608,6 +618,17 @@ def test_the_golden_work_events_carry_what_each_type_adds():
     # Only finished has a result, only exception an exception.
     assert all("result" not in e for e in events if e["type"] != "finished")
     assert all("exception" not in e for e in events if e["type"] != "exception")
+
+
+def test_a_work_item_lists_the_ids_of_the_work_that_it_waits_for():
+    golden = wire.load_golden("work-items.json")
+    blocked = dict(golden["items"][0], state="BLOCKED", prerequisites=[golden["items"][1]["id"]])
+    blocked.pop("nextScheduleTimeMillis", None)
+    instance = dict(golden, items=[blocked] + golden["items"][1:])
+    _component_validator(wire.load_openapi("work"), "WorkCursorEnvelope").validate(instance)
+    # Work without prerequisites leaves the field out: an empty list is not valid.
+    with pytest.raises(ValidationError):
+        _component_validator(wire.load_openapi("work"), "WorkCursorEnvelope").validate(dict(golden, items=[dict(blocked, prerequisites=[])]))
 
 
 def test_the_golden_work_items_label_every_unique_name_and_keep_periodic_schedules():

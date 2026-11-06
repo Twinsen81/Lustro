@@ -114,7 +114,7 @@ class SqliteGoldenTest {
     private companion object {
         val HINTS = mapOf("notes" to TableHint("NoteEntity", "A note that the user wrote, in a folder."), "folders" to TableHint("FolderEntity"))
         val LONG_BODY = "Day 1: " + "walk the old town. ".repeat(230)
-        val DEVICE_KEYS = setOf("path", "sizeBytes")
+        val DEVICE_KEYS = setOf("path", "sizeBytes", "walBytes")
 
         // Unit tests run in the module directory.
         const val DATABASES = "../wire-protocol/v1/golden/sqlite-databases.json"

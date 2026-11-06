@@ -909,7 +909,9 @@ val lustro = Lustro.builder(application)
   changes at once when the console edits a row. What `onWrite` throws is logged, and the write
   stays committed.
 - **Routes.** `GET /api/v1/sqlite/databases` lists the databases with their source, file, size,
-  and schema version (`PRAGMA user_version`). `GET tables?db=` lists the tables and views, with
+  the size of the `-wal` file, and schema version (`PRAGMA user_version`). In WAL mode, as Room
+  keeps a database, the `-wal` file holds the changes until a checkpoint, so it can be larger than
+  the database file. `GET tables?db=` lists the tables and views, with
   the row count of each table, and flags the internal ones (`sqlite_*`, `android_metadata`,
   `room_master_table`, and the shadow tables of a full-text index). `GET schema?db=&table=` gives
   the columns, the foreign keys, the row count, the `CREATE` statement, and the hint.
@@ -923,7 +925,8 @@ val lustro = Lustro.builder(application)
   See [docs/AGENTS.md](docs/AGENTS.md#sqlite-tab-operations) and
   [`sqlite.openapi.json`](lustro-sqlite/src/main/assets/lustro/sqlite.openapi.json).
 - **In the console.** The **SQLite** tab lists the databases in the app's order, with the found
-  ones in a group of their own, and each one's tables, with a filter, the internal tables behind
+  ones in a group of their own, each with its size and the size of its `-wal` file, and each
+  one's tables, with a filter, the internal tables behind
   **Show internal**, and a ★ to pin a table to the top. A table's rows show a page at a time:
   **Prev** and **Next** page through them, a filter finds the rows in which a cell contains a
   text, a click on a header sorts ascending, descending, then not, and a right-click or the
@@ -1048,12 +1051,14 @@ static synchronized WorkDebugTab work(Application app) {
   cases, every later run of that work fails the same way, so the app ends at each start until its
   data is cleared. The sample's `MetricsListeners` wraps the repository and catches that exception
   in every listener method.
-- **Unique names.** `WorkInfo` has no unique name, so the tab reads the name of each work from
-  WorkManager's own database, through WorkManager's connection, also a name that the app makes
-  for each work, such as the URL of a download. The table and the call have been the same since
-  WorkManager 2.0, but they are WorkManager's internals: when a later WorkManager changes them,
-  the tab logs it once and labels the work of the names in `uniqueNames` only.
-  `GET items?name=` finds the work of any name.
+- **Unique names and chains.** `WorkInfo` has no unique name, so the tab reads the name of each
+  work from WorkManager's own database, through WorkManager's connection, also a name that the app
+  makes for each work, such as the URL of a download. It reads the work that each work waits for,
+  the work before it in a chain of `beginWith()` and `then()`, in the same way. The table of the
+  names and its call have been the same since WorkManager 2.0, but the tables and calls are
+  WorkManager's internals: when a later WorkManager changes them, the tab logs it once, labels the
+  work of the names in `uniqueNames` only, and shows no chains. `GET items?name=` finds the work
+  of any name.
 - **The tab never initializes WorkManager.** Until your app calls `WorkManager.getInstance`, the
   routes that read work answer `503` with code `work_not_initialized`.
 - **When there are no events.** The `state` of `items`, `items/{id}`, and `events` has `listeners`: `installed`, `missing` when
@@ -1077,8 +1082,8 @@ static synchronized WorkDebugTab work(Application app) {
   tags, attempts, and next run. A tag that every work in the list has, such as one that the app puts
   on all its work, shows after the tags of each work. A tag that is the work's unique name, which
   apps add because `WorkInfo` has none, shows only in Details. Blocked work shows `after others`:
-  WorkManager runs it when the work before it in its chain has succeeded, and `WorkInfo` does not
-  say which work that is. Enqueued work whose next run has passed shows
+  WorkManager runs it when the work before it in its chain has succeeded, which Details lists
+  under **Waits for**, each a link that opens it. Enqueued work whose next run has passed shows
   `waiting`, and says for which constraints: WorkManager runs it when they are met, such as at a
   change of a content URI that it watches. For periodic work, the attempts are those of the current period:
   WorkManager sets the count back to 0 when a period ends, so it is 0 after a run that finished. The state chips show the count of each state and filter the list by
@@ -1102,8 +1107,8 @@ static synchronized WorkDebugTab work(Application app) {
   every second.
 
   ![The WorkManager tab: the sample's demo work, and the timeline of the worker that throws, with its stack trace](docs/images/work-tab.png)
-- **Not shown:** the chain graph and a work's input data, which WorkManager's public API does
-  not have (the SQLite tab can read WorkManager's database as a file:
+- **Not shown:** a work's input data, which WorkManager's public API does not have (the SQLite
+  tab can read WorkManager's database as a file:
   `SqliteDb.file("workmanager", File(app.noBackupFilesDir, "androidx.work.workdb"))`, but its
   schema changes between releases), and the place in your code that enqueued the work: the
   listeners run on WorkManager's own threads.

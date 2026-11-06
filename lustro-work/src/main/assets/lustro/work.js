@@ -199,8 +199,8 @@
         return 'Due ' + dateTimeText(item.nextScheduleTimeMillis) + '. ' + waitingReason(item);
     }
 
-    // WorkInfo does not say which work a blocked one waits for, so the console can only
-    // say what blocked means.
+    // Blocked work waits for the work before it in its chain, which Details lists under
+    // Waits for when the tab could read it from WorkManager's database.
     var BLOCKED_REASON = 'WorkManager runs it when the work before it in its chain (beginWith() and then()) has succeeded. '
         + 'When that work fails or is cancelled, this work ends the same way.';
 
@@ -339,7 +339,20 @@
         return (percent == null ? '' : '<div class="work-progress__line">' + progressBarHtml(percent) + '</div>') + jsonHtml(progress, 'work-json');
     }
 
-    function details(item, now) {
+    // The work that [item] waits for, each a link that opens it. [lookup] finds a work of
+    // the list by its id; one that the list does not have, such as filtered-out work,
+    // shows by its id and opens all the same.
+    function prerequisitesHtml(item, lookup) {
+        return (item.prerequisites || []).map(function(id) {
+            var other = lookup ? lookup(id) : null;
+            var label = other ? simpleClass(other.workerClass) || '?' : id;
+            return '<div class="work-prereq"><button type="button" class="work-prereq__link" data-action="selectWork" data-id="' + esc(id)
+                + '" title="Open ' + esc(id) + '.">' + esc(label) + '</button>'
+                + (other ? ' <span class="dc-comment work-mono">' + esc(id) + '</span>' : '') + '</div>';
+        }).join('');
+    }
+
+    function details(item, now, lookup) {
         var tags = (item.tags || []).map(function(tag) {
             var own = tag === item.workerClass;
             return '<span class="dc-tag work-tag' + (own ? ' work-tag--class' : '') + '"'
@@ -370,6 +383,9 @@
             kvRow('Periodicity', esc(periodicityText(item.periodicity))),
             kvRow('Initial delay', item.initialDelayMillis ? esc(durationText(item.initialDelayMillis)) : '<span class="dc-comment">// none</span>'),
             kvRow('Next run', next, 'When WorkManager runs the work next, on the device\'s clock.'),
+            item.prerequisites && item.prerequisites.length
+                ? kvRow('Waits for', prerequisitesHtml(item, lookup), 'The work before this one in its chain. WorkInfo does not have it: the tab reads it from WorkManager\'s database.')
+                : '',
             kvRow('Run attempts', esc(String(item.runAttempts)), item.periodicity
                 ? PERIOD_ATTEMPTS
                 : 'How many times WorkManager started the work: a retry and a stop by the system each start it again.'),
@@ -1016,7 +1032,9 @@
         var gone = !!detail && !detail.item && !list.byId.has(selectedId);
         if (json !== shownItemJson || !item) {
             shownItemJson = json;
-            els.detailsPanel.innerHTML = item ? details(item, Date.now()) : '<div class="work-empty">// reading the work…</div>';
+            els.detailsPanel.innerHTML = item
+                ? details(item, Date.now(), function(id) { return list.byId.get(id); })
+                : '<div class="work-empty">// reading the work…</div>';
         }
         var state = item ? item.state : null;
         els.headState.hidden = !item;
@@ -1236,7 +1254,8 @@
         confirmOk: runPending,
         closeConfirm: function() { pending = null; confirmModal.hide(); },
         copyId: function() { if (selectedId) window.debugCopyToClipboard(selectedId); },
-        copyTrace: function(el) { copyTrace(el.dataset.seq); }
+        copyTrace: function(el) { copyTrace(el.dataset.seq); },
+        selectWork: function(el) { select(el.dataset.id); }
     };
 
     function typing(target) {

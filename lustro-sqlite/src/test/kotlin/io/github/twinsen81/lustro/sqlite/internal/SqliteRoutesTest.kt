@@ -49,6 +49,23 @@ class SqliteRoutesTest {
     }
 
     @Test
+    fun `databases gives the size of the -wal file of a database in WAL mode`() {
+        // As Room keeps a database: its writes are in the -wal file until a checkpoint.
+        val wal = SQLiteDatabase.openOrCreateDatabase(File(databases, "room.db"), null)
+        wal.enableWriteAheadLogging()
+        Fixtures.create(wal, notes = 200)
+        val routes = routes(SqliteDb.framework("room") { wal })
+
+        val item = Fixtures.get(routes, "databases").json().getJSONArray("items").getJSONObject(0)
+        val walFile = File(wal.path + "-wal")
+        assertTrue(walFile.isFile)
+        assertEquals(walFile.length(), item.getLong("walBytes"))
+        assertTrue(item.getLong("walBytes") > 0)
+        assertEquals(File(wal.path).length(), item.getLong("sizeBytes"))
+        wal.close()
+    }
+
+    @Test
     fun `databases lists each registration with its source, file, size, and schema version`() {
         val file = Fixtures.file(app.cacheDir, "cache.db")
         val memory = SQLiteDatabase.create(null)
@@ -69,6 +86,8 @@ class SqliteRoutesTest {
         assertTrue(registered.getBoolean("writable"))
         assertEquals(live.path, registered.getString("path"))
         assertEquals(File(live.path).length(), registered.getLong("sizeBytes"))
+        // The app's database is not in WAL mode here, so it has no -wal file.
+        assertTrue(registered.isNull("walBytes"))
         assertEquals(7, registered.getInt("schemaVersion"))
         assertFalse(registered.has("error"))
         val cache = items.getJSONObject(1)
@@ -78,6 +97,7 @@ class SqliteRoutesTest {
         val inMemory = items.getJSONObject(2)
         assertTrue(inMemory.isNull("path"))
         assertTrue(inMemory.isNull("sizeBytes"))
+        assertTrue(inMemory.isNull("walBytes"))
         assertEquals(0, inMemory.getInt("schemaVersion"))
         // A file that is not there yet is listed with why it does not open, and the tab does not create it.
         val missing = items.getJSONObject(3)
