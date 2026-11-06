@@ -42,6 +42,27 @@ see [DECISIONS.md](DECISIONS.md).
   release no longer pushes Dokka to a `gh-pages` branch, and `checkDocsVersion`
   also checks the coordinates in `docs/index.md`.
 
+- **The Screen tab clicks, types, and scrolls.** `POST /api/v1/screen/click`,
+  `POST set-text`, and `POST scroll` find a node by its test tag, text,
+  content description, or id, and run its own semantics action, `OnClick`,
+  `SetText`, `ScrollToIndex`, or `ScrollBy`, or the View's `performClick()`,
+  `setText()`, `scrollBy()`, or scroll to an item, on the main thread. The
+  response has the node that matched, the node whose action ran, what the
+  action returned, and the tree after the action's frames, so a client sees
+  the result in the same round trip. The tab looks in the unmerged tree, so a
+  tag or a text inside a clickable parent is found, and runs the parent's
+  action, as a tap on the text would. It acts as a user can: it answers `409`
+  with code `not_in_focused_window` for a node in a window that does not have
+  the focus, such as the activity under a dialog, `no_window_focus` when a
+  window of another app is on top, `not_on_screen` for a target with no part
+  on the screen, `disabled`, `no_action`, and `ambiguous` for a selector that
+  matches nodes with different targets, with their ids. `"force": true` skips
+  the window and screen checks. `404` with code `no_match` when nothing
+  matches, and `500` with code `action_failed` when the app's action throws;
+  the app goes on. `lustro screen click`, `set-text`, and `scroll` send them
+  and print the tree after. The shared error envelope gets the type
+  `conflict`, for `409`, in every tab's schema, and the core protocol version
+  is `1.11`. The Screen schema is `1.1`.
 - **A Screen tab gives agents and scripts the app's UI as a tree.** A new
   plugin pair, `lustro-screen` and `lustro-screen-noop`, registered with
   `ScreenDebugTab.create(context)`, serves `GET /api/v1/screen/tree`: every
