@@ -700,16 +700,16 @@ val lustro = Lustro.builder(application)
 - **Value policies.** `VISIBLE` shows every value. `MASK_SENSITIVE`, the default, leaves out the
   value of a key that looks like it holds a secret, such as `auth_token`, `apiKey`, or `password`,
   by the same key check as the Network tab's redaction (`SensitiveKeys.isSensitive`). It never
-  leaves out a `boolean`, a `float`, or a `double`, which can't hold a secret: an app that names
-  each setting's key after its string resource, such as `autoplay_key`, keeps the values of its
-  switches. A string, an int, a long, or a set under such a key stays masked: register a
-  settings file that holds no secret as `VISIBLE`, or list those keys in `unmasked`. `KEYS_ONLY`
-  leaves out every value. The keys, the types, and the sizes always show. `unmasked` on a
-  `PrefsFile` or a `PrefsDataStore` lists the keys whose values `MASK_SENSITIVE` shows although the
-  check finds them sensitive, such as `auth_method`, which holds no secret. A name there matches
-  a key with exactly that name, in any case; it is no pattern. `VISIBLE` and `KEYS_ONLY` ignore
-  it, so a change of the policy never shows more than the policy says, and a discovered file has
-  no exceptions.
+  leaves out a `boolean`, a `float`, or a `double`, which an app does not use for a secret: an
+  app that names each setting's key after its string resource, such as
+  `show_original_time_ago_key`, keeps the values of its switches. A string, an int, a long, a
+  set, or bytes under such a key stay masked: register a settings file that holds no secret as
+  `VISIBLE`, or list those keys in `unmasked`. `KEYS_ONLY` leaves out every value. The keys, the
+  types, and the sizes always show. `unmasked` on a `PrefsFile` or a `PrefsDataStore` lists the
+  keys whose values `MASK_SENSITIVE` shows although the check finds them sensitive, such as
+  `auth_method`, which holds no secret. A name there matches a key with exactly that name, in
+  any case; it is no pattern. `VISIBLE` and `KEYS_ONLY` ignore it, so a change of the policy
+  never shows more than the policy says, and a discovered file has no exceptions.
 - **Discovered files.** With `discover = true`, the default, the tab also shows the other files in
   the app's `shared_prefs` directory, such as the files of your libraries. It opens each one with
   `getSharedPreferences`, and the platform then keeps it in memory until the process ends. A

@@ -172,24 +172,25 @@ build, and that even in debug builds it stays bound to the local device.
   logcat allows an app without any permission.
 - **SharedPreferences values show as their policy lets them.** The Preferences
   plugin (`:lustro-prefs`) serves and edits the app's SharedPreferences files
-  and Preferences DataStores under `/api/v1/prefs/`. A file's `ValuePolicy` decides what of its values a
-  client sees. The default, `MASK_SENSITIVE`, goes by the key's name, with
-  the same check as the network redaction, and never masks a boolean, a float,
-  or a double, which can't hold a secret. So a secret under a key such as
-  `cache` or `blob` shows, and so does the value of a key that the app lists in
-  `unmasked`: list only keys that hold no secret. A registered `EncryptedSharedPreferences` that
-  decrypts shows its plain values to every client with the token: register it
-  with `KEYS_ONLY` when its values must stay hidden. The files that the tab
-  discovers on disk are masked by key and read-only by default, and a file that
-  has the keysets of `EncryptedSharedPreferences`, read without its keys, shows
-  its keys only and is always read-only. A DataStore that the tab discovers is
-  always read-only. Every other file can be changed: a
-  client with the token can edit, delete, and clear its values, such as a
-  session or a feature switch, and so change what the app does. Register a file
-  or a data store with `readOnly = true` when no client may change it. With the default
-  loopback binding this adds little, because `adb shell run-as` reads and
-  writes the same files of a debuggable app. With `DebugConfig.bindAddress` set
-  for LAN access, every client with the token can read and change them.
+  and Preferences DataStores under `/api/v1/prefs/`. A file's `ValuePolicy`
+  decides what of its values a client sees. The default, `MASK_SENSITIVE`, goes
+  by the key's name, with the same check as the network redaction, and never
+  masks a boolean, a float, or a double, which an app does not use for a
+  secret. So a secret under a key such as `cache` or `blob` shows, and so does
+  the value of a key that the app lists in `unmasked`: list only keys that hold
+  no secret. A registered `EncryptedSharedPreferences` that decrypts shows its
+  plain values to every client with the token: register it with `KEYS_ONLY`
+  when its values must stay hidden. The files that the tab discovers on disk
+  are masked by key and read-only by default, and a file that has the keysets
+  of `EncryptedSharedPreferences`, read without its keys, shows its keys only
+  and is always read-only. A DataStore that the tab discovers is always
+  read-only. Every other file can be changed: a client with the token can
+  edit, delete, and clear its values, such as a session or a feature switch,
+  and so change what the app does. Register a file or a data store with
+  `readOnly = true` when no client may change it. With the default loopback
+  binding this adds little, because `adb shell run-as` reads and writes the
+  same files of a debuggable app. With `DebugConfig.bindAddress` set for LAN
+  access, every client with the token can read and change them.
 - **A registered database shows all of its contents.** See
   [SQLite databases](#sqlite-databases) below.
 - **The WorkManager tab shows the output and the exceptions of the app's work,
