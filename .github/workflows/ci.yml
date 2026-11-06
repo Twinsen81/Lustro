@@ -115,6 +115,11 @@ jobs:
       - name: Release artifacts
         run: ./gradlew collectReleaseArtifacts --console=plain --stacktrace
 
+      # What docs.yml publishes under api/ on the docs site at each push to main,
+      # so that a change that breaks Dokka fails here and not the deploy.
+      - name: API reference (Dokka)
+        run: ./gradlew dokkaGenerate --console=plain --stacktrace
+
       - name: Kover coverage report
         run: ./gradlew :lustro:koverXmlReport --console=plain --stacktrace
 
