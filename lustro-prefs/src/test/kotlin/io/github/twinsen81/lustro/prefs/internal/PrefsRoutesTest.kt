@@ -258,6 +258,36 @@ class PrefsRoutesTest {
     }
 
     @Test
+    fun `MASK_SENSITIVE shows a boolean or a float under a sensitive key, and masks the other types`() {
+        // Keys named after their string resources, as in an app that ends each with `_key`.
+        settings.edit()
+            .putBoolean("autoplay_key", true)
+            .putFloat("playback_speed_key", 1.5f)
+            .putString("image_quality_key", "high")
+            .putInt("pin_key", 4321)
+            .putLong("account_key", 42L)
+            .putStringSet("tabs_key", setOf("feed"))
+            .commit()
+        val routes = routes(PrefsFile("settings", settings), PrefsFile("session", session, ValuePolicy.KEYS_ONLY))
+
+        val entries = get(routes, "entries", "file" to "settings")
+        assertTrue(item(entries, "autoplay_key").getBoolean("value"))
+        assertFalse(item(entries, "autoplay_key").has("masked"))
+        assertEquals(1.5, item(entries, "playback_speed_key").getDouble("value"), 0.0)
+        for (key in listOf("image_quality_key", "pin_key", "account_key", "tabs_key", "auth_token")) {
+            assertTrue(key, item(entries, key).getBoolean("masked"))
+            assertFalse(key, item(entries, key).has("value"))
+        }
+        assertTrue(get(routes, "entry", "file" to "settings", "key" to "autoplay_key").getJSONObject("item").getBoolean("value"))
+
+        // An edit that gives a sensitive key a boolean shows it; KEYS_ONLY still shows no value.
+        val edit = post(routes, "edit", """{"file":"settings","key":"auth_token","type":"boolean","value":false}""")
+        assertFalse(JSONObject(edit.text()).getJSONObject("item").getBoolean("value"))
+        session.edit().putBoolean("session_key_valid", true).commit()
+        assertTrue(item(get(routes, "entries", "file" to "session"), "session_key_valid").getBoolean("masked"))
+    }
+
+    @Test
     fun `unmasked keys change nothing under VISIBLE, which shows every value`() {
         val routes = routes(PrefsFile("settings", settings, ValuePolicy.VISIBLE, unmasked = setOf("username")))
         val entries = get(routes, "entries", "file" to "settings")

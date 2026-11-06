@@ -179,7 +179,7 @@ test('a column has a width by its type until the user drags it, and a width belo
     const [id, title, , attachment, score] = sqlite.sqliteGridColumns(notesSchema());
     assert.strictEqual(sqlite.sqliteColumnWidth(state, title), 333);
     assert.strictEqual(sqlite.sqliteColumnWidth(state, score), 110);
-    assert.strictEqual(sqlite.sqliteColumnWidth(state, id), 120);
+    assert.strictEqual(sqlite.sqliteColumnWidth(state, id), 136);
     assert.strictEqual(sqlite.sqliteColumnWidth(state, attachment), 130);
     const [rowid] = sqlite.sqliteGridColumns(Object.assign(notesSchema(), { columns: notesSchema().columns.map((column) => Object.assign({}, column, { primaryKey: 0 })) }));
     assert.strictEqual(sqlite.sqliteColumnWidth(state, rowid), 90);

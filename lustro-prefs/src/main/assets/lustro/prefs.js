@@ -467,7 +467,7 @@
                 : 'The tab found this file in the app\'s shared_prefs directory, such as the file of a library.');
         html += tag(policyLabel(file.policy), {
             visible: 'The policy shows every value.',
-            mask_sensitive: 'The policy leaves out the value of each key that looks like it holds a secret, such as a token or a password.',
+            mask_sensitive: 'The policy leaves out the value of each key that looks like it holds a secret, such as a token or a password. A boolean, a float, or a double always shows.',
             keys_only: 'The policy leaves out every value: the keys, the types, and the sizes show.'
         }[file.policy] || 'The file\'s value policy.');
         html += file.encrypted ? tag('Encrypted', 'The file on disk is encrypted.', '--accent-2') : '';

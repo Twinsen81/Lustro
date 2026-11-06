@@ -560,7 +560,8 @@ it with `GET entry`.
 
 **Policies.** `policy` is `visible` (every value), `mask_sensitive` (every value but those of keys
 that look like they hold a secret, such as `auth_token`, `apiKey`, or `password`, by the network
-redaction's key check), or `keys_only` (no value). The keys always show. Under `mask_sensitive`,
+redaction's key check; a `boolean`, `float`, or `double` value always shows, as an app does not
+use it for a secret), or `keys_only` (no value). The keys always show. Under `mask_sensitive`,
 the app can list keys whose values show although the check finds them sensitive, such as
 `auth_method`, by their exact names in any case; `files` does not list them, and such an item
 has its `value` and no `masked`. A discovered file is `mask_sensitive`, with no such keys. `encrypted` is `true` when the file on disk is encrypted: the app registered an
@@ -761,7 +762,11 @@ prerequisites, or whose prerequisites all succeeded, and else when the last one 
 `updated`, `cancelled`, and `prerequisiteFailed` (the work before it failed or was cancelled, so
 this work fails without a run); the execution listener gives `started`,
 `stopped`, `finished`, and `exception`. A worker that throws ends its run with `exception`, not
-`finished`. A `finished` with `retry` leaves the work `ENQUEUED`, as does the end of a period of
+`finished`. WorkManager also sends `cancelled` for finished work: when the app enqueues work of a
+unique name with `APPEND_OR_REPLACE` while some of that name's work failed or was cancelled,
+WorkManager deletes all of it and starts a new chain, and the `cancelled` event of each deleted
+work has `state: "CANCELLED"`, also after its `finished` event. The work is then gone from
+`items`, and `items/{id}` has its events with `item: null`. A `finished` with `retry` leaves the work `ENQUEUED`, as does the end of a period of
 periodic work.
 
 **A period.** `{ id, generation, workerClass, tags, state, enqueueTimeMillis?, unblockTimeMillis?,

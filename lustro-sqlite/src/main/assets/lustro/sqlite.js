@@ -339,10 +339,12 @@
         return true;
     }
 
+    // An integer column fits a time in epoch milliseconds, 13 digits, which apps keep in
+    // INTEGER columns such as created_at.
     function defaultWidth(column) {
         if (column.rowid) return 90;
         var type = String(column.type || '').toUpperCase();
-        if (type.indexOf('INT') >= 0) return 120;
+        if (type.indexOf('INT') >= 0) return 136;
         if (/REAL|FLOA|DOUB|NUM|DEC|BOOL/.test(type)) return 110;
         if (/CHAR|CLOB|TEXT/.test(type)) return 240;
         if (type.indexOf('BLOB') >= 0) return 130;
