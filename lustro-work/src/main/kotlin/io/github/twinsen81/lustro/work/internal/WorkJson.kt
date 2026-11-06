@@ -26,7 +26,7 @@ internal object WorkJson {
      * Appends [info] as a work item. [uniqueName] is the unique name that the work was
      * enqueued with, if any, and [prerequisites] the ids of the work that it waits for.
      */
-    fun appendItem(out: StringBuilder, info: WorkInfo, uniqueName: String?, prerequisites: List<String> = emptyList()) {
+    fun appendItem(out: StringBuilder, info: WorkInfo, uniqueName: String?, prerequisites: List<String>) {
         out.append("{\"id\":\"").append(info.id.toString()).append('"')
         out.append(",\"workerClass\":")
         appendNullable(out, info.workerClassName)

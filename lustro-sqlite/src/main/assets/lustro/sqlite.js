@@ -494,7 +494,8 @@
         if (db.walBytes) {
             lines.push('Size: ' + bytesLabel(db.sizeBytes) + ' in the database file and ' + bytesLabel(db.walBytes)
                 + ' in its -wal file. In WAL mode, SQLite writes each change to the -wal file first, and copies it into the database file'
-                + ' at a checkpoint; after that, it writes over the -wal file from its start, so the file keeps its size.');
+                + ' at a checkpoint. A checkpoint does not make the -wal file smaller: SQLite writes over it from its start, and cuts it'
+                + ' to the journal_size_limit that Android sets, 512 KB on most devices, so its size is not the size of the changes that wait.');
         }
         lines.push(SOURCE_TITLES[db.source] || db.source);
         if (!db.registered) lines.push('The tab found it in the app\'s databases directory.');
@@ -754,7 +755,6 @@
     window.sqliteHeadHtml = headHtml;
     window.sqliteRowHtml = rowHtml;
     window.sqliteDbLockReason = dbLockReason;
-    window.sqliteDbItemHtml = dbItemHtml;
     window.sqliteRowLockReason = rowLockReason;
     window.sqliteDbItemHtml = dbItemHtml;
     window.sqliteShownTables = shownTables;

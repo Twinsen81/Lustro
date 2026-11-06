@@ -735,9 +735,9 @@ the tab reads it from WorkManager's own database. When the app's WorkManager doe
 call that reads it, `uniqueName` is there only for a name that the app registered, or the one
 that `name=` asked for. `prerequisites` are the ids of the work that this work waits for, the work
 before it in a chain of `beginWith()` and `then()`, sorted: `BLOCKED` work runs when all of them
-have succeeded. The tab reads them from WorkManager's database in the same way, and leaves the
-field out for work that has none, and when the app's WorkManager does not have the call. A
-prerequisite that was pruned is no longer in `items`.
+have succeeded. The tab reads them from WorkManager's database in the same way, once for each
+work, as WorkManager records them when the app enqueues it, and leaves the field out for work
+that has none, and when the app's WorkManager does not have the call.
 `stopReason.name` is the `WorkInfo.STOP_REASON_*` constant without the prefix: `NOT_STOPPED`
 when the work never stopped, `UNKNOWN` when WorkManager does not know why, as after the app's
 process died. `output` and `progress` are `Data` as JSON: a long beyond 2^53 - 1 and a NaN or an

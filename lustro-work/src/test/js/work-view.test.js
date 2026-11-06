@@ -250,7 +250,7 @@ test('the details list the work that a step of a chain waits for, each a link th
     const details = work.workDetailsHtml(icon, NOW, lookup);
     assert.match(details, /<th class="dc-kv__key" title="The work before this one in its chain\.[^"]*">Waits for<\/th>/);
     assert.match(details, /data-action="selectWork" data-id="a1" title="Open a1\.">DownloadAttachmentWorker<\/button> <span class="dc-comment work-mono">a1<\/span>/);
-    // Work that the list does not have, such as pruned or filtered-out work, shows by its id, and still opens.
+    // Work that the list does not have, such as filtered-out work, shows by its id, and still opens.
     assert.match(details, /data-action="selectWork" data-id="gone" title="Open gone\.">gone<\/button><\/div>/);
     // Without a lookup, every prerequisite shows by its id.
     assert.match(work.workDetailsHtml(icon, NOW), /data-id="a1" title="Open a1\.">a1</);

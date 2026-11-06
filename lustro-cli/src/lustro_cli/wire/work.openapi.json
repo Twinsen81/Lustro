@@ -764,7 +764,7 @@
               "format": "uuid"
             },
             "minItems": 1,
-            "description": "The ids of the work that this work waits for: the work before it in a chain of beginWith() and then(), sorted. WorkManager runs blocked work when all of it has succeeded, and fails or cancels it when one fails or is cancelled. WorkInfo has none, so the tab reads them from WorkManager's own database, as it reads uniqueName. Absent when the work has none, and when the app's WorkManager does not have the call that reads them. A prerequisite that was pruned is no longer in items."
+            "description": "The ids of the work that this work waits for: the work before it in a chain of beginWith() and then(), sorted. WorkManager runs blocked work when all of it has succeeded, and fails or cancels it when one fails or is cancelled. WorkInfo has none, so the tab reads them from WorkManager's own database, as it reads uniqueName. WorkManager records them when the app enqueues the work, and the tab reads them once for each work. Absent when the work has none, and when the app's WorkManager does not have the call that reads them."
           },
           "runAttempts": {
             "type": "integer",
