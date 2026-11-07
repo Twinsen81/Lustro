@@ -139,6 +139,28 @@ class ScreenActionsTest {
     }
 
     @Test
+    fun `set-text gives a Compose field the focus first, as a user's tap does`() {
+        actions()
+        val before = json(postOffMain(everyWindow, "click", """{"tag":"plain"}"""))
+        assertEquals("no_action", before.getString("code"))
+        val tree = json(postOffMain(everyWindow, "set-text", """{"tag":"field","value":"Grace"}""")).getJSONObject("tree")
+        assertTrue(node(tree, "field").optBoolean("focused"))
+        assertEquals("Grace", node(tree, "field").getString("editableText"))
+    }
+
+    @Test
+    fun `a scroll by pixels on a Compose list answers with the tree after the scroll's animation`() {
+        ScreenFixtures.composeActivity()
+        // Compose animates the scroll, and its first frame moves nothing.
+        val tree = json(postOffMain(everyWindow, "scroll", """{"tag":"list","dy":200}""")).getJSONObject("tree")
+        assertTrue(tree.getJSONObject("settle").getBoolean("settled"))
+        // 200 px at 40 px a row: row 5 is at the top, or row 4 for the spring's last pixel. Before the
+        // scroll moved, row 0 was. Robolectric does not draw, so the rows' places can lag a few pixels.
+        val first = ScreenFixtures.nodes(tree).first { it.optString("testTag").startsWith("row ") && !it.isNull("visibleBounds") }
+        assertTrue(first.toString(), first.getString("testTag") in setOf("row 4", "row 5"))
+    }
+
+    @Test
     fun `set-text replaces the text of a Compose field and of an EditText`() {
         actions()
         val result = json(postOffMain(everyWindow, "set-text", """{"tag":"field","value":"Grace"}"""))

@@ -1,7 +1,19 @@
 package io.github.twinsen81.lustro.screen.internal
 
 import android.view.View
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.Popup
 import io.github.twinsen81.lustro.screen.internal.ScreenFixtures.json
 import io.github.twinsen81.lustro.screen.internal.ScreenFixtures.tab
 import org.junit.Assert.assertEquals
@@ -154,6 +166,53 @@ class SettleFocusTest {
         // No wait for the focus: it is at rest on the earlier activity.
         assertTrue(json(response).getJSONObject("tree").getJSONObject("settle").getBoolean("settled"))
         assertTrue((System.nanoTime() - started) / 1_000_000 < ScreenSource.FOCUS_WAIT_MS * 4)
+    }
+
+    @Test
+    fun `a popup on the window that has the focus takes a click, as a menu that takes no focus does`() {
+        var picked = 0
+        val activity = ScreenFixtures.composeActivity()
+        activity.setContent { Menu(onPick = { picked++ }) }
+        ScreenFixtures.idle()
+        val roots = android.view.inspector.WindowInspector.getGlobalWindowViews()
+        assertEquals(2, roots.size)
+        val tree = json(ScreenFixtures.getOffMain(tab(focus = { it === roots.first() }), "tree"))
+        val popup = tree.getJSONArray("windows").getJSONObject(1)
+        assertEquals("popup", popup.getString("kind"))
+        assertFalse(popup.getBoolean("focusable"))
+        val response = ScreenFixtures.postOffMain(tab(focus = { it === roots.first() }), "click", """{"tag":"apricot"}""")
+        assertEquals(json(response).toString(), 200, response.status)
+        assertEquals(1, picked)
+    }
+
+    @Test
+    fun `a popup on a window under the dialog that has the focus gets no click`() {
+        var picked = 0
+        val activity = ScreenFixtures.composeActivity()
+        activity.setContent { Menu(onPick = { picked++ }, dialog = true) }
+        ScreenFixtures.idle()
+        val roots = android.view.inspector.WindowInspector.getGlobalWindowViews()
+        assertEquals(3, roots.size)
+        val dialog = roots.single { (it.layoutParams as android.view.WindowManager.LayoutParams).type == android.view.WindowManager.LayoutParams.TYPE_APPLICATION }
+        val response = ScreenFixtures.postOffMain(tab(focus = { it === dialog }), "click", """{"tag":"apricot"}""")
+        assertEquals(409, response.status)
+        assertEquals("not_in_focused_window", json(response).getString("code"))
+        assertTrue(json(response).getString("message").contains("not a popup on the dialog window"))
+        assertEquals(0, picked)
+    }
+
+    // A field with a menu under it that takes no focus, as a Compose Popup by default; with [dialog], a dialog over both.
+    @Composable
+    private fun Menu(onPick: () -> Unit, dialog: Boolean = false) {
+        Box(Modifier.size(200.dp)) {
+            BasicText("Fruit", Modifier.testTag("field"))
+            Popup(offset = IntOffset(0, 60)) {
+                Box(Modifier.testTag("apricot").clickable(onClick = onPick).size(120.dp, 40.dp)) { BasicText("Apricot") }
+            }
+        }
+        if (dialog) {
+            Dialog(onDismissRequest = {}) { Box(Modifier.testTag("confirm").clickable {}.size(80.dp)) { BasicText("Sure?") } }
+        }
     }
 
     private companion object {

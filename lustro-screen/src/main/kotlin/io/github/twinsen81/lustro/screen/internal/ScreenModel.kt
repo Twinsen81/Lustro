@@ -88,6 +88,10 @@ internal data class ScreenWindow(
     val group: Int = 0,
     /** Whether the app has added the window and it has not had its first frame yet: see [TreeReader.isPendingWindow]. */
     val pending: Boolean = false,
+    /** The index of the window that this one is a popup on, or `null`: see [WindowFocus.parents]. */
+    val popupOn: Int? = null,
+    /** Whether touches reach the window: it has no FLAG_NOT_TOUCHABLE. */
+    val touchable: Boolean = true,
 )
 
 /** What a read of all the windows found, before the app's context is added. */

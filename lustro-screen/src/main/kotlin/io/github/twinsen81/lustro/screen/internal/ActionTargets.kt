@@ -6,10 +6,12 @@ package io.github.twinsen81.lustro.screen.internal
  * that has the action. A test tag inside a clickable parent is in the unmerged tree
  * only, and its click is the parent's, as a user's tap on it would be.
  *
- * It acts as a user can, unless the request says `force`: only in the windows that have
- * the focus, and only on a target with a visible part. A node under a dialog, or
- * scrolled out of view, gets no tap from a user, so an action on it would pass a check
- * that a user fails.
+ * It acts as a user can, unless the request says `force`: only in the window that has the
+ * focus and in the popups on it, and only on a target with a visible part. A node under a
+ * dialog, or scrolled out of view, gets no tap from a user, so an action on it would pass a
+ * check that a user fails. A popup that takes no focus, such as a menu or a dropdown's list,
+ * still gets the touches inside it: the window manager gives a touch to the top window
+ * under it that takes touches, whether it can take the focus or not.
  */
 internal object ActionTargets {
     private const val MAX_CANDIDATES = 10
@@ -20,9 +22,13 @@ internal object ActionTargets {
     /** @throws ActionRefused when no node, or more than one, can take the action. */
     fun resolve(read: ScreenWindows, request: ActionRequest): Target {
         val selector = request.selector
-        // Only one window gets the touches: the top one that has the focus. On API 24 the
-        // window under a new dialog still says that it has it for some frames.
-        val focused = listOfNotNull(read.windows.lastOrNull { it.hasWindowFocus })
+        // The touches go to the top window that has the focus, and to the popups on it. On
+        // API 24 the window under a new dialog still says that it has the focus for some frames.
+        val focusedIndex = read.windows.indexOfLast { it.hasWindowFocus }
+        val focused =
+            read.windows.filterIndexed { index, window ->
+                index == focusedIndex || (focusedIndex >= 0 && window.popupOn == focusedIndex && window.visible && window.touchable)
+            }
         if (!request.force && focused.isEmpty()) {
             throw ActionRefused(
                 409,
@@ -33,7 +39,7 @@ internal object ActionTargets {
         }
         val windows = if (request.force) read.windows else focused
         val matches = windows.flatMap { window -> window.nodes.filter(selector::matches).map { window to it } }
-        if (matches.isEmpty()) refuse(nothingMatches(read, request, focused))
+        if (matches.isEmpty()) refuse(nothingMatches(read, request, focused, read.windows.getOrNull(focusedIndex)))
         val targets =
             matches
                 .map { (window, node) -> Triple(window, node, actionNode(window, node, request.action.needs)) }
@@ -61,21 +67,21 @@ internal object ActionTargets {
 
     private fun refuse(refusal: ActionRefused): Nothing = throw refusal
 
-    private fun nothingMatches(read: ScreenWindows, request: ActionRequest, focused: List<ScreenWindow>): ActionRefused {
-        if (!request.force) {
+    private fun nothingMatches(read: ScreenWindows, request: ActionRequest, focused: List<ScreenWindow>, top: ScreenWindow?): ActionRefused {
+        if (!request.force && top != null) {
             for (window in read.windows) {
                 if (window in focused) continue
                 val node = window.nodes.firstOrNull(request.selector::matches) ?: continue
                 return ActionRefused(
                     409,
                     "not_in_focused_window",
-                    "${node.id} matches ${request.selector} in the ${window.kind} window, which does not have the focus: " +
-                        "a window over it, such as a dialog, gets the touches",
-                    hint = "Close the window on top first: a user can't tap the node now. \"force\": true acts on it anyway",
+                    "${node.id} matches ${request.selector} in the ${window.kind} window, which does not have the focus and is not " +
+                        "a popup on the ${top.kind} window that has it, so a user can't tap the node now",
+                    hint = "Close the window over it first, such as a dialog. \"force\": true acts on the node anyway",
                 )
             }
         }
-        val where = if (request.force) "in any window of the app" else "in the window that has the focus"
+        val where = if (request.force) "in any window of the app" else "in the window that has the focus or a popup on it"
         return ActionRefused(404, "no_match", "No node matches ${request.selector} $where")
     }
 

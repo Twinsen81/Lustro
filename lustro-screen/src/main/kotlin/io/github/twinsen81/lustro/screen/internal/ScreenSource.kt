@@ -59,7 +59,8 @@ internal class ScreenSource(
     /**
      * Runs the action of [action] on the node that its selector finds, in a read of the
      * unmerged tree, and reads the tree after it on each frame until two reads in a row
-     * are equal, for up to its settle time, at least one frame.
+     * are equal, for up to its settle time, at least two frames: the first read is on the
+     * frame after the action.
      *
      * @throws ActionRefused when no node, or more than one, can take the action.
      * @throws ActionFailed when the app's action throws.

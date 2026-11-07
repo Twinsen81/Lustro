@@ -76,7 +76,14 @@ internal class ComposeReader {
         fun missing(name: String): Nothing = error("The node has no $name now")
         return when (action) {
             is ScreenAction.Click -> config.getOrNull(SemanticsActions.OnClick)?.action?.invoke() ?: missing("OnClick")
-            is ScreenAction.SetText -> config.getOrNull(SemanticsActions.SetText)?.action?.invoke(AnnotatedString(action.value)) ?: missing("SetText")
+            is ScreenAction.SetText -> {
+                val setText = config.getOrNull(SemanticsActions.SetText)?.action ?: missing("SetText")
+                // As a user's tap does, and Compose's own test API: a field that gets text without
+                // the focus has no input session, and a focus request on the next frame, such as an
+                // editable dropdown's, starts one with the old text's layout and throws there.
+                if (config.getOrNull(SemanticsProperties.Focused) != true) config.getOrNull(SemanticsActions.RequestFocus)?.action?.invoke()
+                setText(AnnotatedString(action.value))
+            }
             is ScreenAction.ScrollToIndex -> config.getOrNull(SemanticsActions.ScrollToIndex)?.action?.invoke(action.index) ?: missing("ScrollToIndex")
             is ScreenAction.ScrollBy -> config.getOrNull(SemanticsActions.ScrollBy)?.action?.invoke(action.dx, action.dy) ?: missing("ScrollBy")
         }

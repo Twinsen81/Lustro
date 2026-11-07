@@ -473,8 +473,8 @@
     "settle": {
       "requestedMs": 500,
       "settled": true,
-      "waitedMs": 15,
-      "frames": 1
+      "waitedMs": 30,
+      "frames": 2
     },
     "context": null
   }

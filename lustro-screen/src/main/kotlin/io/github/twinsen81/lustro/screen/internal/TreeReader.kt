@@ -30,7 +30,11 @@ internal class TreeReader(
     fun read(roots: List<View>, source: String, merged: Boolean, live: MutableMap<String, Any>? = null): ScreenWindows {
         val errors = ArrayList<String>(0)
         val groups = WindowFocus.groups(roots)
-        val windows = roots.mapIndexed { index, root -> window(root, merged, errors, live).copy(group = groups[index]) }
+        val parents = WindowFocus.parents(roots)
+        val windows =
+            roots.mapIndexed { index, root ->
+                window(root, merged, errors, live).copy(group = groups[index], popupOn = parents[index].takeIf { it >= 0 })
+            }
         return ScreenWindows(windows, source, errors.firstOrNull())
     }
 
@@ -48,6 +52,7 @@ internal class TreeReader(
             focusable = isFocusable(root),
             visible = isShownWindow(root),
             pending = isPendingWindow(root),
+            touchable = isTouchable(root),
             bounds = ScreenRect(onScreen[0], onScreen[1], onScreen[0] + root.width, onScreen[1] + root.height),
             nodes = nodes,
         )
@@ -221,6 +226,12 @@ internal class TreeReader(
         fun isFocusable(root: View): Boolean {
             val params = root.layoutParams as? WindowManager.LayoutParams ?: return true
             return params.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE == 0
+        }
+
+        /** Whether touches reach the window of [root]: it has no FLAG_NOT_TOUCHABLE. */
+        fun isTouchable(root: View): Boolean {
+            val params = root.layoutParams as? WindowManager.LayoutParams ?: return true
+            return params.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE == 0
         }
 
         /** Whether the window of [root] is shown: its root View is, and the window is visible. */
