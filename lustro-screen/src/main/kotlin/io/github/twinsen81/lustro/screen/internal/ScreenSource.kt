@@ -1,6 +1,7 @@
 package io.github.twinsen81.lustro.screen.internal
 
 import android.content.Context
+import android.content.res.Configuration
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -63,7 +64,7 @@ internal class ScreenSource(
      * unmerged tree, and reads the tree after it on each frame until two reads in a row
      * are equal, for up to its settle time, at least two frames: the first read is on the
      * frame after the action. When set-text gave a field the focus while no keyboard
-     * showed, the settle starts when the keyboard shows, or after [KEYBOARD_WAIT_MS], and
+     * showed, the settle starts when the keyboard shows, or after [keyboardWaitMs], and
      * after a keyboard that showed, it counts equal reads only once the screen could have
      * made room for it: see [keyboardMoveMs].
      *
@@ -93,7 +94,7 @@ internal class ScreenSource(
                         if (keyboard == null) {
                             Settle(action.merged, action.settleMs, cancelled, complete).start()
                         } else {
-                            FrameWait(KEYBOARD_WAIT_MS, { keyboardShown(keyboard) }, cancelled, complete) {
+                            FrameWait(keyboardWaitMs(), { keyboardShown(keyboard) }, cancelled, complete) {
                                 val quietMs = if (keyboardShown(keyboard)) keyboardMoveMs() else 0
                                 Settle(action.merged, action.settleMs, cancelled, complete, quietMs).start()
                             }.start()
@@ -209,6 +210,16 @@ internal class ScreenSource(
             }
         }
         return ScreenTree(read, merged, context.resources.displayMetrics.density, composeAvailable, settle, json, error)
+    }
+
+    /**
+     * How long set-text waits for the keyboard after it gave a field the focus. With a
+     * hardware keyboard out, most devices show no soft keyboard, so the wait is shorter there.
+     */
+    private fun keyboardWaitMs(): Long {
+        val config = context.resources.configuration
+        val hardware = config.keyboard != Configuration.KEYBOARD_NOKEYS && config.hardKeyboardHidden == Configuration.HARDKEYBOARDHIDDEN_NO
+        return if (hardware) KEYBOARD_WAIT_HARDWARE_MS else KEYBOARD_WAIT_MS
     }
 
     /**
@@ -379,10 +390,13 @@ internal class ScreenSource(
 
         /**
          * How long set-text waits for the keyboard after it gave a field the focus, before the
-         * settle: the keyboard shows some frames later, and a device with a hardware keyboard
-         * shows none.
+         * settle: the keyboard shows some frames later on a physical device, and about a second
+         * later on a slow emulator where it starts cold.
          */
-        const val KEYBOARD_WAIT_MS: Long = 500
+        const val KEYBOARD_WAIT_MS: Long = 2_000
+
+        /** How long set-text waits for the keyboard with a hardware keyboard out, which hides the soft one on most devices. */
+        const val KEYBOARD_WAIT_HARDWARE_MS: Long = 500
 
         /** How long after the keyboard shows the screen starts to make room for it at the latest: some frames on a physical device. */
         const val KEYBOARD_MOVE_START_MS: Long = 100
