@@ -778,7 +778,7 @@ def _settle_ms(value: str) -> int:
 def _settle_action_ms(value: str) -> int:
     ms = _settle_ms(value)
     if ms < 1:
-        raise argparse.ArgumentTypeError("must be from 1 to {}: an action waits for at least one frame".format(MAX_SETTLE_MS))
+        raise argparse.ArgumentTypeError("must be from 1 to {}: an action waits for at least two frames".format(MAX_SETTLE_MS))
     return ms
 
 

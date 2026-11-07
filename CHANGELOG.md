@@ -46,14 +46,17 @@ see [DECISIONS.md](DECISIONS.md).
   `POST set-text`, and `POST scroll` find a node by its test tag, text,
   content description, or id, and run its own semantics action, `OnClick`,
   `SetText`, `ScrollToIndex`, or `ScrollBy`, or the View's `performClick()`,
-  `setText()`, `scrollBy()`, or scroll to an item, on the main thread. The
+  `setText()`, `scrollBy()`, or scroll to an item, on the main thread.
+  `set-text` gives a Compose field the focus first, as a user's tap does. The
   response has the node that matched, the node whose action ran, what the
   action returned, and the tree after the action's frames, so a client sees
   the result in the same round trip. The tab looks in the unmerged tree, so a
   tag or a text inside a clickable parent is found, and runs the parent's
-  action, as a tap on the text would. It acts as a user can: it answers `409`
+  action, as a tap on the text would. It acts as a user can, in the window
+  that has the focus and in the popups on it, such as a menu: it answers `409`
   with code `not_in_focused_window` for a node in a window that does not have
-  the focus, such as the activity under a dialog, `no_window_focus` when a
+  the focus and is not a popup on the one that has it, such as the activity
+  under a dialog, `no_window_focus` when a
   window of another app is on top, `not_on_screen` for a target with no part
   on the screen, `disabled`, `no_action`, and `ambiguous` for a selector that
   matches nodes with different targets, with their ids. `"force": true` skips

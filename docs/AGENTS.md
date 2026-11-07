@@ -265,7 +265,7 @@ reported as `_meta.protocolVersion`.
 
 - **Error** (any failing route): `{ error, message, code?, field?, hint? }`. `error` is a stable
   machine type derived from the status — `bad_request` (400), `unauthorized` (401), `forbidden`
-  (403), `not_found` (404), `method_not_allowed` (405), `payload_too_large` (413),
+  (403), `not_found` (404), `method_not_allowed` (405), `conflict` (409), `payload_too_large` (413),
   `internal_error` (500), `unavailable` (503), `timeout` (504).
 - **Pagination** (collection routes): `{ items: [...], nextCursor: "<opaque>" | null }`.
 - **Cursor** (observable routes): `{ cursor, status, items? }` where `status` is `delta`,
@@ -814,7 +814,7 @@ without it, the routes are an enveloped `404 Unknown tab: screen`). The authorit
 | --- | --- | --- |
 | Read the screen | `GET tree?merged=&settle=` | `{ windows, merged, density, compose, windowSource, context, settle?, contextError?, composeError? }`. `merged=false` gives the unmerged semantics tree, in which each text is a node of its own; a node has the same id in both. `settle=MS`, from 1 to 10000, reads on each frame until two reads in a row are the same and the window focus is at rest (the top visible window that can take the focus has it, and no other window does), for up to MS, and adds `settle: { requestedMs, settled, waitedMs, frames }`. |
 | Click a node | `POST click` `{ tag \| text \| contentDescription \| id }` | Runs the node's `OnClick` semantics action, or `performClick()` of a View. Returns `{ status: "ok", action, matched, target, handled, tree }`: the node that the selector matched, the node whose action ran, what the action returned, and the tree after it. |
-| Type into a field | `POST set-text` `{ <selector>, value }` | Runs `SetText` with `value`, which replaces the text, or `setText()` of an `EditText`, with the cursor at the end. |
+| Type into a field | `POST set-text` `{ <selector>, value }` | Runs `SetText` with `value`, which replaces the text, or `setText()` of an `EditText`, with the cursor at the end. A Compose field that does not have the focus gets it first, as a user's tap gives it, so the keyboard can open. |
 | Scroll | `POST scroll` `{ <selector>, index }` or `{ <selector>, dx?, dy? }` | `index` runs `ScrollToIndex` of a Compose list, `setSelection()` of a `ListView`, or `scrollToPosition()` of a `RecyclerView`; `dx` and `dy`, pixels, run `ScrollBy`, or `scrollBy()` of a View. |
 
 **The actions.** A body has exactly one selector key, which matches exactly: `tag` a test tag,
@@ -822,25 +822,34 @@ without it, the routes are an enveloped `404 Unknown tab: screen`). The authorit
 and `id` a node's id from `GET tree`. The tab looks in the unmerged tree, so it finds a tag or a
 text inside a clickable parent, and runs the action on the matched node or the nearest node above
 it that has the action, as a tap on the text would. It acts as a user can: only in the window that
-has the focus, and only on a target that has a visible part, unless the body says `"force": true`.
+has the focus and in the popups on it, such as a menu or the list of a dropdown, which take no focus
+but get the touches inside them, and only on a target that has a visible part, unless the body says
+`"force": true`.
 Before it looks, it waits for the next frame, and then up to 500 ms for the window focus to come
 to rest, so an action right after a tap that opened a dialog finds the dialog: a Compose dialog
 comes on the frame after the tap, and gets the focus some frames later. A dialog that the app
 shows later, such as after a network call, is not there yet: read the tree until it shows.
-`merged` and `settle` (from 1 to 10000 ms, 500 by default) are for the tree of the response: after
-the action, the tab reads it on each frame until two reads in a row are the same and the window
-focus is at rest, at least one frame, so the response shows what the action did, also a dialog
-that it opened, with the focus. A key that the route does not take is a `400`
+`merged` and `settle` (from 1 to 10000 ms, 500 by default) are for the tree of the response: from
+the frame after the action on, the tab reads it on each frame until two reads in a row are the same
+and the window focus is at rest, so at least two frames, and the response shows what the action
+did, also a dialog that it opened, with the focus. The first read is not at once, because an
+animation that the action starts, such as a Compose scroll, moves nothing on its first frame. An
+animation that changes no bounds is not in the tree, so the settle does not wait for it: a menu
+that fades out after a pick can still be in the tree of the response. Read the tree again to see it
+gone. A key that the route does not take is a `400`
 with that key as `field`, so a misspelled key never acts on another node.
 
 **Refusals.** `404` with `code: "no_match"` when no node matches. `409 conflict` with
 `code: "ambiguous"` when nodes with different targets match (the message lists their ids:
 select one with `id`), `not_in_focused_window` when the node is only in a window that does not
-have the focus, such as the activity under a dialog, `no_window_focus` when no window of the app
+have the focus and is not a popup on the one that has it, such as the activity under a dialog, `no_window_focus` when no window of the app
 has the focus, `not_on_screen` when the target has no visible part (scroll first),
 `disabled` when the target is disabled, and `no_action` when neither the node nor a node above
-it has the action. `500` with `code: "action_failed"` when the app's own action throws: a real
-tap would have ended the app there.
+it has the action. `500` with `code: "action_failed"` when the app's own action throws, and the
+app goes on: after a click, a real tap would have ended the app there. A Compose list's
+`ScrollToIndex` also throws for an index past its end, where a View list ignores the index. In split
+screen, while the other app has the focus, the tab answers `no_window_focus`, though a user's tap
+would reach the app: tap with `adb shell input tap`, or send `"force": true`.
 
 **Tap, or click?** A click runs the node's callback without the system's hit test. It refuses the
 nodes that a user can't tap now, but it can't see everything that a hit test sees, such as a View

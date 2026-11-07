@@ -1243,7 +1243,9 @@ val lustro = Lustro.builder(application)
   `setText()`, and scroll calls), found by its test tag, text, content description, or id, and
   return the tree after the action's frames. A tag or a text inside a clickable parent runs the
   parent's click, as a tap on it would. The tab acts as a user can: it refuses a node in a window
-  that does not have the focus, such as the activity under a dialog, a node with no part on the
+  that does not have the focus and is not a popup on the one that has it, such as the activity
+  under a dialog (a menu or the list of a dropdown on the window that has the focus counts with
+  it), a node with no part on the
   screen, a disabled one, and a selector that matches more than one, unless the request says
   `"force": true`. An action does no hit-testing: to check what a user can do, tap the node's
   bounds with `adb shell input tap`.

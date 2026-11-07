@@ -352,7 +352,7 @@ each under `/api/v1/screen/`.
   actions, as the app's code would, so they do what a user's tap or typing
   does in the app, a payment or a deletion among them. They are `POST`, so the
   same-origin checks apply. By default they act only on a node that a user can
-  reach: in the window that has the focus, with a part on the screen, and
+  reach: in the window that has the focus or a popup on it, with a part on the screen, and
   enabled; `"force": true` skips the first two checks. What the app's action
   throws comes back as a `500`, and the app goes on.
 - **Hidden API before API 29.** On API 24 to 28 the tab lists the windows

@@ -186,4 +186,5 @@ def test_an_action_settle_of_0_is_a_usage_error(lustro, capsys):
 def test_a_refused_action_prints_the_conflict_and_exits_1(lustro, capsys):
     assert lustro("click", "--tag", "under-dialog") == 1
     err = capsys.readouterr().err
-    assert err.startswith("error: 409 conflict: ") and "not_in_focused_window" in err or "does not have the focus" in err
+    assert err.startswith("error: 409 conflict: ")
+    assert "not_in_focused_window" in err or "does not have the focus" in err
