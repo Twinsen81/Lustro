@@ -494,13 +494,24 @@ adb shell input keyevent KEYCODE_BACK
 # return the tree after them.
 lustro_to screen-click.json --json screen click --tag "screen tap"
 check screen-click < "$OUT/screen-click.json"
-lustro_to screen-set-text.json --json screen set-text --tag "screen name" "Grace Hopper"
-check screen-set-text < "$OUT/screen-set-text.json"
 # The list is below the fold, and a user can't scroll what is not on the screen: the
 # section label's nearest scrolling ancestor, the page, scrolls first.
 lustro_to screen-scroll-page.json --json screen scroll --text "A LIST" --dy 2000
 lustro_to screen-scroll.json --json screen scroll --tag "screen list" --index 30
 check screen-scroll < "$OUT/screen-scroll.json"
+# Back to the form. set-text gives a field the focus, as a user's tap does, so the
+# keyboard can open and cover the lower part of the screen: the fields come last,
+# the lower one first.
+lustro_to screen-scroll-top.json --json screen scroll --text "A FORM" --dy -3000
+# A dropdown that opens as its field's text changes: with the focus first, the app
+# does not crash on the next frame. The list is a popup that takes no focus, and a
+# user can tap its options, so the tab clicks them.
+lustro_to screen-dropdown.json --json screen set-text --tag "screen fruit" "Ap"
+check screen-dropdown < "$OUT/screen-dropdown.json"
+lustro_to screen-dropdown-pick.json --json screen click --tag "screen fruit Apricot"
+check screen-dropdown-pick < "$OUT/screen-dropdown-pick.json"
+lustro_to screen-set-text.json --json screen set-text --tag "screen name" "Grace Hopper"
+check screen-set-text < "$OUT/screen-set-text.json"
 adb shell input keyevent KEYCODE_BACK
 
 step "The CLI end to end passed"

@@ -19,6 +19,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -26,6 +31,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -38,12 +44,14 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.PopupProperties
 import io.github.twinsen81.lustro.sample.Tone
 
 /**
  * What the console's Screen tab reads and acts on: a form with a field, a password
- * field, a switch, a button that counts its taps, and a disabled button; a Compose
- * dialog and a View dialog, each a window of its own; and a list taller than its box.
+ * field, a field with a dropdown of suggestions, a switch, a button that counts its taps,
+ * and a disabled button; a Compose dialog and a View dialog, each a window of its own;
+ * and a list taller than its box.
  */
 @Composable
 internal fun ScreenTreeScreen(onBack: () -> Unit) {
@@ -81,6 +89,7 @@ internal fun ScreenTreeScreen(onBack: () -> Unit) {
             SampleCard(Modifier.padding(horizontal = ScreenPadding)) {
                 Field("Name", name, onChange = { name = it }, tag = "screen name")
                 Field("PIN", pin, onChange = { pin = it }, tag = "screen pin", password = true)
+                FruitField()
                 Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("Notifications", style = SampleText.body, modifier = Modifier.weight(1f))
                     Switch(notifications, { notifications = it }, colors = sampleSwitchColors(), modifier = Modifier.testTag("screen notifications"))
@@ -169,6 +178,59 @@ private fun Field(label: String, value: String, onChange: (String) -> Unit, tag:
     }
 }
 
+/**
+ * An editable field with a dropdown of the fruits that start with its text, which opens as the
+ * text changes, as a search box does. The box asks for the field's focus when it opens. The
+ * list is a popup window that takes no focus, so the keys stay with the field.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FruitField() {
+    var text by rememberSaveable { mutableStateOf("") }
+    var expanded by remember { mutableStateOf(false) }
+    val matches = FRUITS.filter { text.isNotEmpty() && it.startsWith(text, ignoreCase = true) }
+    ExposedDropdownMenuBox(expanded = expanded && matches.isNotEmpty(), onExpandedChange = { expanded = it }) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+            Text("FRUIT", style = SampleText.eyebrow, color = palette.textFaint)
+            Spacer(Modifier.height(4.dp))
+            BasicTextField(
+                text,
+                {
+                    text = it
+                    expanded = true
+                },
+                singleLine = true,
+                textStyle = SampleText.body.copy(color = palette.text),
+                cursorBrush = SolidColor(palette.accent),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .menuAnchor(MenuAnchorType.PrimaryEditable)
+                        .background(palette.surfaceMuted, RoundedCornerShape(10.dp))
+                        .border(1.dp, palette.border, RoundedCornerShape(10.dp))
+                        .padding(horizontal = 12.dp, vertical = 10.dp)
+                        .testTag("screen fruit"),
+            )
+        }
+        DropdownMenu(
+            expanded = expanded && matches.isNotEmpty(),
+            onDismissRequest = { expanded = false },
+            properties = PopupProperties(focusable = false),
+        ) {
+            matches.forEach { fruit ->
+                DropdownMenuItem(
+                    text = { Text(fruit, style = SampleText.body) },
+                    onClick = {
+                        text = fruit
+                        expanded = false
+                    },
+                    modifier = Modifier.testTag("screen fruit $fruit"),
+                )
+            }
+        }
+    }
+}
+
 private fun showViewDialog(context: Context) {
     ViewAlertDialog.Builder(context)
         .setTitle("A View dialog")
@@ -178,3 +240,5 @@ private fun showViewDialog(context: Context) {
 }
 
 private const val LIST_ROWS = 40
+
+private val FRUITS = listOf("Apple", "Apricot", "Banana", "Blueberry", "Cherry", "Grape", "Lemon", "Mango", "Peach", "Pear")

@@ -436,6 +436,25 @@ def check_screen_set_text(text: str, rules: List[dict]) -> None:
     expect(field.get("editableText") == "Grace Hopper", "the Name field {}".format(field.get("editableText")))
 
 
+def check_screen_dropdown(text: str, rules: List[dict]) -> None:
+    """set-text on the dropdown's field opens its list: a popup that takes no focus, with the option."""
+    body = _screen_action(text, "SetText")
+    popups = [w for w in body["tree"]["windows"] if w["kind"] == "popup"]
+    expect(len(popups) == 1 and popups[0]["focusable"] is False, "popups {}".format([(w["focusable"], w["hasWindowFocus"]) for w in popups]))
+    expect(len(_tagged(popups[0], "screen fruit Apricot")) == 1, "the list has no Apricot option")
+
+
+def check_screen_dropdown_pick(text: str, rules: List[dict]) -> None:
+    """A click on an option in the popup picks it, as a user's tap does.
+
+    The list fades out after it, which changes no bounds, so on a device with animations on
+    the tree after the click can still have it.
+    """
+    body = _screen_action(text, "OnClick")
+    field = _focused_node(body["tree"], "screen fruit")
+    expect(field.get("editableText") == "Apricot", "the Fruit field {}".format(field.get("editableText")))
+
+
 def check_screen_scroll(text: str, rules: List[dict]) -> None:
     """A lazy list composes the rows in view: row 31 is in the tree after the scroll to index 30."""
     body = _screen_action(text, "ScrollToIndex")
@@ -626,6 +645,8 @@ CHECKS: Dict[str, Callable[[str, List[dict]], None]] = {
     "screen-dialog": check_screen_dialog,
     "screen-click": check_screen_click,
     "screen-set-text": check_screen_set_text,
+    "screen-dropdown": check_screen_dropdown,
+    "screen-dropdown-pick": check_screen_dropdown_pick,
     "screen-scroll": check_screen_scroll,
     "sqlite-query": check_sqlite_query,
     "sqlite-exec": check_sqlite_exec,
