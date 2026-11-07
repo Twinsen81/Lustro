@@ -38,8 +38,9 @@ internal class ScreenSource(
     val composeAvailable: Boolean get() = compose != null
 
     /**
-     * Reads the tree. With [settleMs] above zero, reads it on each frame until two
-     * reads in a row are equal and the window focus is at rest, for up to [settleMs].
+     * Reads the tree. With [settleMs] above zero, reads it on each frame from the next one
+     * until two reads in a row are equal and the window focus is at rest, for up to
+     * [settleMs], at least two frames.
      *
      * @throws MainThreadBlocked when the main thread does not start the read in time.
      * @throws InterruptedException when the runtime gives up on the request.
@@ -128,8 +129,10 @@ internal class ScreenSource(
         private var last: ScreenWindows? = null
         private var frames = 0
 
+        // The first read is on the next frame, not at once: an animation that a tap or an
+        // action has just started, such as a scroll, moves nothing on its first frame, so a
+        // read at once and a read on that frame are equal while the screen is about to move.
         fun start() {
-            last = readNow(merged)
             Choreographer.getInstance().postFrameCallback(this)
         }
 
@@ -139,10 +142,11 @@ internal class ScreenSource(
                 frames++
                 val read = readNow(merged)
                 val waited = SystemClock.uptimeMillis() - startedAt
+                val previous = last
                 // Equal reads before the window focus has moved are not at rest: the next
                 // frames move it, and a client would act on the window that loses it.
-                val settled = read == last && read.focusSettled
-                if (settled || waited >= settleMs) {
+                val settled = previous != null && read == previous && read.focusSettled
+                if (settled || (previous != null && waited >= settleMs)) {
                     complete(Result.success(finish(read, merged, SettleResult(settleMs, settled, waited, frames))))
                 } else {
                     last = read

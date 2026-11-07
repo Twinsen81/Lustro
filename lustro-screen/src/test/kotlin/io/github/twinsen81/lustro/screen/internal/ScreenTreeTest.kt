@@ -1,5 +1,19 @@
 package io.github.twinsen81.lustro.screen.internal
 
+import android.os.Looper
+import androidx.activity.compose.setContent
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.dp
 import io.github.twinsen81.lustro.screen.internal.ScreenFixtures.byTag
 import io.github.twinsen81.lustro.screen.internal.ScreenFixtures.get
 import io.github.twinsen81.lustro.screen.internal.ScreenFixtures.json
@@ -10,10 +24,14 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import java.time.Duration
 
 @RunWith(RobolectricTestRunner::class)
 @Config(qualifiers = "w360dp-h640dp-xhdpi")
@@ -174,13 +192,13 @@ class ScreenTreeTest {
     }
 
     @Test
-    fun `settle reads on each frame until two reads in a row are the same`() {
+    fun `settle reads on each frame from the next one until two reads in a row are the same`() {
         ScreenFixtures.composeActivity()
         val tree = json(ScreenFixtures.getOffMain(tab(), "tree", "settle" to "500"))
         val settle = tree.getJSONObject("settle")
         assertEquals(500, settle.getInt("requestedMs"))
         assertTrue(settle.getBoolean("settled"))
-        assertEquals(1, settle.getInt("frames"))
+        assertEquals(2, settle.getInt("frames"))
         assertTrue(settle.getLong("waitedMs") < 500)
         assertEquals(listOf("Save"), strings(byTag(tree, "save").getJSONArray("text")))
         // Without settle there is no settle object.
@@ -217,6 +235,31 @@ class ScreenTreeTest {
         assertEquals(504, response!!.status)
         assertEquals("The request timed out or the server stopped", json(response!!).getString("message"))
         ScreenFixtures.idle()
+    }
+
+    @Test
+    fun `a settle waits for a scroll animation that started just before the read and moves nothing on its first frame`() {
+        val activity = ScreenFixtures.composeActivity()
+        lateinit var state: LazyListState
+        lateinit var scope: CoroutineScope
+        activity.setContent {
+            state = rememberLazyListState()
+            scope = rememberCoroutineScope()
+            LazyColumn(Modifier.testTag("rows").height(60.dp), state = state) {
+                items(50) { BasicText("Row $it", Modifier.height(20.dp)) }
+            }
+        }
+        ScreenFixtures.idle()
+        val tab = tab()
+        // As a fling after a swipe: the animation starts after the request came, and its first frame moves
+        // nothing. A linear one moves on every frame after that, so the settle ends where it stops.
+        val scroll = { scope.launch { state.animateScrollBy(200f, tween(durationMillis = 160, easing = LinearEasing)) } }
+        val tree = json(ScreenFixtures.getOffMain(tab, "tree", "settle" to "2000", beforeMain = { scroll() }))
+        assertTrue(tree.getJSONObject("settle").getBoolean("settled"))
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(2))
+        val end = byTag(json(get(tab, "tree")), "rows").getJSONObject("verticalScroll").getDouble("value")
+        assertTrue("the list did not scroll", end > 0.0)
+        assertEquals(end, byTag(tree, "rows").getJSONObject("verticalScroll").getDouble("value"), 0.0)
     }
 
     @Test
