@@ -45,6 +45,8 @@ dependencies {
     testImplementation(libs.json)
     testImplementation(libs.okhttp)
     testImplementation(libs.androidx.test.core)
+    // A ViewPager2 and its RecyclerView: the tab drives them by reflection, as they are not on its classpath.
+    testImplementation(libs.androidx.viewpager2)
     // The newest Compose of the catalog, not the compileOnly floor, so that a change
     // to the semantics API fails here before an app sees it.
     testImplementation(platform(libs.compose.bom))

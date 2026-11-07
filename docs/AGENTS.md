@@ -815,7 +815,7 @@ without it, the routes are an enveloped `404 Unknown tab: screen`). The authorit
 | Read the screen | `GET tree?merged=&settle=` | `{ windows, merged, density, compose, windowSource, context, settle?, contextError?, composeError? }`. `merged=false` gives the unmerged semantics tree, in which each text is a node of its own; a node has the same id in both. `settle=MS`, from 1 to 10000, reads on each frame until two reads in a row are the same and the window focus is at rest (the top visible window that can take the focus has it, and no other window does), for up to MS, and adds `settle: { requestedMs, settled, waitedMs, frames }`. |
 | Click a node | `POST click` `{ tag \| text \| contentDescription \| id }` | Runs the node's `OnClick` semantics action, or `performClick()` of a View. Returns `{ status: "ok", action, matched, target, handled, tree }`: the node that the selector matched, the node whose action ran, what the action returned, and the tree after it. |
 | Type into a field | `POST set-text` `{ <selector>, value }` | Runs `SetText` with `value`, which replaces the text, or `setText()` of an `EditText`, with the cursor at the end. A Compose field that does not have the focus gets it first, as a user's tap gives it, so the keyboard opens, and the tree of the response comes after the keyboard (see below). |
-| Scroll | `POST scroll` `{ <selector>, index }` or `{ <selector>, dx?, dy? }` | `index` runs `ScrollToIndex` of a Compose list, `setSelection()` of a `ListView`, or `scrollToPosition()` of a `RecyclerView`; `dx` and `dy`, pixels, run `ScrollBy`, or `scrollBy()` of a View. |
+| Scroll | `POST scroll` `{ <selector>, index }` or `{ <selector>, dx?, dy? }` | `index` runs `ScrollToIndex` of a Compose list, `setSelection()` of a `ListView`, or `scrollToPosition()` of a `RecyclerView`; `dx` and `dy`, pixels, run `ScrollBy`, or `scrollBy()` of a View. A `ViewPager2`, or its `RecyclerView`, turns its pages: `index` shows that page, and pixels turn to the nearest page, as a slow swipe does. |
 
 **The actions.** A body has exactly one selector key, which matches exactly: `tag` a test tag,
 `text` any text of a node or the text of a field, `contentDescription` any content description,
@@ -856,7 +856,7 @@ has the focus, `not_on_screen` when the target has no visible part (scroll first
 `disabled` when the target is disabled, and `no_action` when neither the node nor a node above
 it has the action. `500` with `code: "action_failed"` when the app's own action throws, and the
 app goes on: after a click, a real tap would have ended the app there. A Compose list's
-`ScrollToIndex` also throws for an index past its end, where a View list ignores the index. In split
+`ScrollToIndex` also throws for an index past its end, where a View list or a `ViewPager2` ignores the index. In split
 screen, while the other app has the focus, the tab answers `no_window_focus`, though a user's tap
 would reach the app: tap with `adb shell input tap`, or send `"force": true`.
 
