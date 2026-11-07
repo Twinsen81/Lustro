@@ -822,8 +822,9 @@ without it, the routes are an enveloped `404 Unknown tab: screen`). The authorit
 and `id` a node's id from `GET tree`. The tab looks in the unmerged tree, so it finds a tag or a
 text inside a clickable parent, and runs the action on the matched node or the nearest node above
 it that has the action, as a tap on the text would. It acts as a user can: only in the window that
-has the focus and in the popups on it, such as a menu or the list of a dropdown, which take no focus
-but get the touches inside them, and only on a target that has a visible part, unless the body says
+has the focus and in the popups over it, such as a menu or the list of a dropdown, which take no
+focus but get the touches inside them, also a popup that a popup with the focus opened, and only on
+a target that has a visible part, unless the body says
 `"force": true`.
 Before it looks, it waits for the next frame, and then up to 500 ms for the window focus to come
 to rest, so an action right after a tap that opened a dialog finds the dialog: a Compose dialog

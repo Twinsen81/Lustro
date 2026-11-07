@@ -14,6 +14,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import io.github.twinsen81.lustro.screen.internal.ScreenFixtures.json
 import io.github.twinsen81.lustro.screen.internal.ScreenFixtures.tab
 import org.junit.Assert.assertEquals
@@ -199,6 +200,64 @@ class SettleFocusTest {
         assertEquals("not_in_focused_window", json(response).getString("code"))
         assertTrue(json(response).getString("message").contains("not a popup on the dialog window"))
         assertEquals(0, picked)
+    }
+
+    @Test
+    fun `a popup that a popup with the focus opened takes a click, as it is over that popup`() {
+        var picked = 0
+        val activity = ScreenFixtures.composeActivity()
+        activity.setContent { NestedMenu(onPick = { picked++ }) }
+        ScreenFixtures.idle()
+        val roots = android.view.inspector.WindowInspector.getGlobalWindowViews()
+        assertEquals(3, roots.size)
+        // The outer popup has the focus; the inner one, which it opened, takes none. Both are on the activity's window.
+        val outer = roots[1]
+        val response = ScreenFixtures.postOffMain(tab(focus = { it === outer }), "click", """{"tag":"inner"}""")
+        assertEquals(json(response).toString(), 200, response.status)
+        assertEquals(1, picked)
+    }
+
+    @Test
+    fun `a popup under the popup that has the focus gets no click`() {
+        var picked = 0
+        val activity = ScreenFixtures.composeActivity()
+        activity.setContent { TwoPopups(onPick = { picked++ }) }
+        ScreenFixtures.idle()
+        val roots = android.view.inspector.WindowInspector.getGlobalWindowViews()
+        assertEquals(3, roots.size)
+        // The earlier popup takes no focus; the later one, over it, has the focus.
+        val over = roots[2]
+        val response = ScreenFixtures.postOffMain(tab(focus = { it === over }), "click", """{"tag":"under"}""")
+        assertEquals(409, response.status)
+        assertEquals("not_in_focused_window", json(response).getString("code"))
+        assertEquals(0, picked)
+    }
+
+    // A popup that takes the focus, and in it a popup that takes none, as the list of a dropdown in a menu.
+    @Composable
+    private fun NestedMenu(onPick: () -> Unit) {
+        Box(Modifier.size(200.dp)) {
+            Popup(properties = PopupProperties(focusable = true)) {
+                Box(Modifier.testTag("outer").size(150.dp)) {
+                    Popup(offset = IntOffset(0, 60)) {
+                        Box(Modifier.testTag("inner").clickable(onClick = onPick).size(120.dp, 40.dp)) { BasicText("Inner") }
+                    }
+                }
+            }
+        }
+    }
+
+    // A popup that takes no focus, and after it a popup that takes the focus, over it.
+    @Composable
+    private fun TwoPopups(onPick: () -> Unit) {
+        Box(Modifier.size(200.dp)) {
+            Popup(offset = IntOffset(0, 60)) {
+                Box(Modifier.testTag("under").clickable(onClick = onPick).size(120.dp, 40.dp)) { BasicText("Under") }
+            }
+            Popup(properties = PopupProperties(focusable = true)) {
+                Box(Modifier.testTag("over").size(150.dp)) { BasicText("Over") }
+            }
+        }
     }
 
     // A field with a menu under it that takes no focus, as a Compose Popup by default; with [dialog], a dialog over both.

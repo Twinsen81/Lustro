@@ -1,5 +1,7 @@
 package io.github.twinsen81.lustro.screen.internal
 
+import android.view.WindowManager
+
 /**
  * Finds the node that a POST route acts on, in a read of the unmerged tree: the nodes
  * that the selector matches, each acting through itself or the nearest node above it
@@ -7,7 +9,8 @@ package io.github.twinsen81.lustro.screen.internal
  * only, and its click is the parent's, as a user's tap on it would be.
  *
  * It acts as a user can, unless the request says `force`: only in the window that has the
- * focus and in the popups on it, and only on a target with a visible part. A node under a
+ * focus and in the popups over it, also a popup that a popup on it opened, and only on a
+ * target with a visible part. A node under a
  * dialog, or scrolled out of view, gets no tap from a user, so an action on it would pass a
  * check that a user fails. A popup that takes no focus, such as a menu or a dropdown's list,
  * still gets the touches inside it: the window manager gives a touch to the top window
@@ -16,19 +19,19 @@ package io.github.twinsen81.lustro.screen.internal
 internal object ActionTargets {
     private const val MAX_CANDIDATES = 10
 
+    // WindowManager.LayoutParams.TYPE_APPLICATION_ABOVE_SUB_PANEL, which the SDK hides.
+    private const val TYPE_APPLICATION_ABOVE_SUB_PANEL = 1005
+
     /** The node that the selector matched, and the node whose action runs. */
     class Target(val window: ScreenWindow, val matched: ScreenNode, val node: ScreenNode)
 
     /** @throws ActionRefused when no node, or more than one, can take the action. */
     fun resolve(read: ScreenWindows, request: ActionRequest): Target {
         val selector = request.selector
-        // The touches go to the top window that has the focus, and to the popups on it. On
+        // The touches go to the top window that has the focus, and to the popups over it. On
         // API 24 the window under a new dialog still says that it has the focus for some frames.
         val focusedIndex = read.windows.indexOfLast { it.hasWindowFocus }
-        val focused =
-            read.windows.filterIndexed { index, window ->
-                index == focusedIndex || (focusedIndex >= 0 && window.popupOn == focusedIndex && window.visible && window.touchable)
-            }
+        val focused = read.windows.filterIndexed { index, _ -> index == focusedIndex || isPopupOver(read.windows, index, focusedIndex) }
         if (!request.force && focused.isEmpty()) {
             throw ActionRefused(
                 409,
@@ -62,6 +65,33 @@ internal object ActionTargets {
         if (!target.enabled) refuse(409, "disabled", "${describe(target)} is disabled, so a tap on it does nothing")
         return Target(window, matched, target)
     }
+
+    /**
+     * Whether the window at [index] is a visible popup that takes touches over the window that
+     * has the focus, at [focusedIndex]: a popup on that window, or, when that window is a popup
+     * itself, a popup on the same window that is above it. A popup that another popup opened
+     * is on the window under both, as Compose and `PopupWindow` give it that window's token.
+     * Of two popups on one window, the one with the higher window type is on top, and of two
+     * with the same type, the later one.
+     */
+    private fun isPopupOver(windows: List<ScreenWindow>, index: Int, focusedIndex: Int): Boolean {
+        val window = windows[index]
+        val focused = windows.getOrNull(focusedIndex) ?: return false
+        if (window.popupOn == null || !window.visible || !window.touchable) return false
+        if (window.popupOn == focusedIndex) return true
+        if (focused.popupOn != window.popupOn) return false
+        val layer = subLayer(window.type).compareTo(subLayer(focused.type))
+        return layer > 0 || (layer == 0 && index > focusedIndex)
+    }
+
+    // The order of the popup types on their window, as the window manager stacks them: a panel
+    // and an attached dialog, then a sub-panel, which Compose's popups are, then the one above it.
+    private fun subLayer(type: Int?): Int =
+        when (type) {
+            WindowManager.LayoutParams.TYPE_APPLICATION_SUB_PANEL -> 2
+            TYPE_APPLICATION_ABOVE_SUB_PANEL -> 3
+            else -> 1
+        }
 
     private fun refuse(status: Int, code: String, message: String, hint: String? = null): Nothing = throw ActionRefused(status, code, message, hint)
 
