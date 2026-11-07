@@ -141,8 +141,7 @@ class ScreenActionsTest {
     @Test
     fun `set-text gives a Compose field the focus first, as a user's tap does`() {
         actions()
-        val before = json(postOffMain(everyWindow, "click", """{"tag":"plain"}"""))
-        assertEquals("no_action", before.getString("code"))
+        assertFalse(node(json(ScreenFixtures.getOffMain(everyWindow, "tree")), "field").optBoolean("focused"))
         val tree = json(postOffMain(everyWindow, "set-text", """{"tag":"field","value":"Grace"}""")).getJSONObject("tree")
         assertTrue(node(tree, "field").optBoolean("focused"))
         assertEquals("Grace", node(tree, "field").getString("editableText"))
