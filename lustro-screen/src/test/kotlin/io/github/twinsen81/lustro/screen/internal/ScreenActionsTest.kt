@@ -1,6 +1,5 @@
 package io.github.twinsen81.lustro.screen.internal
 
-import android.content.res.Configuration
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
@@ -233,20 +232,6 @@ class ScreenActionsTest {
         assertTrue(none.getJSONObject("tree").getJSONObject("settle").getBoolean("settled"))
         assertTrue("waited $waited", waited >= ScreenSource.KEYBOARD_WAIT_MS)
         assertTrue("waited $waited", waited < ScreenSource.KEYBOARD_WAIT_MS + ActionBodies.DEFAULT_SETTLE_MS)
-    }
-
-    @Test
-    fun `with a hardware keyboard out, set-text waits less for a soft keyboard that does not show`() {
-        val config = ScreenFixtures.app.resources.configuration
-        config.keyboard = Configuration.KEYBOARD_QWERTY
-        config.hardKeyboardHidden = Configuration.HARDKEYBOARDHIDDEN_NO
-        form(mutableStateOf(false))
-        val started = android.os.SystemClock.uptimeMillis()
-        val result = json(postOffMain(tab(focus = { true }, keyboard = { false }), "set-text", """{"tag":"field","value":"Ada"}"""))
-        val waited = android.os.SystemClock.uptimeMillis() - started
-        assertTrue(result.getJSONObject("tree").getJSONObject("settle").getBoolean("settled"))
-        assertTrue("waited $waited", waited >= ScreenSource.KEYBOARD_WAIT_HARDWARE_MS)
-        assertTrue("waited $waited", waited < ScreenSource.KEYBOARD_WAIT_MS)
     }
 
     @Test

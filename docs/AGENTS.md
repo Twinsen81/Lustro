@@ -837,9 +837,8 @@ animation that the action starts, such as a Compose scroll, moves nothing on its
 animation that changes no bounds is not in the tree, so the settle does not wait for it: a menu
 that fades out after a pick can still be in the tree of the response. Read the tree again to see it
 gone. When `set-text` gave a field the focus while no keyboard showed, the settle starts when the
-keyboard shows, or after 2 s when none does, 500 ms with a hardware keyboard out, which hides the
-soft keyboard on most devices: a keyboard that starts cold on a slow emulator shows about a second
-after the focus. The keyboard is a window of another process, which the tree does not have; a
+keyboard shows, or after 2 s when none does, as with a hardware keyboard: a keyboard that starts
+cold on a slow emulator shows about a second after the focus. The keyboard is a window of another process, which the tree does not have; a
 screen that makes room for it, such as one with `imePadding()`, starts to move some frames after
 the keyboard shows. So after a keyboard
 the settle counts no two equal reads for 100 ms plus 300 ms times the animator duration scale, the
