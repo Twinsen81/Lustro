@@ -47,7 +47,9 @@ see [DECISIONS.md](DECISIONS.md).
   content description, or id, and run its own semantics action, `OnClick`,
   `SetText`, `ScrollToIndex`, or `ScrollBy`, or the View's `performClick()`,
   `setText()`, `scrollBy()`, or scroll to an item, on the main thread.
-  `set-text` gives a Compose field the focus first, as a user's tap does. The
+  `set-text` gives a Compose field the focus first, as a user's tap does, and
+  its settle waits for the keyboard that this opens, and for the screen to
+  make room for it. The
   response has the node that matched, the node whose action ran, what the
   action returned, and the tree after the action's frames, so a client sees
   the result in the same round trip. The tab looks in the unmerged tree, so a

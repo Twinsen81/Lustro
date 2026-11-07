@@ -506,8 +506,14 @@ lustro_to screen-scroll-top.json --json screen scroll --text "A FORM" --dy -3000
 # A dropdown that opens as its field's text changes: with the focus first, the app
 # does not crash on the next frame. The list is a popup that takes no focus, and a
 # user can tap its options, so the tab clicks them.
-lustro_to screen-dropdown.json --json screen set-text --tag "screen fruit" "Ap"
+lustro_to screen-dropdown.json --json screen set-text --settle 1000 --tag "screen fruit" "Ap"
 check screen-dropdown < "$OUT/screen-dropdown.json"
+# The keyboard that the focus opened is a window of another process, and the page makes
+# room for it some frames later: the tree of the response comes after it, so a read a
+# moment later has the same nodes on the screen.
+sleep 1
+lustro --json screen tree > "$OUT/screen-after-keyboard.json"
+printf '{"response":%s,"later":%s}' "$(cat "$OUT/screen-dropdown.json")" "$(cat "$OUT/screen-after-keyboard.json")" | check screen-keyboard
 lustro_to screen-dropdown-pick.json --json screen click --tag "screen fruit Apricot"
 check screen-dropdown-pick < "$OUT/screen-dropdown-pick.json"
 lustro_to screen-set-text.json --json screen set-text --tag "screen name" "Grace Hopper"

@@ -814,7 +814,7 @@ without it, the routes are an enveloped `404 Unknown tab: screen`). The authorit
 | --- | --- | --- |
 | Read the screen | `GET tree?merged=&settle=` | `{ windows, merged, density, compose, windowSource, context, settle?, contextError?, composeError? }`. `merged=false` gives the unmerged semantics tree, in which each text is a node of its own; a node has the same id in both. `settle=MS`, from 1 to 10000, reads on each frame until two reads in a row are the same and the window focus is at rest (the top visible window that can take the focus has it, and no other window does), for up to MS, and adds `settle: { requestedMs, settled, waitedMs, frames }`. |
 | Click a node | `POST click` `{ tag \| text \| contentDescription \| id }` | Runs the node's `OnClick` semantics action, or `performClick()` of a View. Returns `{ status: "ok", action, matched, target, handled, tree }`: the node that the selector matched, the node whose action ran, what the action returned, and the tree after it. |
-| Type into a field | `POST set-text` `{ <selector>, value }` | Runs `SetText` with `value`, which replaces the text, or `setText()` of an `EditText`, with the cursor at the end. A Compose field that does not have the focus gets it first, as a user's tap gives it, so the keyboard can open. |
+| Type into a field | `POST set-text` `{ <selector>, value }` | Runs `SetText` with `value`, which replaces the text, or `setText()` of an `EditText`, with the cursor at the end. A Compose field that does not have the focus gets it first, as a user's tap gives it, so the keyboard opens, and the tree of the response comes after the keyboard (see below). |
 | Scroll | `POST scroll` `{ <selector>, index }` or `{ <selector>, dx?, dy? }` | `index` runs `ScrollToIndex` of a Compose list, `setSelection()` of a `ListView`, or `scrollToPosition()` of a `RecyclerView`; `dx` and `dy`, pixels, run `ScrollBy`, or `scrollBy()` of a View. |
 
 **The actions.** A body has exactly one selector key, which matches exactly: `tag` a test tag,
@@ -836,8 +836,16 @@ did, also a dialog that it opened, with the focus. The first read is not at once
 animation that the action starts, such as a Compose scroll, moves nothing on its first frame. An
 animation that changes no bounds is not in the tree, so the settle does not wait for it: a menu
 that fades out after a pick can still be in the tree of the response. Read the tree again to see it
-gone. A key that the route does not take is a `400`
-with that key as `field`, so a misspelled key never acts on another node.
+gone. When `set-text` gave a field the focus while no keyboard showed, the settle starts when the
+keyboard shows, or after 500 ms when none does, as with a hardware keyboard. The keyboard is a
+window of another process, which the tree does not have; a screen that makes room for it, such as
+one with `imePadding()`, starts to move some frames after the keyboard shows. So after a keyboard
+the settle counts no two equal reads for 100 ms plus 300 ms times the animator duration scale, the
+time of the keyboard's animation, and the response has the screen after the move. On some devices
+the keyboard's animation takes longer than the default settle: send `"settle": 1000` for a settled
+tree. The keyboard stays open, as after a user's typing: the first BACK closes it. A key that the
+route does not take is a `400` with that key as `field`, so a misspelled key never acts on another
+node.
 
 **Refusals.** `404` with `code: "no_match"` when no node matches. `409 conflict` with
 `code: "ambiguous"` when nodes with different targets match (the message lists their ids:

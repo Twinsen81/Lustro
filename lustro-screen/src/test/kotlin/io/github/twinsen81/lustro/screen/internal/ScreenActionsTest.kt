@@ -1,5 +1,8 @@
 package io.github.twinsen81.lustro.screen.internal
 
+import android.os.Handler
+import android.os.Looper
+import android.provider.Settings
 import android.view.View
 import android.widget.EditText
 import android.widget.ScrollView
@@ -8,10 +11,17 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -145,6 +155,96 @@ class ScreenActionsTest {
         val tree = json(postOffMain(everyWindow, "set-text", """{"tag":"field","value":"Grace"}""")).getJSONObject("tree")
         assertTrue(node(tree, "field").optBoolean("focused"))
         assertEquals("Grace", node(tree, "field").getString("editableText"))
+    }
+
+    @Test
+    fun `set-text answers with the tree after the keyboard that the focus opens`() {
+        val keyboardUp = mutableStateOf(false)
+        val menu = mutableIntStateOf(0)
+        form(keyboardUp, menu)
+        var asked = 0
+        var moving = false
+        // The keyboard shows some frames after the focus asked for it, and the screen starts to make room for it
+        // later, as on a physical device; a menu's own animation, such as a dropdown's, runs and ends before that.
+        val keyboard: (View) -> Boolean = {
+            val shown = ++asked > KEYBOARD_AFTER_CALLS
+            if (shown && !moving) {
+                moving = true
+                val main = Handler(Looper.getMainLooper())
+                main.postDelayed({ menu.intValue = 1 }, FRAME_MS)
+                main.postDelayed({ menu.intValue = 2 }, 2 * FRAME_MS)
+                main.postDelayed({ keyboardUp.value = true }, MOVE_AFTER_MS)
+            }
+            shown
+        }
+        val result = json(postOffMain(tab(focus = { true }, keyboard = keyboard), "set-text", """{"tag":"field","value":"Grace"}"""))
+        val tree = result.getJSONObject("tree")
+        assertEquals("Grace", node(tree, "field").getString("editableText"))
+        // The keyboard covers the button: a user can't tap it now.
+        assertTrue(node(tree, "save").toString(), node(tree, "save").isNull("visibleBounds"))
+        assertTrue(tree.getJSONObject("settle").getBoolean("settled"))
+    }
+
+    @Test
+    fun `after the keyboard shows, set-text waits for the keyboard's animation, also on a screen that does not move`() {
+        Settings.Global.putFloat(ScreenFixtures.app.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f)
+        val settle = keyboardShownSettle()
+        assertTrue(settle.getBoolean("settled"))
+        val animation = ScreenSource.KEYBOARD_MOVE_START_MS + ScreenSource.KEYBOARD_MOVE_MS
+        assertTrue(settle.toString(), settle.getLong("waitedMs") >= animation)
+        assertTrue(settle.toString(), settle.getLong("waitedMs") < ActionBodies.DEFAULT_SETTLE_MS)
+    }
+
+    @Test
+    fun `with animations off, the wait after the keyboard is only for the screen to start to move`() {
+        Settings.Global.putFloat(ScreenFixtures.app.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 0f)
+        val settle = keyboardShownSettle()
+        assertTrue(settle.getBoolean("settled"))
+        assertTrue(settle.toString(), settle.getLong("waitedMs") >= ScreenSource.KEYBOARD_MOVE_START_MS)
+        assertTrue(settle.toString(), settle.getLong("waitedMs") < ScreenSource.KEYBOARD_MOVE_START_MS + ScreenSource.KEYBOARD_MOVE_MS)
+    }
+
+    // The settle of a set-text whose keyboard shows on a screen that does not make room for it.
+    private fun keyboardShownSettle(): JSONObject {
+        form(mutableStateOf(false))
+        var asked = 0
+        val result = json(postOffMain(tab(focus = { true }, keyboard = { ++asked > KEYBOARD_AFTER_CALLS }), "set-text", """{"tag":"field","value":"Ada"}"""))
+        return result.getJSONObject("tree").getJSONObject("settle")
+    }
+
+    @Test
+    fun `set-text does not wait for a keyboard that already shows`() {
+        form(mutableStateOf(false))
+        var asked = 0
+        val shown = json(postOffMain(tab(focus = { true }, keyboard = { asked++; true }), "set-text", """{"tag":"field","value":"Ada"}"""))
+        assertTrue(shown.getJSONObject("tree").getJSONObject("settle").getBoolean("settled"))
+        // Asked once, before the action: the keyboard was there, so nothing is on its way.
+        assertEquals(1, asked)
+    }
+
+    @Test
+    fun `set-text waits no longer than its limit for a keyboard that does not show`() {
+        form(mutableStateOf(false))
+        val started = android.os.SystemClock.uptimeMillis()
+        // As with a hardware keyboard: the focus asks for the soft keyboard, and none shows.
+        val none = json(postOffMain(tab(focus = { true }, keyboard = { false }), "set-text", """{"tag":"field","value":"Ada"}"""))
+        val waited = android.os.SystemClock.uptimeMillis() - started
+        assertTrue(none.getJSONObject("tree").getJSONObject("settle").getBoolean("settled"))
+        assertTrue("waited $waited", waited >= ScreenSource.KEYBOARD_WAIT_MS)
+        assertTrue("waited $waited", waited < ScreenSource.KEYBOARD_WAIT_MS + ActionBodies.DEFAULT_SETTLE_MS)
+    }
+
+    @Test
+    fun `only set-text on a Compose field waits for the keyboard`() {
+        form(mutableStateOf(false))
+        var asked = 0
+        val counting = tab(focus = { true }, keyboard = { asked++; false })
+        assertEquals(200, postOffMain(counting, "click", """{"tag":"save"}""").status)
+        assertEquals(200, postOffMain(counting, "scroll", """{"tag":"page","dy":10}""").status)
+        val activity = ScreenFixtures.viewActivity()
+        activity.findViewById<View>(android.R.id.content).let { find<EditText>(it) }.tag = "pin"
+        assertEquals(200, postOffMain(counting, "set-text", """{"tag":"pin","value":"0000"}""").status)
+        assertEquals(0, asked)
     }
 
     @Test
@@ -282,6 +382,29 @@ class ScreenActionsTest {
         }
     }
 
+    private fun form(keyboardUp: State<Boolean>, menu: State<Int> = mutableIntStateOf(0)) {
+        val controller = Robolectric.buildActivity(ComponentActivity::class.java)
+        controller.get().setTheme(android.R.style.Theme_Material_Light_NoActionBar)
+        val activity = controller.setup().get()
+        activity.setContent { Form(keyboardUp.value, menu.value) }
+        ScreenFixtures.idle()
+    }
+
+    // A field and a button under it on a page that scrolls; with [keyboardUp], the page makes room for the keyboard, as imePadding() does.
+    @Composable
+    private fun Form(keyboardUp: Boolean, menu: Int) {
+        var text by remember { mutableStateOf("") }
+        Column(Modifier.fillMaxSize().padding(bottom = if (keyboardUp) 300.dp else 0.dp)) {
+            BasicText("Menu frame $menu", Modifier.testTag("menu"))
+            Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).testTag("page")) {
+                BasicTextField(text, { text = it }, Modifier.testTag("field"))
+                Spacer(Modifier.height(450.dp))
+                Box(Modifier.testTag("save").clickable {}.size(80.dp, 40.dp)) { BasicText("Save") }
+                Spacer(Modifier.height(300.dp))
+            }
+        }
+    }
+
     private fun node(tree: JSONObject, tag: String): JSONObject = ScreenFixtures.nodes(tree).single { it.optString("testTag") == tag }
 
     private inline fun <reified T : View> find(view: View): T = findOf(T::class.java, view) as T
@@ -292,5 +415,15 @@ class ScreenActionsTest {
             for (index in 0 until view.childCount) findOf(type, view.getChildAt(index))?.let { return it }
         }
         return null
+    }
+
+    private companion object {
+        // The tab asks once before the action, and then on each frame: the keyboard shows on the fifth frame.
+        const val KEYBOARD_AFTER_CALLS = 5
+
+        const val FRAME_MS = 16L
+
+        // The screen starts to make room for the keyboard after a menu's own animation has ended.
+        const val MOVE_AFTER_MS = 200L
     }
 }

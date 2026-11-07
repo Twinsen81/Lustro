@@ -55,7 +55,11 @@ internal object ScreenFixtures {
         timeoutMs: Long = ScreenSource.MAIN_THREAD_TIMEOUT_MS,
         compose: Boolean = true,
         focus: (android.view.View) -> Boolean = android.view.View::hasWindowFocus,
-    ): ScreenDebugTab = ScreenDebugTab.create(ScreenSource(app, ActivityTracker(), contextProvider, timeoutMs, composeAvailable = compose, windowFocus = focus))
+        keyboard: (android.view.View) -> Boolean = SoftKeyboard::isShown,
+    ): ScreenDebugTab =
+        ScreenDebugTab.create(
+            ScreenSource(app, ActivityTracker(), contextProvider, timeoutMs, composeAvailable = compose, windowFocus = focus, keyboardShown = keyboard),
+        )
 
     /** A Compose screen: a title, a field, a password field, a switch, a button, a list; and, when [dialog], a dialog over it. */
     fun composeActivity(dialog: Boolean = false, onSave: () -> Unit = {}): ComponentActivity = composeActivity(mutableStateOf(dialog), onSave)

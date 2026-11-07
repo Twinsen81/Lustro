@@ -444,6 +444,24 @@ def check_screen_dropdown(text: str, rules: List[dict]) -> None:
     expect(len(_tagged(popups[0], "screen fruit Apricot")) == 1, "the list has no Apricot option")
 
 
+def check_screen_keyboard(text: str, rules: List[dict]) -> None:
+    """The tree of set-text's response, and a read a second later, have the same nodes on the screen.
+
+    The keyboard comes some frames after set-text gave the field the focus, and the sample's
+    page makes room for it with imePadding(): the nodes that it covers have no visible part.
+    """
+    both = json.loads(text)
+
+    def shown(tree: Dict[str, Any]) -> set:
+        return {node["id"] for window in tree["windows"] for node in window["nodes"] if node.get("visibleBounds") is not None}
+
+    response, later = shown(both["response"]["tree"]), shown(both["later"])
+    expect(
+        response == later,
+        "on the screen in the response only: {}; in the later read only: {}".format(sorted(response - later), sorted(later - response)),
+    )
+
+
 def check_screen_dropdown_pick(text: str, rules: List[dict]) -> None:
     """A click on an option in the popup picks it, as a user's tap does.
 
@@ -646,6 +664,7 @@ CHECKS: Dict[str, Callable[[str, List[dict]], None]] = {
     "screen-click": check_screen_click,
     "screen-set-text": check_screen_set_text,
     "screen-dropdown": check_screen_dropdown,
+    "screen-keyboard": check_screen_keyboard,
     "screen-dropdown-pick": check_screen_dropdown_pick,
     "screen-scroll": check_screen_scroll,
     "sqlite-query": check_sqlite_query,

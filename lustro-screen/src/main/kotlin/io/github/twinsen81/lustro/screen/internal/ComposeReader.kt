@@ -68,10 +68,11 @@ internal class ComposeReader {
 
     /**
      * Runs [action] on [node], a `SemanticsNode` that a read with live nodes gave, and
-     * returns what the action's lambda returned: whether it did anything. Throws
+     * returns what the action's lambda returned: whether it did anything. Calls [gaveFocus]
+     * when set-text gave the field the focus first, which asks for the keyboard. Throws
      * [IllegalStateException] when the node has no such action now.
      */
-    fun perform(node: Any, action: ScreenAction): Boolean {
+    fun perform(node: Any, action: ScreenAction, gaveFocus: () -> Unit = {}): Boolean {
         val config = (node as SemanticsNode).config
         fun missing(name: String): Nothing = error("The node has no $name now")
         return when (action) {
@@ -81,7 +82,10 @@ internal class ComposeReader {
                 // As a user's tap does, and Compose's own test API: a field that gets text without
                 // the focus has no input session, and a focus request on the next frame, such as an
                 // editable dropdown's, starts one with the old text's layout and throws there.
-                if (config.getOrNull(SemanticsProperties.Focused) != true) config.getOrNull(SemanticsActions.RequestFocus)?.action?.invoke()
+                if (config.getOrNull(SemanticsProperties.Focused) != true) {
+                    val requestFocus = config.getOrNull(SemanticsActions.RequestFocus)?.action
+                    if (requestFocus != null && requestFocus()) gaveFocus()
+                }
                 setText(AnnotatedString(action.value))
             }
             is ScreenAction.ScrollToIndex -> config.getOrNull(SemanticsActions.ScrollToIndex)?.action?.invoke(action.index) ?: missing("ScrollToIndex")
