@@ -90,8 +90,10 @@ through logcat. It needs `adb`, Python 3.9 or later, and a free host port 8080
 for `adb forward`, or another free port in `CLI_E2E_LOCAL_PORT`; `0` lets adb
 choose one. The run changes the device and does not change it back: it
 replaces the sample's mock rules with one rule that mocks `GET /get`, and it
-sets the device to stay awake while it charges. CI runs both on API 24, 35, and
-36 emulators.
+sets the device to stay awake while it charges. CI runs `connectedCheck` on API
+24, 35, and 36 emulators, and the end to end on API 24 and 35: on API 36 the
+runner's emulator often stops responding before the end to end reads the
+screen.
 
 ## Documentation site
 
