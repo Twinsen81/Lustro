@@ -406,6 +406,79 @@ def check_screen_dialog(text: str, rules: List[dict]) -> None:
     expect(settle is not None and settle["requestedMs"] == 1000, "settle {}".format(settle))
 
 
+def _screen_action(text: str, action: str) -> Dict[str, Any]:
+    body = json.loads(text)
+    result = SCREEN_OPENAPI["components"]["schemas"]["ScreenActionResult"]
+    Draft202012Validator(dict(result, components=SCREEN_OPENAPI["components"])).validate(body)
+    expect(body["action"] == action, "action {}".format(body["action"]))
+    return body
+
+
+def _focused_node(tree: Dict[str, Any], tag: str) -> Dict[str, Any]:
+    for window in tree["windows"]:
+        if window["hasWindowFocus"]:
+            for node in _tagged(window, tag):
+                return node
+    raise CheckFailed("no window with the focus has the node tagged {}".format(tag))
+
+
+def check_screen_click(text: str, rules: List[dict]) -> None:
+    """A click on the Tap button runs its counter: the tree after it says so."""
+    body = _screen_action(text, "OnClick")
+    expect(body["handled"] is True, "the click was not handled")
+    taps = _focused_node(body["tree"], "screen taps")
+    expect(taps.get("text") == ["Tapped once"], "the counter after the click {}".format(taps.get("text")))
+
+
+def check_screen_set_text(text: str, rules: List[dict]) -> None:
+    body = _screen_action(text, "SetText")
+    field = _focused_node(body["tree"], "screen name")
+    expect(field.get("editableText") == "Grace Hopper", "the Name field {}".format(field.get("editableText")))
+
+
+def check_screen_dropdown(text: str, rules: List[dict]) -> None:
+    """set-text on the dropdown's field opens its list: a popup that takes no focus, with the option."""
+    body = _screen_action(text, "SetText")
+    popups = [w for w in body["tree"]["windows"] if w["kind"] == "popup"]
+    expect(len(popups) == 1 and popups[0]["focusable"] is False, "popups {}".format([(w["focusable"], w["hasWindowFocus"]) for w in popups]))
+    expect(len(_tagged(popups[0], "screen fruit Apricot")) == 1, "the list has no Apricot option")
+
+
+def check_screen_keyboard(text: str, rules: List[dict]) -> None:
+    """The tree of set-text's response, and a read a second later, have the same nodes on the screen.
+
+    The keyboard comes some frames after set-text gave the field the focus, and the sample's
+    page makes room for it with imePadding(): the nodes that it covers have no visible part.
+    """
+    both = json.loads(text)
+
+    def shown(tree: Dict[str, Any]) -> set:
+        return {node["id"] for window in tree["windows"] for node in window["nodes"] if node.get("visibleBounds") is not None}
+
+    response, later = shown(both["response"]["tree"]), shown(both["later"])
+    expect(
+        response == later,
+        "on the screen in the response only: {}; in the later read only: {}".format(sorted(response - later), sorted(later - response)),
+    )
+
+
+def check_screen_dropdown_pick(text: str, rules: List[dict]) -> None:
+    """A click on an option in the popup picks it, as a user's tap does.
+
+    The list fades out after it, which changes no bounds, so on a device with animations on
+    the tree after the click can still have it.
+    """
+    body = _screen_action(text, "OnClick")
+    field = _focused_node(body["tree"], "screen fruit")
+    expect(field.get("editableText") == "Apricot", "the Fruit field {}".format(field.get("editableText")))
+
+
+def check_screen_scroll(text: str, rules: List[dict]) -> None:
+    """A lazy list composes the rows in view: row 31 is in the tree after the scroll to index 30."""
+    body = _screen_action(text, "ScrollToIndex")
+    _focused_node(body["tree"], "screen row 31")
+
+
 def check_sync(text: str, rules: List[dict]) -> None:
     result = json.loads(text)
     response("/api/v1/network/rules/_/sync", "post").validate(result)
@@ -588,6 +661,12 @@ CHECKS: Dict[str, Callable[[str, List[dict]], None]] = {
     "screen-center": screen_center,
     "screen-page": check_screen_page,
     "screen-dialog": check_screen_dialog,
+    "screen-click": check_screen_click,
+    "screen-set-text": check_screen_set_text,
+    "screen-dropdown": check_screen_dropdown,
+    "screen-keyboard": check_screen_keyboard,
+    "screen-dropdown-pick": check_screen_dropdown_pick,
+    "screen-scroll": check_screen_scroll,
     "sqlite-query": check_sqlite_query,
     "sqlite-exec": check_sqlite_exec,
     "sqlite-accounts-schema": check_sqlite_accounts_schema,

@@ -343,10 +343,18 @@ each under `/api/v1/screen/`.
   adds little, because `adb shell uiautomator dump` reads the same text. With
   `DebugConfig.bindAddress` set for LAN access, every client with the token can
   read it. Keep secrets out of the context that the provider returns.
-- **The tab only reads.** `GET tree` changes nothing in the app: it reads the
+- **`GET tree` only reads.** It changes nothing in the app: it reads the
   windows on the main thread and calls the app's provider there. A main thread
   that does not run the read in time gets the client a `504`; the read that the
   main thread runs later sees that the request is over and does nothing.
+- **Every client with the token can act on the app's UI.** `POST click`,
+  `POST set-text`, and `POST scroll` run a node's own click, text, and scroll
+  actions, as the app's code would, so they do what a user's tap or typing
+  does in the app, a payment or a deletion among them. They are `POST`, so the
+  same-origin checks apply. By default they act only on a node that a user can
+  reach: in the window that has the focus or a popup on it, with a part on the screen, and
+  enabled; `"force": true` skips the first two checks. What the app's action
+  throws comes back as a `500`, and the app goes on.
 - **Hidden API before API 29.** On API 24 to 28 the tab lists the windows
   through `WindowManagerGlobal`'s list of root views, by reflection, as Espresso
   does: that field is on the list of hidden API that apps may use. From API 29 it

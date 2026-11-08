@@ -1,0 +1,6 @@
+{
+  "error": "conflict",
+  "message": "c15.42 matches tag \"save\" in the activity window, which does not have the focus and is not a popup on the dialog window that has it, so a user can't tap the node now",
+  "code": "not_in_focused_window",
+  "hint": "Close the window over it first, such as a dialog. \"force\": true acts on the node anyway"
+}

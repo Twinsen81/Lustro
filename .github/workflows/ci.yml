@@ -250,7 +250,7 @@ jobs:
       - name: Run tests
         run: node --test */src/test/js/*.test.js
 
-  # --- Emulator matrix: instrumented tests and the CLI end to end ------------
+  # --- Emulator matrix: instrumented tests, and the CLI end to end on 24 and 35
   # Only a real Android image can check the platform HttpURLConnection capture,
   # which reaches the platform's URL handlers by reflection, and the CLI's
   # discovery, which reads the line the runtime logs at the LustroToken tag. In
@@ -269,6 +269,16 @@ jobs:
       matrix:
         # minSdk, the target SDK, and the newest level with a `default` image.
         api-level: [24, 35, 36]
+        # The CLI end to end runs on minSdk and the target SDK. For the Screen tab,
+        # API 35 and 36 take the same code paths, and on API 36 the runner's
+        # emulator often stops responding, with ANRs in the system UI and in
+        # system_server, before the end to end reads the screen: the run then
+        # fails for a reason that is not the change.
+        include:
+          - api-level: 24
+            e2e: true
+          - api-level: 35
+            e2e: true
     steps:
       - uses: actions/checkout@v7
 
@@ -292,7 +302,7 @@ jobs:
       # The action runs each line of `script` as its own `sh -c` command and
       # stops at the first one that fails. So the end-to-end steps live in a
       # script file, and a failed connectedCheck saves logcat itself.
-      - name: connectedCheck, then the CLI end to end
+      - name: connectedCheck, then the CLI end to end on API 24 and 35
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
         with:
           api-level: ${{ matrix.api-level }}
@@ -300,7 +310,7 @@ jobs:
           profile: Nexus 6
           script: |
             ./gradlew connectedCheck --console=plain --stacktrace || { mkdir -p build; adb logcat -d -v threadtime > build/connected-logcat.txt; exit 1; }
-            .github/scripts/cli-e2e.sh
+            if [ "${{ matrix.e2e }}" = "true" ]; then .github/scripts/cli-e2e.sh; else echo "The CLI end to end runs on API 24 and 35"; fi
 
       - name: Upload test reports and logcat
         if: ${{ always() }}

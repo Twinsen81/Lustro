@@ -54,6 +54,8 @@ with no source checkout required.
 | `work-metrics.json` | `GET work/metrics?class=StepWorker` | WorkManager OpenAPI `listWorkMetrics` 200 |
 | `screen-tree.json` | `GET screen/tree` of a Compose screen with a dialog open | Screen OpenAPI `ScreenTree` |
 | `screen-tree-views.json` | `GET screen/tree` of a classic View screen | Screen OpenAPI `ScreenTree` |
+| `screen-click.json` | `POST screen/click` with `{"tag":"save"}` | Screen OpenAPI `ScreenActionResult` |
+| `screen-click-under-dialog.json` | `POST screen/click` on a node under a dialog (`409`) | `error-envelope.schema.json` + Screen OpenAPI `ErrorEnvelope` |
 
 ## Notes on the shapes
 
@@ -177,7 +179,13 @@ with no source checkout required.
   windows have no focus, as in a unit test, where no window gets it. A unit
   test in `:lustro-screen` checks that the route writes these fixtures, except
   the ids, which differ from run to run and are compared by where they first
-  appear.
+  appear. `screen-click.json` is the click of the Save button of the same
+  screen without the dialog: the node that matched is the node whose click ran,
+  and the tree after it settled in one frame. `screen-click-under-dialog.json` is
+  the `409` for the same click with the dialog open, which has the focus: the
+  button is in the activity's window, under the dialog. The test compares the
+  ids in a message by where they first appear too, and leaves out how long the
+  settle took.
 
 When the server's emitted shapes change, update these fixtures in the same
 change that bumps the protocol version, and keep the schema validation green.

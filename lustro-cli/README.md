@@ -116,6 +116,9 @@ discovery), `--json` (JSON output). They go before or after the command:
 | `lustro senders` | `GET network/senders`: the clients that `send` can use, the default first |
 | `lustro send --url … [--sender NAME]` | `POST network/send` (synchronous), through the first sender or the one named |
 | `lustro screen tree [--unmerged] [--settle MS] [--all]` | `GET screen/tree`: each window of the app, and its nodes on the screen with a text, a tag, a role, or an action, one line each (see [The screen](#the-screen)) |
+| `lustro screen click (--tag T \| --text T \| --desc T \| --id ID) [--force]` | `POST screen/click`: runs the node's click, and prints the tree after it |
+| `lustro screen set-text SELECTOR VALUE` | `POST screen/set-text`: replaces the text of a field |
+| `lustro screen scroll SELECTOR (--index N \| --dx PX --dy PX)` | `POST screen/scroll`: scrolls a list to an item, or by pixels |
 | `lustro api METHOD PATH [--param K=V] [--body JSON \| --input FILE]` | any route: prints the response body (see [Any route](#any-route)) |
 
 > **Live use of `lustro open`** requires a running app: the server only listens
@@ -239,6 +242,13 @@ window 1  dialog  com.example/com.example.MainActivity  focus  [120,963][960,151
 ```
 
 `--all` prints every node, also the containers and the nodes that are not on the screen.
+
+`lustro screen click`, `set-text`, and `scroll` find a node with exactly one of `--tag`, `--text`,
+`--desc`, and `--id`, run its own semantics action, and print what ran on which node, then the tree
+after it. The tab acts as a user can: a node under a dialog, with no part on the screen, or
+disabled, and a selector that matches more than one node, give `error: 409 conflict: ...` and exit
+1; `--force` acts on a node under a dialog or off the screen anyway. An action does no
+hit-testing: to check what a user can do, tap the node's bounds with `adb shell input tap`.
 `--unmerged` reads the unmerged Compose semantics tree, `--settle MS` waits until two reads in a
 row are the same, for up to MS milliseconds, and `--json` prints the whole response. Each call
 looks up the token and the port again, so a script that reads the screen often sends the GET

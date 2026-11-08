@@ -12,5 +12,5 @@
 | `prefs.openapi.json` (in the `lustro-prefs` AAR assets) | Preferences tab routes, version `1.1` | present |
 | `sqlite.openapi.json` (in the `lustro-sqlite` AAR assets) | SQLite tab routes, version `1.1` | present |
 | `work.openapi.json` (in the `lustro-work` AAR assets) | WorkManager tab routes, version `1.3` | present |
-| `screen.openapi.json` (in the `lustro-screen` AAR assets) | Screen tab routes, version `1.0` | present |
+| `screen.openapi.json` (in the `lustro-screen` AAR assets) | Screen tab routes, version `1.1` | present |
 | `golden/` fixtures | recorded responses for CLI contract tests | present |

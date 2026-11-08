@@ -38,25 +38,37 @@ internal object WindowFocus {
      * windows without one.
      */
     fun groups(roots: List<View>): IntArray {
+        val parents = parents(roots)
         val groups = IntArray(roots.size)
         for (index in roots.indices) {
-            val params = roots[index].layoutParams as? WindowManager.LayoutParams
-            val token = params?.token
-            val sub = params != null && params.type in WindowManager.LayoutParams.FIRST_SUB_WINDOW..WindowManager.LayoutParams.LAST_SUB_WINDOW
+            val token = (roots[index].layoutParams as? WindowManager.LayoutParams)?.token
             val parent =
-                (0 until index).firstOrNull { other ->
-                    if (sub) {
-                        // A popup's token is the window token of the window that it is attached to.
-                        token != null && roots[other].windowToken === token
-                    } else {
-                        val otherParams = roots[other].layoutParams as? WindowManager.LayoutParams
-                        val otherSub = otherParams != null &&
-                            otherParams.type in WindowManager.LayoutParams.FIRST_SUB_WINDOW..WindowManager.LayoutParams.LAST_SUB_WINDOW
-                        !otherSub && otherParams?.token === token
+                if (isSubWindow(roots[index])) {
+                    parents[index].takeIf { it >= 0 }
+                } else {
+                    (0 until index).firstOrNull { other ->
+                        !isSubWindow(roots[other]) && (roots[other].layoutParams as? WindowManager.LayoutParams)?.token === token
                     }
                 }
             groups[index] = if (parent == null) index else groups[parent]
         }
         return groups
+    }
+
+    /**
+     * For each of [roots], in their order, the index of the window that it is a popup on, or
+     * -1 for a window that is not a popup. A popup's token is the window token of the window
+     * that it is attached to: for a Compose popup and a `PopupWindow`, the window of the
+     * activity or the dialog that shows it, also for a popup in a popup.
+     */
+    fun parents(roots: List<View>): IntArray =
+        IntArray(roots.size) { index ->
+            val token = (roots[index].layoutParams as? WindowManager.LayoutParams)?.token
+            if (token == null || !isSubWindow(roots[index])) -1 else (0 until index).firstOrNull { roots[it].windowToken === token } ?: -1
+        }
+
+    private fun isSubWindow(root: View): Boolean {
+        val params = root.layoutParams as? WindowManager.LayoutParams ?: return false
+        return params.type in WindowManager.LayoutParams.FIRST_SUB_WINDOW..WindowManager.LayoutParams.LAST_SUB_WINDOW
     }
 }

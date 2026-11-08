@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Lustro Screen debug tab",
-    "version": "1.0",
-    "description": "The app's windows and the UI tree in each: the classic Views, and the Compose semantics nodes of each Compose host, read in the app's process on the main thread. A read takes milliseconds, sees every test tag, and does not wait for the screen to stop changing, as uiautomator dump does; ?settle waits for two reads in a row to be the same, with the window focus at rest. The tree has the app's own windows only: a permission dialog, the chooser, the keyboard, a notification, and a toast are not in it, and a WebView is a View without its page. When no window has hasWindowFocus, a window of another app is on top. The text of a password field comes as one dot for each character. The tab has no console view, so it is not in the tab bar; _meta lists it. All routes are token-authenticated (Bearer header or HttpOnly cookie) and live under /api/v1/screen. Errors use the shared error envelope."
+    "version": "1.1",
+    "description": "The app's windows and the UI tree in each: the classic Views, and the Compose semantics nodes of each Compose host, read in the app's process on the main thread. A read takes milliseconds, sees every test tag, and does not wait for the screen to stop changing, as uiautomator dump does; ?settle waits for two reads in a row to be the same, with the window focus at rest. The tree has the app's own windows only: a permission dialog, the chooser, the keyboard, a notification, and a toast are not in it, and a WebView is a View without its page. When no window has hasWindowFocus, a window of another app is on top. The text of a password field comes as one dot for each character. From 1.1, POST click, set-text, and scroll run a node's semantics action, found by its test tag, text, content description, or id, as the app's own code: they do no hit-testing, and they act only on a node that a user can reach, in the window that has the focus and with a part on the screen, unless the body says force. The tab has no console view, so it is not in the tab bar; _meta lists it. All routes are token-authenticated (Bearer header or HttpOnly cookie) and live under /api/v1/screen. Errors use the shared error envelope."
   },
   "servers": [
     {
@@ -59,6 +59,434 @@
             "$ref": "#/components/responses/Error"
           },
           "405": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          },
+          "504": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/screen/click": {
+      "post": {
+        "operationId": "clickScreenNode",
+        "summary": "Run a node's click.",
+        "description": "Runs the OnClick semantics action of a Compose node, or performClick() of a View, on the main thread, then reads the tree. The selector looks in the unmerged tree, so a test tag or a text inside a clickable parent is found, and the action runs on the matched node or the nearest node above it that has it, as a tap on the text would. It acts as a user can, unless force is true: only in the window that has the focus and in the popups over it, such as a menu, which take no focus but get the touches inside them, also a popup that a popup with the focus opened, and only on a target with a part on the screen. Before it looks, it waits for the next frame, and then up to 500 ms for the window focus to come to rest: a Compose dialog comes on the frame after the tap that opened it, and the focus reaches a new dialog some frames later. 404 with code no_match when no node matches. 409 with code ambiguous when nodes with different targets match, with the candidates' ids in the message; not_in_focused_window when the node is only in a window that does not have the focus and is not a popup on the one that has it, such as the activity under a dialog; no_window_focus when no window of the app has the focus, as with a permission dialog on top; not_on_screen when the target has no part on the screen; disabled when the target is disabled; and no_action when neither the node nor a node above it has the action. 500 with code action_failed when the app's action throws. 400 with the key as field for a key that the route does not take, two selectors, or a value of the wrong type. The action does no hit-testing: to check what a user can do, tap the middle of the node's visibleBounds with adb shell input tap instead.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "tag": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "The node's test tag, exactly."
+                  },
+                  "text": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "A text of the node, exactly, or its editable text."
+                  },
+                  "contentDescription": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "A content description of the node, exactly."
+                  },
+                  "id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "The node's id from GET tree."
+                  },
+                  "force": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Act also on a node that a user can't tap now: in a window that does not have the focus and is not a popup on the one that has it, such as the activity under a dialog, or with no part on the screen. By default the tab refuses them."
+                  },
+                  "merged": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "The tree of the response, merged or unmerged."
+                  },
+                  "settle": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 10000,
+                    "default": 500,
+                    "description": "After the action, read the tree on each frame from the next one until two reads in a row are the same and the window focus is at rest, for up to this many milliseconds, at least two frames: an animation that the action starts, such as a Compose scroll, moves nothing on its first frame."
+                  }
+                },
+                "additionalProperties": false,
+                "allOf": [
+                  {
+                    "oneOf": [
+                      {
+                        "required": [
+                          "tag"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "text"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "contentDescription"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "id"
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The action ran.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScreenActionResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "405": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          },
+          "504": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/screen/set-text": {
+      "post": {
+        "operationId": "setScreenNodeText",
+        "summary": "Replace the text of a field.",
+        "description": "Runs the SetText semantics action of a Compose field with value, or setText() of an EditText with the cursor at the end, then reads the tree. A Compose field that does not have the focus gets it first, as a user's tap gives it, so the keyboard opens: the settle then starts when the keyboard shows, or after 2000 ms when none does, as with a hardware keyboard, and after a keyboard it counts no two equal reads for 100 ms plus 300 ms times the animator duration scale, the time of the keyboard's animation, so the tree has the screen after it made room for the keyboard. The keyboard's animation can take longer than the default settle: send settle 1000 for a settled tree. Find a field by its test tag, or by its id; a label is often a node of its own beside the field. The selector looks in the unmerged tree, so a test tag or a text inside a clickable parent is found, and the action runs on the matched node or the nearest node above it that has it, as a tap on the text would. It acts as a user can, unless force is true: only in the window that has the focus and in the popups over it, such as a menu, which take no focus but get the touches inside them, also a popup that a popup with the focus opened, and only on a target with a part on the screen. Before it looks, it waits for the next frame, and then up to 500 ms for the window focus to come to rest: a Compose dialog comes on the frame after the tap that opened it, and the focus reaches a new dialog some frames later. 404 with code no_match when no node matches. 409 with code ambiguous when nodes with different targets match, with the candidates' ids in the message; not_in_focused_window when the node is only in a window that does not have the focus and is not a popup on the one that has it, such as the activity under a dialog; no_window_focus when no window of the app has the focus, as with a permission dialog on top; not_on_screen when the target has no part on the screen; disabled when the target is disabled; and no_action when neither the node nor a node above it has the action. 500 with code action_failed when the app's action throws. 400 with the key as field for a key that the route does not take, two selectors, or a value of the wrong type. The action does no hit-testing: to check what a user can do, tap the middle of the node's visibleBounds with adb shell input tap instead.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "tag": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "The node's test tag, exactly."
+                  },
+                  "text": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "A text of the node, exactly, or its editable text."
+                  },
+                  "contentDescription": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "A content description of the node, exactly."
+                  },
+                  "id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "The node's id from GET tree."
+                  },
+                  "force": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Act also on a node that a user can't tap now: in a window that does not have the focus and is not a popup on the one that has it, such as the activity under a dialog, or with no part on the screen. By default the tab refuses them."
+                  },
+                  "merged": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "The tree of the response, merged or unmerged."
+                  },
+                  "settle": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 10000,
+                    "default": 500,
+                    "description": "After the action, read the tree on each frame from the next one until two reads in a row are the same and the window focus is at rest, for up to this many milliseconds, at least two frames: an animation that the action starts, such as a Compose scroll, moves nothing on its first frame."
+                  },
+                  "value": {
+                    "type": "string",
+                    "description": "The new text, which replaces the field's text."
+                  }
+                },
+                "additionalProperties": false,
+                "allOf": [
+                  {
+                    "oneOf": [
+                      {
+                        "required": [
+                          "tag"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "text"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "contentDescription"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "id"
+                        ]
+                      }
+                    ]
+                  }
+                ],
+                "required": [
+                  "value"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The action ran.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScreenActionResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "405": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          },
+          "504": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/screen/scroll": {
+      "post": {
+        "operationId": "scrollScreenNode",
+        "summary": "Scroll a list to an item, or by pixels.",
+        "description": "With index, runs the ScrollToIndex semantics action of a Compose list, setSelection() of a ListView or GridView, or scrollToPosition() of a RecyclerView; with dx and dy, the ScrollBy action, or scrollBy() of a View. A ViewPager2, or its RecyclerView, turns its pages: index shows that page, and dx or dy turns to the nearest page, as a slow swipe does. A lazy list composes the rows in view only, so a row that is not in the tree needs a scroll first. The selector looks in the unmerged tree, so a test tag or a text inside a clickable parent is found, and the action runs on the matched node or the nearest node above it that has it, as a tap on the text would. It acts as a user can, unless force is true: only in the window that has the focus and in the popups over it, such as a menu, which take no focus but get the touches inside them, also a popup that a popup with the focus opened, and only on a target with a part on the screen. Before it looks, it waits for the next frame, and then up to 500 ms for the window focus to come to rest: a Compose dialog comes on the frame after the tap that opened it, and the focus reaches a new dialog some frames later. 404 with code no_match when no node matches. 409 with code ambiguous when nodes with different targets match, with the candidates' ids in the message; not_in_focused_window when the node is only in a window that does not have the focus and is not a popup on the one that has it, such as the activity under a dialog; no_window_focus when no window of the app has the focus, as with a permission dialog on top; not_on_screen when the target has no part on the screen; disabled when the target is disabled; and no_action when neither the node nor a node above it has the action. 500 with code action_failed when the app's action throws. 400 with the key as field for a key that the route does not take, two selectors, or a value of the wrong type. The action does no hit-testing: to check what a user can do, tap the middle of the node's visibleBounds with adb shell input tap instead.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "tag": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "The node's test tag, exactly."
+                  },
+                  "text": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "A text of the node, exactly, or its editable text."
+                  },
+                  "contentDescription": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "A content description of the node, exactly."
+                  },
+                  "id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "The node's id from GET tree."
+                  },
+                  "force": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Act also on a node that a user can't tap now: in a window that does not have the focus and is not a popup on the one that has it, such as the activity under a dialog, or with no part on the screen. By default the tab refuses them."
+                  },
+                  "merged": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "The tree of the response, merged or unmerged."
+                  },
+                  "settle": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 10000,
+                    "default": 500,
+                    "description": "After the action, read the tree on each frame from the next one until two reads in a row are the same and the window focus is at rest, for up to this many milliseconds, at least two frames: an animation that the action starts, such as a Compose scroll, moves nothing on its first frame."
+                  },
+                  "index": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "The item to scroll to."
+                  },
+                  "dx": {
+                    "type": "number",
+                    "description": "Pixels to scroll to the right; negative to the left. 0 when left out."
+                  },
+                  "dy": {
+                    "type": "number",
+                    "description": "Pixels to scroll down; negative up. 0 when left out."
+                  }
+                },
+                "additionalProperties": false,
+                "allOf": [
+                  {
+                    "oneOf": [
+                      {
+                        "required": [
+                          "tag"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "text"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "contentDescription"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "id"
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "oneOf": [
+                      {
+                        "required": [
+                          "index"
+                        ],
+                        "not": {
+                          "anyOf": [
+                            {
+                              "required": [
+                                "dx"
+                              ]
+                            },
+                            {
+                              "required": [
+                                "dy"
+                              ]
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "anyOf": [
+                          {
+                            "required": [
+                              "dx"
+                            ]
+                          },
+                          {
+                            "required": [
+                              "dy"
+                            ]
+                          }
+                        ],
+                        "not": {
+                          "required": [
+                            "index"
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The action ran.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScreenActionResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "405": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
             "$ref": "#/components/responses/Error"
           },
           "500": {
@@ -330,7 +758,7 @@
               "type": "string"
             },
             "minItems": 1,
-            "description": "The semantics actions that drive the node, by their Compose names: OnClick, OnLongClick, SetText, PerformImeAction, ScrollBy, ScrollToIndex, PageUp, PageDown, PageLeft, PageRight, SetProgress, Expand, Collapse, and Dismiss. A View has OnClick when it is clickable, OnLongClick when it is long-clickable, SetText when it is an enabled EditText, and ScrollBy when it can scroll."
+            "description": "The semantics actions that drive the node, by their Compose names: OnClick, OnLongClick, SetText, PerformImeAction, ScrollBy, ScrollToIndex, PageUp, PageDown, PageLeft, PageRight, SetProgress, Expand, Collapse, and Dismiss. A View has OnClick when it is clickable, OnLongClick when it is long-clickable, SetText when it is an enabled EditText, ScrollBy when it can scroll, and ScrollToIndex when it is a ListView, a GridView, a RecyclerView, or a ViewPager2."
           },
           "horizontalScroll": {
             "$ref": "#/components/schemas/ScrollRange"
@@ -474,6 +902,7 @@
               "forbidden",
               "not_found",
               "method_not_allowed",
+              "conflict",
               "payload_too_large",
               "internal_error",
               "unavailable",
@@ -492,6 +921,48 @@
           },
           "hint": {
             "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ScreenActionResult": {
+        "type": "object",
+        "description": "What the action did, and the tree after it.",
+        "required": [
+          "status",
+          "action",
+          "matched",
+          "target",
+          "handled",
+          "tree"
+        ],
+        "properties": {
+          "status": {
+            "const": "ok"
+          },
+          "action": {
+            "enum": [
+              "OnClick",
+              "SetText",
+              "ScrollToIndex",
+              "ScrollBy"
+            ],
+            "description": "The semantics action that ran."
+          },
+          "matched": {
+            "type": "string",
+            "description": "The id of the node that the selector matched."
+          },
+          "target": {
+            "type": "string",
+            "description": "The id of the node whose action ran: the matched node, or the nearest node above it that has the action, as the clickable parent of a text."
+          },
+          "handled": {
+            "type": "boolean",
+            "description": "What the action returned: for a Compose node, its action's result; for a View, performClick()'s, which is false when the View has no click listener; true for a View's set-text and scroll."
+          },
+          "tree": {
+            "$ref": "#/components/schemas/ScreenTree"
           }
         },
         "additionalProperties": false
