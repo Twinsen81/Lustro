@@ -43,6 +43,11 @@ sqliteFloor = "2.0.0"
 # listeners and WorkInfo.workerClassName, and work-analytics. Never a runtime
 # dependency: work-analytics pins work-runtime to its own exact version.
 workFloor = "2.12.0"
+# compileOnly in :lustro-screen, so not published: the tab reads the Compose
+# semantics tree of an app that has Compose, with the app's own Compose UI, and
+# walks the View tree of any other app. The oldest release that the tab compiles
+# against: every call that it makes is in 1.6.0 and in the newest release.
+composeUiFloor = "1.6.0"
 
 # Sample app only.
 volley = "1.2.1"
@@ -91,12 +96,14 @@ kotlinx-coroutines-core-floor = { group = "org.jetbrains.kotlinx", name = "kotli
 sqlite-floor = { group = "androidx.sqlite", name = "sqlite", version.ref = "sqliteFloor" }
 work-runtime-floor = { group = "androidx.work", name = "work-runtime", version.ref = "workFloor" }
 work-analytics-floor = { group = "androidx.work", name = "work-analytics", version.ref = "workFloor" }
+compose-ui-floor = { group = "androidx.compose.ui", name = "ui", version.ref = "composeUiFloor" }
 
 # Sample app only.
 volley = { group = "com.android.volley", name = "volley", version.ref = "volley" }
 compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
 compose-foundation = { group = "androidx.compose.foundation", name = "foundation" }
 compose-material3 = { group = "androidx.compose.material3", name = "material3" }
+compose-ui = { group = "androidx.compose.ui", name = "ui" }
 activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
 datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore" }
 datastore-preferences-core = { group = "androidx.datastore", name = "datastore-preferences-core", version.ref = "datastore" }

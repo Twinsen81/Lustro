@@ -142,9 +142,14 @@ CI adds the Dokka output under `api/` and `wire-protocol/` when it publishes.
   and its release-safe no-op half. Its unit tests run on the newest WorkManager
   of the catalog (`work`), while the modules compile against the floor
   (`workFloor`).
+- **`:lustro-screen`** and **`:lustro-screen-noop`**: the Screen plugin pair,
+  the app's windows and UI tree under `/api/v1/screen/`, and its release-safe
+  no-op half. The runtime compiles against Compose UI's floor
+  (`composeUiFloor`), and its unit tests compose screens with the catalog's
+  Compose BOM; only the test compilations run Compose's compiler.
 - **`:sample`** — demo app and public-API regression target; debug uses
-  `:lustro`, `:lustro-logs`, `:lustro-prefs`, `:lustro-sqlite`, and
-  `:lustro-work`, release uses their no-op halves.
+  `:lustro`, `:lustro-logs`, `:lustro-prefs`, `:lustro-sqlite`,
+  `:lustro-work`, and `:lustro-screen`, release uses their no-op halves.
 - **`:lustro-cli`** — the Python CLI that drives Lustro over the HTTP API.
 - **`build-logic/`**: an included build with the convention plugins that the
   published modules apply, so their build files hold only what is their own:

@@ -1,7 +1,7 @@
 plugins {
     // Pure-JVM resource jar: no Kotlin, no Android. It only PACKAGES the wire
-    // protocol artifacts (JSON Schemas + the Network, Logs, Preferences, SQLite, and
-    // WorkManager OpenAPI documents + golden fixtures) so tools and contract tests can resolve
+    // protocol artifacts (JSON Schemas + the Network, Logs, Preferences, SQLite,
+    // WorkManager, and Screen OpenAPI documents + golden fixtures) so tools and contract tests can resolve
     // them as a published Maven dependency.
     `java-library`
     // The jar, a sources jar, and an empty Javadoc jar (there is no API to
@@ -23,6 +23,7 @@ java {
 //   - Preferences OpenAPI document:   lustro-prefs/src/main/assets/lustro/prefs.openapi.json
 //   - SQLite OpenAPI document:        lustro-sqlite/src/main/assets/lustro/sqlite.openapi.json
 //   - WorkManager OpenAPI document:   lustro-work/src/main/assets/lustro/work.openapi.json
+//   - Screen OpenAPI document:        lustro-screen/src/main/assets/lustro/screen.openapi.json
 // We copy them into build/generated/wire-resources/lustro/wire/v1/ at build time
 // (NOT into committed src/) so the jar always reflects the current source of
 // truth and there is a single canonical copy in the repo. Packaged under the
@@ -43,6 +44,9 @@ val sqliteOpenApiFile =
 val workOpenApiFile =
     rootProject.layout.projectDirectory
         .file("lustro-work/src/main/assets/lustro/work.openapi.json")
+val screenOpenApiFile =
+    rootProject.layout.projectDirectory
+        .file("lustro-screen/src/main/assets/lustro/screen.openapi.json")
 
 // Root of the generated resource tree; the jar entries live under
 // <root>/lustro/wire/v1/... so they don't collide on a consumer classpath.
@@ -62,6 +66,7 @@ val syncWireResources =
         from(prefsOpenApiFile)
         from(sqliteOpenApiFile)
         from(workOpenApiFile)
+        from(screenOpenApiFile)
     }
 
 sourceSets {

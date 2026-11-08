@@ -14,6 +14,7 @@ checks after the sync compare the output with it.
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 from typing import Any, Callable, Dict, List
@@ -28,6 +29,7 @@ LOGS_OPENAPI = wire.load_openapi("logs")
 PREFS_OPENAPI = wire.load_openapi("prefs")
 SQLITE_OPENAPI = wire.load_openapi("sqlite")
 WORK_OPENAPI = wire.load_openapi("work")
+SCREEN_OPENAPI = wire.load_openapi("screen")
 
 
 class CheckFailed(Exception):
@@ -333,6 +335,77 @@ def check_work_cancel(text: str, rules: List[dict]) -> None:
     expect(body == {"status": "ok", "cancelled": 1}, "cancel {}".format(body))
 
 
+def check_schema_screen(text: str, rules: List[dict]) -> None:
+    expect(json.loads(text) == SCREEN_OPENAPI, "the app serves a Screen schema that differs from the CLI's copy")
+
+
+def _screen_tree(text: str) -> Dict[str, Any]:
+    body = json.loads(text)
+    tree = SCREEN_OPENAPI["components"]["schemas"]["ScreenTree"]
+    Draft202012Validator(dict(tree, components=SCREEN_OPENAPI["components"])).validate(body)
+    return body
+
+
+def _tagged(window: Dict[str, Any], tag: str) -> List[Dict[str, Any]]:
+    return [node for node in window["nodes"] if node.get("testTag") == tag]
+
+
+def check_screen_home(text: str, rules: List[dict]) -> None:
+    """The sample's home screen: one window with the focus, its Compose nodes, and the app's context."""
+    tree = _screen_tree(text)
+    expect(tree["compose"] is True, "the tab found no Compose UI in the sample")
+    windows = tree["windows"]
+    expect(len(windows) == 1 and windows[0]["kind"] == "activity", "windows {}".format([w["kind"] for w in windows]))
+    expect(windows[0]["hasWindowFocus"] is True, "the activity's window has no focus")
+    network = _tagged(windows[0], "Network")
+    expect(len(network) == 1 and network[0].get("clickable") is True, "the Network card {}".format(network))
+    expect(tree["context"] == {"screen": "home", "stack": ["home"], "historyOpen": False}, "context {}".format(tree["context"]))
+
+
+def check_screen_text(text: str, rules: List[dict]) -> None:
+    lines = text.splitlines()
+    expect(lines and lines[0].startswith("window 0  activity  "), "the first line is {!r}".format(lines[:1]))
+    expect(any("#Network" in line and "click" in line for line in lines), "no line for the Network card")
+
+
+def screen_center(text: str, rules: List[dict]) -> None:
+    """Prints the middle of the visible part of the node whose test tag is $CLI_E2E_TAG, in a window with the focus."""
+    tag = os.environ["CLI_E2E_TAG"]
+    tree = _screen_tree(text)
+    for window in tree["windows"]:
+        if not window["hasWindowFocus"]:
+            continue
+        for node in _tagged(window, tag):
+            box = node["visibleBounds"]
+            # A node cut at the screen's edge may be under a bar: wait for a scroll that shows all of it.
+            if box and not node.get("clipped"):
+                print((box["left"] + box["right"]) // 2, (box["top"] + box["bottom"]) // 2)
+                return
+    raise CheckFailed("no window with the focus shows {}".format(tag))
+
+
+def check_screen_page(text: str, rules: List[dict]) -> None:
+    tree = _screen_tree(text)
+    expect(tree["context"]["screen"] == "screen_tree", "context {}".format(tree["context"]))
+    window = tree["windows"][0]
+    pin = _tagged(window, "screen pin")
+    expect(len(pin) == 1 and pin[0].get("password") is True and set(pin[0]["editableText"]) == {"\u2022"}, "the PIN field {}".format(pin))
+    tap = _tagged(window, "screen tap")
+    expect(len(tap) == 1 and tap[0].get("role") == "Button", "the Tap button {}".format(tap))
+
+
+def check_screen_dialog(text: str, rules: List[dict]) -> None:
+    """The Compose dialog is a window of its own, after the activity's, and has the focus."""
+    tree = _screen_tree(text)
+    windows = tree["windows"]
+    expect([w["kind"] for w in windows] == ["activity", "dialog"], "windows {}".format([w["kind"] for w in windows]))
+    expect(windows[0]["hasWindowFocus"] is False and windows[1]["hasWindowFocus"] is True, "focus {}".format([w["hasWindowFocus"] for w in windows]))
+    ok = _tagged(windows[1], "screen dialog ok")
+    expect(len(ok) == 1 and ok[0].get("text") == ["OK"], "the dialog's OK button {}".format(ok))
+    settle = tree.get("settle")
+    expect(settle is not None and settle["requestedMs"] == 1000, "settle {}".format(settle))
+
+
 def check_sync(text: str, rules: List[dict]) -> None:
     result = json.loads(text)
     response("/api/v1/network/rules/_/sync", "post").validate(result)
@@ -509,6 +582,12 @@ CHECKS: Dict[str, Callable[[str, List[dict]], None]] = {
     "work-items": check_work_items,
     "work-events": check_work_events,
     "work-cancel": check_work_cancel,
+    "schema-screen": check_schema_screen,
+    "screen-home": check_screen_home,
+    "screen-text": check_screen_text,
+    "screen-center": screen_center,
+    "screen-page": check_screen_page,
+    "screen-dialog": check_screen_dialog,
     "sqlite-query": check_sqlite_query,
     "sqlite-exec": check_sqlite_exec,
     "sqlite-accounts-schema": check_sqlite_accounts_schema,

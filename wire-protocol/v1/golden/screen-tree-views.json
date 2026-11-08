@@ -1,0 +1,596 @@
+{
+  "windows": [
+    {
+      "id": "v11",
+      "type": 1,
+      "kind": "activity",
+      "title": "io.github.twinsen81.lustro.screen.test\/android.app.Activity",
+      "hasWindowFocus": false,
+      "focusable": true,
+      "visible": true,
+      "bounds": {
+        "left": 0,
+        "top": 0,
+        "right": 720,
+        "bottom": 1280
+      },
+      "nodes": [
+        {
+          "id": "v11",
+          "kind": "view",
+          "className": "com.android.internal.policy.DecorView",
+          "bounds": {
+            "left": 0,
+            "top": 0,
+            "right": 720,
+            "bottom": 1280
+          },
+          "screenBounds": {
+            "left": 0,
+            "top": 0,
+            "right": 720,
+            "bottom": 1280
+          },
+          "visibleBounds": {
+            "left": 0,
+            "top": 0,
+            "right": 720,
+            "bottom": 1280
+          }
+        },
+        {
+          "id": "v12",
+          "parent": "v11",
+          "kind": "view",
+          "className": "android.widget.LinearLayout",
+          "bounds": {
+            "left": 0,
+            "top": 0,
+            "right": 720,
+            "bottom": 1280
+          },
+          "screenBounds": {
+            "left": 0,
+            "top": 0,
+            "right": 720,
+            "bottom": 1280
+          },
+          "visibleBounds": {
+            "left": 0,
+            "top": 0,
+            "right": 720,
+            "bottom": 1280
+          }
+        },
+        {
+          "id": "v13",
+          "parent": "v12",
+          "kind": "view",
+          "className": "android.widget.FrameLayout",
+          "resourceId": "android:id\/content",
+          "bounds": {
+            "left": 0,
+            "top": 0,
+            "right": 720,
+            "bottom": 1280
+          },
+          "screenBounds": {
+            "left": 0,
+            "top": 0,
+            "right": 720,
+            "bottom": 1280
+          },
+          "visibleBounds": {
+            "left": 0,
+            "top": 0,
+            "right": 720,
+            "bottom": 1280
+          }
+        },
+        {
+          "id": "v14",
+          "parent": "v13",
+          "kind": "view",
+          "className": "android.widget.LinearLayout",
+          "bounds": {
+            "left": 0,
+            "top": 0,
+            "right": 720,
+            "bottom": 1280
+          },
+          "screenBounds": {
+            "left": 0,
+            "top": 0,
+            "right": 720,
+            "bottom": 1280
+          },
+          "visibleBounds": {
+            "left": 0,
+            "top": 0,
+            "right": 720,
+            "bottom": 1280
+          }
+        },
+        {
+          "id": "v15",
+          "parent": "v14",
+          "kind": "view",
+          "className": "android.widget.TextView",
+          "testTag": "title",
+          "text": [
+            "Settings"
+          ],
+          "bounds": {
+            "left": 0,
+            "top": 0,
+            "right": 720,
+            "bottom": 38
+          },
+          "screenBounds": {
+            "left": 0,
+            "top": 0,
+            "right": 720,
+            "bottom": 38
+          },
+          "visibleBounds": {
+            "left": 0,
+            "top": 0,
+            "right": 720,
+            "bottom": 38
+          }
+        },
+        {
+          "id": "v16",
+          "parent": "v14",
+          "kind": "view",
+          "className": "android.widget.Button",
+          "text": [
+            "Go"
+          ],
+          "contentDescription": [
+            "Go on"
+          ],
+          "bounds": {
+            "left": 0,
+            "top": 38,
+            "right": 720,
+            "bottom": 134
+          },
+          "screenBounds": {
+            "left": 0,
+            "top": 38,
+            "right": 720,
+            "bottom": 134
+          },
+          "visibleBounds": {
+            "left": 0,
+            "top": 38,
+            "right": 720,
+            "bottom": 134
+          },
+          "clickable": true,
+          "actions": [
+            "OnClick"
+          ]
+        },
+        {
+          "id": "v17",
+          "parent": "v14",
+          "kind": "view",
+          "className": "android.widget.EditText",
+          "editableText": "••••••",
+          "password": true,
+          "bounds": {
+            "left": 0,
+            "top": 134,
+            "right": 720,
+            "bottom": 225
+          },
+          "screenBounds": {
+            "left": 0,
+            "top": 134,
+            "right": 720,
+            "bottom": 225
+          },
+          "visibleBounds": {
+            "left": 0,
+            "top": 134,
+            "right": 720,
+            "bottom": 225
+          },
+          "clickable": true,
+          "actions": [
+            "OnClick",
+            "OnLongClick",
+            "SetText"
+          ]
+        },
+        {
+          "id": "v18",
+          "parent": "v14",
+          "kind": "view",
+          "className": "android.widget.CheckBox",
+          "text": [
+            "Remember me"
+          ],
+          "bounds": {
+            "left": 0,
+            "top": 225,
+            "right": 720,
+            "bottom": 289
+          },
+          "screenBounds": {
+            "left": 0,
+            "top": 225,
+            "right": 720,
+            "bottom": 289
+          },
+          "visibleBounds": {
+            "left": 0,
+            "top": 225,
+            "right": 720,
+            "bottom": 289
+          },
+          "toggle": "on",
+          "clickable": true,
+          "actions": [
+            "OnClick"
+          ]
+        },
+        {
+          "id": "v19",
+          "parent": "v14",
+          "kind": "view",
+          "className": "android.widget.ScrollView",
+          "bounds": {
+            "left": 0,
+            "top": 289,
+            "right": 720,
+            "bottom": 489
+          },
+          "screenBounds": {
+            "left": 0,
+            "top": 289,
+            "right": 720,
+            "bottom": 489
+          },
+          "visibleBounds": {
+            "left": 0,
+            "top": 289,
+            "right": 720,
+            "bottom": 489
+          },
+          "actions": [
+            "ScrollBy"
+          ],
+          "verticalScroll": {
+            "value": 0,
+            "max": 280,
+            "reverse": false,
+            "forward": true,
+            "backward": false
+          }
+        },
+        {
+          "id": "v20",
+          "parent": "v19",
+          "kind": "view",
+          "className": "android.widget.LinearLayout",
+          "bounds": {
+            "left": 0,
+            "top": 289,
+            "right": 720,
+            "bottom": 769
+          },
+          "screenBounds": {
+            "left": 0,
+            "top": 289,
+            "right": 720,
+            "bottom": 769
+          },
+          "visibleBounds": {
+            "left": 0,
+            "top": 289,
+            "right": 720,
+            "bottom": 489
+          },
+          "clipped": true
+        },
+        {
+          "id": "v21",
+          "parent": "v20",
+          "kind": "view",
+          "className": "android.widget.TextView",
+          "text": [
+            "Item 0"
+          ],
+          "bounds": {
+            "left": 0,
+            "top": 289,
+            "right": 720,
+            "bottom": 329
+          },
+          "screenBounds": {
+            "left": 0,
+            "top": 289,
+            "right": 720,
+            "bottom": 329
+          },
+          "visibleBounds": {
+            "left": 0,
+            "top": 289,
+            "right": 720,
+            "bottom": 329
+          }
+        },
+        {
+          "id": "v22",
+          "parent": "v20",
+          "kind": "view",
+          "className": "android.widget.TextView",
+          "text": [
+            "Item 1"
+          ],
+          "bounds": {
+            "left": 0,
+            "top": 329,
+            "right": 720,
+            "bottom": 369
+          },
+          "screenBounds": {
+            "left": 0,
+            "top": 329,
+            "right": 720,
+            "bottom": 369
+          },
+          "visibleBounds": {
+            "left": 0,
+            "top": 329,
+            "right": 720,
+            "bottom": 369
+          }
+        },
+        {
+          "id": "v23",
+          "parent": "v20",
+          "kind": "view",
+          "className": "android.widget.TextView",
+          "text": [
+            "Item 2"
+          ],
+          "bounds": {
+            "left": 0,
+            "top": 369,
+            "right": 720,
+            "bottom": 409
+          },
+          "screenBounds": {
+            "left": 0,
+            "top": 369,
+            "right": 720,
+            "bottom": 409
+          },
+          "visibleBounds": {
+            "left": 0,
+            "top": 369,
+            "right": 720,
+            "bottom": 409
+          }
+        },
+        {
+          "id": "v24",
+          "parent": "v20",
+          "kind": "view",
+          "className": "android.widget.TextView",
+          "text": [
+            "Item 3"
+          ],
+          "bounds": {
+            "left": 0,
+            "top": 409,
+            "right": 720,
+            "bottom": 449
+          },
+          "screenBounds": {
+            "left": 0,
+            "top": 409,
+            "right": 720,
+            "bottom": 449
+          },
+          "visibleBounds": {
+            "left": 0,
+            "top": 409,
+            "right": 720,
+            "bottom": 449
+          }
+        },
+        {
+          "id": "v25",
+          "parent": "v20",
+          "kind": "view",
+          "className": "android.widget.TextView",
+          "text": [
+            "Item 4"
+          ],
+          "bounds": {
+            "left": 0,
+            "top": 449,
+            "right": 720,
+            "bottom": 489
+          },
+          "screenBounds": {
+            "left": 0,
+            "top": 449,
+            "right": 720,
+            "bottom": 489
+          },
+          "visibleBounds": {
+            "left": 0,
+            "top": 449,
+            "right": 720,
+            "bottom": 489
+          }
+        },
+        {
+          "id": "v26",
+          "parent": "v20",
+          "kind": "view",
+          "className": "android.widget.TextView",
+          "text": [
+            "Item 5"
+          ],
+          "bounds": {
+            "left": 0,
+            "top": 489,
+            "right": 720,
+            "bottom": 529
+          },
+          "screenBounds": {
+            "left": 0,
+            "top": 489,
+            "right": 720,
+            "bottom": 529
+          },
+          "visibleBounds": null
+        },
+        {
+          "id": "v27",
+          "parent": "v20",
+          "kind": "view",
+          "className": "android.widget.TextView",
+          "text": [
+            "Item 6"
+          ],
+          "bounds": {
+            "left": 0,
+            "top": 529,
+            "right": 720,
+            "bottom": 569
+          },
+          "screenBounds": {
+            "left": 0,
+            "top": 529,
+            "right": 720,
+            "bottom": 569
+          },
+          "visibleBounds": null
+        },
+        {
+          "id": "v28",
+          "parent": "v20",
+          "kind": "view",
+          "className": "android.widget.TextView",
+          "text": [
+            "Item 7"
+          ],
+          "bounds": {
+            "left": 0,
+            "top": 569,
+            "right": 720,
+            "bottom": 609
+          },
+          "screenBounds": {
+            "left": 0,
+            "top": 569,
+            "right": 720,
+            "bottom": 609
+          },
+          "visibleBounds": null
+        },
+        {
+          "id": "v29",
+          "parent": "v20",
+          "kind": "view",
+          "className": "android.widget.TextView",
+          "text": [
+            "Item 8"
+          ],
+          "bounds": {
+            "left": 0,
+            "top": 609,
+            "right": 720,
+            "bottom": 649
+          },
+          "screenBounds": {
+            "left": 0,
+            "top": 609,
+            "right": 720,
+            "bottom": 649
+          },
+          "visibleBounds": null
+        },
+        {
+          "id": "v30",
+          "parent": "v20",
+          "kind": "view",
+          "className": "android.widget.TextView",
+          "text": [
+            "Item 9"
+          ],
+          "bounds": {
+            "left": 0,
+            "top": 649,
+            "right": 720,
+            "bottom": 689
+          },
+          "screenBounds": {
+            "left": 0,
+            "top": 649,
+            "right": 720,
+            "bottom": 689
+          },
+          "visibleBounds": null
+        },
+        {
+          "id": "v31",
+          "parent": "v20",
+          "kind": "view",
+          "className": "android.widget.TextView",
+          "text": [
+            "Item 10"
+          ],
+          "bounds": {
+            "left": 0,
+            "top": 689,
+            "right": 720,
+            "bottom": 729
+          },
+          "screenBounds": {
+            "left": 0,
+            "top": 689,
+            "right": 720,
+            "bottom": 729
+          },
+          "visibleBounds": null
+        },
+        {
+          "id": "v32",
+          "parent": "v20",
+          "kind": "view",
+          "className": "android.widget.TextView",
+          "text": [
+            "Item 11"
+          ],
+          "bounds": {
+            "left": 0,
+            "top": 729,
+            "right": 720,
+            "bottom": 769
+          },
+          "screenBounds": {
+            "left": 0,
+            "top": 729,
+            "right": 720,
+            "bottom": 769
+          },
+          "visibleBounds": null
+        }
+      ]
+    }
+  ],
+  "merged": true,
+  "density": 2,
+  "compose": true,
+  "windowSource": "inspector",
+  "context": null
+}

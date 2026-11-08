@@ -1,7 +1,7 @@
 """``lustro`` command-line interface.
 
 Argparse-based dispatch over the Lustro HTTP wire protocol. Every subcommand
-maps to a route in ``network.openapi.json`` or a framework route
+maps to a route in ``network.openapi.json`` or ``screen.openapi.json``, or a framework route
 (``/api/v1/_meta``, ``/api/v1/_schema``, ``/api/v1/<id>/_schema``), except
 ``api``, which sends a request to any route.
 
@@ -755,6 +755,143 @@ def cmd_api(args: argparse.Namespace) -> int:
             return 0
     sys.stdout.buffer.write(response.data)
     sys.stdout.flush()
+    return 0
+
+
+# ── screen: the app's windows and UI tree ─────────────────────────────────────
+
+SCREEN = "/api/v1/screen"
+# The longest settle that the tab takes, in milliseconds.
+MAX_SETTLE_MS = 10_000
+
+
+def _settle_ms(value: str) -> int:
+    try:
+        ms = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError("must be a whole number of milliseconds, such as 500")
+    if not 0 <= ms <= MAX_SETTLE_MS:
+        raise argparse.ArgumentTypeError("must be from 0 to {}".format(MAX_SETTLE_MS))
+    return ms
+
+
+def _is_interesting(node: dict) -> bool:
+    """Whether a node says something about the screen: a text, a tag, a role, an
+    action, or a state. The containers that only lay out others are left out."""
+    keys = ("text", "editableText", "contentDescription", "testTag", "role", "actions", "toggle", "error", "stateDescription")
+    return any(key in node for key in keys) or node.get("selected") is True
+
+
+def _rect_text(rect: Optional[dict]) -> str:
+    if not rect:
+        return "(not on screen)"
+    return "[{},{}][{},{}]".format(rect["left"], rect["top"], rect["right"], rect["bottom"])
+
+
+def _quoted(value: str, limit: int = 60) -> str:
+    one_line = " ".join(value.split())
+    if len(one_line) > limit:
+        one_line = one_line[: limit - 1] + "…"
+    return json.dumps(one_line, ensure_ascii=False)
+
+
+def _node_line(node: dict) -> str:
+    """One node as a line: its id, what it is, its text, tag, states, actions, and
+    where it is on the screen, in uiautomator's bounds format."""
+    if node.get("role"):
+        what = node["role"]
+    elif node.get("className"):
+        what = node["className"].rsplit(".", 1)[-1]
+    else:
+        what = "node"
+    parts = [node["id"], what]
+    if node.get("text"):
+        parts.append(_quoted(" / ".join(node["text"])))
+    if "editableText" in node:
+        parts.append("value=" + _quoted(node["editableText"]))
+    if node.get("contentDescription"):
+        parts.append("desc=" + _quoted(" / ".join(node["contentDescription"])))
+    if node.get("testTag"):
+        parts.append("#" + node["testTag"])
+    resource = node.get("resourceId")
+    if resource and ":id/" in resource:
+        parts.append("id=" + resource.split(":id/", 1)[1])
+    flags = []
+    if node.get("enabled") is False:
+        flags.append("disabled")
+    for key in ("focused", "password", "clipped"):
+        if node.get(key):
+            flags.append(key)
+    if node.get("selected") is True:
+        flags.append("selected")
+    if node.get("toggle"):
+        flags.append(node["toggle"])
+    if node.get("error"):
+        flags.append("error=" + _quoted(node["error"]))
+    for axis, key in (("v", "verticalScroll"), ("h", "horizontalScroll")):
+        scroll = node.get(key)
+        if scroll:
+            value = "{:g}".format(scroll["value"])
+            flags.append("scroll-{} {}/{}".format(axis, value, "{:g}".format(scroll["max"]) if scroll.get("max") is not None else "?"))
+    actions = node.get("actions") or []
+    names = {"OnClick": "click", "OnLongClick": "long-click", "SetText": "set-text", "ScrollBy": "scroll", "ScrollToIndex": "scroll-to-index"}
+    flags.extend(names[a] for a in actions if a in names)
+    parts.extend(flags)
+    parts.append(_rect_text(node.get("visibleBounds")))
+    return "  ".join(parts)
+
+
+def _print_tree(tree: dict, show_all: bool) -> None:
+    for index, window in enumerate(tree.get("windows") or []):
+        header = ["window {}".format(index), window.get("kind") or "other"]
+        if window.get("title"):
+            header.append(window["title"])
+        header.append("focus" if window.get("hasWindowFocus") else "no-focus")
+        if not window.get("visible"):
+            header.append("hidden")
+        header.append(_rect_text(window.get("bounds")))
+        print("  ".join(header))
+        nodes = window.get("nodes") or []
+        by_id = {node["id"]: node for node in nodes}
+        shown = {
+            node["id"]
+            for node in nodes
+            if show_all or (node.get("visibleBounds") is not None and _is_interesting(node))
+        }
+        for node in nodes:
+            if node["id"] not in shown:
+                continue
+            depth = 0
+            parent = node.get("parent")
+            while parent is not None and parent in by_id:
+                if parent in shown:
+                    depth += 1
+                parent = by_id[parent].get("parent")
+            print("  " * (depth + 1) + _node_line(node))
+    settle = tree.get("settle")
+    if settle:
+        if settle.get("settled"):
+            print("settled after {} frame(s), {} ms".format(settle.get("frames"), settle.get("waitedMs")))
+        else:
+            print("not settled after {} ms: the tree is the last read".format(settle.get("waitedMs")))
+    if not tree.get("windows"):
+        print("no window: the app shows none, or its activity is not started")
+    elif not any(w.get("hasWindowFocus") for w in tree["windows"]):
+        print("no window of the app has the focus: another app's window, such as a permission dialog, may be on top")
+    if tree.get("context") is not None:
+        print("context: " + _dumps(tree["context"], indent=False))
+    for key in ("contextError", "composeError"):
+        if tree.get(key):
+            print("{}: {}".format(key, tree[key]))
+
+
+def cmd_screen_tree(args: argparse.Namespace) -> int:
+    params = {"merged": "false" if args.unmerged else None, "settle": str(args.settle) if args.settle else None}
+    tree = _build_client(args).get(SCREEN + "/tree", params=params)
+    if args.json:
+        _emit(tree, raw_json=True)
+    else:
+        _print_tree(tree, args.all)
     return 0
 
 
@@ -1696,6 +1833,31 @@ def build_parser() -> argparse.ArgumentParser:
     m_sync = mock_sub.add_parser("sync", parents=[common], help="POST rules/_/sync <file.json> (atomic replace)")
     m_sync.add_argument("file", help="path to a JSON array of MockRuleInput objects")
     m_sync.set_defaults(func=cmd_mock_sync)
+
+    # screen ...
+    p_screen = sub.add_parser("screen", parents=[common], help="the app's windows and UI tree (Screen tab)")
+    screen_sub = p_screen.add_subparsers(dest="screen_command", metavar="<op>")
+    screen_sub.required = True
+    s_tree = screen_sub.add_parser(
+        "tree",
+        parents=[common],
+        help="GET screen/tree: each window of the app, and the nodes on screen that have a text, tag, role, or action",
+        description="Print each window of the app and its nodes, one line each: the id, the role or class, the text, "
+        "the test tag, the states and actions, and the visible bounds on the screen in uiautomator's format. "
+        "Without --all, only the nodes on the screen that have a text, a tag, a role, an action, or a state. "
+        "--json prints the whole response. A script that reads the tree often should send the GET itself, with "
+        "the token and the forward that it keeps, instead of starting this command for each read.",
+    )
+    s_tree.add_argument("--unmerged", action="store_true", help="the unmerged semantics tree: each text in a node of its own")
+    s_tree.add_argument(
+        "--settle",
+        type=_settle_ms,
+        default=0,
+        metavar="MS",
+        help="read on each frame until two reads in a row are the same, for up to MS milliseconds",
+    )
+    s_tree.add_argument("--all", action="store_true", help="every node, also the containers and the nodes that are not on the screen")
+    s_tree.set_defaults(func=cmd_screen_tree)
 
     # send
     p_senders = sub.add_parser("senders", parents=[common], help="GET senders (the clients send can use; the first is the default)")

@@ -8,8 +8,9 @@ directory (`../*.schema.json`) and the OpenAPI components of the Network tab
 (`lustro/src/main/assets/lustro/network.openapi.json`), the Logs tab
 (`lustro-logs/src/main/assets/lustro/logs.openapi.json`), the Preferences
 tab (`lustro-prefs/src/main/assets/lustro/prefs.openapi.json`), the SQLite
-tab (`lustro-sqlite/src/main/assets/lustro/sqlite.openapi.json`), and the
-WorkManager tab (`lustro-work/src/main/assets/lustro/work.openapi.json`).
+tab (`lustro-sqlite/src/main/assets/lustro/sqlite.openapi.json`), the
+WorkManager tab (`lustro-work/src/main/assets/lustro/work.openapi.json`), and
+the Screen tab (`lustro-screen/src/main/assets/lustro/screen.openapi.json`).
 
 These files are bundled into the `lustro-cli` wheel under
 `lustro_cli/wire/golden/`, so the installed CLI ships its own contract corpus
@@ -51,6 +52,8 @@ with no source checkout required.
 | `work-item.json` | `GET work/items/{id}` | WorkManager OpenAPI `getWork` 200 |
 | `work-events.json` | `GET work/events?limit=12` first poll (`status: reset`) | `stream-envelope.schema.json` + WorkManager OpenAPI `WorkStreamEnvelope` |
 | `work-metrics.json` | `GET work/metrics?class=StepWorker` | WorkManager OpenAPI `listWorkMetrics` 200 |
+| `screen-tree.json` | `GET screen/tree` of a Compose screen with a dialog open | Screen OpenAPI `ScreenTree` |
+| `screen-tree-views.json` | `GET screen/tree` of a classic View screen | Screen OpenAPI `ScreenTree` |
 
 ## Notes on the shapes
 
@@ -160,6 +163,21 @@ with no source checkout required.
   `:lustro-work` checks that the routes write these fixtures, except the
   cursors, the stack trace, and the times of work-analytics, which come from
   the clock.
+
+- **Screen.** `screen-tree.json` is the merged tree of a Compose screen with a
+  dialog open, so it has two windows, the activity and the dialog, and the
+  app's `context`. Each window starts with its root View; the Compose host's
+  View comes before its semantics nodes, whose ids start with its number. The
+  button and the switch carry the text of their children, the switch its
+  `toggle`, the password field one dot for each character, the list its
+  scroll range and size and the rows in view, and a node of no size a `null`
+  `visibleBounds`. `screen-tree-views.json` is a classic View screen: each node
+  with its `className`, a check box that is on, a password field, and a scroll
+  view with its range, whose rows below the fold have no visible part. The
+  windows have no focus, as in a unit test, where no window gets it. A unit
+  test in `:lustro-screen` checks that the route writes these fixtures, except
+  the ids, which differ from run to run and are compared by where they first
+  appear.
 
 When the server's emitted shapes change, update these fixtures in the same
 change that bumps the protocol version, and keep the schema validation green.

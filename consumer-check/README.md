@@ -19,9 +19,12 @@ floor that moves up there makes this build fail until the floor is a decision.
   `lustro-sqlite`, which runs AGP's AAR metadata check (`compileSdk`), and
   compiles the app's Kotlin against the artifacts' metadata with the floor's
   compiler. The app has no `androidx.sqlite`, which the SQLite plugin needs only
-  for a `SupportSQLiteDatabase`.
+  for a `SupportSQLiteDatabase`. It also registers the WorkManager and Screen
+  plugins; it has no Compose, which the Screen plugin needs only for the
+  semantics tree, so the Screen plugin reads its Views.
 - `assembleWithLustroRelease` builds it with `lustro-noop`, `lustro-logs-noop`,
-  `lustro-prefs-noop`, `lustro-sqlite-noop`, `lustro-work-noop`, and R8.
+  `lustro-prefs-noop`, `lustro-sqlite-noop`, `lustro-work-noop`,
+  `lustro-screen-noop`, and R8.
 - With `-PappMinSdk=23`, below the runtime's 24, the release build takes the no-op halves at that
   level, and the debug build raises its own to 24 with `androidComponents.beforeVariants`, as
   README.md tells such an app. WorkManager 2.12.0 needs 24, so CI runs it with

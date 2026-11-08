@@ -8,6 +8,7 @@ import io.github.twinsen81.lustro.LustroStatus
 import io.github.twinsen81.lustro.logs.LogsDebugTab
 import io.github.twinsen81.lustro.network.NetworkDebugTab
 import io.github.twinsen81.lustro.prefs.PrefsDebugTab
+import io.github.twinsen81.lustro.screen.ScreenDebugTab
 import io.github.twinsen81.lustro.sqlite.SqliteDb
 import io.github.twinsen81.lustro.sqlite.SqliteDebugTab
 import io.github.twinsen81.lustro.work.WorkDebugTab
@@ -15,10 +16,11 @@ import okhttp3.OkHttpClient
 
 /**
  * The app with Lustro, wired as the quick start in README.md does it. It compiles
- * against `lustro`, `lustro-logs`, `lustro-prefs`, `lustro-sqlite`, and
- * `lustro-work` in debug and against their no-op halves in release, so every
+ * against `lustro`, `lustro-logs`, `lustro-prefs`, `lustro-sqlite`, `lustro-work`,
+ * and `lustro-screen` in debug and against their no-op halves in release, so every
  * facade is checked from the floor's Kotlin. The app has no androidx.sqlite: it
- * registers a database file. It has WorkManager but no work-analytics.
+ * registers a database file. It has WorkManager but no work-analytics, and no
+ * Compose: the Screen tab reads its Views.
  */
 object LustroSetup {
     @Volatile
@@ -32,6 +34,7 @@ object LustroSetup {
                 .addTab(PrefsDebugTab.create(app))
                 .addTab(SqliteDebugTab.create(listOf(SqliteDb.file("app", app.getDatabasePath("app.db"))), discoverFrom = app))
                 .addTab(work(app))
+                .addTab(ScreenDebugTab.create(app) { "{\"screen\":\"main\"}" })
                 .build()
         val httpClient = client.newBuilder().addInterceptor(lustro.networkInterceptor()).build()
         val status: LustroStatus = lustro.start()
