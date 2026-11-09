@@ -876,7 +876,10 @@ has `hasWindowFocus`.
 **Tap what a user taps.** To press a node, tap the middle of its `visibleBounds` with
 `adb shell input tap X Y`. That goes through the system's hit test, as a finger does: a node that
 a dialog or a sheet covers gets no tap, so a check that the tap worked tells you what a user would
-see. A `null` `visibleBounds` means that a user can't tap the node now: scroll first.
+see. A `null` `visibleBounds` means that a user can't tap the node now: scroll first. To scroll,
+swipe inside the list's `visibleBounds` with `adb shell input swipe X1 Y1 X2 Y2 300`: a swipe from a
+lower point to a higher one scrolls down. To type, tap the field, then send `adb shell input text`.
+It takes ASCII text only, and `%s` for a space.
 
 ## Common workflows
 
