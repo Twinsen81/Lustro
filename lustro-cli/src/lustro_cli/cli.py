@@ -775,13 +775,6 @@ def _settle_ms(value: str) -> int:
     return ms
 
 
-def _settle_action_ms(value: str) -> int:
-    ms = _settle_ms(value)
-    if ms < 1:
-        raise argparse.ArgumentTypeError("must be from 1 to {}: an action waits for at least two frames".format(MAX_SETTLE_MS))
-    return ms
-
-
 def _is_interesting(node: dict) -> bool:
     """Whether a node says something about the screen: a text, a tag, a role, an
     action, or a state. The containers that only lay out others are left out."""
@@ -900,64 +893,6 @@ def cmd_screen_tree(args: argparse.Namespace) -> int:
     else:
         _print_tree(tree, args.all)
     return 0
-
-
-def _selector(args: argparse.Namespace) -> Dict[str, Any]:
-    """The request body's selector and options, from --tag, --text, --desc, or --id."""
-    pairs = [("tag", args.tag), ("text", args.text), ("contentDescription", args.desc), ("id", args.id)]
-    given = [(key, value) for key, value in pairs if value is not None]
-    if len(given) != 1:
-        raise UsageError("give exactly one of --tag, --text, --desc, and --id")
-    body: Dict[str, Any] = dict(given)
-    if args.force:
-        body["force"] = True
-    if args.unmerged:
-        body["merged"] = False
-    if args.settle is not None:
-        body["settle"] = args.settle
-    return body
-
-
-def _print_action(result: dict) -> None:
-    matched, target = result.get("matched"), result.get("target")
-    via = "" if matched == target else " (matched {})".format(matched)
-    print("{} ran on {}{}: {}".format(result.get("action"), target, via, "handled" if result.get("handled") else "not handled"))
-    _print_tree(result.get("tree") or {}, show_all=False)
-
-
-def _screen_action(args: argparse.Namespace, route: str, body: Dict[str, Any]) -> int:
-    result = _build_client(args).post(SCREEN + "/" + route, json_body=body)
-    if args.json:
-        _emit(result, raw_json=True)
-    else:
-        _print_action(result)
-    return 0
-
-
-def cmd_screen_click(args: argparse.Namespace) -> int:
-    return _screen_action(args, "click", _selector(args))
-
-
-def cmd_screen_set_text(args: argparse.Namespace) -> int:
-    body = _selector(args)
-    body["value"] = args.value
-    return _screen_action(args, "set-text", body)
-
-
-def cmd_screen_scroll(args: argparse.Namespace) -> int:
-    body = _selector(args)
-    if args.index is not None:
-        if args.dx is not None or args.dy is not None:
-            raise UsageError("give --index, or --dx and --dy, but not both")
-        body["index"] = args.index
-    elif args.dx is None and args.dy is None:
-        raise UsageError("give --index, or --dx and --dy")
-    else:
-        if args.dx is not None:
-            body["dx"] = args.dx
-        if args.dy is not None:
-            body["dy"] = args.dy
-    return _screen_action(args, "scroll", body)
 
 
 # ── net subcommands ────────────────────────────────────────────────────────────
@@ -1923,49 +1858,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     s_tree.add_argument("--all", action="store_true", help="every node, also the containers and the nodes that are not on the screen")
     s_tree.set_defaults(func=cmd_screen_tree)
-
-    target = argparse.ArgumentParser(add_help=False)
-    which = target.add_argument_group("the node (exactly one)")
-    which.add_argument("--tag", default=None, metavar="TAG", help="the node's test tag, exactly")
-    which.add_argument("--text", default=None, metavar="TEXT", help="a text of the node, exactly, or its editable text")
-    which.add_argument("--desc", default=None, metavar="TEXT", help="a content description of the node, exactly")
-    which.add_argument("--id", default=None, metavar="ID", help="the node's id from screen tree")
-    options = target.add_argument_group("options")
-    options.add_argument(
-        "--force",
-        action="store_true",
-        help="act also on a node that a user can't tap now: under a dialog, or with no part on the screen",
-    )
-    options.add_argument("--unmerged", action="store_true", help="print the unmerged tree after the action")
-    options.add_argument(
-        "--settle",
-        type=_settle_action_ms,
-        default=None,
-        metavar="MS",
-        help="after the action, wait until two reads in a row are the same, for up to MS (default 500)",
-    )
-    s_click = screen_sub.add_parser(
-        "click",
-        parents=[common, target],
-        help="POST screen/click: run a node's click, then print the tree",
-        description="Run the click of the node that the selector finds, as the app's own code, then print the tree. "
-        "It does no hit-testing: to check what a user can do, tap the middle of the node's bounds with "
-        "adb shell input tap instead.",
-    )
-    s_click.set_defaults(func=cmd_screen_click)
-    s_set = screen_sub.add_parser(
-        "set-text", parents=[common, target], help="POST screen/set-text: replace the text of a field, then print the tree"
-    )
-    s_set.add_argument("value", metavar="VALUE", help="the new text")
-    s_set.set_defaults(func=cmd_screen_set_text)
-    s_scroll = screen_sub.add_parser(
-        "scroll", parents=[common, target], help="POST screen/scroll: scroll a list to an item, or by pixels, then print the tree"
-    )
-    s_scroll.add_argument("--index", type=int, default=None, metavar="N", help="the item to scroll to")
-    s_scroll.add_argument("--dx", type=float, default=None, metavar="PX", help="pixels to scroll to the right (negative: left)")
-    s_scroll.add_argument("--dy", type=float, default=None, metavar="PX", help="pixels to scroll down (negative: up)")
-    s_scroll.set_defaults(func=cmd_screen_scroll)
-
 
     # send
     p_senders = sub.add_parser("senders", parents=[common], help="GET senders (the clients send can use; the first is the default)")

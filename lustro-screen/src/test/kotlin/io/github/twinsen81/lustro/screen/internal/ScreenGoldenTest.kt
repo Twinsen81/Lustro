@@ -35,23 +35,6 @@ class ScreenGoldenTest {
         assertGolden(VIEWS, String(get(tab(), "tree").body))
     }
 
-    @Test
-    fun `the golden click result is what the route writes`() {
-        var saved = 0
-        ScreenFixtures.composeActivity(onSave = { saved++ })
-        val written = String(ScreenFixtures.postOffMain(tab(focus = { true }), "click", """{"tag":"save"}""").body)
-        assertEquals(1, saved)
-        assertGolden(CLICK, written)
-    }
-
-    @Test
-    fun `the golden refusal of a node under a dialog is what the route writes`() {
-        ScreenFixtures.composeActivity(dialog = true)
-        val dialog = android.view.inspector.WindowInspector.getGlobalWindowViews().last()
-        val written = String(ScreenFixtures.postOffMain(tab(focus = { it === dialog }), "click", """{"tag":"save"}""").body)
-        assertGolden(UNDER_DIALOG, written)
-    }
-
     private fun assertGolden(path: String, written: String) {
         System.getProperty("lustro.screen.golden.out")?.let { File(it, File(path).name).writeText(JSONObject(written).toString(2) + "\n") }
         assertEquals("$path differs from:\n$written\n", canonical(JSONObject(File(path).readText())), canonical(JSONObject(written)))
@@ -62,29 +45,23 @@ class ScreenGoldenTest {
         return canonical(document, ids)
     }
 
-    // Key order is not part of JSON, so objects compare as sorted maps; an id is the order of its first appearance,
-    // also in a message; and how long a settle took depends on the test's thread.
+    // Key order is not part of JSON, so objects compare as sorted maps; an id is the order of its first appearance.
     private fun canonical(value: Any?, ids: MutableMap<String, String>): Any? =
         when (value) {
             is JSONObject ->
-                value.keys().asSequence().sorted().filter { it !in VARYING_KEYS }.associateWith { key ->
+                value.keys().asSequence().sorted().associateWith { key ->
                     val item = value.get(key)
                     if (key in ID_KEYS && item is String) ids.getOrPut(item) { "#${ids.size + 1}" } else canonical(item, ids)
                 }
             is JSONArray -> (0 until value.length()).map { canonical(value.get(it), ids) }
-            is String -> ID_IN_TEXT.replace(value) { ids.getOrPut(it.value) { "#${ids.size + 1}" } }
             else -> value
         }
 
     private companion object {
-        val ID_KEYS = setOf("id", "parent", "matched", "target")
-        val VARYING_KEYS = setOf("waitedMs", "frames")
-        val ID_IN_TEXT = Regex("""\b(v\d+|c\d+\.-?\d+)\b""")
+        val ID_KEYS = setOf("id", "parent")
 
         // Unit tests run in the module directory.
         const val COMPOSE = "../wire-protocol/v1/golden/screen-tree.json"
         const val VIEWS = "../wire-protocol/v1/golden/screen-tree-views.json"
-        const val CLICK = "../wire-protocol/v1/golden/screen-click.json"
-        const val UNDER_DIALOG = "../wire-protocol/v1/golden/screen-click-under-dialog.json"
     }
 }

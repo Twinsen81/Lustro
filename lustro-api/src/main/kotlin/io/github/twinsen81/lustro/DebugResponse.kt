@@ -279,7 +279,6 @@ public interface DebugResponse {
                 403 -> "forbidden"
                 404 -> "not_found"
                 405 -> "method_not_allowed"
-                409 -> "conflict"
                 413 -> "payload_too_large"
                 500 -> "internal_error"
                 503 -> "unavailable"

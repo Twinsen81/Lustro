@@ -83,8 +83,6 @@ json = "20260814"
 androidxTestCore = "1.7.0"
 androidxTestRunner = "1.7.0"
 androidxTestExtJunit = "1.3.0"
-# The Screen tab's tests: a ViewPager2, which the tab drives by reflection.
-androidxViewpager2 = "1.1.0"
 
 [libraries]
 # Library runtime (published :lustro / :lustro-noop deps).
@@ -125,7 +123,6 @@ json = { group = "org.json", name = "json", version.ref = "json" }
 androidx-test-core = { group = "androidx.test", name = "core", version.ref = "androidxTestCore" }
 androidx-test-runner = { group = "androidx.test", name = "runner", version.ref = "androidxTestRunner" }
 androidx-test-ext-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidxTestExtJunit" }
-androidx-viewpager2 = { group = "androidx.viewpager2", name = "viewpager2", version.ref = "androidxViewpager2" }
 
 # Lint check authoring (:lustro-lint).
 lint-api = { group = "com.android.tools.lint", name = "lint-api", version.ref = "lint" }

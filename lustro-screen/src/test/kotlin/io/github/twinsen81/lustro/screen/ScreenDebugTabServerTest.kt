@@ -10,7 +10,6 @@ import io.github.twinsen81.lustro.Lustro
 import io.github.twinsen81.lustro.LustroStatus
 import io.github.twinsen81.lustro.screen.internal.ScreenFixtures
 import java.time.Duration
-import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -76,7 +75,6 @@ class ScreenDebugTabServerTest {
         assertTrue(tree.toString().contains("\"testTag\":\"confirm\""))
 
         assertEquals(405, onMain { call(Request.Builder().url("$base/tree").post(ByteArray(0).toRequestBody())) }.code)
-        assertEquals(405, onMain { get("click") }.code)
         val error = JSONObject(onMain { get("tree?settle=-1") }.body!!.string())
         assertEquals("settle", error.getString("field"))
     }
@@ -84,30 +82,22 @@ class ScreenDebugTabServerTest {
     @Test
     fun `the tab serves its schema with its own version, and _meta lists it, out of the tab bar`() {
         val schema = JSONObject(get("_schema").body!!.string())
-        assertEquals("1.1", schema.getJSONObject("info").getString("version"))
+        assertEquals("1.0", schema.getJSONObject("info").getString("version"))
         assertTrue(schema.getJSONObject("paths").has("/api/v1/screen/tree"))
         val tabs = JSONObject(call(Request.Builder().url("$root/api/v1/_meta")).body!!.string()).getJSONArray("tabs")
         val screen = (0 until tabs.length()).map { tabs.getJSONObject(it) }.single { it.getString("id") == "screen" }
         assertEquals("/api/v1/screen/_schema", screen.getString("schemaUrl"))
-        assertEquals("1.1", screen.getString("version"))
+        assertEquals("1.0", screen.getString("version"))
         // Out of the tab bar: the console has no page for it.
         assertFalse(http.newCall(Request.Builder().url("$root/").build()).execute().body!!.string().contains("href=\"/tab/screen\""))
         assertEquals(401, http.newCall(Request.Builder().url("$base/tree").build()).execute().code)
     }
 
     @Test
-    fun `a click through the server, which refuses another origin's`() {
-        val body = """{"tag":"confirm","settle":100}""".toRequestBody("application/json".toMediaType())
-        // Robolectric gives no window the focus, so the request asks for every window.
-        val any = """{"tag":"confirm","force":true,"settle":100}""".toRequestBody("application/json".toMediaType())
-        val refused = onMain { call(Request.Builder().url("$base/click").post(body)) }
-        assertEquals(409, refused.code)
-        assertEquals("no_window_focus", JSONObject(refused.body!!.string()).getString("code"))
-        val clicked = onMain { call(Request.Builder().url("$base/click").post(any)) }
-        assertEquals(200, clicked.code)
-        assertEquals("OnClick", JSONObject(clicked.body!!.string()).getString("action"))
-        val foreign = onMain { call(Request.Builder().url("$base/click").header("Origin", "https://example.com").post(any)) }
-        assertEquals(403, foreign.code)
+    fun `the tab has no route that acts on the UI`() {
+        for (route in listOf("click", "set-text", "scroll")) {
+            assertEquals(route, 404, call(Request.Builder().url("$base/$route").post("{}".toByteArray().toRequestBody())).code)
+        }
     }
 
     // The server calls the tab on its own thread, and the read waits for the main

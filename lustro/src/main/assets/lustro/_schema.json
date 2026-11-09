@@ -11,7 +11,7 @@
       "type": "object",
       "required": ["error", "message"],
       "properties": {
-        "error": { "type": "string", "enum": ["bad_request", "unauthorized", "forbidden", "not_found", "method_not_allowed", "conflict", "payload_too_large", "internal_error", "unavailable", "timeout"], "description": "Short, stable, machine-readable error identifier." },
+        "error": { "type": "string", "enum": ["bad_request", "unauthorized", "forbidden", "not_found", "method_not_allowed", "payload_too_large", "internal_error", "unavailable", "timeout"], "description": "Short, stable, machine-readable error identifier." },
         "message": { "type": "string", "description": "Human-readable explanation of what went wrong." },
         "code": { "type": "string", "description": "Optional finer-grained error code." },
         "field": { "type": "string", "description": "Optional name of the offending request field." },

@@ -9,7 +9,6 @@ import androidx.compose.ui.semantics.ScrollAxisRange
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
-import androidx.compose.ui.text.AnnotatedString
 import kotlin.math.roundToInt
 
 /**
@@ -53,53 +52,22 @@ internal class ComposeReader {
 
     fun isHost(view: View): Boolean = view is ViewRootForTest
 
-    /**
-     * Adds the nodes of [view]'s tree to [out], under [host], the host's View node, and,
-     * with [live], each node's `SemanticsNode` under its id.
-     */
-    fun read(view: View, host: ScreenNode, merged: Boolean, out: MutableList<ScreenNode>, live: MutableMap<String, Any>? = null) {
+    /** Adds the nodes of [view]'s tree to [out], under [host], the host's View node. */
+    fun read(view: View, host: ScreenNode, merged: Boolean, out: MutableList<ScreenNode>) {
         val owner = (view as ViewRootForTest).semanticsOwner
         val root = if (merged) owner.rootSemanticsNode else owner.unmergedRootSemanticsNode
         val inWindow = IntArray(2).also(view::getLocationInWindow)
         val onScreen = IntArray(2).also(view::getLocationOnScreen)
         val place = Place("c${host.id.removePrefix("v")}.", onScreen[0] - inWindow[0], onScreen[1] - inWindow[1], host.visibleBounds)
-        visit(root, host.id, place, out, live)
-    }
-
-    /**
-     * Runs [action] on [node], a `SemanticsNode` that a read with live nodes gave, and
-     * returns what the action's lambda returned: whether it did anything. Calls [gaveFocus]
-     * when set-text gave the field the focus first, which asks for the keyboard. Throws
-     * [IllegalStateException] when the node has no such action now.
-     */
-    fun perform(node: Any, action: ScreenAction, gaveFocus: () -> Unit = {}): Boolean {
-        val config = (node as SemanticsNode).config
-        fun missing(name: String): Nothing = error("The node has no $name now")
-        return when (action) {
-            is ScreenAction.Click -> config.getOrNull(SemanticsActions.OnClick)?.action?.invoke() ?: missing("OnClick")
-            is ScreenAction.SetText -> {
-                val setText = config.getOrNull(SemanticsActions.SetText)?.action ?: missing("SetText")
-                // As a user's tap does, and Compose's own test API: a field that gets text without
-                // the focus has no input session, and a focus request on the next frame, such as an
-                // editable dropdown's, starts one with the old text's layout and throws there.
-                if (config.getOrNull(SemanticsProperties.Focused) != true) {
-                    val requestFocus = config.getOrNull(SemanticsActions.RequestFocus)?.action
-                    if (requestFocus != null && requestFocus()) gaveFocus()
-                }
-                setText(AnnotatedString(action.value))
-            }
-            is ScreenAction.ScrollToIndex -> config.getOrNull(SemanticsActions.ScrollToIndex)?.action?.invoke(action.index) ?: missing("ScrollToIndex")
-            is ScreenAction.ScrollBy -> config.getOrNull(SemanticsActions.ScrollBy)?.action?.invoke(action.dx, action.dy) ?: missing("ScrollBy")
-        }
+        visit(root, host.id, place, out)
     }
 
     private class Place(val prefix: String, val dx: Int, val dy: Int, val hostVisible: ScreenRect?)
 
-    private fun visit(node: SemanticsNode, parent: String, place: Place, out: MutableList<ScreenNode>, live: MutableMap<String, Any>?) {
+    private fun visit(node: SemanticsNode, parent: String, place: Place, out: MutableList<ScreenNode>) {
         val id = place.prefix + node.id
         out += node(node, id, parent, place)
-        live?.put(id, node)
-        for (child in node.children) visit(child, id, place, out, live)
+        for (child in node.children) visit(child, id, place, out)
     }
 
     private fun node(node: SemanticsNode, id: String, parent: String, place: Place): ScreenNode {

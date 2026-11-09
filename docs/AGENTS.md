@@ -265,7 +265,7 @@ reported as `_meta.protocolVersion`.
 
 - **Error** (any failing route): `{ error, message, code?, field?, hint? }`. `error` is a stable
   machine type derived from the status — `bad_request` (400), `unauthorized` (401), `forbidden`
-  (403), `not_found` (404), `method_not_allowed` (405), `conflict` (409), `payload_too_large` (413),
+  (403), `not_found` (404), `method_not_allowed` (405), `payload_too_large` (413),
   `internal_error` (500), `unavailable` (503), `timeout` (504).
 - **Pagination** (collection routes): `{ items: [...], nextCursor: "<opaque>" | null }`.
 - **Cursor** (observable routes): `{ cursor, status, items? }` where `status` is `delta`,
@@ -807,66 +807,12 @@ A new process starts a new stream: a cursor from before gets a `reset`.
 Base path `/api/v1/screen`, when the app registers the Screen plugin
 (`ScreenDebugTab.create(context)`, or `create(context) { contextJson }` with a context provider;
 without it, the routes are an enveloped `404 Unknown tab: screen`). The authoritative contract is
-`lustro-screen/src/main/assets/lustro/screen.openapi.json`, version `1.1` (`1.1` adds the actions).
-`GET tree` only reads; the `POST` routes run a node's own semantics action, as the app's code.
+`lustro-screen/src/main/assets/lustro/screen.openapi.json`, version `1.0`. The tab only reads: it
+has no route that changes the app.
 
 | Operation | Route | Notes |
 | --- | --- | --- |
 | Read the screen | `GET tree?merged=&settle=` | `{ windows, merged, density, compose, windowSource, context, settle?, contextError?, composeError? }`. `merged=false` gives the unmerged semantics tree, in which each text is a node of its own; a node has the same id in both. `settle=MS`, from 1 to 10000, reads on each frame until two reads in a row are the same and the window focus is at rest (the top visible window that can take the focus has it, and no other window does), for up to MS, and adds `settle: { requestedMs, settled, waitedMs, frames }`. |
-| Click a node | `POST click` `{ tag \| text \| contentDescription \| id }` | Runs the node's `OnClick` semantics action, or `performClick()` of a View. Returns `{ status: "ok", action, matched, target, handled, tree }`: the node that the selector matched, the node whose action ran, what the action returned, and the tree after it. |
-| Type into a field | `POST set-text` `{ <selector>, value }` | Runs `SetText` with `value`, which replaces the text, or `setText()` of an `EditText`, with the cursor at the end. A Compose field that does not have the focus gets it first, as a user's tap gives it, so the keyboard opens, and the tree of the response comes after the keyboard (see below). |
-| Scroll | `POST scroll` `{ <selector>, index }` or `{ <selector>, dx?, dy? }` | `index` runs `ScrollToIndex` of a Compose list, `setSelection()` of a `ListView`, or `scrollToPosition()` of a `RecyclerView`; `dx` and `dy`, pixels, run `ScrollBy`, or `scrollBy()` of a View. A `ViewPager2`, or its `RecyclerView`, turns its pages: `index` shows that page, and pixels turn to the nearest page, as a slow swipe does. |
-
-**The actions.** A body has exactly one selector key, which matches exactly: `tag` a test tag,
-`text` any text of a node or the text of a field, `contentDescription` any content description,
-and `id` a node's id from `GET tree`. The tab looks in the unmerged tree, so it finds a tag or a
-text inside a clickable parent, and runs the action on the matched node or the nearest node above
-it that has the action, as a tap on the text would. It acts as a user can: only in the window that
-has the focus and in the popups over it, such as a menu or the list of a dropdown, which take no
-focus but get the touches inside them, also a popup that a popup with the focus opened, and only on
-a target that has a visible part, unless the body says
-`"force": true`.
-Before it looks, it waits for the next frame, and then up to 500 ms for the window focus to come
-to rest, so an action right after a tap that opened a dialog finds the dialog: a Compose dialog
-comes on the frame after the tap, and gets the focus some frames later. A dialog that the app
-shows later, such as after a network call, is not there yet: read the tree until it shows.
-`merged` and `settle` (from 1 to 10000 ms, 500 by default) are for the tree of the response: from
-the frame after the action on, the tab reads it on each frame until two reads in a row are the same
-and the window focus is at rest, so at least two frames, and the response shows what the action
-did, also a dialog that it opened, with the focus. The first read is not at once, because an
-animation that the action starts, such as a Compose scroll, moves nothing on its first frame. An
-animation that changes no bounds is not in the tree, so the settle does not wait for it: a menu
-that fades out after a pick can still be in the tree of the response. Read the tree again to see it
-gone. When `set-text` gave a field the focus while no keyboard showed, the settle starts when the
-keyboard shows, or after 2 s when none does, as with a hardware keyboard: a keyboard that starts
-cold on a slow emulator shows about a second after the focus. The keyboard is a window of another process, which the tree does not have; a
-screen that makes room for it, such as one with `imePadding()`, starts to move some frames after
-the keyboard shows. So after a keyboard
-the settle counts no two equal reads for 100 ms plus 300 ms times the animator duration scale, the
-time of the keyboard's animation, and the response has the screen after the move. On some devices
-the keyboard's animation takes longer than the default settle: send `"settle": 1000` for a settled
-tree. The keyboard stays open, as after a user's typing: the first BACK closes it. A key that the
-route does not take is a `400` with that key as `field`, so a misspelled key never acts on another
-node.
-
-**Refusals.** `404` with `code: "no_match"` when no node matches. `409 conflict` with
-`code: "ambiguous"` when nodes with different targets match (the message lists their ids:
-select one with `id`), `not_in_focused_window` when the node is only in a window that does not
-have the focus and is not a popup on the one that has it, such as the activity under a dialog, `no_window_focus` when no window of the app
-has the focus, `not_on_screen` when the target has no visible part (scroll first),
-`disabled` when the target is disabled, and `no_action` when neither the node nor a node above
-it has the action. `500` with `code: "action_failed"` when the app's own action throws, and the
-app goes on: after a click, a real tap would have ended the app there. A Compose list's
-`ScrollToIndex` also throws for an index past its end, where a View list or a `ViewPager2` ignores the index. In split
-screen, while the other app has the focus, the tab answers `no_window_focus`, though a user's tap
-would reach the app: tap with `adb shell input tap`, or send `"force": true`.
-
-**Tap, or click?** A click runs the node's callback without the system's hit test. It refuses the
-nodes that a user can't tap now, but it can't see everything that a hit test sees, such as a View
-drawn over the node in the same window, or a node whose bounds move under the finger. To check
-what a user can do, tap the middle of the node's `visibleBounds` with `adb shell input tap`, as
-below; use the click when the tap's coordinates are not reliable, or for speed.
-
 
 **A window.** `{ id, type, kind, title, hasWindowFocus, focusable, visible, bounds, nodes }`, in the order the
 app added the windows: the activity first, then each dialog, popup, and bottom sheet over it.
@@ -1115,14 +1061,9 @@ Errors use the shared envelope; key statuses:
   `screen/tree`, with `code: "main_thread_blocked"`: the app's main thread did not start the read
   within 5 s, or did not finish it within 5 s and the settle time, because the app is busy or does
   not respond. Try again, or look for an ANR in the log.
-- **`500 internal_error` with `code: "read_failed"`** on `screen/tree` and the screen actions: the
-  read threw on the main thread, as with a View of the app whose getter throws. The message names
-  the exception; the app goes on. With `code: "action_failed"`: the app's own click, `SetText`, or
-  scroll threw.
-- **`409 conflict`** on `screen/click`, `set-text`, and `scroll`: the action can't run on one node
-  that a user can reach now. `code` says why: `ambiguous`, `not_in_focused_window`,
-  `no_window_focus`, `not_on_screen`, `disabled`, or `no_action` (see
-  [Screen tab operations](#screen-tab-operations)).
+- **`500 internal_error` with `code: "read_failed"`** on `screen/tree`: the read threw on the main
+  thread, as with a View of the app whose getter throws. The message names the exception; the app
+  goes on.
 - **`404 not_found`** — unknown route, missing transaction, a body that wasn't kept, or `send` with
   no sender configured. Also a WebSocket connection that the app cleared or evicted, and a message
   with no stored payload. Also every `logs/` route when the app did not register the Logs plugin

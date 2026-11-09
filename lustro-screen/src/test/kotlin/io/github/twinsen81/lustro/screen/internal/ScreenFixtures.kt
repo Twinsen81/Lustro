@@ -23,7 +23,6 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -55,22 +54,15 @@ internal object ScreenFixtures {
         timeoutMs: Long = ScreenSource.MAIN_THREAD_TIMEOUT_MS,
         compose: Boolean = true,
         focus: (android.view.View) -> Boolean = android.view.View::hasWindowFocus,
-        keyboard: (android.view.View) -> Boolean = SoftKeyboard::isShown,
-    ): ScreenDebugTab =
-        ScreenDebugTab.create(
-            ScreenSource(app, ActivityTracker(), contextProvider, timeoutMs, composeAvailable = compose, windowFocus = focus, keyboardShown = keyboard),
-        )
+    ): ScreenDebugTab = ScreenDebugTab.create(ScreenSource(app, ActivityTracker(), contextProvider, timeoutMs, composeAvailable = compose, windowFocus = focus))
 
     /** A Compose screen: a title, a field, a password field, a switch, a button, a list; and, when [dialog], a dialog over it. */
-    fun composeActivity(dialog: Boolean = false, onSave: () -> Unit = {}): ComponentActivity = composeActivity(mutableStateOf(dialog), onSave)
-
-    /** The Compose screen, with the dialog over it while [dialog] is true: Compose shows it on the next frame after a change. */
-    fun composeActivity(dialog: State<Boolean>, onSave: () -> Unit = {}): ComponentActivity {
+    fun composeActivity(dialog: Boolean = false, onSave: () -> Unit = {}): ComponentActivity {
         val controller = Robolectric.buildActivity(ComponentActivity::class.java)
         // No action bar: its views would come before the content in each tree.
         controller.get().setTheme(android.R.style.Theme_Material_Light_NoActionBar)
         val activity = controller.setup().get()
-        activity.setContent { Profile(dialog.value, onSave) }
+        activity.setContent { Profile(dialog, onSave) }
         idle()
         return activity
     }
@@ -124,10 +116,6 @@ internal object ScreenFixtures {
         idle()
         return activity
     }
-
-    /** POSTs [body] to [path] from another thread, as the server does, and runs the main looper meanwhile. See [offMain] for [beforeMain]. */
-    fun postOffMain(tab: ScreenDebugTab, path: String, body: String, frameMs: Long = 16, beforeMain: (() -> Unit)? = null): DebugResponse =
-        offMain(frameMs, beforeMain) { tab.handle(DebugRequest(path, "POST", body = body.toByteArray())) ?: error("no route $path") }
 
     fun idle() {
         shadowOf(Looper.getMainLooper()).idle()

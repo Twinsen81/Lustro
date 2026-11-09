@@ -61,7 +61,7 @@ internal object WindowFocus {
      * that it is attached to: for a Compose popup and a `PopupWindow`, the window of the
      * activity or the dialog that shows it, also for a popup in a popup.
      */
-    fun parents(roots: List<View>): IntArray =
+    private fun parents(roots: List<View>): IntArray =
         IntArray(roots.size) { index ->
             val token = (roots[index].layoutParams as? WindowManager.LayoutParams)?.token
             if (token == null || !isSubWindow(roots[index])) -1 else (0 until index).firstOrNull { roots[it].windowToken === token } ?: -1
