@@ -1238,29 +1238,16 @@ val lustro = Lustro.builder(application)
   on a physical device. A main thread that does not run
   the read within five seconds gets the client a `504` with the code `main_thread_blocked`, so a
   script does not wait for an app that does not respond.
-- **Actions.** `POST click`, `POST set-text`, and `POST scroll` run a node's own semantics action
-  (`OnClick`, `SetText`, `ScrollToIndex`, or `ScrollBy`, or the View's `performClick()`,
-  `setText()`, and scroll calls), found by its test tag, text, content description, or id, and
-  return the tree after the action's frames. A tag or a text inside a clickable parent runs the
-  parent's click, as a tap on it would. The tab acts as a user can: it refuses a node in a window
-  that does not have the focus and is not a popup on the one that has it, such as the activity
-  under a dialog (a menu or the list of a dropdown on the window that has the focus counts with
-  it), a node with no part on the
-  screen, a disabled one, and a selector that matches more than one, unless the request says
-  `"force": true`. An action does no hit-testing: to check what a user can do, tap the node's
-  bounds with `adb shell input tap`.
 - **The CLI.** `lustro screen tree` prints each window and the nodes on the screen that have a
   text, a tag, a role, or an action, one line each, with their bounds in uiautomator's format;
-  `--json` prints the whole tree. `lustro screen click --tag save`, `set-text --tag name "Ada"`,
-  and `scroll --tag list --index 30` run the actions and print the tree after them. A script that reads the tree in a loop sends the GET itself,
+  `--json` prints the whole tree. A script that reads the tree in a loop sends the GET itself,
   with a token and a forward that it keeps. See [docs/AGENTS.md](docs/AGENTS.md#screen-tab-operations)
   and [`screen.openapi.json`](lustro-screen/src/main/assets/lustro/screen.openapi.json).
 - **Only the app's windows.** Permission dialogs, the chooser and the share sheet, the keyboard,
   notifications, the text toasts that the system shows from API 30, and the page in a WebView
   are not in the tree: read them with `uiautomator`.
-- **Every client with the token reads the screen and acts on it**, as the app's own code would:
-  it reads what the screen shows, but the text of password fields, and it can click, type, and
-  scroll. See [SECURITY.md](SECURITY.md#the-screen).
+- **Every client with the token reads the screen**, with what it shows, but the text of password
+  fields. See [SECURITY.md](SECURITY.md#the-screen).
 - **No console view yet.** The tab is not in the tab bar; `_meta` lists it.
 - In `lustro-screen-noop`, the tab reads no window and never calls the provider.
 

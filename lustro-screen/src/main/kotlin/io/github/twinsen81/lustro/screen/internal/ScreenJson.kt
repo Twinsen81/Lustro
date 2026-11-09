@@ -30,16 +30,6 @@ internal object ScreenJson {
         out.append('}')
     }
 
-    fun appendActionResult(out: StringBuilder, result: ActionResult) {
-        out.append("{\"status\":\"ok\",\"action\":").appendString(result.action.needs)
-        out.append(",\"matched\":").appendString(result.matched)
-        out.append(",\"target\":").appendString(result.target)
-        out.append(",\"handled\":").append(result.handled)
-        out.append(",\"tree\":")
-        appendTree(out, result.tree)
-        out.append('}')
-    }
-
     private fun appendWindow(out: StringBuilder, window: ScreenWindow) {
         out.append("{\"id\":").appendString(window.id)
         out.append(",\"type\":").append(window.type?.toString() ?: "null")

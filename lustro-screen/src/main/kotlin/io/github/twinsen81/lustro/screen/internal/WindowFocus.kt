@@ -38,15 +38,16 @@ internal object WindowFocus {
      * windows without one.
      */
     fun groups(roots: List<View>): IntArray {
-        val parents = parents(roots)
         val groups = IntArray(roots.size)
         for (index in roots.indices) {
             val token = (roots[index].layoutParams as? WindowManager.LayoutParams)?.token
+            val sub = isSubWindow(roots[index])
             val parent =
-                if (isSubWindow(roots[index])) {
-                    parents[index].takeIf { it >= 0 }
-                } else {
-                    (0 until index).firstOrNull { other ->
+                (0 until index).firstOrNull { other ->
+                    if (sub) {
+                        // A popup's token is the window token of the window that it is attached to.
+                        token != null && roots[other].windowToken === token
+                    } else {
                         !isSubWindow(roots[other]) && (roots[other].layoutParams as? WindowManager.LayoutParams)?.token === token
                     }
                 }
@@ -54,18 +55,6 @@ internal object WindowFocus {
         }
         return groups
     }
-
-    /**
-     * For each of [roots], in their order, the index of the window that it is a popup on, or
-     * -1 for a window that is not a popup. A popup's token is the window token of the window
-     * that it is attached to: for a Compose popup and a `PopupWindow`, the window of the
-     * activity or the dialog that shows it, also for a popup in a popup.
-     */
-    fun parents(roots: List<View>): IntArray =
-        IntArray(roots.size) { index ->
-            val token = (roots[index].layoutParams as? WindowManager.LayoutParams)?.token
-            if (token == null || !isSubWindow(roots[index])) -1 else (0 until index).firstOrNull { roots[it].windowToken === token } ?: -1
-        }
 
     private fun isSubWindow(root: View): Boolean {
         val params = root.layoutParams as? WindowManager.LayoutParams ?: return false

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Lustro Network debug tab",
-    "version": "1.11",
+    "version": "1.10",
     "description": "Capture, inspect, mock, throttle, and replay HTTP traffic, and inspect the messages of WebSocket connections. All routes are token-authenticated (Bearer header or HttpOnly cookie) and live under /api/v1/network. Errors use the shared error envelope."
   },
   "servers": [
@@ -354,7 +354,7 @@
         "type": "object",
         "required": ["error", "message"],
         "properties": {
-          "error": { "type": "string", "enum": ["bad_request", "unauthorized", "forbidden", "not_found", "method_not_allowed", "conflict", "payload_too_large", "internal_error", "unavailable", "timeout"], "description": "Machine error type, e.g. bad_request, not_found, timeout." },
+          "error": { "type": "string", "enum": ["bad_request", "unauthorized", "forbidden", "not_found", "method_not_allowed", "payload_too_large", "internal_error", "unavailable", "timeout"], "description": "Machine error type, e.g. bad_request, not_found, timeout." },
           "message": { "type": "string" },
           "code": { "type": "string" },
           "field": { "type": "string" },
