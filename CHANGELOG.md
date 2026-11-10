@@ -923,6 +923,17 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Fixed
 
+- **A request kept its concurrency slot for a moment after its response was
+  ready.** A handler runs on a worker thread, and that thread freed the
+  request's slot, and the room of its body in the body budget, only after it
+  had given the response to the connection's thread. So a response could go
+  out while its request still counted against `maxConcurrentRequests`. A
+  client that sent its next request at once could then get a `503` with a slot
+  free, when the other slots and the queue were full. The worker thread now
+  frees both before it gives the response. In unit tests, a check right after
+  one request failed in 33 of 20,000 runs before the change and in none after
+  it, and a new test of 20,000 requests in a row failed in each of 40 runs
+  before the change.
 - **The Preferences tab shows a boolean, a float, or a double under a key that
   looks sensitive.** `MASK_SENSITIVE` goes by the key's name, and a video
   player names each setting's key after its string resource, such as

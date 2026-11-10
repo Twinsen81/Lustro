@@ -242,6 +242,49 @@ class RequestLimiterTest {
     }
 
     @Test
+    fun `dispatch returns only after a slow onRelease has finished`() {
+        val limiter = limiter(maxConcurrent = 1, queueCapacity = 0, timeoutMs = 5000)
+        val released = AtomicInteger(0)
+        // Slow, so that a dispatch that returns while it still runs is caught each time.
+        val onRelease = {
+            Thread.sleep(1)
+            released.incrementAndGet()
+            Unit
+        }
+
+        repeat(25) { round ->
+            limiter.dispatch(onRelease) { 42 }
+            assertEquals("completed work, round $round", 2 * round + 1, released.get())
+
+            assertThrows(IllegalStateException::class.java) { limiter.dispatch(onRelease) { error("boom") } }
+            assertEquals("work that threw, round $round", 2 * round + 2, released.get())
+        }
+    }
+
+    @Test
+    fun `work that returns at once has released by the time dispatch returns, every time`() {
+        // The timing is the real one here, with no sleep to widen the gap, so it
+        // takes many rounds to see a dispatch that returns before its release.
+        // One permit and no queue: such a dispatch would also get the next one
+        // turned away.
+        val limiter = limiter(maxConcurrent = 1, queueCapacity = 0, timeoutMs = 5000)
+        val released = AtomicInteger(0)
+        val onRelease = { released.incrementAndGet(); Unit }
+
+        repeat(10_000) { round ->
+            assertEquals("round $round", RequestLimiter.Outcome.Completed(42), limiter.dispatch(onRelease) { 42 })
+            assertEquals("completed work, round $round", 2 * round + 1, released.get())
+            assertEquals("completed work, round $round", 0, limiter.activeCount())
+
+            assertThrows("round $round", IllegalStateException::class.java) {
+                limiter.dispatch(onRelease) { error("boom") }
+            }
+            assertEquals("work that threw, round $round", 2 * round + 2, released.get())
+            assertEquals("work that threw, round $round", 0, limiter.activeCount())
+        }
+    }
+
+    @Test
     fun `onRelease runs right away for a request turned away`() {
         val released = AtomicInteger(0)
         val onRelease = { released.incrementAndGet(); Unit }

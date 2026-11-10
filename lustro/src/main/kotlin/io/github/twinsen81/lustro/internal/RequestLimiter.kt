@@ -120,7 +120,9 @@ internal class RequestLimiter(
      * [onRelease] runs exactly once, when the request no longer holds a permit:
      * right away if it's turned away before [work] runs, otherwise once [work]
      * returns, which can be after a timeout. Callers use it to free what the
-     * request holds for as long as its permit.
+     * request holds for as long as its permit. It has run by the time [dispatch]
+     * returns, so the caller's next request finds that free. The exception is
+     * [work] that still runs when [dispatch] stops waiting for it.
      */
     fun <T> dispatch(onRelease: () -> Unit = {}, work: (Cancellation) -> T): Outcome<T> {
         if (shuttingDown) return rejected(onRelease)
@@ -144,7 +146,7 @@ internal class RequestLimiter(
 
         active.incrementAndGet()
         val cancellation = Cancellation()
-        val task = Task(cancellation, Callable { work(cancellation) }, onRelease)
+        val task = Task(cancellation, work, onRelease)
         running.add(task)
         var submitted = false
         try {
@@ -186,7 +188,7 @@ internal class RequestLimiter(
 
     private fun <T> await(task: Task<T>): Outcome<T> =
         try {
-            Outcome.Completed(task.get(timeoutMs, TimeUnit.MILLISECONDS))
+            Outcome.Completed(task.future.get(timeoutMs, TimeUnit.MILLISECONDS))
         } catch (_: TimeoutException) {
             cancel(task)
             Outcome.TimedOut
@@ -200,16 +202,12 @@ internal class RequestLimiter(
         } catch (e: ExecutionException) {
             // The work threw; rethrow so the server's Throwable guard maps it to 500.
             throw e.cause ?: e
-        } finally {
-            // Work that returned frees its permit now, before the response goes
-            // out. Cancelled work frees it on its own thread once it returns.
-            if (task.isDone && !task.isCancelled) task.release()
         }
 
     private fun cancel(task: Task<*>) {
-        if (task.isDone) return
+        if (task.future.isDone) return
         task.cancellation.cancel()
-        task.cancel(/* mayInterruptIfRunning = */ true)
+        task.future.cancel(/* mayInterruptIfRunning = */ true)
     }
 
     /**
@@ -250,19 +248,33 @@ internal class RequestLimiter(
     }
 
     // Holds its request's permit until the work returns, even when the caller
-    // stopped waiting. run() releases it even when shutdown() cancelled the task
-    // before it started and the work never ran.
+    // stopped waiting.
     private inner class Task<T>(
         val cancellation: Cancellation,
-        work: Callable<T>,
+        work: (Cancellation) -> T,
         private val onRelease: () -> Unit,
-    ) : FutureTask<T>(work) {
+    ) : Runnable {
         private val released = AtomicBoolean(false)
+
+        // The release is the last step of the work, so the caller gets the
+        // outcome only after it. A release after the outcome would let dispatch
+        // return while the request still holds its permit.
+        val future =
+            FutureTask(
+                Callable {
+                    try {
+                        work(cancellation)
+                    } finally {
+                        release()
+                    }
+                },
+            )
 
         override fun run() {
             try {
-                super.run()
+                future.run()
             } finally {
+                // For work that never ran: shutdown() cancelled it before it started.
                 release()
             }
         }
