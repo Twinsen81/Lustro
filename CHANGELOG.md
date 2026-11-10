@@ -930,10 +930,10 @@ see [DECISIONS.md](DECISIONS.md).
   out while its request still counted against `maxConcurrentRequests`. A
   client that sent its next request at once could then get a `503` with a slot
   free, when the other slots and the queue were full. The worker thread now
-  frees both before it gives the response. In unit tests, a check right after
-  one request failed in 33 of 20,000 runs before the change and in none after
-  it, and a new test of 20,000 requests in a row failed in each of 40 runs
-  before the change.
+  frees both before it gives the response. Verified with a limiter of one slot
+  and no queue that got 20,000 requests one after the other: before the
+  change it turned away 2,803 of them on a physical Android 17 device and
+  2,969 on an API 35 emulator, and after the change none.
 - **The Preferences tab shows a boolean, a float, or a double under a key that
   looks sensitive.** `MASK_SENSITIVE` goes by the key's name, and a video
   player names each setting's key after its string resource, such as
