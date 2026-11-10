@@ -285,6 +285,23 @@ class RequestLimiterTest {
     }
 
     @Test
+    fun `work that never ran still frees its permit`() {
+        // A zero timeout makes dispatch give up at once, most times before a
+        // worker starts the task. The loop goes on until that happens, so that
+        // a pass shows that work which never ran was released.
+        val limiter = limiter(maxConcurrent = 1, queueCapacity = 0, timeoutMs = 0)
+        val ran = AtomicInteger(0)
+        val released = AtomicInteger(0)
+        var rounds = 0
+        do {
+            rounds++
+            limiter.dispatch(onRelease = { released.incrementAndGet() }) { ran.incrementAndGet() }
+            awaitTrue("round $rounds frees its permit") { limiter.activeCount() == 0 && released.get() == rounds }
+        } while (ran.get() == rounds && rounds < 1000)
+        assertTrue("in $rounds rounds, no work was cancelled before it started", ran.get() < rounds)
+    }
+
+    @Test
     fun `onRelease runs right away for a request turned away`() {
         val released = AtomicInteger(0)
         val onRelease = { released.incrementAndGet(); Unit }
