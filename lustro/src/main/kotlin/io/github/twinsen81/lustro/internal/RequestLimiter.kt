@@ -121,8 +121,9 @@ internal class RequestLimiter(
      * right away if it's turned away before [work] runs, otherwise once [work]
      * returns, which can be after a timeout. Callers use it to free what the
      * request holds for as long as its permit. It has run by the time [dispatch]
-     * returns, so the caller's next request finds that free. The exception is
-     * [work] that still runs when [dispatch] stops waiting for it.
+     * returns, so the caller's next request finds that free. The exception is a
+     * request that [dispatch] stops waiting for: its [onRelease] can run after
+     * [dispatch] returns, on the worker thread.
      */
     fun <T> dispatch(onRelease: () -> Unit = {}, work: (Cancellation) -> T): Outcome<T> {
         if (shuttingDown) return rejected(onRelease)
@@ -274,7 +275,8 @@ internal class RequestLimiter(
             try {
                 future.run()
             } finally {
-                // For work that never ran: shutdown() cancelled it before it started.
+                // For work that never ran: its caller's timeout or interrupt, or
+                // shutdown(), cancelled it before a worker started it.
                 release()
             }
         }
