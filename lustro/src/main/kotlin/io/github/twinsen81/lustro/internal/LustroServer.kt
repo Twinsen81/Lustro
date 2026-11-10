@@ -14,6 +14,7 @@ import io.github.twinsen81.lustro.escapeHtml
 import java.io.ByteArrayInputStream
 import java.io.InputStream
 import java.net.Socket
+import java.net.SocketException
 import java.net.URI
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Semaphore
@@ -120,8 +121,17 @@ internal class LustroServer(
         setAsyncRunner(ContainedAsyncRunner(maxConnections))
     }
 
-    override fun createClientHandler(finalAccept: Socket, inputStream: InputStream): ClientHandler =
-        super.createClientHandler(finalAccept, ShutdownOnEofInputStream(inputStream))
+    override fun createClientHandler(finalAccept: Socket, inputStream: InputStream): ClientHandler {
+        // NanoHTTPD writes a response's headers and its body in two writes. With
+        // Nagle's algorithm, the body then waits on a reused connection until the
+        // client's delayed ACK of the headers, about 40 ms later.
+        try {
+            finalAccept.tcpNoDelay = true
+        } catch (_: SocketException) {
+            // The client is already gone. The handler still runs, so that it closes the socket.
+        }
+        return super.createClientHandler(finalAccept, ShutdownOnEofInputStream(inputStream))
+    }
 
     /**
      * In-flight `/api/v1/` request count, including handlers still running after

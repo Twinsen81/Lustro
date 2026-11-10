@@ -923,6 +923,19 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Fixed
 
+- **A response on a reused connection is no longer about 45 ms late.**
+  NanoHTTPD writes the headers and the body of a response in two writes, and
+  the server did not set `TCP_NODELAY`. On a keep-alive connection, Nagle's
+  algorithm then held the body until the client acknowledged the headers, and
+  the client delays that ACK by about 40 ms. So each request after the first
+  on a connection was slow, also a small `404`. The CLI opens a new connection
+  for each request and was not affected, but the web console and a script
+  that reuses its connection were: one connection gave only about 20
+  responses per second. The server now sets `TCP_NODELAY` on each connection
+  that it accepts. Verified with 120 requests on one connection: a
+  `GET /api/v1/_meta` has a median of 0.9 ms instead of 44.5 ms on an API 35
+  emulator, and 3.4 ms instead of 51.6 ms on a physical Android 17 device.
+  That is not more than a request on a new connection: 1.8 ms and 5.3 ms.
 - **The Preferences tab shows a boolean, a float, or a double under a key that
   looks sensitive.** `MASK_SENSITIVE` goes by the key's name, and a video
   player names each setting's key after its string resource, such as
