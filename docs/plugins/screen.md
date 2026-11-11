@@ -79,14 +79,14 @@ The Screen tab has no console view yet: it is not in the tab bar, and `_meta` li
 ## HTTP routes
 
 `GET /api/v1/screen/tree` returns the windows and their nodes. `merged=false` gives the unmerged
-semantics tree, and `settle=MS`, from 1 to 10000, reads until the screen is at rest, for up to
-MS. See [Agents and automation](../AGENTS.md#screen-tab-operations) and
+semantics tree. `settle=MS` goes from 0 to 10000: `0`, the default, reads once, and a larger
+value reads until the screen is at rest, for up to MS. See [Agents and automation](../AGENTS.md#screen-tab-operations) and
 [`screen.openapi.json`](https://github.com/Twinsen81/Lustro/blob/main/lustro-screen/src/main/assets/lustro/screen.openapi.json).
 
 ## CLI examples
 
 `lustro screen tree` prints each window and the nodes on the screen that have a text, a tag, a
-role, or an action, one line each, with their bounds in uiautomator's format.
+role, an action, or a state, one line each, with their bounds in uiautomator's format.
 
 ```bash
 # The windows, and the nodes on the screen.

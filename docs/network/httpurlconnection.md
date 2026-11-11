@@ -13,8 +13,9 @@ platform detail (a process-global URL stream handler):
 
 - **Best-effort and fail-open**: if it cannot install, capture is simply skipped; your app keeps
     working.
-- **Capture only**: mock rules and the throttle apply to OkHttp calls alone. A platform request
-    is never answered by a rule and never held by the throttle. The detail of a platform request
+- **Capture only**: a platform request is never answered by a mock rule and never held by the
+    throttle. Rules answer OkHttp calls, and the calls of an
+    [app adapter](other-clients.md) that asks for a rule. The detail of a platform request
     says **HttpURLConnection**, and its **Mock this request** button is disabled.
 - **Process-wide**: it installs a global handler once, affecting all `HttpURLConnection` traffic
     in the process. A [capture filter](okhttp.md) leaves out the traffic you don't

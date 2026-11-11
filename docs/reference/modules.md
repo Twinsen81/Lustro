@@ -15,4 +15,5 @@
 | `:lustro-work-noop` | `io.github.twinsen81:lustro-work-noop` | Release-safe no-op half of `:lustro-work`. |
 | `:lustro-screen` | `io.github.twinsen81:lustro-screen` | The [Screen](../plugins/screen.md) plugin: the app's windows and UI tree under `/api/v1/screen/`. |
 | `:lustro-screen-noop` | `io.github.twinsen81:lustro-screen-noop` | Release-safe no-op half of `:lustro-screen`. |
+| `:lustro-wire-schema` | `io.github.twinsen81:lustro-wire-schema` | A JVM jar of the wire protocol: the JSON Schemas of the envelopes, the OpenAPI document of each tab, and golden response fixtures, as classpath resources under `lustro/wire/v1/`, for contract tests and tools. An app does not need it. |
 | `lustro-cli/` | `lustro-cli` (PyPI) | Python CLI that wraps the HTTP API, installing a `lustro` command; published alongside each release. |

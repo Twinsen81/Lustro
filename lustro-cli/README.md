@@ -260,7 +260,9 @@ lustro api POST network/rules/_/sync --input rules.json     # --input - reads st
 
 `--param KEY=VALUE` adds a query parameter, and can repeat a key. An error
 response prints the error from its envelope on stderr, such as
-`error: 404 not_found: ...`, and exits 1; nothing goes to stdout.
+`error: 404 not_found: ...`, and exits 1; nothing goes to stdout. A search
+that the app rejects (a `400` with `field: "search"`) exits 2, as a bad flag
+does.
 
 ## Contract tests
 

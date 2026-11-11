@@ -939,6 +939,28 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Fixed
 
+- **The docs say what the code does.** A check of each docs page, the README,
+  and `llms.txt` against the code found statements that were wrong, out of
+  date, or missing. The pages now say that an adapter for another HTTP client
+  can apply a mock rule; that the token, the endpoint, and the edits of the
+  Preferences, SQLite, and WorkManager tabs go to disk; that a request with
+  neither `Origin` nor `Sec-Fetch-Site` passes the origin check; that loopback
+  is only the default bind address; that `settle` goes from 0, which reads
+  once; and that the styleguide's `ai`, `live`, and `danger` colors have only
+  the base, `-soft`, and `-border` tokens. The lint check
+  `LustroDebugUsageInRelease` reports a `DebugTab` in `src/main` but not in
+  `src/release`, as a test in the consumer check showed: the debug lint does
+  not read `src/release`, and the release lint does not load the check. The
+  agent guide lists every CLI command and global flag, says that the app
+  registers the Network tab, and has the `mockRules` state, the HAR
+  `finalUrl` and `priorResponses`, the exit status 2 of a rejected search,
+  and the 200 of `GET sqlite/tables` when a count stops. A sync of two rules
+  with the same id keeps the first. The Modules page lists
+  `lustro-wire-schema`, the wire protocol page has `POST /api/v1/_auth` and
+  the envelopes' `state`, and the Export page says how WebSocket messages are
+  exported. The Network, Preferences, and Screen OpenAPI documents have the
+  same corrections, with no change to their versions.
+
 - **A request kept its concurrency slot for a moment after its response was
   ready.** A handler runs on a worker thread, and that thread freed the
   request's slot, and the room of its body in the body budget, only after it

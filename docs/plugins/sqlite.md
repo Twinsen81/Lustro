@@ -195,7 +195,8 @@ internal tables behind **Show internal**, and a ★ to pin a table to the top.
     the `-wal` file, and schema version.
 - `GET tables?db=` lists the tables and views, with the row count of each table, and flags the
     internal ones (`sqlite_*`, `android_metadata`, `room_master_table`, and the shadow tables of a
-    full-text index).
+    full-text or R\*Tree index). A table that the tab can't read, or can't count in time, has an
+    `error` instead of its row count.
 - `GET schema?db=&table=` gives the columns, the foreign keys, the row count, the `CREATE`
     statement, and the hint.
 - `GET rows?db=&table=` returns a page in the pagination envelope `{ items, nextCursor }`: 50 rows
@@ -230,7 +231,8 @@ lustro api POST sqlite/exec --body '{"db":"app","sql":"UPDATE notes SET pinned =
 
 - **Statements that the tab can't run.** A database in memory, and a live handle on another copy
     of SQLite than the platform's, such as SQLCipher's, take no `query`: browse them with
-    `GET rows`. A `query` result has at most 1000 rows, with each text whole.
+    `GET rows`. A `query` result has at most 1000 rows, and fewer when their texts reach 4 Mi
+    characters in all; `truncated` then says that rows were left out. Each text in it is whole.
 - **A time limit without WAL.** On a database that is not in WAL mode, a `POST query` statement
     stops after 2 s, and on a file database so does each read of the `GET` routes: the app's
     writes wait for the lock of the tab's connection, and Android fails a write that waited 2.5 s.

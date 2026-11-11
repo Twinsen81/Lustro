@@ -22,7 +22,9 @@ This document is about using a running Lustro. To add Lustro to an app, follow
   hard-coded paths.
 - **Built-in tab.** v1 ships exactly one built-in tab: `network` (capture, inspect, mock,
   throttle, replay, and the messages of WebSocket connections). Its contract is
-  `lustro/src/main/assets/lustro/network.openapi.json`.
+  `lustro/src/main/assets/lustro/network.openapi.json`. The app registers it, as it registers a
+  plugin tab (`addTab(NetworkDebugTab.create(...))`); without it, the `network/` routes are an
+  enveloped `404 Unknown tab: network`.
 - **Plugin tabs.** An app can also register plugin tabs, such as `logs`, the app's own logcat
   (see [Logs tab operations](#logs-tab-operations)), and `prefs`, the app's SharedPreferences
   and Preferences DataStores (see [Preferences tab operations](#preferences-tab-operations)), `sqlite`, the app's SQLite and Room databases
@@ -54,13 +56,33 @@ lustro net export --har out.har   # every transaction as a HAR file
 lustro net ws list                # the WebSocket connections, newest first
 lustro net ws events <id> --last 20   # the last 20 messages and lifecycle events of one
 lustro api GET network/transactions --param search=orders   # any route; prints the response
+lustro meta                       # the library and protocol versions, and the registered tabs
 ```
+
+These commands change the capture and the mock rules of the Network tab:
+
+```bash
+lustro net clear                  # remove the transactions and the WebSocket connections
+lustro net pause                  # pause the capture, or resume it (a toggle)
+lustro net overwrite              # turn overwrite mode on or off (a toggle)
+lustro net throttle 2000          # hold each OkHttp request for 2000 ms; 0 turns it off
+lustro mock list                  # the mock rules, in the order they are tried
+lustro mock add --id orders-500 --url-pattern /v1/orders --method GET --status 500 \
+  --header 'Content-Type: application/json' --body '{"error":"boom"}'
+lustro mock toggle orders-500     # turn one rule off or on
+lustro mock delete orders-500     # remove one rule
+lustro mock sync rules.json       # replace every rule with the JSON array in the file
+```
+
+`mock add` with an `--id` that a rule has replaces that rule, and without `--id` the app gives the
+rule a new id. See [Network tab operations](#network-tab-operations) for what each route does.
 
 `lustro api METHOD PATH` reaches every route, also those of a tab that has no commands of its own,
 with the same discovery and the same error output: it prints the response body, and for an error
-the error from the envelope on stderr, with exit status 1. A PATH without a leading `/` is under
-`/api/v1/`. `--param KEY=VALUE` adds a query parameter, `--body JSON` or `--input FILE` (`-` for
-stdin) sends a JSON body. `lustro schema <tabId>` prints the tab's OpenAPI document, which
+the error from the envelope on stderr, with exit status 1. When the app rejects a search (a `400`
+with `field: "search"`), the exit status is 2, as for a bad flag. A PATH without a leading `/` is
+under `/api/v1/`. `--param KEY=VALUE` adds a query parameter, `--body JSON` or `--input FILE` (`-`
+for stdin) sends a JSON body. `lustro schema <tabId>` prints the tab's OpenAPI document, which
 describes its routes.
 
 Each row of `net list` starts with a short transaction id: the first 8 characters of the id, or more
@@ -73,10 +95,19 @@ the server runs over the URL, the method, the headers, and the bodies, as text o
 as a regular expression (see [Search](#search)). Global flags, such as `--json` and `--port`, go
 before or after the command.
 
+**Global flags.** `--json` prints JSON. `--device SERIAL` selects the device (see below).
+`--token TOKEN`, `--host HOST`, and `--port N` set the token and the endpoint, so the CLI does not
+look for them. Without `--token`, the CLI takes the `LUSTRO_TOKEN` environment variable, then the
+`LustroToken` log line, then the app's private `lustro_debug` prefs file, which it reads with
+`adb shell run-as`. `--package PKG` names the app for that last step; without it, the CLI reads
+the app in the foreground. That step finds the token on a device that drops Info log lines.
+
 `lustro open` forwards a local port to the app's port on the device: 8080, or a free local port
 that adb chooses when another process or a forward to another device holds 8080. `--local-port N`
-forwards port N. The other commands find the forward in `adb forward --list`, also one that you
-made yourself, so they need no `--port`. Without a forward, they make one the same way.
+forwards port N, and `--local-port 0` keeps a forward to the app that is there, or else lets adb
+choose a free port. `--no-forward` makes no forward, for when you forward the port yourself, and
+`--print-only` prints the URL without opening a browser. The other commands find the forward in
+`adb forward --list`, also one that you made yourself, so they need no `--port`. Without a forward, they make one the same way.
 
 With more than one device connected, pass `--device <serial>` (or set `ANDROID_SERIAL`) on every
 command. The CLI then connects only through a forward to that device, so agents that each drive
@@ -284,7 +315,7 @@ below summarizes it. All routes are token-authenticated and use the shared error
 
 | Operation | Route | Notes |
 | --- | --- | --- |
-| Poll transactions | `GET transactions?cursor=&search=&regex=` | Cursor envelope. First poll (no/invalid cursor) → `reset` with the full list; cursor unchanged → `unchanged` (items omitted); after a change → `delta`. `search` filters case-insensitively over the URL, the method, the headers (each as the line `Name: value`), and the bodies; with `regex=true`, it is a Java regular expression, and one that doesn't compile gets a `400` with `field: search`. Carries a top-level `state` `{ paused, overwriteMode, throttleDelayMs, captureFilter }`. |
+| Poll transactions | `GET transactions?cursor=&search=&regex=` | Cursor envelope. First poll (no/invalid cursor) → `reset` with the full list; cursor unchanged → `unchanged` (items omitted); after a change → `delta`. `search` filters case-insensitively over the URL, the method, the headers (each as the line `Name: value`), and the bodies; with `regex=true`, it is a Java regular expression, and one that doesn't compile gets a `400` with `field: search`. Carries a top-level `state` `{ paused, overwriteMode, throttleDelayMs, mockRules, captureFilter }`. |
 | Transaction detail | `GET transactions/{id}` | Full object (headers + bodies, with truncation flags). Enveloped `404` if missing. |
 | Transaction body | `GET transactions/{id}/body/{request\|response}` | One body as it is stored: the bytes of an image, or the redacted text as UTF-8. Not JSON. Enveloped `404` when no body was kept. See below. |
 | Export as HAR | `GET transactions/_/export?format=har&ids=` | A HAR 1.2 document of the transactions in `ids` (comma-separated), or of every one. See below. |
@@ -295,7 +326,7 @@ below summarizes it. All routes are token-authenticated and use the shared error
 | Clear | `POST clear` | Clears the captured list and the WebSocket connections, and starts the capture filter's counts again; mock rules and settings are preserved. |
 | List rules | `GET rules` | `{ items: [MockRule...] }`, in the order the rules are tried. |
 | Add / upsert rule | `POST rules` | Body `MockRuleInput` (`urlPattern` required). Supplying a stable `id` makes the write **idempotent** (upsert by id); omitting it generates one. A new rule goes first; a rule replaced by id keeps its place. Returns `{ status: "ok", id }`. |
-| Sync rules | `POST rules/_/sync` | **Atomic** full replacement: posts an array; the resulting list exactly equals it, in that order, with no empty window observed by the interceptor. Returns `{ status: "ok", count }`. |
+| Sync rules | `POST rules/_/sync` | **Atomic** full replacement: posts an array; the resulting list equals it, in that order, with no empty window observed by the interceptor. A rule without an `id` gets a new one. When two posted rules have the same `id`, only the first is kept. Returns `{ status: "ok", count }`, where `count` is the number of rules posted. |
 | Delete rule | `POST rules/delete` | Body `{ id }`. |
 | Toggle rule | `POST rules/toggle` | Body `{ id }`; flips `enabled`. |
 | Pause capture | `POST pause` | Toggles capture-only pause. While paused, mocks and throttle **still apply**; only recording into the list stops, for requests and for WebSocket messages. Returns `{ status: "ok", paused }`. |
@@ -310,7 +341,8 @@ expression when prefixed with `regex:` (found, not matched against the whole URL
 tried in the order `GET rules` lists them, and the first enabled rule that matches answers the
 request: a new rule goes first, so the rule added last wins when two match, a rule replaced by id
 keeps its place, and a sync sets the order as posted. `hitCount` is a runtime-only counter (not
-persisted). Rules answer OkHttp calls only; a platform `HttpURLConnection` request is captured, but
+persisted). Rules answer the calls of Lustro's OkHttp interceptor, and the calls of an app adapter
+that asks for a rule with `findMockRule`. A platform `HttpURLConnection` request is captured, but
 no rule matches it, so a rule for one keeps `hitCount` at 0. A transaction's `source` says which
 adapter captured it (see "Capture source" below).
 
@@ -330,9 +362,10 @@ again when it does. These fields arrived in protocol 1.9.
 `statusCode` must be within 100–599, `responseHeaders` must
 be header names and values OkHttp accepts, and a `Content-Type` among them must parse as a media
 type — the interceptor builds a real response from the rule inside the app's own call. A rule that
-fails any of these gets an enveloped `400` whose `field` names what to fix (`urlPattern`, `id`,
-`statusCode`, or `responseHeaders`); for `rules/_/sync` the message also carries the array index,
-and the whole batch is rejected. `POST rules` replaces a rule with the same `id` wholesale, so send
+fails any of these gets an enveloped `400` whose `field` names what to fix (`urlPattern`,
+`statusCode`, or `responseHeaders`; a blank or missing `id` gets a new id, so it is never an
+error); for `rules/_/sync` the message also carries the array index, and the whole batch is
+rejected. `POST rules` replaces a rule with the same `id` wholesale, so send
 `enabled` and `responseHeaders` when editing one or they fall back to `true` and empty.
 
 **Send request semantics.** Body `{ url, sender?, method?="GET", headers?, body? }`. `sender` is
@@ -426,7 +459,9 @@ HAR 1.2 document, oldest first, which browser devtools, proxies, and HAR viewers
 built from the store, so it has the same redacted values as the detail. Without `ids` it has every
 transaction; an id the app no longer has is left out. Each entry's `_lustro` has the transaction
 `id`, `isMocked`, `source`, `categories`, `requestBodyTruncated`, `responseBodyTruncated`,
-`responseComplete`, and `error`. The capture has no phase timings, so each entry spends its whole
+`responseComplete`, `finalUrl`, `priorResponses` (`[{ url, statusCode }]`, the responses that the
+client answered with another request, such as the redirects it followed, which have no HAR entry
+of their own), and `error`. The capture has no phase timings, so each entry spends its whole
 `durationMs` in `timings.wait` and the throttle's wait in `timings.blocked`, and `_resourceType`
 (`fetch`, or `image` for an image) tells Chrome DevTools how to file it. A body kept as bytes is base64: `content.encoding` says so for a
 response, and `postData._encoding` for a request. The request line and its headers must stay
@@ -540,7 +575,7 @@ commands: use `lustro api`.
 | List the files | `GET files` | `{ items: [{ name, store, registered, policy, readOnly, encrypted, keyCount, cursor, error? }] }`: the SharedPreferences files and then the Preferences DataStores that the app registered, in its order, then the files that the tab found in `shared_prefs` and `files/datastore`, by name. `store` is `shared_prefs` or `preferences_datastore`. `cursor` is the file's cursor now; compare it with the one you polled with to see that the file changed. `error` says why a file's instance can't read it. |
 | Poll a file | `GET entries?store=&file=&cursor=` | Cursor envelope. `reset` or `delta` carries every entry of the file, by key; `unchanged` carries none. A cursor of another file, or from before an app restart, gets a `reset`. |
 | Read one value whole | `GET entry?store=&file=&key=` | `{ item }`, after the value policy, never cut. `404` with `field: "key"` when the file has no such key. |
-| Write a value | `POST edit` | Body `{ store?, file, key, type, value }`. Returns `{ status: "ok", item }`: the entry as the file now holds it. |
+| Write a value | `POST edit` | Body `{ store?, file, key, type, value }`. Returns `{ status: "ok", item }`: the entry as the file now holds it, cut at 4096 characters as in `entries`. |
 | Remove a key | `POST delete` | Body `{ store?, file, key }`. Returns `{ status: "ok", deleted }`, `false` when the key was not there. |
 | Empty a file | `POST clear` | Body `{ store?, file, confirm: true }`; without `confirm: true`, a `400` with `field: "confirm"`. Returns `{ status: "ok", removed }`. |
 
@@ -559,9 +594,9 @@ WorkManager routes; a float or a double that is not finite is the string `"NaN"`
 `"-Infinity"`, and `bytes` is padded base64. `bytes` (the field) is the size of the whole value:
 a string's UTF-8 bytes, the sum of those of a set's strings, a byte array's length, or 4, 8, 4,
 8, and 1 for `int`, `long`, `float`, `double`, and `boolean`.
-`masked: true` comes instead of `value` when the policy leaves it out. In `entries`, a value longer
-than 4096 characters (for a set, all its strings together) is cut and has `truncated: true`; read
-it with `GET entry`.
+`masked: true` comes instead of `value` when the policy leaves it out. In `entries`, and in the
+item of the `POST edit` response, a value longer than 4096 characters (for a set, all its strings
+together) is cut and has `truncated: true`; read it with `GET entry`.
 
 **Policies.** `policy` is `visible` (every value), `mask_sensitive` (every value but those of keys
 that look like they hold a secret, such as `auth_token`, `apiKey`, or `password`, by the network
@@ -609,7 +644,7 @@ Base path `/api/v1/sqlite`, when the app registers the SQLite plugin
 | Operation | Route | Notes |
 | --- | --- | --- |
 | List the databases | `GET databases` | `{ items: [{ name, registered, source, writable, policy, path, sizeBytes, walBytes, schemaVersion, error? }] }`: the databases that the app registered, in its order, then the files that the tab found in the app's `databases` directory, by file name. `source` is `support` (the app's `SupportSQLiteDatabase`, such as Room's), `framework` (the app's `SQLiteDatabase`), or `file` (opened read-only for each request). `schemaVersion` is `PRAGMA user_version`; Room and `SQLiteOpenHelper` set it to the schema's version. `policy` is the value policy, `visible` or `mask_sensitive` (see below). `path` and `sizeBytes` are `null` for a database in memory; `sizeBytes` leaves out the `-wal` file, and `walBytes` is that file's size, or `null` when there is none. In WAL mode, as Room keeps a database, the `-wal` file holds the changes until SQLite copies them into the database file at a checkpoint, so it can be the larger one. `error` says why a database does not open. |
-| List the tables | `GET tables?db=` | `{ database, writable, items: [{ name, type, internal, hasRowId, rowCount, entity?, purpose?, error? }] }`, by name. `type` is `table` or `view`. A view has no `rowCount`: counting runs its query. `internal` flags `sqlite_*`, `android_metadata`, `room_master_table`, and the shadow tables of a full-text or R*Tree index. `entity` and `purpose` are the app's hint. |
+| List the tables | `GET tables?db=` | `{ database, writable, items: [{ name, type, internal, hasRowId?, rowCount?, entity?, purpose?, error? }] }`, by name. `type` is `table` or `view`. A view has no `rowCount`: counting runs its query. A table that the tab can't read, such as a view on a table that is gone, or whose count stops at the 2 s limit (see below), has `error` with the reason and can have no `hasRowId` and no `rowCount`; the route still answers `200`. `internal` flags `sqlite_*`, `android_metadata`, `room_master_table`, and the shadow tables of a full-text or R*Tree index. `entity` and `purpose` are the app's hint. |
 | Read a schema | `GET schema?db=&table=` | `{ database, table, type, internal, hasRowId, rowCount, sql, entity?, purpose?, columns: [{ name, type, notNull, defaultValue, primaryKey, generated, masked }], foreignKeys: [{ table, from, to, onUpdate, onDelete }] }`. `primaryKey` is the column's place in the key, from 1, or 0. `generated` is `true` for a column that SQLite computes (`GENERATED ALWAYS AS`). `masked` is `true` for a column whose values the value policy leaves out. A key over several columns has them in order in `from` and `to`; a `null` in `to` stands for the other table's primary key. |
 | Read rows | `GET rows?db=&table=&limit=&cursor=&filter=&sort=&dir=` | Pagination envelope `{ items, nextCursor }`. 50 rows by default, `limit` 1 to 500. Pass `nextCursor` as `cursor` for the next page; it is `null` on the last one. |
 | Run a statement that reads | `POST query` `{ db, sql }` | `{ database, columns, rows: [[cell]], truncated }`: a row is an array of cells in the order of `columns`, which can repeat a name. At most 1000 rows, and fewer when their texts pass 4 Mi characters in all; `truncated` says that rows were left out. A text comes whole; a blob is its size. |
@@ -657,7 +692,8 @@ is checked against the database's schema and quoted, and the filter is a bound p
 stops at the request timeout, and the client then gets a `504`. On a `file` database, registered
 or discovered, that is not in WAL mode, a statement also stops after 2 s (`504`,
 `code: "read_limit"`), because the app's writes wait for the lock of the tab's connection, and
-Android fails a write that waited 2.5 s with `SQLITE_BUSY`. A database through the app's handle
+Android fails a write that waited 2.5 s with `SQLITE_BUSY`. In `GET tables`, a count that stops
+gives its table an `error`, and the other tables are still listed. A database through the app's handle
 has no such limit: there a read and the app's writes share the app's connection pool.
 
 **`POST query` is read-only for every database, and SQLite enforces it.** The statement runs on a
@@ -812,7 +848,7 @@ has no route that changes the app.
 
 | Operation | Route | Notes |
 | --- | --- | --- |
-| Read the screen | `GET tree?merged=&settle=` | `{ windows, merged, density, compose, windowSource, context, settle?, contextError?, composeError? }`. `merged=false` gives the unmerged semantics tree, in which each text is a node of its own; a node has the same id in both. `settle=MS`, from 1 to 10000, reads on each frame until two reads in a row are the same and the window focus is at rest (the top visible window that can take the focus has it, and no other window does), for up to MS, and adds `settle: { requestedMs, settled, waitedMs, frames }`. |
+| Read the screen | `GET tree?merged=&settle=` | `{ windows, merged, density, compose, windowSource, context, settle?, contextError?, composeError? }`. `merged=false` gives the unmerged semantics tree, in which each text is a node of its own; a node has the same id in both. `settle=MS`, from 0 to 10000, reads on each frame until two reads in a row are the same and the window focus is at rest (the top visible window that can take the focus has it, and no other window does), for up to MS, and adds `settle: { requestedMs, settled, waitedMs, frames }`. `settle=0`, the default, reads once and adds no `settle`. |
 
 **A window.** `{ id, type, kind, title, hasWindowFocus, focusable, visible, bounds, nodes }`, in the order the
 app added the windows: the activity first, then each dialog, popup, and bottom sheet over it.
@@ -857,8 +893,8 @@ its states and actions, and its visible bounds as `[left,top][right,bottom]`, as
 `--settle MS` waits as above, and `--json` prints the response.
 
 **Read the screen in a loop.** The CLI looks up the token and the port on every call, with
-`adb logcat -d -s LustroToken` and `adb forward --list`, so each `lustro screen tree` costs two
-adb calls and a Python start. A script that reads the tree many times, such as a step runner,
+`adb logcat -d -s LustroToken`, `adb forward --list`, and `adb get-serialno`, so each
+`lustro screen tree` costs three adb calls and a Python start. A script that reads the tree many times, such as a step runner,
 reads the token and makes the forward once, keeps both, and sends the GET itself:
 
 ```bash
@@ -894,8 +930,15 @@ curl -s -X POST "$BASE/api/v1/network/rules" \
        "responseBody":"{\"error\":\"boom\"}"}'
 ```
 
+With the CLI, the same rule is:
+
+```bash
+lustro mock add --id orders-500 --url-pattern /v1/orders --method GET --status 500 \
+  --header 'Content-Type: application/json' --body '{"error":"boom"}'
+```
+
 Reusing the same `id` updates the rule in place (idempotent). Remove it with
-`POST rules/delete {"id":"orders-500"}`.
+`POST rules/delete {"id":"orders-500"}`, or `lustro mock delete orders-500`.
 
 **Capture and inspect**
 
@@ -1005,7 +1048,8 @@ lustro api POST sqlite/exec --body '{"db":"app","sql":"UPDATE notes SET pinned =
 
 `query` reads every database; the three that write need a `writable` one.
 
-**Atomically sync a rule set** (declarative — the resulting set equals exactly what you post):
+**Atomically sync a rule set** (declarative: the resulting set equals what you post; give each
+rule its own `id`, because of two rules with the same `id` only the first is kept):
 
 ```bash
 curl -s -X POST "$BASE/api/v1/network/rules/_/sync" \
@@ -1061,15 +1105,16 @@ Errors use the shared envelope; key statuses:
   `POST /api/v1/_auth`).
 - **`503 unavailable`** — the server is at its concurrency + queue limit; back off and retry.
 - **`504 timeout`** — a handler (e.g. a slow `send`) exceeded the per-request timeout. On
-  `screen/tree`, with `code: "main_thread_blocked"`: the app's main thread did not start the read
-  within 5 s, or did not finish it within 5 s and the settle time, because the app is busy or does
-  not respond. Try again, or look for an ANR in the log.
+  `screen/tree`, with `code: "main_thread_blocked"`: the app's main thread did not start and finish
+  the read within 5 s plus the settle time, because the app is busy or does not respond. Try
+  again, or look for an ANR in the log.
 - **`500 internal_error` with `code: "read_failed"`** on `screen/tree`: the read threw on the main
   thread, as with a View of the app whose getter throws. The message names the exception; the app
   goes on.
 - **`404 not_found`** — unknown route, missing transaction, a body that wasn't kept, or `send` with
   no sender configured. Also a WebSocket connection that the app cleared or evicted, and a message
-  with no stored payload. Also every `logs/` route when the app did not register the Logs plugin
+  with no stored payload. Also every `network/` route when the app did not register the Network tab
+  (`Unknown tab: network`), every `logs/` route without the Logs plugin
   (`Unknown tab: logs`), every `prefs/` route without the Preferences plugin
   (`Unknown tab: prefs`), every `sqlite/` route without the SQLite plugin
   (`Unknown tab: sqlite`), every `work/` route without the WorkManager plugin
@@ -1087,7 +1132,8 @@ Errors use the shared envelope; key statuses:
   SQLite can't run, such as a syntax error or a broken constraint; `code: "query_unavailable"` for
   a database that has no file for `query` to open read-only; `code: "row_too_big"` for a row that
   does not fit Android's cursor window, about 2 MB: read the value in parts with `substr()`.
-  **`504` with `code: "read_limit"`** on `query`, and on a `GET` route of a `file` database:
+  **`504` with `code: "read_limit"`** on `query`, and on a `GET` route of a `file` database
+  (`GET tables` puts it in the `error` of the table whose count stopped, and answers `200`):
   the database is not in WAL mode, and a statement ran for 2 s. Read less in one statement: a
   `LIMIT`, a `WHERE` that an index serves, or a smaller page without a filter.
 - **`500` with `code: "open_failed"`** on a `sqlite/` route: the database did not open. The

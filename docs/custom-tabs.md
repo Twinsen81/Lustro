@@ -1,6 +1,8 @@
 # Custom tabs
 
-`DebugTab` is the only public extension point. Required: `id` (must match
+`DebugTab` is the only public extension point for adding a tab. Other public types, such as
+`Redactor`, `MockRuleStorage`, and the sink from `Lustro.networkCaptureSink()`, change how the
+built-in tabs work, but they add no tab. Required: `id` (must match
 `[a-z][a-z0-9-]{0,30}`, validated at registration), `title`, and `icon`. Everything else has a
 default — including `handle(request)` for JSON routes and `renderContent()` for optional HTML
 (API-only tabs are valid).
