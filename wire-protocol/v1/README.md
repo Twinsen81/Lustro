@@ -11,7 +11,7 @@ the protocol a stable public contract independent of the library's Kotlin API.
   A future incompatible revision becomes `/api/v2/`, and the old major stays
   alive for at least one major release.
 - The **minor** protocol version is reported at runtime in
-  `GET /api/v1/_meta` as `_meta.protocolVersion` (currently `1.10`).
+  `GET /api/v1/_meta` as `_meta.protocolVersion` (currently `1.11`).
 
 ## Contents
 
@@ -154,6 +154,13 @@ gives its shape.
   earlier copies of the request overwrite mode removed when the app sent it,
   each counted with the copies it had replaced in turn. It is `0` when the
   transaction replaced none.
+
+- **1.11** - `POST network/rules/_/sync` rejects two posted rules with the
+  same `id` with a `400`, `field: "id"`, and the indexes of both rules in the
+  message, and leaves the rules as they were. Before, it kept the first of the
+  two, and its `count` was the number of rules posted, so a rule was lost
+  without an error. A rule without an `id` still gets a new one. `count` is
+  now the number of rules set, which is the number posted.
 
 ## Plugin tabs
 

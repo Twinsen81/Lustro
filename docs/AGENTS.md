@@ -326,7 +326,7 @@ below summarizes it. All routes are token-authenticated and use the shared error
 | Clear | `POST clear` | Clears the captured list and the WebSocket connections, and starts the capture filter's counts again; mock rules and settings are preserved. |
 | List rules | `GET rules` | `{ items: [MockRule...] }`, in the order the rules are tried. |
 | Add / upsert rule | `POST rules` | Body `MockRuleInput` (`urlPattern` required). Supplying a stable `id` makes the write **idempotent** (upsert by id); omitting it generates one. A new rule goes first; a rule replaced by id keeps its place. Returns `{ status: "ok", id }`. |
-| Sync rules | `POST rules/_/sync` | **Atomic** full replacement: posts an array; the resulting list equals it, in that order, with no empty window observed by the interceptor. A rule without an `id` gets a new one. When two posted rules have the same `id`, only the first is kept. Returns `{ status: "ok", count }`, where `count` is the number of rules posted. |
+| Sync rules | `POST rules/_/sync` | **Atomic** full replacement: posts an array; the resulting list equals it, in that order, with no empty window observed by the interceptor. A rule without an `id` gets a new one. Two posted rules with the same `id` are a `400` with `field: "id"`, and the rules stay as they were (protocol 1.11). Returns `{ status: "ok", count }`, where `count` is the number of rules set. |
 | Delete rule | `POST rules/delete` | Body `{ id }`. |
 | Toggle rule | `POST rules/toggle` | Body `{ id }`; flips `enabled`. |
 | Pause capture | `POST pause` | Toggles capture-only pause. While paused, mocks and throttle **still apply**; only recording into the list stops, for requests and for WebSocket messages. Returns `{ status: "ok", paused }`. |
@@ -365,7 +365,8 @@ type — the interceptor builds a real response from the rule inside the app's o
 fails any of these gets an enveloped `400` whose `field` names what to fix (`urlPattern`,
 `statusCode`, or `responseHeaders`; a blank or missing `id` gets a new id, so it is never an
 error); for `rules/_/sync` the message also carries the array index, and the whole batch is
-rejected. `POST rules` replaces a rule with the same `id` wholesale, so send
+rejected. A sync also rejects two rules with the same `id`, with `field: "id"` and the indexes of
+both in the message. `POST rules` replaces a rule with the same `id` wholesale, so send
 `enabled` and `responseHeaders` when editing one or they fall back to `true` and empty.
 
 **Send request semantics.** Body `{ url, sender?, method?="GET", headers?, body? }`. `sender` is
@@ -1049,7 +1050,7 @@ lustro api POST sqlite/exec --body '{"db":"app","sql":"UPDATE notes SET pinned =
 `query` reads every database; the three that write need a `writable` one.
 
 **Atomically sync a rule set** (declarative: the resulting set equals what you post; give each
-rule its own `id`, because of two rules with the same `id` only the first is kept):
+rule its own `id`, because a set with a repeated `id` is rejected with a `400`):
 
 ```bash
 curl -s -X POST "$BASE/api/v1/network/rules/_/sync" \

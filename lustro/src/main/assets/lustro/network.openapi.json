@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Lustro Network debug tab",
-    "version": "1.10",
+    "version": "1.11",
     "description": "Capture, inspect, mock, throttle, and replay HTTP traffic, and inspect the messages of WebSocket connections. All routes are token-authenticated (Bearer header or HttpOnly cookie) and live under /api/v1/network. Errors use the shared error envelope."
   },
   "servers": [
@@ -216,10 +216,10 @@
       "post": {
         "operationId": "syncMockRules",
         "summary": "Atomically replace the entire set of mock rules.",
-        "description": "Idempotent: the resulting rule list equals the posted array, in that order, so the first rule posted is tried first. A rule without an id gets a new one. When two posted rules have the same id, only the first is kept. The interceptor never observes an empty window during the swap.",
+        "description": "Idempotent: the resulting rule list equals the posted array, in that order, so the first rule posted is tried first. A rule without an id gets a new one. Two posted rules with the same id are a 400 with field id, and the message has the indexes of both (since protocol 1.11). A 400 leaves the rules as they were. The interceptor never observes an empty window during the swap.",
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/MockRuleInput" } } } } },
         "responses": {
-          "200": { "description": "Replaced.", "content": { "application/json": { "schema": { "type": "object", "required": ["status", "count"], "properties": { "status": { "const": "ok" }, "count": { "type": "integer", "description": "The number of rules posted." } } } } } },
+          "200": { "description": "Replaced.", "content": { "application/json": { "schema": { "type": "object", "required": ["status", "count"], "properties": { "status": { "const": "ok" }, "count": { "type": "integer", "description": "The number of rules set." } } } } } },
           "400": { "$ref": "#/components/responses/Error" },
           "401": { "$ref": "#/components/responses/Error" },
           "403": { "$ref": "#/components/responses/Error" },

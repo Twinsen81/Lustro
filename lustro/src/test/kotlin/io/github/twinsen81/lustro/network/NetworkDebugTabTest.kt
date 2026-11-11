@@ -639,6 +639,34 @@ class NetworkDebugTabTest {
     }
 
     @Test
+    fun `sync rejects a repeated id with 400 and leaves the rule set untouched`() {
+        val tab = tab()
+        tab.handle(post("rules", """{"id":"keep","urlPattern":"/keep"}"""))
+        val res =
+            tab.handle(
+                post(
+                    "rules/_/sync",
+                    """[{"id":"a","urlPattern":"/a"},{"id":"b","urlPattern":"/b"},{"id":"a","urlPattern":"/a2"}]""",
+                ),
+            )!!
+        assertEquals(400, res.status)
+        val error = res.json()
+        assertEquals("id", error.getString("field"))
+        assertEquals("rule at index 2 has the same id as the rule at index 0: a", error.getString("message"))
+        assertEquals(listOf("keep"), tab.ruleIds())
+    }
+
+    @Test
+    fun `sync gives each rule without an id its own id`() {
+        val tab = tab()
+        val res =
+            tab.handle(post("rules/_/sync", """[{"urlPattern":"/a"},{"id":"","urlPattern":"/b"},{"urlPattern":"/c"}]"""))!!
+        assertEquals(200, res.status)
+        assertEquals(3, res.json().getInt("count"))
+        assertEquals(3, tab.ruleIds().toSet().size)
+    }
+
+    @Test
     fun `sync rejects a non-object entry with 400`() {
         val tab = tab()
         val res = tab.handle(post("rules/_/sync", """[{"urlPattern":"/a"}, 42]"""))!!
