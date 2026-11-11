@@ -954,9 +954,8 @@ see [DECISIONS.md](DECISIONS.md).
   agent guide lists every CLI command and global flag, says that the app
   registers the Network tab, and has the `mockRules` state, the HAR
   `finalUrl` and `priorResponses`, the exit status 2 of a rejected search,
-  and the 200 of `GET sqlite/tables` when a count stops. A sync of two rules
-  with the same id keeps the first. The Modules page lists
-  `lustro-wire-schema`, the wire protocol page has `POST /api/v1/_auth` and
+  and the 200 of `GET sqlite/tables` when a count stops. The Modules page
+  lists `lustro-wire-schema`, the wire protocol page has `POST /api/v1/_auth` and
   the envelopes' `state`, and the Export page says how WebSocket messages are
   exported. The Network, Preferences, and Screen OpenAPI documents have the
   same corrections, with no change to their versions.
