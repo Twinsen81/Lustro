@@ -5,7 +5,7 @@ of your app's process, and in each, the classic Views and the Compose semantics 
 test tags, text, bounds, states, and actions. The tab reads them in your app's process, in
 milliseconds, where `uiautomator dump` takes a second or more for each read.
 
-## What the tab shows
+## What the plugin does
 
 - **Every window of the app.** `GET /api/v1/screen/tree` returns the activity's window and each
     dialog, popup, and bottom sheet over it, in the order your app added them. From API 29 the tab

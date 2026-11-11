@@ -3,7 +3,7 @@
 The Logs plugin serves your app's own logcat over the API and in the console: a live tail,
 filters, and a plain-text export.
 
-## What the tab shows
+## What the plugin does
 
 - **The app's own logcat.** Your app gives the tab no data source: the tab runs
     `logcat --pid=<your app's pid>` itself, and needs no permission.

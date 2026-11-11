@@ -47,7 +47,7 @@ see [DECISIONS.md](DECISIONS.md).
   `llms.txt` links the pages in place of the README, and `checkDocsVersion`
   checks the coordinates in every page.
   Each plugin page has the same sections in the same order, from
-  `docs/plugins/_template.md`: what the tab shows, install, register the tab,
+  `docs/plugins/_template.md`: what the plugin does, install, register the tab,
   safety options, the console view, the HTTP routes, CLI examples, and limits.
   A new Gradle task, `checkPluginDocs`, runs in CI next to `checkDocsVersion`.
   For each plugin module pair that the build has, it fails when the page is

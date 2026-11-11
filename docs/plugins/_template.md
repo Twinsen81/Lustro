@@ -15,15 +15,16 @@ and agents read it without the rest of the site. So say each fact in full, and
 link the related pages.
 -->
 
-The <Tab name> plugin <one sentence: what the tab gives a developer, an agent, or a script, and
-where: over the API, in the console, or both>.
+The <Tab name> plugin <one sentence: what the plugin gives a developer, an agent, or a script,
+and where: over the API, in the console, or both>.
 
-## What the tab shows
+## What the plugin does
 
 <!--
-What the tab reads or does in the app, for an app that registers it: the data, where it comes
-from, when the tab reads it, and how fresh it is. Give the facts as bullets with a bold lead,
-such as "- **Events live on the heap.** ...".
+What the plugin reads and changes in the app, for an app that registers its tab: the data,
+where it comes from, when the tab reads it, how fresh it is, and what a client can change. Say
+it for the API, not for the console view, which has a section of its own. Give the facts as
+bullets with a bold lead, such as "- **Events live on the heap.** ...".
 -->
 
 ## Install

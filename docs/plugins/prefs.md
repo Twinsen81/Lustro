@@ -3,7 +3,7 @@
 The Preferences plugin reads and edits your app's SharedPreferences files and Preferences
 DataStores over the API and in the console, and a poll sees the changes that the app makes.
 
-## What the tab shows
+## What the plugin does
 
 - **Every entry of a file.** For each file and data store that the app registers or that the tab
     finds, the tab shows every entry by key, with its type, its value as the file's value policy

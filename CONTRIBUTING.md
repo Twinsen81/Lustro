@@ -221,7 +221,7 @@ as it adds `:lustro`: `debugImplementation` for the runtime and
 5. Write the docs of the tab. `<name>` is the module suffix and the tab id, so
    the page of `:lustro-work` is `docs/plugins/work.md`.
    1. Copy `docs/plugins/_template.md` to `docs/plugins/<name>.md`, and fill
-      in each section: what the tab shows, install, register the tab, safety
+      in each section: what the plugin does, install, register the tab, safety
       options, the console view, the HTTP routes, CLI examples, and limits.
       Keep the headings and their order. When a section does not apply to the
       tab, say so in one sentence.

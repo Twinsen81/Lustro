@@ -3,7 +3,7 @@
 The WorkManager plugin shows your app's WorkManager work and the events of each run over the API
 and in the console, cancels work, and prunes finished work.
 
-## What the tab shows
+## What the plugin does
 
 - **Every work request.** Its state, tags, attempts, output, progress, constraints, and schedule.
 - **The events of each run.** The result and its output, the stop reason, and what a worker

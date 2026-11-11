@@ -5,7 +5,7 @@ the tables and views, their schemas, and pages of rows, sorted and filtered. It 
 own statements, read only, on every database, and changes the rows of the databases that you make
 writable.
 
-## What the tab shows
+## What the plugin does
 
 - **Databases, tables, and schemas.** For each database, its source, file, size, the size of its
     `-wal` file, and schema version (`PRAGMA user_version`); its tables and views, with the row
