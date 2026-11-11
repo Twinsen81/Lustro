@@ -87,30 +87,44 @@ fun excludedDocs(config: String): Set<String> =
         .orEmpty()
 
 // The `nav = [ ... ]` block of zensical.toml: from its first line to the `]` at
-// the start of a line that closes it.
+// the start of a line that closes it, without the lines that are comments, so
+// that an entry that is commented out does not count.
 fun navOf(config: String): String =
     Regex("""(?ms)^nav\s*=\s*\[.*?^]""").find(config)?.value.orEmpty()
+        .lines().filterNot { it.trimStart().startsWith("#") }.joinToString("\n")
 
-// What a link to the site names: a file in the repository, null for a path that
-// is not in the repository (the Dokka API reference under api/), or a page that
-// the site builds from docs/.
-fun siteTarget(path: String, excluded: Set<String>): Pair<Boolean, String>? {
+// Why a link to the site, by its [path] after the site's base URL, names nothing
+// that the site has, or null when the site has it. The site builds a page from
+// each Markdown file in docs/ that `exclude_docs` does not leave out, and serves
+// no Markdown. It also has the files in docs/, the wire-protocol files that
+// docs.yml copies, and the Dokka API reference under api/, which is not in the
+// repository and is not checked.
+fun siteLinkProblem(path: String, excluded: Set<String>): String? {
     val trimmed = path.trim('/')
     if (trimmed == "api" || trimmed.startsWith("api/")) return null
-    // docs.yml copies wire-protocol/ to the site.
-    if (trimmed.startsWith("wire-protocol/") && '.' in trimmed.substringAfterLast('/')) {
-        return existsInRepo(trimmed) to trimmed
+    val isFile = '.' in trimmed.substringAfterLast('/')
+    if (trimmed.startsWith("wire-protocol/") && isFile) {
+        return if (existsInRepo(trimmed)) null else "$trimmed is not in the repository"
     }
-    if ('.' in trimmed.substringAfterLast('/')) {
-        return existsInRepo("docs/$trimmed") to "docs/$trimmed"
+    if (isFile) {
+        return when {
+            trimmed in excluded -> "exclude_docs in zensical.toml leaves docs/$trimmed out of the site"
+            !existsInRepo("docs/$trimmed") -> "docs/$trimmed is not there"
+            trimmed.endsWith(".md") -> {
+                val page = trimmed.removeSuffix(".md")
+                val url = if (page == "index" || page.endsWith("/index")) page.removeSuffix("index") else "$page/"
+                "the site serves no Markdown; the page of docs/$trimmed is $siteBase$url"
+            }
+            else -> null
+        }
     }
-    val candidates = if (trimmed.isEmpty()) {
-        listOf("index.md")
-    } else {
-        listOf("$trimmed.md", "$trimmed/index.md")
+    val candidates = if (trimmed.isEmpty()) listOf("index.md") else listOf("$trimmed.md", "$trimmed/index.md")
+    val sources = candidates.filter { existsInRepo("docs/$it") }
+    return when {
+        sources.any { it !in excluded } -> null
+        sources.isNotEmpty() -> "exclude_docs in zensical.toml leaves docs/${sources.first()} out of the site"
+        else -> "docs/${candidates.first()} is not there"
     }
-    val page = candidates.firstOrNull { existsInRepo("docs/$it") && it !in excluded }
-    return (page != null) to "docs/${page ?: candidates.first()}"
 }
 
 // The repository files that the links in README.md and llms.txt name, so that
@@ -213,10 +227,9 @@ tasks.register("checkPluginDocs") {
                             "Update the link in $path."
                     }
                 } else {
-                    val (exists, expected) = siteTarget(target.removePrefix(siteBase), excluded) ?: return@forEach
-                    if (!exists) {
-                        problems += "$path:$line: $url names a page or file that the site does not build " +
-                            "($expected is not there). Update the link in $path."
+                    siteLinkProblem(target.removePrefix(siteBase), excluded)?.let { reason ->
+                        problems += "$path:$line: $url names nothing that the site has: $reason. " +
+                            "Update the link in $path."
                     }
                 }
             }
