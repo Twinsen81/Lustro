@@ -76,6 +76,7 @@ dependencies {
 
     // Release-safety lint check, bundled into the published AAR as lint.jar so
     // consumers get the "Lustro debug usage outside src/debug" check automatically.
+    // :lustro-noop ships the same jar, for the release lint.
     lintPublish(project(":lustro-lint"))
 
     // The server engine and the process lifecycle (ProcessLifecycleOwner and

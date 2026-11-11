@@ -94,7 +94,8 @@ sample app and the WorkManager page of the docs do. The two files have the same 
 one compiles against the runtime, and the release one against the no-op artifacts, which do
 nothing. `src/main` calls only the object's functions, and names no Lustro type. Each other build
 type needs the file in `src/<build type>` too. A custom tab, a `DebugTab` subclass, goes only into
-the `src/debug` file.
+the `src/debug` file: the lint check `LustroDebugUsageInRelease` is fatal, so `assembleRelease`
+fails on one in `src/release` or `src/main`.
 
 ```kotlin
 // src/debug/kotlin/<package>/LustroBootstrap.kt, and the same file in src/release
@@ -174,7 +175,7 @@ product flavors, use the names of one variant, such as `assembleFreeDebug` and
 5. For each plugin tab: `lustro api GET logs/text --param limit=20`, `lustro api GET prefs/files`,
    `lustro api GET sqlite/databases` (no `error`), and `lustro api GET work/items | jq -c .state`
    (`"listeners":"installed"`).
-6. If you wrote a `DebugTab`, it is in `src/debug`, and `./gradlew :app:lintDebug` reports no
+6. If you wrote a `DebugTab`, it is in `src/debug`, and `./gradlew :app:lintRelease` reports no
    `LustroDebugUsageInRelease`.
 
 Report what you checked, and the result of each step.

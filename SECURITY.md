@@ -46,11 +46,12 @@ build, and that even in debug builds it stays bound to the local device.
   that is not marked debuggable, `Lustro.start()` logs a WARN and returns
   `LustroStatus.DISABLED` without binding a socket, unless the consumer opts in
   with `DebugConfig.allowNonDebuggableBuilds(true)` for an internal build. A
-  published lint check (`LustroDebugUsageInRelease`, severity ERROR) additionally
+  published lint check (`LustroDebugUsageInRelease`, severity FATAL) additionally
   flags `DebugTab` subclasses — consumer code the no-op swap cannot remove from
-  an APK — in `src/main`, when the debug variant's lint runs. It can't see
-  `src/release`: the debug lint does not read it, and the release lint does
-  not load the check, which only `:lustro` ships. Lustro does not inspect the consumer's
+  an APK — outside `src/debug`, such as in `src/main` or `src/release`. Both
+  `:lustro` and `:lustro-noop` ship it, so the release lint that
+  `assembleRelease` runs (`lintVitalRelease`) loads it and fails the release
+  build on such a class. Lustro does not inspect the consumer's
   dependency graph; the shared `io.github.twinsen81:lustro-runtime` capability
   only prevents `:lustro` and `:lustro-noop` landing on the same configuration,
   and `lustro-logs-runtime` does the same for `:lustro-logs` and

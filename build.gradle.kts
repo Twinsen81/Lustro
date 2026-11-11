@@ -21,9 +21,9 @@ plugins {
 
 // Binary Compatibility Validator tracks the public API. Excluded projects have no
 // consumable Kotlin/Java API: `sample` is an app, `lustro-lint` ships a lint jar
-// (lintPublish'd into the :lustro AAR), `lustro-wire-schema` ships only JSON
-// resources. BCV's handling of the AGP-built Android modules is in DECISIONS.md
-// ("BCV / apiCheck").
+// (lintPublish'd into the :lustro and :lustro-noop AARs), `lustro-wire-schema`
+// ships only JSON resources. BCV's handling of the AGP-built Android modules is
+// in DECISIONS.md ("BCV / apiCheck").
 apiValidation {
     ignoredProjects.add("sample")
     ignoredProjects.add("lustro-lint")

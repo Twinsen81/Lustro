@@ -112,7 +112,8 @@ tests needed no setup change; `LustroDebuggableGuardTest` drives the flag in bot
 directions explicitly.
 
 **Release-safety lint.** A custom Android Lint check ships with `:lustro` and
-flags a `DebugTab` subclass that lives outside a `debug` source set.
+`:lustro-noop` and flags a `DebugTab` subclass that lives outside a `debug` source
+set. Its severity is FATAL, so the release build fails on one.
 
 **Works (not a fallback):**
 
@@ -121,7 +122,7 @@ flags a `DebugTab` subclass that lives outside a `debug` source set.
   (`compileOnly`). Lint versions are AGP-coupled (`lint = AGP major + 23`), so
   AGP 9.2.1 ⇒ lint 32.2.1, whose `CURRENT_API` is **16**. The version is pinned in
   `gradle/libs.versions.toml` (`lint = "32.2.1"`).
-- `LustroIssueRegistry` (one issue, `LustroDebugUsageInRelease`, severity ERROR,
+- `LustroIssueRegistry` (one issue, `LustroDebugUsageInRelease`, severity FATAL,
   category SECURITY, with a `Vendor`) registered via the
   `META-INF/services/com.android.tools.lint.client.api.IssueRegistry` resource.
 - `LustroDebugLeakDetector` (UAST `Detector.UastScanner`) flags `DebugTab`
@@ -136,16 +137,33 @@ flags a `DebugTab` subclass that lives outside a `debug` source set.
   `:sample` release mirror to carry a `@Suppress`. A `DebugTab` subclass is the
   opposite case: it is the consumer's own code, compiled into whatever variant its
   source set belongs to, and it typically reaches into app internals — the no-op
-  swap cannot remove it from the APK, so it is the thing worth an ERROR.
+  swap cannot remove it from the APK, so it is the thing worth failing a build for.
 - Bundled into the `:lustro` AAR via `lintPublish(project(":lustro-lint"))`. The
   built `lustro-debug.aar` contains `lint.jar` with the detector, registry, and
   service file. Verified end-to-end: `:sample:lintDebug` loads the published check
   and reports `[LustroDebugUsageInRelease from io.github.twinsen81:lustro-lint]`.
-- Five `lint-tests` unit tests (`LustroDebugLeakDetectorTest`) cover a `DebugTab`
+- Also bundled into the `:lustro-noop` AAR, the same jar. An app takes `:lustro`
+  with `debugImplementation`, so with the jar in `:lustro` only, the release lint
+  never loaded the check, and the debug lint does not read `src/release`: a
+  `DebugTab` in `src/release` was never reported, and one in `src/main` only when
+  someone ran `lintDebug`. The shared capability keeps the two AARs off one
+  classpath, so one lint run never loads two copies of the check.
+- **Severity FATAL.** `assemble<Variant>` runs `lintVital<Variant>` for each
+  variant that is not debuggable, and it runs only FATAL issues, so a release
+  build with a `DebugTab` outside `src/debug` fails without anyone running lint.
+  The cost: an internal build type that is not debuggable and opts into the
+  runtime (`allowNonDebuggableBuilds`) has its tabs in its own source set, and
+  must suppress the check on them with `@Suppress("LustroDebugUsageInRelease")`.
+  `consumer-check/check-release-lint.sh` puts a `DebugTab` in `src/release`, then
+  in `src/main`, and expects `lintVitalWithLustroRelease` to report it once; CI
+  runs it on each consumer-check toolchain.
+- Seven `lint-tests` unit tests (`LustroDebugLeakDetectorTest`) cover a `DebugTab`
   subclass in `src/main` and `src/release` (flagged) vs `src/debug` (clean), the
   quick-start layout of builder/`addTab` in `src/main` with the tab in `src/debug`
-  (clean), and builder + subclass both in `src/main` (only the subclass is
-  reported); all pass.
+  (clean), builder + subclass both in `src/main` (only the subclass is
+  reported), a suppressed subclass (clean), and the FATAL severity. The lint test
+  harness does not filter by severity in vital mode, so the consumer check covers
+  `lintVital` end to end.
 
 **Notes / scoped exceptions:**
 
