@@ -29,6 +29,11 @@ android {
 dependencies {
     api(project(":lustro-api"))
     api(libs.okhttp)
+
+    // The same lint.jar as :lustro ships. An app takes :lustro in debug only, so
+    // without this copy the release lint has no check, and a DebugTab subclass in
+    // src/release or src/main reaches the release APK unreported.
+    lintPublish(project(":lustro-lint"))
 }
 
 lustroLibrary {

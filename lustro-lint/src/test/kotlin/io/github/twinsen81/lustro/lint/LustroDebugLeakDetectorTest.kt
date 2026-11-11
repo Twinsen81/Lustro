@@ -4,6 +4,7 @@ import com.android.tools.lint.checks.infrastructure.LintDetectorTest
 import com.android.tools.lint.checks.infrastructure.TestFile
 import com.android.tools.lint.detector.api.Detector
 import com.android.tools.lint.detector.api.Issue
+import com.android.tools.lint.detector.api.Severity
 
 /**
  * Unit tests for [LustroDebugLeakDetector] using the lint-tests harness. Each test
@@ -60,6 +61,13 @@ class LustroDebugLeakDetectorTest : LintDetectorTest() {
             )
             .run()
             .expectErrorCount(1)
+    }
+
+    // assembleRelease runs lintVital, which runs only the FATAL issues. The lint
+    // test harness does not filter by severity in vital mode, so this is checked
+    // here, and end to end by the consumer check.
+    fun testIssueIsFatalSoTheReleaseBuildFails() {
+        assertEquals(Severity.FATAL, LustroDebugLeakDetector.ISSUE.defaultSeverity)
     }
 
     fun testDebugTabSubclassInDebugIsClean() {
@@ -164,6 +172,33 @@ class LustroDebugLeakDetectorTest : LintDetectorTest() {
             )
             .run()
             .expectErrorCount(1)
+    }
+
+    /**
+     * An internal build type that is not debuggable and opts into the runtime
+     * keeps its tabs in its own source set, and suppresses the check on them.
+     */
+    fun testSuppressedSubclassIsClean() {
+        lint()
+            .allowMissingSdk()
+            .files(
+                debugTabStub,
+                kotlin(
+                    "src/internal/kotlin/com/example/MyTab.kt",
+                    """
+                    package com.example
+                    import io.github.twinsen81.lustro.DebugTab
+                    @Suppress("LustroDebugUsageInRelease")
+                    class MyTab : DebugTab() {
+                        override val id = "my"
+                        override val title = "My"
+                        override val icon = "x"
+                    }
+                    """,
+                ).indented(),
+            )
+            .run()
+            .expectClean()
     }
 
     private companion object {

@@ -200,6 +200,13 @@ jobs:
           :app:checkLustroKeepsAppVersions ${{ matrix.overrides }}
           --console=plain --stacktrace
 
+      # The release lint, which assembleRelease runs, must fail on a DebugTab
+      # subclass in src/release and in src/main. It has the check only because
+      # lustro-noop ships it too.
+      - name: The release lint reports a DebugTab outside src/debug
+        working-directory: consumer-check
+        run: ./check-release-lint.sh ${{ matrix.overrides }}
+
   # --- CLI: Python wire-protocol contract tests -------------------------------
   cli:
     name: CLI contract tests (pytest)

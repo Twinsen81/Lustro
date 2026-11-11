@@ -36,6 +36,12 @@ floor that moves up there makes this build fail until the floor is a decision.
   each `withLustro` variant and of the `baseline` flavor, the same app without
   Lustro, and fails on any module that is in both at different versions. It
   also lists the modules that only Lustro brings.
+- `check-release-lint.sh` puts a `DebugTab` subclass in `src/release`, then in
+  `src/main`, and expects `lintVitalWithLustroRelease`, the lint that
+  `assembleWithLustroRelease` runs, to fail with `LustroDebugUsageInRelease`.
+  The app takes `lustro` in debug only, so this lint has the check only
+  because `lustro-noop` ships it too. The script removes the class when it
+  ends.
 
 ## Running it
 
@@ -45,6 +51,7 @@ Publish the current checkout to the local Maven repository, then build here:
 ./gradlew publishToMavenLocal
 cd consumer-check
 ./gradlew :app:assembleWithLustroDebug :app:assembleWithLustroRelease :app:checkLustroKeepsAppVersions
+./check-release-lint.sh
 ```
 
 The `withLustro` debug APK also runs on a device, and it is the one build that

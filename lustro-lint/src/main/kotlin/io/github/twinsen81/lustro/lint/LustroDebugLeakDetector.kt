@@ -30,6 +30,11 @@ import java.util.EnumSet
  * `debug`. This deliberately does not depend on the Gradle dependency graph, so
  * the check also fires in mixed source layouts where the runtime is on the
  * default `implementation` configuration.
+ *
+ * The severity is FATAL so that `lintVital<Variant>`, which `assemble<Variant>`
+ * runs for each release variant and which checks only FATAL issues, fails the
+ * release build. `:lustro-noop` ships this check too, so the release lint loads
+ * it and reads `src/release` and `src/main`.
  */
 public class LustroDebugLeakDetector : Detector(), Detector.UastScanner {
 
@@ -101,13 +106,17 @@ public class LustroDebugLeakDetector : Detector(), Detector.UastScanner {
                     reads with it. Move the offending class into the `debug` source \
                     set (`src/debug/java` or `src/debug/kotlin`).
 
+                    The severity is fatal, so the lint that `assembleRelease` runs \
+                    fails the release build while such a class is outside \
+                    `src/debug`.
+
                     `Lustro.builder(...)` / `.addTab(...)` calls are not flagged — \
                     they compile against whichever facade the variant depends on, \
                     and the no-op facade makes them inert in release.
                     """.trimIndent(),
                 category = Category.SECURITY,
                 priority = PRIORITY,
-                severity = Severity.ERROR,
+                severity = Severity.FATAL,
                 implementation =
                     Implementation(
                         LustroDebugLeakDetector::class.java,

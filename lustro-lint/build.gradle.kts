@@ -2,7 +2,8 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     // Lint checks are plain JVM artifacts: NO Android plugin here. The compiled
-    // jar is shipped to consumers by :lustro via `lintPublish(project(":lustro-lint"))`.
+    // jar is shipped to consumers by :lustro and :lustro-noop via
+    // `lintPublish(project(":lustro-lint"))`.
     alias(libs.plugins.kotlin.jvm)
 }
 

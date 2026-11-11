@@ -939,6 +939,26 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Fixed
 
+- **The lint check `LustroDebugUsageInRelease` now fails a release build with
+  a `DebugTab` outside `src/debug`.** A custom tab is app code, so the
+  `lustro-noop` swap cannot remove it from a release APK, and the check exists
+  to report one. But only `lustro` shipped the check, and an app takes
+  `lustro` in debug only: the release lint did not load it, and the debug lint
+  does not read `src/release`. So a `DebugTab` in `src/release` was never
+  reported, and one in `src/main` only when someone ran `lintDebug`.
+  `lustro-noop` now ships the same check, and its severity is FATAL instead of
+  ERROR, so `lintVitalRelease`, which `assembleRelease` runs, fails the build
+  on a `DebugTab` in `src/release` or `src/main`. An internal build that is
+  not debuggable and opts into the runtime with `allowNonDebuggableBuilds`,
+  with its tabs in the source set of its build type or product flavor, must
+  add `@Suppress("LustroDebugUsageInRelease")` to those classes. The consumer
+  check in CI puts a `DebugTab` in `src/release`, then in `src/main`, and
+  expects the release lint to report it, with AGP 8.6.1 and 8.13.2.
+  Verified with the consumer check on both AGP versions: before the change,
+  `lintVitalWithLustroRelease` and `lintWithLustroRelease` passed with a
+  `DebugTab` in `src/release`; after it, both report it, and
+  `assembleWithLustroRelease` fails. With a copy of `lustro-noop` that has no
+  capability next to `lustro` on one classpath, lint reports the class once.
 - **The CLI runs under Python 3.15 without a deprecation warning.** The rows
   of `lustro net list` and the other commands that print transactions show
   enough characters of each id to name one transaction, and the CLI found that
@@ -954,10 +974,7 @@ see [DECISIONS.md](DECISIONS.md).
   neither `Origin` nor `Sec-Fetch-Site` passes the origin check; that loopback
   is only the default bind address; that `settle` goes from 0, which reads
   once; and that the styleguide's `ai`, `live`, and `danger` colors have only
-  the base, `-soft`, and `-border` tokens. The lint check
-  `LustroDebugUsageInRelease` reports a `DebugTab` in `src/main` but not in
-  `src/release`, as a test in the consumer check showed: the debug lint does
-  not read `src/release`, and the release lint does not load the check. The
+  the base, `-soft`, and `-border` tokens. The
   agent guide lists every CLI command and global flag, says that the app
   registers the Network tab, and has the `mockRules` state, the HAR
   `finalUrl` and `priorResponses`, the exit status 2 of a rejected search,

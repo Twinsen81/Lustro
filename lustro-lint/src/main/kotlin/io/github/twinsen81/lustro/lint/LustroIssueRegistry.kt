@@ -7,7 +7,8 @@ import com.android.tools.lint.detector.api.Issue
 
 /**
  * Registers the Lustro release-safety lint checks. Shipped to consumers from
- * `:lustro` via `lintPublish(project(":lustro-lint"))` and discovered through the
+ * `:lustro` and `:lustro-noop` via `lintPublish(project(":lustro-lint"))`, so the
+ * debug and the release lint both load them, and discovered through the
  * `META-INF/services/com.android.tools.lint.client.api.IssueRegistry` resource.
  */
 public class LustroIssueRegistry : IssueRegistry() {
