@@ -38,8 +38,8 @@ floor that moves up there makes this build fail until the floor is a decision.
   also lists the modules that only Lustro brings.
 - `check-release-lint.sh` puts a `DebugTab` subclass in `src/release`, then in
   `src/main`, and expects `lintVitalWithLustroRelease`, the lint that
-  `assembleWithLustroRelease` runs, to fail with `LustroDebugUsageInRelease`,
-  once. The app takes `lustro` in debug only, so this lint has the check only
+  `assembleWithLustroRelease` runs, to fail with `LustroDebugUsageInRelease`.
+  The app takes `lustro` in debug only, so this lint has the check only
   because `lustro-noop` ships it too. The script removes the class when it
   ends.
 

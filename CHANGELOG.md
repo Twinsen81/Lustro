@@ -948,12 +948,12 @@ see [DECISIONS.md](DECISIONS.md).
   reported, and one in `src/main` only when someone ran `lintDebug`.
   `lustro-noop` now ships the same check, and its severity is FATAL instead of
   ERROR, so `lintVitalRelease`, which `assembleRelease` runs, fails the build
-  on a `DebugTab` in `src/release` or `src/main`. An internal build type that
-  is not debuggable and opts into the runtime with `allowNonDebuggableBuilds`
-  has its tabs in its own source set: add
-  `@Suppress("LustroDebugUsageInRelease")` to those classes. The consumer
+  on a `DebugTab` in `src/release` or `src/main`. An internal build that is
+  not debuggable and opts into the runtime with `allowNonDebuggableBuilds`,
+  with its tabs in the source set of its build type or product flavor, must
+  add `@Suppress("LustroDebugUsageInRelease")` to those classes. The consumer
   check in CI puts a `DebugTab` in `src/release`, then in `src/main`, and
-  expects the release lint to report it once, with AGP 8.6.1 and 8.13.2.
+  expects the release lint to report it, with AGP 8.6.1 and 8.13.2.
   Verified with the consumer check on both AGP versions: before the change,
   `lintVitalWithLustroRelease` and `lintWithLustroRelease` passed with a
   `DebugTab` in `src/release`; after it, both report it, and

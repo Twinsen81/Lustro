@@ -151,12 +151,19 @@ set. Its severity is FATAL, so the release build fails on one.
 - **Severity FATAL.** `assemble<Variant>` runs `lintVital<Variant>` for each
   variant that is not debuggable, and it runs only FATAL issues, so a release
   build with a `DebugTab` outside `src/debug` fails without anyone running lint.
-  The cost: an internal build type that is not debuggable and opts into the
-  runtime (`allowNonDebuggableBuilds`) has its tabs in its own source set, and
-  must suppress the check on them with `@Suppress("LustroDebugUsageInRelease")`.
+  The cost: an internal build that is not debuggable and opts into the runtime
+  (`allowNonDebuggableBuilds`), with its tabs in the source set of its build
+  type or product flavor (such as `src/internal`), must suppress the check on
+  them with `@Suppress("LustroDebugUsageInRelease")`.
   `consumer-check/check-release-lint.sh` puts a `DebugTab` in `src/release`, then
-  in `src/main`, and expects `lintVitalWithLustroRelease` to report it once; CI
-  runs it on each consumer-check toolchain.
+  in `src/main`, and expects `lintVitalWithLustroRelease` to report it; CI runs
+  it on each consumer-check toolchain.
+- **Scope: modules that depend on `:lustro` or `:lustro-noop`.** Lint loads the
+  check from the AARs on a module's own classpath. A module with `:lustro-api`
+  alone is not checked, which keeps the plugin `-noop` modules, whose
+  `DebugTab` subclasses are in `src/main`, out of the report. Shipping the check
+  from `:lustro-api` is not possible (a JVM jar has no `lint.jar`) and would
+  flag those modules.
 - Seven `lint-tests` unit tests (`LustroDebugLeakDetectorTest`) cover a `DebugTab`
   subclass in `src/main` and `src/release` (flagged) vs `src/debug` (clean), the
   quick-start layout of builder/`addTab` in `src/main` with the tab in `src/debug`
