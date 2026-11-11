@@ -113,6 +113,13 @@ apply(from = "gradle/docs-version.gradle.kts")
 // without -SNAPSHOT. See gradle/cli-version.gradle.kts.
 apply(from = "gradle/cli-version.gradle.kts")
 
+// Registers `checkPluginDocs`: each plugin module pair has its page in
+// docs/plugins/, in the template's sections, its nav line, its llms.txt link,
+// its context7.json folder, and its rows in the modules table, and the links in
+// README.md and llms.txt name files and pages that exist.
+// See gradle/plugin-docs.gradle.kts.
+apply(from = "gradle/plugin-docs.gradle.kts")
+
 // The published modules are the ones that apply lustro.publishing, so a new
 // module needs no entry here or in release.yml:
 //   - `./gradlew dokkaGenerate` renders the API docs of those with Dokka (all but

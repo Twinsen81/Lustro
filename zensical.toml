@@ -19,9 +19,11 @@ docs_dir = "docs"
 site_dir = "site"
 extra_css = ["assets/extra.css"]
 
-# The pip pin for the docs build, not a page.
+# The pip pin for the docs build, and the template that each plugin page
+# starts from: neither is a page.
 exclude_docs = """
 requirements.txt
+plugins/_template.md
 """
 
 nav = [
