@@ -20,8 +20,9 @@ your code requested. The Network tab shows where the response came from (`finalU
 redirect and authentication challenge on the way (`priorResponses`), with its status.
 
 **Capture doesn't hold up the call.** The interceptor copies what it captures and returns;
-redaction, classification, and storing run on a background thread, so a request shows up in the
-Network tab a moment after it completes. During a burst of large bodies, once about 4 MB of
+redaction, classification, and storing run on a background thread. A request's row shows in the
+Network tab a moment after the call starts, as in flight, and gets its response a moment after it
+completes. During a burst of large bodies, once about 4 MB of
 captured text is waiting, calls capture on their own thread until that one catches up, which
 keeps memory bounded. A body that capture doesn't read whole, such as a download or a body past
 the cap, reaches your code as it would without Lustro, and the request shows as in flight until

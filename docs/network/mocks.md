@@ -3,9 +3,11 @@
 A mock rule short-circuits matching requests with a synthetic response: the interceptor answers
 from the rule and the request never leaves the device. In the Network tab, **Mocks**, next to the
 search field, opens the rules and the rule form in the right pane, and shows how many rules are
-enabled. The rules apply to all traffic, not to the selected request. Rules answer OkHttp calls
-only: [platform `HttpURLConnection` capture](httpurlconnection.md)
-records traffic, and a rule never matches it.
+enabled. The rules apply to all traffic, not to the selected request. Rules answer the calls of
+Lustro's OkHttp interceptor. An [adapter for another HTTP client](other-clients.md) applies a rule
+only when it asks for one with `NetworkCaptureSink.findMockRule`.
+[Platform `HttpURLConnection` capture](httpurlconnection.md) only records traffic, and a rule never
+matches it.
 `urlPattern` is looked for anywhere in the request URL: as a substring, or as a regular expression
 when prefixed with `regex:`. So `regex:/api/v1/statuses$` matches
 `https://example.com/api/v1/statuses` and not `.../statuses/1/favourite`; anchor a pattern with `^`

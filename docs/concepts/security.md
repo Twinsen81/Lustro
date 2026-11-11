@@ -19,7 +19,9 @@ Lustro deliberately surfaces app internals, so its defaults are conservative. Se
     inline `style=` attributes and `<style>` blocks. Every API request, whatever its method, passes
     an Origin / `Sec-Fetch-Site` check: the server's own origin is always allowed, and any other
     cross-origin caller must be listed in `DebugConfig.allowedOrigins` (other localhost ports are not
-    trusted by default).
+    trusted by default). A request with neither an `Origin` nor a `Sec-Fetch-Site` header passes the
+    check, because the CLI and older clients send neither. A browser can still send a cross-origin
+    `GET` with neither header, so a tab must not change state on `GET` or `HEAD`.
 - **Capture-time redaction, best-effort.** A `Redactor` masks sensitive headers, URL/query
     params, and JSON/form body fields **before** anything is stored, so what it masks never reaches
     the API, UI, or fixtures. It matches on names, so it cannot find a secret that isn't keyed by a
@@ -29,10 +31,17 @@ Lustro deliberately surfaces app internals, so its defaults are conservative. Se
     what you inspect and copy is what was on the wire. The text of a WebSocket message is redacted as
     a body is; a binary message is stored as it arrived (see [WebSocket messages](../network/websockets.md)).
 - **Log lines are not redacted.** The [Logs](../plugins/logs.md) plugin serves the app's logcat as it is.
-- **Nothing persisted to disk except mock rules.** Captured traffic and log lines live only in
-    bounded in-memory ring buffers and are lost when the process dies; the sole persisted state is your mock
-    rules, and only when you give the tab a `MockRuleStorage` (see [Mock rules](../network/mocks.md)). The
-    browser keeps no copy of them.
+- **Captured data stays in memory.** Captured traffic and log lines live only in bounded
+    in-memory ring buffers and are lost when the process dies. The browser keeps no copy of them.
+    Lustro writes to disk only in these cases:
+    - The token, and the host and port that the server listens on, are in the app's private
+      `lustro_debug` SharedPreferences file.
+    - Mock rules are saved when you give the Network tab a `MockRuleStorage` (see
+      [Mock rules](../network/mocks.md)).
+    - The [Preferences](../plugins/prefs.md) tab changes a file that is not read-only, and the
+      [SQLite](../plugins/sqlite.md) tab changes a database that is `writable`, when a client asks
+      for an edit. The [WorkManager](../plugins/work.md) tab changes WorkManager's database when a
+      client cancels or prunes work.
 - **Release builds are inert.** Release variants depend on `:lustro-noop`, whose runtime bodies
     are empty — no server ships to production. As a backstop for a misconfigured dependency graph,
     the real runtime also refuses to start in a build that is not marked debuggable

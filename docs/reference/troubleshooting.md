@@ -12,8 +12,10 @@
     `Authorization: Bearer <token>`. Get the token from `adb logcat -s LustroToken`.
 - **Nothing is captured.** Make sure you added `lustro.networkInterceptor()` to the client that
     actually makes the calls, **after** any URL/header/body-mutating interceptors. Check that
-    capture isn't **paused** in the Network tab. For `HttpURLConnection` traffic, you must opt in
-    with `capturePlatformHttp = true`.
+    capture isn't **paused** in the Network tab. For `HttpURLConnection` traffic, you must opt in:
+    pass `capturePlatformHttp = true` to `NetworkDebugTab.create`, under
+    `@OptIn(ExperimentalPlatformCapture::class)` (see
+    [HttpURLConnection](../network/httpurlconnection.md)). It is not a `DebugConfig` option.
 - **A WebSocket shows only its handshake.** The interceptor can't see messages. Create the socket
     with `lustro.webSocketFactory(httpClient)`, or give that factory to the library that creates it:
     see [WebSocket messages](../network/websockets.md).

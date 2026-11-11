@@ -22,4 +22,5 @@ names of one variant, such as `assembleFreeDebug` and `freeReleaseRuntimeClasspa
     - `lustro api GET sqlite/databases` lists the databases, and none has an `error`.
     - `lustro api GET work/items | jq .state` shows `"listeners": "installed"`.
 6. **Custom tabs are in `src/debug`.** When you wrote a `DebugTab`, it is in `src/debug`, and
-    `./gradlew :app:lintDebug` reports no `LustroDebugUsageInRelease`.
+    `./gradlew :app:lintDebug` reports no `LustroDebugUsageInRelease`. The check finds a
+    `DebugTab` in `src/main`, but not in `src/release`, so look there yourself.

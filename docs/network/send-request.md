@@ -25,7 +25,9 @@ NetworkDebugTab.create(
 The form lists them in that order, and the first is the default. An absolute URL is sent as
 entered. A relative one is appended to the base URL of the chosen sender, path and all, so `/items`
 through "API (signed in)" goes to `https://api.example.com/v1/items`; a sender without a base URL
-takes absolute URLs only. Names must be unique.
+takes absolute URLs only. Names must be unique. `OkHttpSender.create` throws
+`IllegalArgumentException` for a blank name, and for a base URL that is not an absolute `http` or
+`https` URL.
 
 **Lustro asks for each client only when you send.** The lambda runs at the first send through
 that sender, off the main thread, and Lustro keeps the client it returns. So a sender can be a
@@ -41,8 +43,9 @@ hidden. Requests aimed at the debug server's own bind host:port are rejected.
 **What the form promises.** Lustro controls only which client sends. Which interceptors run
 (auth, logging, capture) depends on how the app built that client. A sender whose client signs
 requests in lets anyone who has the Lustro token send requests as the signed-in user. The server
-is loopback-only and needs the token, but register such a sender only in builds you trust with
-that.
+needs the token, and by default it listens on loopback only, but a `bindAddress` such as `0.0.0.0`
+opens it to the network (see [LAN exposure](../concepts/lan.md)). Register such a sender only in
+builds you trust with that.
 
 **Edit and resend** leaves out the headers that OkHttp sets itself, such as `Host`,
 `Content-Length`, and `Accept-Encoding`: sent by hand, an `Accept-Encoding` turns off OkHttp's gzip

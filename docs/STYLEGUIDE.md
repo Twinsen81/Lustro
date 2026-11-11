@@ -45,8 +45,9 @@ Defined on `:root` (dark default) with light overrides under
   `--t4` faint meta/placeholders/comments · `--t5` disabled. Keep `--t3`/`--t4`
   for *secondary* text only, never primary content.
 - **Accents**: `--accent`, `--accent-2` (lighter, for text), `--accent-hover`,
-  `--accent-soft` (tinted bg), `--accent-border`; same shape for `--ai-*`,
-  `--live-*`, `--danger-*`.
+  `--accent-soft` (tinted bg), `--accent-border`. `--ai`, `--live` and
+  `--danger` have only the base, `-soft` and `-border` tokens: there is no
+  `--ai-2` or `--danger-hover`.
 - **Semantic sets** (each themed for dark and light): `--method-get/post/put/
   patch/delete/head`, `--status-2xx/3xx/4xx/5xx`, `--lvl-v/d/i/w/e/f` (a
   log level; Fatal, `--lvl-f`, is a deeper red than Error),
@@ -182,8 +183,10 @@ light mode for contrast; never collapse the two sets.
 - Build on the `.dc-*` components before writing custom CSS; when you do write
   custom rules, follow the type table above.
 - Own your edge padding (`22px`); the chrome content area is full-bleed.
-- CSP holds: external JS/CSS only, no inline `on*=` handlers (use
-  `data-action` delegation), no inline `<script>`.
+- CSP holds: external JS only, no inline `on*=` handlers (use `data-action`
+  delegation), no inline `<script>`. Put styles in your tab's CSS file; the
+  CSP also allows inline styles (`style-src 'self' 'unsafe-inline'`), so a
+  `style` attribute that sets a token, such as `style="--c: ..."`, works.
 - Don't rely on color alone — pair semantic colors with a text label or letter.
 - Hit targets ≥ 30px tall for buttons/inputs; ≥ 24px for icon affordances.
 

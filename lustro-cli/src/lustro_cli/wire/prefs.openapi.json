@@ -256,7 +256,7 @@
         },
         "responses": {
           "200": {
-            "description": "The entry as the file now holds it, after the value policy.",
+            "description": "The entry as the file now holds it, after the value policy. A value longer than 4096 characters is cut, as in entries: read it whole with GET entry.",
             "content": {
               "application/json": {
                 "schema": {
@@ -681,7 +681,7 @@
           },
           "truncated": {
             "const": true,
-            "description": "Only in entries, when the value was cut at 4096 characters; bytes are cut at a whole base64 quantum, so the cut text still decodes. GET entry returns it whole."
+            "description": "Only in entries and in the item of the POST edit response, when the value was cut at 4096 characters; bytes are cut at a whole base64 quantum, so the cut text still decodes. GET entry returns it whole."
           }
         },
         "additionalProperties": false

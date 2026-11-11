@@ -29,10 +29,10 @@ the protocol a stable public contract independent of the library's Kotlin API.
 
 | Shape | Used by | JSON |
 | --- | --- | --- |
-| Error envelope | every `/api/v1/*` error | `{ error, message, code, field?, hint? }` |
+| Error envelope | every `/api/v1/*` error | `{ error, message, code?, field?, hint? }` |
 | List pagination | list endpoints | `{ items: [...], nextCursor: "<opaque>" \| null }` |
-| Live polling cursor | observable endpoints | `{ cursor, status: "delta" \| "unchanged" \| "reset", items? }` |
-| Live polling stream | endpoints whose list only grows at its end | `{ cursor, status: "delta" \| "unchanged" \| "reset", items?, dropped? }` |
+| Live polling cursor | observable endpoints | `{ cursor, status: "delta" \| "unchanged" \| "reset", items?, state? }` |
+| Live polling stream | endpoints whose list only grows at its end | `{ cursor, status: "delta" \| "unchanged" \| "reset", items?, dropped?, state? }` |
 | Framework metadata | `GET /api/v1/_meta` | `{ libraryVersion, protocolVersion, tabs: [...] }` |
 
 Cursor tokens are opaque and advance when the route's list changes; clients
@@ -44,7 +44,9 @@ envelope it is the whole current list, which fits a list whose items change. In
 the stream envelope it is only the entries after the cursor, oldest first, which
 fits a log: the client appends them. A stream `reset` carries the last entries
 of the list, and `dropped` counts the entries the list evicted before the
-client got them.
+client got them. In both, `state` is an optional object that a tab adds with
+its own state, also to an `unchanged` response; the tab's OpenAPI document
+gives its shape.
 
 ## Minor revisions
 
