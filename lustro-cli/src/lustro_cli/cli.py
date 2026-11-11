@@ -124,7 +124,21 @@ def _short_id_length(items: Iterable[Any]) -> int:
     length = SHORT_ID_LENGTH
     # In sorted order, the two ids with the longest common start are neighbours.
     for first, second in zip(ids, ids[1:]):
-        length = max(length, len(os.path.commonprefix([first, second])) + 1)
+        length = max(length, _common_start_length(first, second) + 1)
+    return length
+
+
+def _common_start_length(first: str, second: str) -> int:
+    """How many characters at the start of the two strings are the same.
+
+    The ids are not paths, so os.path.commonpath does not apply, and Python 3.15
+    deprecates os.path.commonprefix.
+    """
+    length = 0
+    for a, b in zip(first, second):
+        if a != b:
+            break
+        length += 1
     return length
 
 
