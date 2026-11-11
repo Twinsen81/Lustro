@@ -36,8 +36,10 @@ see [DECISIONS.md](DECISIONS.md).
   link to a page or an anchor that is not there fails the build, and at each
   push to `main` publishes it to GitHub Pages, at
   `https://twinsen81.github.io/Lustro/`, with the Dokka API reference of the
-  published modules under `api/` and the wire-protocol schemas under
-  `wire-protocol/`, at the URLs that their `$id` fields name. The site has a
+  published modules under `api/`, and the wire-protocol schemas and the bundle
+  that `GET /api/v1/_schema` serves under `wire-protocol/`, at the URLs that
+  their `$id` fields name. The build fails when a `$id` in the repository
+  names a URL of the site that has no file. The site has a
   home page with a quick start, `docs/AGENTS.md`, and `docs/STYLEGUIDE.md`. A
   release no longer pushes Dokka to a `gh-pages` branch, and `checkDocsVersion`
   also checks the coordinates in `docs/index.md`. The user guide is on the site
