@@ -5,7 +5,7 @@ so the app's code compiles in both, and the release build has no server and no c
 
 The facts below are for the version in the snippets. For a newer version and anything this file
 leaves out, read [llms.txt](https://raw.githubusercontent.com/Twinsen81/Lustro/main/llms.txt) and
-the [README](https://github.com/Twinsen81/Lustro/blob/main/README.md).
+the docs pages that it links.
 
 ## 1. Read the project
 
@@ -90,7 +90,7 @@ androidComponents {
 ## 4. Start Lustro
 
 Put the Lustro code in an object with the same name in `src/debug` and in `src/release`, as the
-sample app and the README's WorkManager section do. The two files have the same code: the debug
+sample app and the WorkManager page of the docs do. The two files have the same code: the debug
 one compiles against the runtime, and the release one against the no-op artifacts, which do
 nothing. `src/main` calls only the object's functions, and names no Lustro type. Each other build
 type needs the file in `src/<build type>` too. A custom tab, a `DebugTab` subclass, goes only into
@@ -155,8 +155,8 @@ Add every tab before `build()`: after `start()`, `addTab()` throws. The other ty
   - WorkManager: the app initializes WorkManager on demand (`Configuration.Provider`, and
     `WorkManagerInitializer` removed in the manifest, which needs `xmlns:tools`), and passes its
     `Configuration.Builder` through an object function that calls the tab's `configure()`.
-    Follow the README's
-    [WorkManager](https://github.com/Twinsen81/Lustro/blob/main/README.md#workmanager) section.
+    Follow the
+    [WorkManager](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/plugins/work.md) page of the docs.
 
 ## 5. Check the integration
 

@@ -15,7 +15,7 @@ import io.github.twinsen81.lustro.work.WorkDebugTab
 import okhttp3.OkHttpClient
 
 /**
- * The app with Lustro, wired as the quick start in README.md does it. It compiles
+ * The app with Lustro, wired as the quick start in the docs does it. It compiles
  * against `lustro`, `lustro-logs`, `lustro-prefs`, `lustro-sqlite`, `lustro-work`,
  * and `lustro-screen` in debug and against their no-op halves in release, so every
  * facade is checked from the floor's Kotlin. The app has no androidx.sqlite: it

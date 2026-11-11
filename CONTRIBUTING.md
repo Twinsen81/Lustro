@@ -111,6 +111,9 @@ zensical build --clean --strict # what CI runs: fails on a broken link or anchor
 A link between pages is relative and names the Markdown file, such as
 `[Agents](AGENTS.md#use-the-lustro-cli)`, so that the strict build checks it. A
 link to a file outside `docs/`, such as a source file, is a full GitHub URL.
+A new page needs a line in the `nav` of `zensical.toml` and a link in
+`llms.txt`, so that people and agents find it. The README keeps only the
+quick start and links to the site.
 The Kotlin API reference and the wire-protocol schemas are not in the preview:
 CI adds the Dokka output under `api/` and `wire-protocol/` when it publishes.
 
@@ -290,11 +293,11 @@ Every commit in a pull request must carry a sign-off line.
 1. Fork and branch from `main`. Keep changes focused; one logical change per PR.
 2. Add or update tests for your change.
 3. Update [`CHANGELOG.md`](CHANGELOG.md) under `## [Unreleased]`.
-4. Update docs (KDoc, README, `docs/AGENTS.md`, or wire-protocol files) when behavior
-   or the public surface changes. When the integration steps change, update `llms.txt`,
-   `docs/index.md`, and the agent skill in `skills/lustro/` with the README.
-   `checkDocsVersion` fails when the Maven coordinates in them differ from
-   `gradle.properties`.
+4. Update docs (KDoc, the pages in `docs/`, or wire-protocol files) when behavior
+   or the public surface changes. When the integration steps change, update
+   `README.md`, `docs/index.md`, `llms.txt`, and the agent skill in `skills/lustro/`
+   with the pages in `docs/get-started/`. `checkDocsVersion` fails when the Maven
+   coordinates in them, or in any page in `docs/`, differ from `gradle.properties`.
 5. Make sure the full local gate passes:
 
    ```bash
@@ -357,7 +360,8 @@ dependencies must be justified in the PR description.
 Every runtime dependency of a published artifact is a floor: the oldest version
 with the APIs Lustro uses, so that adding Lustro does not raise an app's own
 versions (see [DECISIONS.md](DECISIONS.md#dependency-floors)). Dependabot leaves
-them alone, and a bump is a change to the minimum versions README.md documents.
+them alone, and a bump is a change to the minimum versions that
+[Install](docs/get-started/install.md#minimum-versions) documents.
 `./gradlew checkKotlinFloor` fails when a dependency puts a kotlin-stdlib newer
 than the floor on a published module's compile classpath. Before you change a
 floor, or anything the published POMs carry, publish the checkout locally and

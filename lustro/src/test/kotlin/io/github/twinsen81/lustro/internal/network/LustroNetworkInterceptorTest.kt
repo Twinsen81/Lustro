@@ -1321,7 +1321,7 @@ class LustroNetworkInterceptorTest {
 
     @Test
     fun `a gzip request body is captured as its JSON`() {
-        // The OkHttp GzipRequestInterceptor recipe, added before Lustro's as the README says.
+        // The OkHttp GzipRequestInterceptor recipe, added before Lustro's as the docs say.
         val gzipRequests =
             Interceptor { chain ->
                 val original = chain.request()

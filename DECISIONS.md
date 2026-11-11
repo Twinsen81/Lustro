@@ -187,8 +187,8 @@ certain, and unlike a lint check it does not require the consumer to run lint. A
 public text describing a dependency-graph lint check is wrong and should be
 corrected.
 
-For canonical package, version, and module facts, see the project README,
-CONTRIBUTING, and the module build files.
+For canonical package, version, and module facts, see the docs site
+(`docs/reference/modules.md`), CONTRIBUTING, and the module build files.
 
 ## Dependency floors
 
@@ -277,10 +277,12 @@ must not need a `resolutionStrategy` workaround in the app.
   task fails on any module whose version differs between the app with and
   without Lustro. The unit tests also run with OkHttp 5 on the test runtime
   classpath (`-PlustroTestOkHttpVersion`).
-- README.md documents the minimum versions, and CONTRIBUTING.md the commands.
+- `docs/get-started/install.md` documents the minimum versions, and CONTRIBUTING.md
+  the commands.
 
 **How to change:** to raise a floor, change it in `gradle/libs.versions.toml`,
-in `consumer-check/gradle.properties`, and in README.md together, and say so in
+in `consumer-check/gradle.properties`, and in `docs/get-started/install.md`
+together, and say so in
 CHANGELOG.md: it is a requirement every app has to meet. OkHttp 5 as the floor
 would be that decision for the public API types, and is not planned while apps
 on 4.x exist. The Kotlin floor is the one the toolchain can force: when the
