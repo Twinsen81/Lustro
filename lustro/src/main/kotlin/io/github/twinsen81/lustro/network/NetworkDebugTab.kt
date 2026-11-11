@@ -520,6 +520,7 @@ public class NetworkDebugTab private constructor(
         return try {
             val arr = JSONArray(body ?: "[]")
             val rules = ArrayList<MockRuleImpl>(arr.length())
+            val indexById = HashMap<String, Int>()
             for (i in 0 until arr.length()) {
                 // Declarative sync is all-or-nothing: the OpenAPI promises the
                 // resulting set equals the posted array, so a malformed entry must
@@ -534,7 +535,18 @@ public class NetworkDebugTab private constructor(
                             field = parsed.field,
                         )
 
-                    is MockRuleParseResult.Valid -> rules.add(parsed.rule)
+                    is MockRuleParseResult.Valid -> {
+                        // The store keeps one rule for each id, so a repeated id
+                        // would leave a posted rule out of the set.
+                        val first = indexById.putIfAbsent(parsed.rule.id, i)
+                        if (first != null) {
+                            return DebugResponse.error(
+                                "rule at index $i has the same id as the rule at index $first: ${parsed.rule.id}",
+                                field = "id",
+                            )
+                        }
+                        rules.add(parsed.rule)
+                    }
                 }
             }
             store.replaceMockRules(rules)

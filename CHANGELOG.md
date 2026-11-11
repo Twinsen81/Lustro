@@ -1665,6 +1665,18 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Changed
 
+- **A rules sync with a repeated id is a `400` (protocol 1.11).**
+  `POST /api/v1/network/rules/_/sync` kept only the first of two posted rules
+  with the same `id`, and still answered `200` with a `count` of the rules
+  posted. So a script, an agent, or a hand-edited file for `lustro mock sync`
+  that repeated an id lost a rule without an error. The route now rejects
+  such a set with a `400`, `field: "id"`, and the indexes of both rules in the
+  message, before the rules change, as it does for a rule that is not valid.
+  A rule without an `id` still gets a new one. `count` is the number of rules
+  set. The agent guide, the OpenAPI document, and the wire protocol's minor
+  revisions say so. Checked on a physical device: a sync of three rules with
+  the id `a` at index 0 and 2 answered `200` with `count: 3` and set two
+  rules; it now answers `400` and the rules stay as they were.
 - **The CLI installs with uv or pipx, and runs as `uvx lustro-cli`.** The
   PyPI package `lustro` is a different project that also installs a `lustro`
   command, so `pip install lustro` and `uvx lustro` install that project. The
