@@ -115,6 +115,10 @@ A new page needs a line in the `nav` of `zensical.toml`, so that people find
 it. When it documents a tab, an API, or a task, it also needs a link in
 `llms.txt`, so that agents find it. The README keeps only the
 quick start and links to the site.
+The strict build does not read `llms.txt` or the README. `./gradlew
+checkPluginDocs` does: a link there to a raw GitHub file must name a file in
+the repository, and a link to the site must name a page in `docs/`. So when you
+rename or move a page, update those links too.
 The Kotlin API reference and the wire-protocol schemas are not in the preview:
 CI adds the Dokka output under `api/` and `wire-protocol/` when it publishes.
 
@@ -214,8 +218,34 @@ as it adds `:lustro`: `debugImplementation` for the runtime and
    `<id>.css`, and `<id>.openapi.json`, with its own `info.version`
    (DECISIONS.md, row 9). The server serves them from the app's merged assets,
    with no change to `:lustro`. The no-op half ships no assets.
+5. Write the docs of the tab. `<name>` is the module suffix and the tab id, so
+   the page of `:lustro-work` is `docs/plugins/work.md`.
+   1. Copy `docs/plugins/_template.md` to `docs/plugins/<name>.md`, and fill
+      in each section: what the tab shows, install, register the tab, safety
+      options, the console view, the HTTP routes, CLI examples, and limits.
+      Keep the headings and their order. When a section does not apply to the
+      tab, say so in one sentence.
+   2. Add the page to the "Plugins" section of the `nav` in `zensical.toml`.
+   3. Add a link to the page to the "## Docs" list of `llms.txt`, as a raw
+      GitHub URL such as the other plugin pages have, and a fact about the tab
+      to the list at the top of the file. Add a link to the tab's OpenAPI
+      document to the "## API contracts" list.
+   4. Add `lustro-<name>/` to `folders` in `context7.json`.
+   5. Add a row for each half to the modules table in
+      `docs/reference/modules.md`.
+   6. When the tab has a console view, add a screenshot of it in the sample
+      app as `docs/images/<name>-tab.png`, and show it in the "Console view"
+      section.
 
-Nothing else names the modules: the Dokka site and the GitHub Release take
+   `./gradlew checkPluginDocs` enforces steps 5.1 to 5.5: it fails when the
+   page is missing or its level-2 headings differ from the template's, when
+   the nav, `llms.txt`, or `context7.json` does not name the page or the
+   module, or when the modules table has no row for a half. It does not check
+   what the sections say, the fact and the OpenAPI link in `llms.txt`, or the
+   screenshot: the reviewer checks those. It finds the plugin modules from the
+   build, so the pair needs no entry in it.
+
+Nothing else in the build names the modules: the Dokka site and the GitHub Release take
 every module that applies `lustro.publishing`. Until the pair has commands of
 its own, `lustro api` reaches its routes, for example
 `lustro api GET <id>/entries --param level=W`.
@@ -302,7 +332,7 @@ Every commit in a pull request must carry a sign-off line.
 5. Make sure the full local gate passes:
 
    ```bash
-   ./gradlew test :build-logic:test detekt apiCheck checkFacadeParity checkDocsVersion checkCliVersion
+   ./gradlew test :build-logic:test detekt apiCheck checkFacadeParity checkDocsVersion checkPluginDocs checkCliVersion
    ```
 
 6. Open the PR, fill in the template, and confirm every commit is signed off.

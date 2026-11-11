@@ -16,7 +16,8 @@
   ],
   "excludeFiles": [
     "CODE_OF_CONDUCT.md",
-    "CONTRIBUTING.md"
+    "CONTRIBUTING.md",
+    "_template.md"
   ],
   "rules": [
     "Add io.github.twinsen81:lustro with debugImplementation and io.github.twinsen81:lustro-noop with releaseImplementation. Never put both on one configuration: they declare the same Gradle capability.",

@@ -46,6 +46,15 @@ see [DECISIONS.md](DECISIONS.md).
   and Reference, and the README keeps a quick start and links to the site.
   `llms.txt` links the pages in place of the README, and `checkDocsVersion`
   checks the coordinates in every page.
+  Each plugin page has the same sections in the same order, from
+  `docs/plugins/_template.md`: what the tab shows, install, register the tab,
+  safety options, the console view, the HTTP routes, CLI examples, and limits.
+  A new Gradle task, `checkPluginDocs`, runs in CI next to `checkDocsVersion`.
+  For each plugin module pair that the build has, it fails when the page is
+  missing or has other sections than the template, or when the site's `nav`,
+  `llms.txt`, `context7.json`, or the modules table does not name it. It also
+  fails when a link in the README or in `llms.txt` names a file or a site page
+  that is not there, which the strict site build does not check.
 
 - **A Screen tab gives agents and scripts the app's UI as a tree.** A new
   plugin pair, `lustro-screen` and `lustro-screen-noop`, registered with

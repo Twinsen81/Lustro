@@ -65,10 +65,13 @@ jobs:
 
       # The Maven coordinates that README.md, the pages in docs/, llms.txt,
       # context7.json, and the lustro skill give to people and agents must match
-      # gradle.properties (see gradle/docs-version.gradle.kts). It reads text
-      # only, so it runs first.
-      - name: Integration docs name the current coordinates
-        run: ./gradlew checkDocsVersion --console=plain --stacktrace
+      # gradle.properties (see gradle/docs-version.gradle.kts). Each plugin
+      # module pair must have its page, nav line, llms.txt link, context7.json
+      # folder, and modules table rows, and the links in README.md and llms.txt
+      # must name files and pages that exist (see gradle/plugin-docs.gradle.kts).
+      # Both read text only, so they run first.
+      - name: Integration docs name the current coordinates, and each plugin has its docs
+        run: ./gradlew checkDocsVersion checkPluginDocs --console=plain --stacktrace
 
       # A release publishes lustro-cli with the library's version, so its
       # __version__ must be VERSION_NAME without -SNAPSHOT (see
