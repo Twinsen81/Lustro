@@ -939,6 +939,13 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Fixed
 
+- **The CLI runs under Python 3.15 without a deprecation warning.** The rows
+  of `lustro net list` and the other commands that print transactions show
+  enough characters of each id to name one transaction, and the CLI found that
+  length with `os.path.commonprefix`, which Python 3.15 deprecates. A later
+  Python can remove it, and then these commands would fail. The CLI now
+  compares the ids with its own loop, with the same result. The tests pass
+  under Python 3.15 with that warning as an error, and under Python 3.9.
 - **The docs say what the code does.** A check of each docs page, the README,
   and `llms.txt` against the code found statements that were wrong, out of
   date, or missing. The pages now say that an adapter for another HTTP client

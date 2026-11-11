@@ -469,6 +469,24 @@ def test_short_ids_are_longer_when_two_listed_ids_start_with_the_same_8(client, 
     assert _ids(capsys.readouterr().out) == ["3f2a9c1d-9"]
 
 
+@pytest.mark.parametrize(
+    "ids, length",
+    [
+        ([], 8),
+        (["3f2a9c1d-5b7e"], 8),
+        (["3f2a9c1d-5b7e", "77e2c014-5b7e"], 8),
+        (["3f2a9c1d-5b7e", "3f2a9c1d-9b7e"], 10),
+        # One id is the start of the other: the shorter id is shown whole.
+        (["3f2a9c1d-5", "3f2a9c1d-5b7e"], 11),
+        (["3f2a9c1d-9b7e", "3f2a9c1d-5b7e", "3f2a9c1d-5b8e"], 12),
+        # The same id twice counts once.
+        (["3f2a9c1d-5b7e", "3f2a9c1d-5b7e"], 8),
+    ],
+)
+def test_short_id_length_is_one_more_than_the_longest_common_start_of_two_ids(ids, length):
+    assert cli._short_id_length([{"id": tx_id} for tx_id in ids]) == length
+
+
 def test_get_takes_the_start_of_an_id(client, capsys):
     client.responses = [envelope([transaction(1, id=TX), transaction(2, id=full_id("77e2c014"))]), _detail()]
     assert cli.main(["net", "get", "3f2a9c1d"]) == 0
