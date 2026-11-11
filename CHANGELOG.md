@@ -44,8 +44,8 @@ see [DECISIONS.md](DECISIONS.md).
   too: each long section of the README is now a page, in the sections Get
   started, Network tab, Plugins, Custom tabs, Agents and automation, Concepts,
   and Reference, and the README keeps a quick start and links to the site.
-  `llms.txt` links each page, and `checkDocsVersion` checks the coordinates in
-  every page.
+  `llms.txt` links the pages in place of the README, and `checkDocsVersion`
+  checks the coordinates in every page.
 
 - **A Screen tab gives agents and scripts the app's UI as a tree.** A new
   plugin pair, `lustro-screen` and `lustro-screen-noop`, registered with

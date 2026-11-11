@@ -72,10 +72,10 @@ your own tabs against a stable plugin contract.
     read the token with `adb logcat -d -s LustroToken`, and open
     `http://localhost:8080/#lustro_token=<token>`.
 
-Lustro needs `minSdk` 24, `compileSdk` 35, Android Gradle Plugin 8.6, and Kotlin 2.0. It does
-not raise the versions of your app's own dependencies: see
-[Minimum versions](https://twinsen81.github.io/Lustro/get-started/install/#minimum-versions). The Logs, Preferences, SQLite,
-WorkManager, and Screen tabs are plugins, each with a pair of artifacts of its own: see
+[Minimum versions](https://twinsen81.github.io/Lustro/get-started/install/#minimum-versions) lists the `minSdk`,
+`compileSdk`, Android Gradle Plugin, and Kotlin versions that Lustro needs. Lustro does not raise
+the versions of your app's own dependencies. The Logs, Preferences, SQLite, WorkManager, and
+Screen tabs are plugins, each with a pair of artifacts of its own: see
 [Modules](https://twinsen81.github.io/Lustro/reference/modules/).
 
 ## With a coding agent

@@ -111,8 +111,9 @@ zensical build --clean --strict # what CI runs: fails on a broken link or anchor
 A link between pages is relative and names the Markdown file, such as
 `[Agents](AGENTS.md#use-the-lustro-cli)`, so that the strict build checks it. A
 link to a file outside `docs/`, such as a source file, is a full GitHub URL.
-A new page needs a line in the `nav` of `zensical.toml` and a link in
-`llms.txt`, so that people and agents find it. The README keeps only the
+A new page needs a line in the `nav` of `zensical.toml`, so that people find
+it. When it documents a tab, an API, or a task, it also needs a link in
+`llms.txt`, so that agents find it. The README keeps only the
 quick start and links to the site.
 The Kotlin API reference and the wire-protocol schemas are not in the preview:
 CI adds the Dokka output under `api/` and `wire-protocol/` when it publishes.

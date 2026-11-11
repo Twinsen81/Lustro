@@ -282,8 +282,9 @@ must not need a `resolutionStrategy` workaround in the app.
 
 **How to change:** to raise a floor, change it in `gradle/libs.versions.toml`,
 in `consumer-check/gradle.properties`, and in `docs/get-started/install.md`
-together, and say so in
-CHANGELOG.md: it is a requirement every app has to meet. OkHttp 5 as the floor
+together, and say so in CHANGELOG.md: it is a requirement every app has to
+meet. `docs/index.md`, `llms.txt`, and `skills/lustro/references/integrate.md`
+also name some of the floors in short form: change them in the same commit. OkHttp 5 as the floor
 would be that decision for the public API types, and is not planned while apps
 on 4.x exist. The Kotlin floor is the one the toolchain can force: when the
 catalog's compiler no longer supports language version 2.0, `kotlinFloor` moves
