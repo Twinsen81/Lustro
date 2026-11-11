@@ -7,6 +7,7 @@
 | `stream-envelope.schema.json` | `{ cursor, status, items?, dropped? }` | present |
 | `pagination.schema.json` | `{ items, nextCursor }` | present |
 | `meta.schema.json` | `GET /api/v1/_meta` response | present |
+| `_schema.json` (in the `lustro` AAR assets) | `GET /api/v1/_schema` response: the shared envelopes, in one document | present |
 | `network.openapi.json` (in AAR assets) | Network tab routes | present |
 | `logs.openapi.json` (in the `lustro-logs` AAR assets) | Logs tab routes, version `1.1` | present |
 | `prefs.openapi.json` (in the `lustro-prefs` AAR assets) | Preferences tab routes, version `1.1` | present |

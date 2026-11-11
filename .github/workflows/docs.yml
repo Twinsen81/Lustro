@@ -2,8 +2,9 @@ name: Docs
 
 # Builds the documentation site from docs/ with Zensical (zensical.toml) and,
 # on main, publishes it to GitHub Pages with the Dokka API reference under api/
-# and the wire-protocol schemas under wire-protocol/. The repository's Pages
-# source must be "GitHub Actions".
+# and, under wire-protocol/, the wire-protocol schemas and the bundle that
+# GET /api/v1/_schema serves. The repository's Pages source must be
+# "GitHub Actions".
 on:
   push:
     branches: [main]
@@ -12,6 +13,8 @@ on:
       - "docs/**"
       - "zensical.toml"
       - ".github/workflows/docs.yml"
+      - "wire-protocol/**"
+      - "lustro/src/main/assets/lustro/_schema.json"
   workflow_dispatch:
 
 permissions:
@@ -61,12 +64,27 @@ jobs:
       # The schemas of the wire protocol, at the URLs that their $id fields name.
       # The page docs/wire-protocol.md already makes site/wire-protocol/, so
       # copy the contents: `cp -R wire-protocol site/wire-protocol` would put
-      # them one level deeper. It runs in pull requests too, so that a page
-      # that takes one of these paths fails the build there.
+      # them one level deeper. The bundle that GET /api/v1/_schema serves is an
+      # asset of the lustro module, not a file in wire-protocol/, so copy it
+      # too. Then every $id in the repository's JSON files that names a URL of
+      # this site must be a file in the site. It runs in pull requests too, so
+      # that a page that takes one of these paths, or a schema that is not
+      # copied, fails the build there.
       - name: Add the wire protocol to the site
         run: |
           cp -R wire-protocol/. site/wire-protocol/
-          test -f site/wire-protocol/v1/meta.schema.json
+          cp lustro/src/main/assets/lustro/_schema.json site/wire-protocol/v1/_schema.json
+          paths=$(git grep -h -o -E '"[$]id": *"https://twinsen81\.github\.io/Lustro/[^"]+"' -- '*.json' \
+            | sed -E 's|.*/Lustro/([^"]+)"$|\1|' | sort -u)
+          test -n "$paths"
+          missing=0
+          for path in $paths; do
+            if [ ! -f "site/$path" ]; then
+              echo "::error::A \$id names $path, and the site has no file there"
+              missing=1
+            fi
+          done
+          exit "$missing"
 
       - name: Upload the site
         if: ${{ github.ref == 'refs/heads/main' }}
