@@ -59,9 +59,14 @@ jobs:
         run: cp -R build/dokka/html site/api
 
       # The schemas of the wire protocol, at the URLs that their $id fields name.
+      # The page docs/wire-protocol.md already makes site/wire-protocol/, so
+      # copy the contents: `cp -R wire-protocol site/wire-protocol` would put
+      # them one level deeper. It runs in pull requests too, so that a page
+      # that takes one of these paths fails the build there.
       - name: Add the wire protocol to the site
-        if: ${{ github.ref == 'refs/heads/main' }}
-        run: cp -R wire-protocol site/wire-protocol
+        run: |
+          cp -R wire-protocol/. site/wire-protocol/
+          test -f site/wire-protocol/v1/meta.schema.json
 
       - name: Upload the site
         if: ${{ github.ref == 'refs/heads/main' }}

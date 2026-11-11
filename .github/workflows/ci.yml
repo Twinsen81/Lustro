@@ -63,7 +63,7 @@ jobs:
       - name: Set up JDK + Gradle
         uses: ./.github/actions/setup
 
-      # The Maven coordinates that README.md, docs/index.md, llms.txt,
+      # The Maven coordinates that README.md, the pages in docs/, llms.txt,
       # context7.json, and the lustro skill give to people and agents must match
       # gradle.properties (see gradle/docs-version.gradle.kts). It reads text
       # only, so it runs first.
@@ -151,7 +151,8 @@ jobs:
 
   # --- Consumer check: the published artifacts in an app on older tools --------
   # Adding Lustro must not raise an app's own dependency versions, and the
-  # artifacts must build on the oldest toolchain README.md promises. The job
+  # artifacts must build on the oldest toolchain that the docs promise
+  # (docs/get-started/install.md, "Minimum versions"). The job
   # publishes the checkout to the local Maven repository, then builds the app in
   # consumer-check/ against it: once with that directory's gradle.properties,
   # the floors, and once with current versions, OkHttp 5 and the lifecycle

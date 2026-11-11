@@ -19,8 +19,8 @@ targetSdk = "35"
 # artifacts. Each is a floor, the oldest version with the APIs Lustro uses, so
 # that adding Lustro does not raise an app's own versions (Gradle keeps the
 # higher one). Dependabot ignores them, consumer-check/ builds an app with
-# exactly these versions, and README.md documents them: move all of them
-# together. kotlinFloor is the kotlin-stdlib the artifacts require and the
+# exactly these versions, and docs/get-started/install.md documents them:
+# move all of them together. kotlinFloor is the kotlin-stdlib the artifacts require and the
 # language and API version they are compiled as (Kotlin 2.0 metadata).
 kotlinFloor = "2.0.21"
 okhttp = "4.12.0"

@@ -24,7 +24,28 @@ Facts to get right when you add Lustro to an app:
 
 ## Docs
 
-- [README](https://raw.githubusercontent.com/Twinsen81/Lustro/main/README.md): install, quick start, capture options, mock rules, the security model, custom tabs, and troubleshooting
+- [Install](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/get-started/install.md): the artifacts, the snapshots repository, the minimum versions, a debug-only `minSdk`, and the `lustro` CLI
+- [Quick start](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/get-started/quick-start.md): the bootstrap, and the three things that keep Lustro out of release builds
+- [Accessing the UI](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/get-started/console.md): the port forward, the token, and the browser login
+- [Check the integration](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/get-started/check.md): six checks that capture works and that the release build has no runtime
+- [OkHttp capture setup](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/network/okhttp.md): the interceptor's place, request and compressed bodies, multipart, streams, and the capture filter
+- [WebSocket messages](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/network/websockets.md): `webSocketFactory`, the libraries that take a `WebSocket.Factory`, redaction, and limits
+- [Send Request](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/network/send-request.md): named senders through the app's own clients
+- [Export](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/network/export.md): HAR and Markdown export
+- [Mock rules](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/network/mocks.md): matching, order, `MockRuleStorage`, and what makes a rule valid
+- [Platform HttpURLConnection capture](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/network/httpurlconnection.md): the opt-in and its limits
+- [Other HTTP clients](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/network/other-clients.md): an adapter that reports to `networkCaptureSink()`
+- [Logs plugin](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/plugins/logs.md): the app's own logcat
+- [Preferences plugin](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/plugins/prefs.md): SharedPreferences and Preferences DataStores, value policies, and edits
+- [SQLite plugin](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/plugins/sqlite.md): SQLite and Room databases, the SQL console, writes, and `onWrite`
+- [WorkManager plugin](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/plugins/work.md): the work, the events of each run, the variant-split bootstrap, cancel, and prune
+- [Screen plugin](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/plugins/screen.md): the app's windows and UI tree, for agents and scripts
+- [Custom tabs](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/custom-tabs.md): `DebugTab`, its asset and rendering conventions, threading, and cancellation
+- [Security model](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/concepts/security.md): loopback, the token, the CSP, redaction, and release builds
+- [LAN exposure and port forwarding](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/concepts/lan.md): binding all interfaces, and its risk
+- [OpenAPI and wire protocol](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/wire-protocol.md): the framework routes, the shared envelopes, and each tab's OpenAPI document
+- [Troubleshooting](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/reference/troubleshooting.md): no connection, `401`, nothing captured, and dependency verification
+- [Modules](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/reference/modules.md): every published module and its coordinates
 - [Driving Lustro from agents](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/AGENTS.md): token discovery, authentication, the wire protocol, and the Network, Logs, Preferences, SQLite, WorkManager, and Screen routes, for agents that use a running Lustro
 - [Security policy](https://raw.githubusercontent.com/Twinsen81/Lustro/main/SECURITY.md): the threat model, and what keeps Lustro out of release builds
 

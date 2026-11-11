@@ -16,8 +16,8 @@ updates:
       # The runtime dependencies of the published artifacts are floors: Lustro
       # declares the oldest version with the APIs it uses, and an app keeps its
       # own, newer version. A bump here would raise the floor for every app, so
-      # these move by hand, together with consumer-check/ and README.md (see
-      # DECISIONS.md, "Dependency floors"). OkHttp types are also part of the
+      # these move by hand, together with consumer-check/ and
+      # docs/get-started/install.md (see DECISIONS.md, "Dependency floors"). OkHttp types are also part of the
       # public API, and okhttp-android 5.x requires compileSdk 36.
       - dependency-name: "com.squareup.okhttp3:*"
       - dependency-name: "androidx.lifecycle:*"

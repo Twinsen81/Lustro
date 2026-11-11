@@ -6,8 +6,8 @@ HTML. This document is the operational guide for non-browser clients. The HTTP w
 not the Kotlin API — is the stable contract; it is versioned and SemVer-governed under
 [`wire-protocol/v1/`](https://github.com/Twinsen81/Lustro/tree/main/wire-protocol/v1).
 
-This document is about using a running Lustro. To add Lustro to an app, follow the README's
-[Install](https://github.com/Twinsen81/Lustro#install) and [Quick start](https://github.com/Twinsen81/Lustro#quick-start) sections.
+This document is about using a running Lustro. To add Lustro to an app, follow
+[Install](get-started/install.md) and [Quick start](get-started/quick-start.md).
 
 > **Status:** pre-1.0. The protocol may still change between snapshots. Always read `_meta` and
 > the per-tab `_schema` at runtime rather than hard-coding shapes.

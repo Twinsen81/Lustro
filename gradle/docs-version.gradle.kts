@@ -6,14 +6,26 @@
 // It reads every `group:lustro...[:version]` coordinate, every version-catalog
 // library with a Lustro name (its group, its inline `version`, and the entry its
 // `version.ref` names), and every `lustro = "<version>"` catalog entry in the
-// docs below. It fails when a group is not GROUP, when the docs name more
-// than one version, or when the version is not VERSION_NAME. One exception:
-// while VERSION_NAME is the -SNAPSHOT that follows a release, the docs can keep
-// that earlier release, which people can resolve from Maven Central. A release
-// commit, whose VERSION_NAME has no -SNAPSHOT, must update them all.
+// docs below and in every page of the docs site. It fails when a group is not
+// GROUP, when the docs name more than one version, or when the version is not
+// VERSION_NAME. One exception: while VERSION_NAME is the -SNAPSHOT that follows
+// a release, the docs can keep that earlier release, which people can resolve
+// from Maven Central. A release commit, whose VERSION_NAME has no -SNAPSHOT,
+// must update them all.
 
-val docsWithVersion = listOf("README.md", "docs/index.md", "llms.txt", "skills/lustro/references/integrate.md")
-val docsWithCoordinates = docsWithVersion + "context7.json"
+// The docs that must name the version. The other pages of the site, such as a
+// plugin page, can name only coordinates without a version.
+val docsWithVersion = listOf(
+    "README.md",
+    "docs/index.md",
+    "docs/get-started/install.md",
+    "llms.txt",
+    "skills/lustro/references/integrate.md",
+)
+val sitePages = fileTree("docs") { include("**/*.md") }.files
+    .map { it.relativeTo(rootDir).invariantSeparatorsPath }
+    .sorted()
+val docsWithCoordinates = (docsWithVersion + "context7.json" + sitePages).distinct()
 
 val coordinatePattern = Regex("""\b([A-Za-z][\w-]*(?:\.[\w-]+)+):(lustro[\w-]*)(?::(\d[\w.+-]*))?""")
 val catalogTablePattern = Regex("""\{[^{}\n]*}""")
@@ -124,7 +136,7 @@ tasks.register("checkDocsVersion") {
                 buildString {
                     appendLine("checkDocsVersion FAILED: the integration docs don't match gradle.properties.")
                     problems.forEach { appendLine(it) }
-                    append("Update the coordinates in ${docsWithCoordinates.joinToString()}.")
+                    append("Update the coordinates in the files above.")
                 },
             )
         }

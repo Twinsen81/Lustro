@@ -56,7 +56,7 @@ android {
     // `baseline` is the app without Lustro, the control that
     // checkLustroKeepsAppVersions compares against. `withLustro` adds `lustro`,
     // `lustro-logs`, `lustro-prefs`, `lustro-sqlite`, `lustro-work`, and `lustro-screen`
-    // to debug and their no-op halves to release, as README.md tells an app to.
+    // to debug and their no-op halves to release, as the docs tell an app to.
     flavorDimensions += "lustro"
     productFlavors {
         create("baseline") { dimension = "lustro" }
@@ -183,8 +183,8 @@ val checkLustroKeepsAppVersions =
     }
 
 androidComponents {
-    // As README.md tells an app with a minSdk below Lustro's runtime: raise it for the
-    // debug variant only, which takes the runtime.
+    // As docs/get-started/install.md tells an app with a minSdk below Lustro's runtime:
+    // raise it for the debug variant only, which takes the runtime.
     if (appMinSdk < lustroRuntimeMinSdk) {
         beforeVariants(selector().withBuildType("debug")) { variant ->
             variant.minSdk = lustroRuntimeMinSdk

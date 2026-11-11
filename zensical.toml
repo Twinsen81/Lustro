@@ -26,11 +26,47 @@ requirements.txt
 
 nav = [
   { "Home" = "index.md" },
-  { "User guide" = "https://github.com/Twinsen81/Lustro#readme" },
-  { "Agents and automation" = "AGENTS.md" },
-  { "Custom tab styleguide" = "STYLEGUIDE.md" },
-  { "Kotlin API reference" = "https://twinsen81.github.io/Lustro/api/" },
-  { "Changelog" = "https://github.com/Twinsen81/Lustro/blob/main/CHANGELOG.md" },
+  { "Get started" = [
+    { "Install" = "get-started/install.md" },
+    { "Quick start" = "get-started/quick-start.md" },
+    { "Accessing the UI" = "get-started/console.md" },
+    { "Check the integration" = "get-started/check.md" },
+    { "With a coding agent" = "get-started/coding-agent.md" },
+  ] },
+  { "Network tab" = [
+    { "OkHttp capture setup" = "network/okhttp.md" },
+    { "WebSocket messages" = "network/websockets.md" },
+    { "Send Request" = "network/send-request.md" },
+    { "Export" = "network/export.md" },
+    { "Mock rules" = "network/mocks.md" },
+    { "Platform HttpURLConnection capture" = "network/httpurlconnection.md" },
+    { "Other HTTP clients" = "network/other-clients.md" },
+  ] },
+  { "Plugins" = [
+    { "Logs" = "plugins/logs.md" },
+    { "Preferences" = "plugins/prefs.md" },
+    { "SQLite" = "plugins/sqlite.md" },
+    { "WorkManager" = "plugins/work.md" },
+    { "Screen" = "plugins/screen.md" },
+  ] },
+  { "Custom tabs" = [
+    { "Overview" = "custom-tabs.md" },
+    { "Styleguide" = "STYLEGUIDE.md" },
+  ] },
+  { "Agents and automation" = [
+    { "Driving Lustro from agents" = "AGENTS.md" },
+    { "OpenAPI and wire protocol" = "wire-protocol.md" },
+  ] },
+  { "Concepts" = [
+    { "Security model" = "concepts/security.md" },
+    { "LAN exposure and port forwarding" = "concepts/lan.md" },
+  ] },
+  { "Reference" = [
+    { "Troubleshooting" = "reference/troubleshooting.md" },
+    { "Modules" = "reference/modules.md" },
+    { "Kotlin API reference" = "https://twinsen81.github.io/Lustro/api/" },
+    { "Changelog" = "https://github.com/Twinsen81/Lustro/blob/main/CHANGELOG.md" },
+  ] },
 ]
 
 [project.theme]

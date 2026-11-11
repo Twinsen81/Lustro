@@ -1,6 +1,6 @@
 # Consumer check
 
-A small app that adds Lustro the way [README.md](../README.md) says to, built on
+A small app that adds Lustro the way the [docs](../docs/get-started/install.md) say to, built on
 the oldest toolchain and dependency versions that Lustro supports. CI builds it
 on every pull request, and it fails when a published Lustro artifact would raise
 the app's own versions: a debug tool must not change the build it inspects.

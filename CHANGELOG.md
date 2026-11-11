@@ -40,7 +40,12 @@ see [DECISIONS.md](DECISIONS.md).
   `wire-protocol/`, at the URLs that their `$id` fields name. The site has a
   home page with a quick start, `docs/AGENTS.md`, and `docs/STYLEGUIDE.md`. A
   release no longer pushes Dokka to a `gh-pages` branch, and `checkDocsVersion`
-  also checks the coordinates in `docs/index.md`.
+  also checks the coordinates in `docs/index.md`. The user guide is on the site
+  too: each long section of the README is now a page, in the sections Get
+  started, Network tab, Plugins, Custom tabs, Agents and automation, Concepts,
+  and Reference, and the README keeps a quick start and links to the site.
+  `llms.txt` links the pages in place of the README, and `checkDocsVersion`
+  checks the coordinates in every page.
 
 - **A Screen tab gives agents and scripts the app's UI as a tree.** A new
   plugin pair, `lustro-screen` and `lustro-screen-noop`, registered with
