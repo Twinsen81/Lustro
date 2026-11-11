@@ -1671,7 +1671,9 @@ see [DECISIONS.md](DECISIONS.md).
   that repeated an id lost a rule without an error. The route now rejects
   such a set with a `400`, `field: "id"`, and the indexes of both rules in the
   message, before the rules change, as it does for a rule that is not valid.
-  A rule without an `id` still gets a new one. `count` is the number of rules
+  A rule without an `id` still gets a new one. A rule with `"id": null` now
+  gets one too, on this route and on `POST rules`: it was stored with the id
+  `null`, so two such rules had the same id. `count` is the number of rules
   set. The agent guide, the OpenAPI document, and the wire protocol's minor
   revisions say so. Checked on a physical device: a sync of three rules with
   the id `a` at index 0 and 2 answered `200` with `count: 3` and set two

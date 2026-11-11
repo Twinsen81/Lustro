@@ -31,8 +31,10 @@ internal object MockRuleCodec {
      * with no id is.
      */
     fun parse(obj: JSONObject, generateMissingId: Boolean): MockRuleParseResult {
-        val rawId = obj.optString("id")
-        val id = if (rawId.isBlank() && generateMissingId) UUID.randomUUID().toString() else rawId
+        // Android's optString gives the text "null" for a null value, which
+        // would be the id of every rule that a client sends with "id": null.
+        val rawId = if (obj.isNull("id")) "" else obj.optString("id")
+        val id =if (rawId.isBlank() && generateMissingId) UUID.randomUUID().toString() else rawId
         val rule =
             MockRuleImpl(
                 id = id,
