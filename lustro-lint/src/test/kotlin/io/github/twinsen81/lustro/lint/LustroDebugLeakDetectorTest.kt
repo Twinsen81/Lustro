@@ -201,9 +201,106 @@ class LustroDebugLeakDetectorTest : LintDetectorTest() {
             .expectClean()
     }
 
+    // Test code never goes into an APK, so a fake tab that a unit test or an
+    // instrumented test uses is not a leak. These tests have a Gradle build file:
+    // without one, the lint harness puts every file in the main source set.
+    fun testDebugTabSubclassInUnitTestSourcesIsClean() {
+        lint()
+            .allowMissingSdk()
+            .files(
+                gradleBuild(checkTestSources = false),
+                debugTabStubInMain,
+                fakeTab("src/test/kotlin/com/example/FakeTab.kt"),
+            )
+            .run()
+            .expectClean()
+    }
+
+    fun testDebugTabSubclassInAndroidTestSourcesIsClean() {
+        lint()
+            .allowMissingSdk()
+            .files(
+                gradleBuild(checkTestSources = false),
+                debugTabStubInMain,
+                fakeTab("src/androidTest/kotlin/com/example/FakeTab.kt"),
+            )
+            .run()
+            .expectClean()
+    }
+
+    // With `checkTestSources`, lint runs every issue on test sources, whatever the
+    // scope of the issue.
+    fun testDebugTabSubclassInTestSourcesIsCleanWithCheckTestSources() {
+        lint()
+            .allowMissingSdk()
+            .files(
+                gradleBuild(checkTestSources = true),
+                debugTabStubInMain,
+                fakeTab("src/test/kotlin/com/example/FakeTab.kt"),
+                fakeTab("src/androidTest/kotlin/com/example/FakeAndroidTab.kt"),
+            )
+            .run()
+            .expectClean()
+    }
+
+    fun testDebugTabSubclassInMainIsFlaggedWithCheckTestSources() {
+        lint()
+            .allowMissingSdk()
+            .files(
+                gradleBuild(checkTestSources = true),
+                debugTabStubInMain,
+                fakeTab("src/main/kotlin/com/example/MyTab.kt"),
+                fakeTab("src/test/kotlin/com/example/FakeTab.kt"),
+            )
+            .run()
+            .expectErrorCount(1)
+            .expectContains("src/main/kotlin/com/example/MyTab.kt:3: Error")
+    }
+
     private companion object {
+        fun gradleBuild(checkTestSources: Boolean): TestFile =
+            gradle(
+                """
+                apply plugin: 'com.android.application'
+                android {
+                    lintOptions {
+                        checkTestSources $checkTestSources
+                    }
+                }
+                """,
+            ).indented()
+
+        fun fakeTab(path: String): TestFile {
+            val name = path.substringAfterLast('/').removeSuffix(".kt")
+            return kotlin(
+                path,
+                """
+                package com.example
+                import io.github.twinsen81.lustro.DebugTab
+                class $name : DebugTab() {
+                    override val id = "fake"
+                    override val title = "Fake"
+                    override val icon = "x"
+                }
+                """,
+            ).indented()
+        }
+
         val debugTabStub: TestFile =
             kotlin(
+                """
+                package io.github.twinsen81.lustro
+                abstract class DebugTab {
+                    abstract val id: String
+                    abstract val title: String
+                    abstract val icon: String
+                }
+                """,
+            ).indented()
+
+        val debugTabStubInMain: TestFile =
+            kotlin(
+                "src/main/kotlin/io/github/twinsen81/lustro/DebugTab.kt",
                 """
                 package io.github.twinsen81.lustro
                 abstract class DebugTab {
