@@ -59,20 +59,27 @@ the connection. When the port is taken, the server tries again for 10 s, or bind
 Every request to `/api/v1/` passes the same checks, in this order. The first check that fails
 answers with the [error envelope](../wire-protocol.md):
 
-1. A body larger than [`maxRequestBodyBytes`](../reference/configuration.md) gets a `413`, before
+1. A request with a `Transfer-Encoding` header, such as a chunked body, or with a `Content-Length`
+    that is not valid, gets a `400`.
+2. A body larger than [`maxRequestBodyBytes`](../reference/configuration.md) gets a `413`, before
     the server reads it.
-2. A request without a valid token gets a `401`. `POST /api/v1/_auth` is the only route that
-    needs no token.
-3. A browser request from another origin gets a `403`: see [Security model](security.md).
-4. A request waits for one of the [`maxConcurrentRequests`](../reference/configuration.md) slots.
-    When the slots and the queue are full, or when the wait is longer than `requestTimeoutMs`, it
-    gets a `503`.
-5. The server routes the request. It answers the framework routes `_meta` and `_schema` itself.
+3. A request without a valid token gets a `401`.
+4. A browser request from another origin gets a `403`: see [Security model](security.md).
+5. The server reads the body. All the bodies in memory at one time stay under
+    `maxConcurrentRequests` × `maxRequestBodyBytes`, so a request can wait for room first.
+6. The request waits for one of the [`maxConcurrentRequests`](../reference/configuration.md)
+    slots. When the slots and the queue are full, or when a wait for room or for a slot is longer
+    than `requestTimeoutMs`, it gets a `503`.
+7. The server routes the request. It answers the framework routes `_meta` and `_schema` itself.
     For `/api/v1/<id>/<path>`, it finds the tab with that id and calls its `handle(request)`.
-6. When `handle` returns `null`, the client gets a `404`. When it throws anything, the client gets
+8. When `handle` returns `null`, the client gets a `404`. When it throws anything, the client gets
     a `500`, and the app does not crash. When it runs longer than
     [`requestTimeoutMs`](../reference/configuration.md), the client gets a `504`, and the server
     cancels the request.
+
+`POST /api/v1/_auth` is the only route that needs no token, and it has its own checks: another
+method gets a `405`, a request from another origin a `403`, a body larger than a small limit a
+`413`, and a wrong token a `401`.
 
 Every response, the error responses too, has the Content Security Policy and
 `X-Content-Type-Options: nosniff`.
@@ -173,7 +180,8 @@ gives the rules for the code and the assets.
 | `DebugTab.handle(request)`, `renderContent()`, `renderScript()`, `renderStyles()`, `schema()` | A `lustro-request-worker` thread, never the main thread. Calls can run at the same time on different threads. |
 | Actions from `request.onCancel { }` | A server thread, when the request times out or the server stops. Such an action can run after `handle` has returned. |
 | Reading the request and writing the response | A `lustro-http-<n>` thread, one for each open connection. |
-| Bind, drain, and the `LustroToken` line | The `lustro-worker` thread. |
+| The bind when the app comes to the foreground | The main thread, in `Lustro.start()` and in the process lifecycle's callback. |
+| The retries of a bind to a taken port, the drain and close when the app goes to the background, and the `LustroToken` line | The `lustro-worker` thread. |
 
 Thus a tab with mutable state must make it thread-safe. A tab can block on I/O in `handle`,
 because the per-request timeout limits the wait. [Custom tabs](../custom-tabs.md) gives the rules

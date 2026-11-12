@@ -168,10 +168,34 @@ make the error envelope: `error(...)` is a `400` by default, and `notFound(...)`
     }
 ```
 
-`upload` works the same way. It parses a JSON array of flags, or an object with a `flags` array,
-puts each flag, and advances the sequence once when it added at least one. The server reads at most
-[`maxRequestBodyBytes`](reference/configuration.md) of a body, 1 MiB by default, and answers a
-larger one with a `413` before the tab sees it.
+`upload` takes a JSON array of flags, or an object with a `flags` array. It puts each flag, and
+advances the sequence once when it added at least one:
+
+```kotlin
+    private fun upload(body: String?): DebugResponse {
+        if (body.isNullOrBlank()) return DebugResponse.error("Empty upload", field = "body")
+        val array =
+            try {
+                val text = body.trim()
+                if (text.startsWith("[")) JSONArray(text) else JSONObject(text).optJSONArray("flags") ?: JSONArray()
+            } catch (e: JSONException) {
+                return DebugResponse.error("Invalid flags file: ${e.message}")
+            }
+        var imported = 0
+        for (i in 0 until array.length()) {
+            val obj = array.optJSONObject(i) ?: continue
+            val flagId = obj.optString("id")
+            if (flagId.isBlank()) continue
+            put(Flag(flagId, obj.optString("description", flagId), obj.optBoolean("enabled", false)))
+            imported++
+        }
+        if (imported > 0) sequence.incrementAndGet()
+        return DebugResponse.json { append("{\"status\":\"ok\",\"imported\":").append(imported).append("}") }
+    }
+```
+
+The server reads at most [`maxRequestBodyBytes`](reference/configuration.md) of a body, 1 MiB by
+default, and answers a larger one with a `413` before the tab sees it.
 
 These handlers return at once. A route that waits, for a network call or a long query, must stop
 when the request times out: the client then has a `504`, and the request still holds one of the
@@ -251,7 +275,10 @@ The console loads `flags.js` after `shared.js`, so the script can use the helper
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ id: el.dataset.flagId })
-        }).catch(function(e) { window.debugToast('Failed to toggle: ' + e.message, 'error'); });
+        }).catch(function(e) {
+            window.debugToast('Failed to toggle: ' + e.message, 'error');
+            render(); // The browser already moved the switch: put it back.
+        });
     }
 
     window.lustroOnContentReady(function() {
@@ -262,7 +289,9 @@ The console loads `flags.js` after `shared.js`, so the script can use the helper
 ```
 
 The listener is on `#lustro-tab-content`, the content area, and not on each switch. Then it keeps
-working when `render()` replaces the switches. The script treats a status that it does not know as
+working when `render()` replaces the switches. When the toggle fails, the script renders the list
+again, because the browser moved the switch before the request, and the next polls are
+`unchanged`. The script treats a status that it does not know as
 `reset`, as the envelope's rules require. The fetch sends the console's cookie, so the script
 needs no token.
 
