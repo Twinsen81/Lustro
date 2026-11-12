@@ -22,6 +22,23 @@ updates:
       - dependency-name: "com.squareup.okhttp3:*"
       - dependency-name: "androidx.lifecycle:*"
       - dependency-name: "org.nanohttpd:*"
+      # The compileOnly floors of the plugin modules (datastoreFloor,
+      # coroutinesFloor, sqliteFloor, workFloor, composeUiFloor) are floors for
+      # the same reason: the tab calls the app's own copy, so code compiled
+      # against a newer release can call a method that an older app does not
+      # have. Some of these artifacts are also in the catalog under the
+      # sample's or the tests' versions, and Dependabot does not tell the two
+      # declarations apart, so it raised the floors together with them. The
+      # sample and test versions can still move through the artifacts that
+      # share their version key (datastore-preferences for "datastore",
+      # work-testing for "work"). If they do not, move them by hand.
+      - dependency-name: "org.jetbrains.kotlinx:kotlinx-coroutines-core"
+      - dependency-name: "androidx.datastore:datastore-core"
+      - dependency-name: "androidx.datastore:datastore-preferences-core"
+      - dependency-name: "androidx.sqlite:sqlite"
+      - dependency-name: "androidx.work:work-runtime"
+      - dependency-name: "androidx.work:work-analytics"
+      - dependency-name: "androidx.compose.ui:ui"
       # The sample's Compose UI stays on the newest line that compiles against
       # compileSdk 35: Compose 1.9 (BOM 2025.08.00) and activity 1.11 need 36.
       - dependency-name: "androidx.compose:compose-bom"
