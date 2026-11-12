@@ -9,7 +9,8 @@ default — including `handle(request)` for JSON routes and `renderContent()` fo
 
 A tab is your code, and it reads your app's internals, so put it in `src/debug`. The release build
 fails on a `DebugTab` subclass in `src/main` or `src/release`: see
-[Quick start](get-started/quick-start.md).
+[Release safety](concepts/release-safety.md#the-lint-check). [Write a tab](write-a-tab.md) builds
+a complete tab step by step.
 
 ```kotlin
 class FlagsTab(private val flags: FeatureFlagRepository) : DebugTab() {
