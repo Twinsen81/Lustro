@@ -31,6 +31,10 @@ import java.util.EnumSet
  * the check also fires in mixed source layouts where the runtime is on the
  * default `implementation` configuration.
  *
+ * Test sources (`src/test`, `src/androidTest`, and their variants) are not
+ * checked, also with `checkTestSources = true`: test code never goes into an APK,
+ * and a fake `DebugTab` that a test uses is not a leak.
+ *
  * The severity is FATAL so that `lintVital<Variant>`, which `assemble<Variant>`
  * runs for each release variant and which checks only FATAL issues, fails the
  * release build. `:lustro-noop` ships this check too, so the release lint loads
@@ -44,6 +48,9 @@ public class LustroDebugLeakDetector : Detector(), Detector.UastScanner {
         // Ignore the abstract base itself and any subclass that lives in a debug
         // source set. Only concrete leaks into non-debug source are reported.
         if (declaration.qualifiedName == DEBUG_TAB) return
+        // Test code never goes into an APK. The scope leaves out test sources, but
+        // `checkTestSources = true` makes lint run every issue on them.
+        if (context.isTestSource) return
         if (isDebugSourceSet(context)) return
         context.report(
             ISSUE,
@@ -72,8 +79,8 @@ public class LustroDebugLeakDetector : Detector(), Detector.UastScanner {
             return false
         }
         val sourceSet = segments[srcIndex + 1].lowercase()
-        // `debug`, `<flavor>Debug` (lower-cased -> ends with "debug"), and the
-        // generic `androidTestDebug` etc. all count as debug-only source sets.
+        // `debug` and `<flavor>Debug` (lower-cased -> ends with "debug") count as
+        // debug-only source sets.
         return sourceSet == "debug" || sourceSet.endsWith("debug")
     }
 
@@ -120,7 +127,7 @@ public class LustroDebugLeakDetector : Detector(), Detector.UastScanner {
                 implementation =
                     Implementation(
                         LustroDebugLeakDetector::class.java,
-                        EnumSet.of(Scope.JAVA_FILE, Scope.TEST_SOURCES),
+                        EnumSet.of(Scope.JAVA_FILE),
                     ),
             )
 

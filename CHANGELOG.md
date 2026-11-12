@@ -939,6 +939,17 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Fixed
 
+- **The lint check `LustroDebugUsageInRelease` no longer reports a `DebugTab`
+  in test sources.** A fake tab in `src/test` or `src/androidTest`, which a
+  test uses, made `lintDebug` and `lintRelease` fail, but test code never goes
+  into an APK. The check now leaves out test sources, also when the app sets
+  `lint { checkTestSources = true }`, which makes lint run every check on
+  them. A `DebugTab` in `src/main` or `src/release` is still reported. The
+  release build was not affected: `lintVitalRelease` does not read test
+  sources. Verified with the consumer check on AGP 8.6.1 and 8.13.2: before
+  the change, `lintWithLustroDebug` reported a `DebugTab` in `src/test` and
+  `src/androidTest`; after it, the lint passes, also with
+  `checkTestSources = true`.
 - **The lint check `LustroDebugUsageInRelease` now fails a release build with
   a `DebugTab` outside `src/debug`.** A custom tab is app code, so the
   `lustro-noop` swap cannot remove it from a release APK, and the check exists

@@ -43,7 +43,8 @@ Three things keep that snippet out of production, in order of how much they depe
 > ships a published Android Lint check (`LustroDebugUsageInRelease`, severity FATAL) in both
 > `:lustro` and `:lustro-noop`, so the debug and the release lint load it. It flags a `DebugTab`
 > subclass in a source set whose name does not end with `debug`, such as `src/main` or
-> `src/release`. `assembleRelease` and `bundleRelease` run the release lint (`lintVitalRelease`),
+> `src/release`. It does not check test sources, such as `src/test` and `src/androidTest`, so a
+> fake tab that a test uses is not reported. `assembleRelease` and `bundleRelease` run the release lint (`lintVitalRelease`),
 > so a release build with such a class fails. The builder call above is
 > *not* flagged — it resolves to whichever facade the variant depends on. Putting the whole
 > bootstrap under `src/debug/` too (as the [`:sample`](https://github.com/Twinsen81/Lustro/tree/main/sample) app does) is still the cleanest layout, because
