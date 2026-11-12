@@ -53,6 +53,7 @@ nav = [
   ] },
   { "Custom tabs" = [
     { "Overview" = "custom-tabs.md" },
+    { "Write a tab" = "write-a-tab.md" },
     { "Styleguide" = "STYLEGUIDE.md" },
   ] },
   { "Agents and automation" = [
@@ -60,12 +61,16 @@ nav = [
     { "OpenAPI and wire protocol" = "wire-protocol.md" },
   ] },
   { "Concepts" = [
+    { "How Lustro works" = "concepts/how-it-works.md" },
+    { "Release safety" = "concepts/release-safety.md" },
     { "Security model" = "concepts/security.md" },
     { "LAN exposure and port forwarding" = "concepts/lan.md" },
   ] },
   { "Reference" = [
     { "Troubleshooting" = "reference/troubleshooting.md" },
     { "Modules" = "reference/modules.md" },
+    { "Configuration" = "reference/configuration.md" },
+    { "Glossary" = "reference/glossary.md" },
     { "Kotlin API reference" = "https://twinsen81.github.io/Lustro/api/" },
     { "Changelog" = "https://github.com/Twinsen81/Lustro/blob/main/CHANGELOG.md" },
   ] },

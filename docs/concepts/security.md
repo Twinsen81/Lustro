@@ -42,7 +42,6 @@ Lustro deliberately surfaces app internals, so its defaults are conservative. Se
       [SQLite](../plugins/sqlite.md) tab changes a database that is `writable`, when a client asks
       for an edit. The [WorkManager](../plugins/work.md) tab changes WorkManager's database when a
       client cancels or prunes work.
-- **Release builds are inert.** Release variants depend on `:lustro-noop`, whose runtime bodies
-    are empty — no server ships to production. As a backstop for a misconfigured dependency graph,
-    the real runtime also refuses to start in a build that is not marked debuggable
-    (`DebugConfig.allowNonDebuggableBuilds` opts an internal build back in).
+- **Release builds are inert.** Release variants depend on the no-op halves, so no server ships
+    in a release build, and the runtime refuses to start in a build that is not debuggable. See
+    [Release safety](release-safety.md).

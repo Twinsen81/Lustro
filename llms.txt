@@ -25,7 +25,7 @@ Facts to get right when you add Lustro to an app:
 ## Docs
 
 - [Install](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/get-started/install.md): the artifacts, the snapshots repository, the minimum versions, a debug-only `minSdk`, and the `lustro` CLI
-- [Quick start](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/get-started/quick-start.md): the bootstrap, and the three things that keep Lustro out of release builds
+- [Quick start](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/get-started/quick-start.md): the bootstrap, and where your own tabs must be
 - [Accessing the UI](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/get-started/console.md): the port forward, the token, and the browser login
 - [Check the integration](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/get-started/check.md): six checks that capture works and that the release build has no runtime
 - [OkHttp capture setup](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/network/okhttp.md): the interceptor's place, request and compressed bodies, multipart, streams, and the capture filter
@@ -41,11 +41,15 @@ Facts to get right when you add Lustro to an app:
 - [WorkManager plugin](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/plugins/work.md): the work, the events of each run, the variant-split bootstrap, cancel, and prune
 - [Screen plugin](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/plugins/screen.md): the app's windows and UI tree, for agents and scripts
 - [Custom tabs](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/custom-tabs.md): `DebugTab`, its asset and rendering conventions, threading, and cancellation
+- [Write a tab](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/write-a-tab.md): a tutorial that builds a custom tab with routes, the cursor envelope, a view, and an OpenAPI document
+- [How Lustro works](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/concepts/how-it-works.md): the server in the app, the port forward, the order of the checks on a request, the token, the parts of a tab, and its threads
+- [Release safety](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/concepts/release-safety.md): the no-op halves, the capabilities, the lint check, and the debuggable check, and how to check each one
 - [Security model](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/concepts/security.md): loopback, the token, the CSP, redaction, and release builds
 - [LAN exposure and port forwarding](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/concepts/lan.md): binding all interfaces, and its risk
 - [OpenAPI and wire protocol](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/wire-protocol.md): the framework routes, the shared envelopes, and each tab's OpenAPI document
 - [Troubleshooting](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/reference/troubleshooting.md): no connection, `401`, nothing captured, and dependency verification
 - [Modules](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/reference/modules.md): every published module and its coordinates
+- [Configuration](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/reference/configuration.md): every `DebugConfig` option, with its type, default, and effect
 - [Driving Lustro from agents](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/AGENTS.md): token discovery, authentication, the wire protocol, and the Network, Logs, Preferences, SQLite, WorkManager, and Screen routes, for agents that use a running Lustro
 - [Security policy](https://raw.githubusercontent.com/Twinsen81/Lustro/main/SECURITY.md): the threat model, and what keeps Lustro out of release builds
 
