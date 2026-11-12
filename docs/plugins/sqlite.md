@@ -189,6 +189,8 @@ internal tables behind **Show internal**, and a ★ to pin a table to the top.
 - **SQL.** The **SQL** view runs a statement with `query`; **Run as write**, only for a writable
     database, sends it to `exec`. A refused statement shows the route's error.
 
+![The SQLite tab: the notes table of the sample's notes database, sorted by id in descending order, with a blob in a text column, a cut text, and NULL cells](../images/sqlite-tab.png)
+
 ## HTTP routes
 
 - `GET /api/v1/sqlite/databases` lists the databases with their source, file, size, the size of

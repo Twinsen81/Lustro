@@ -119,6 +119,8 @@ and whether it is read-only.
 - **Auto-refresh.** On by default every 3 s, it shows the app's changes: a poll reads the file
     again only when its cursor moved.
 
+![The Preferences tab: the sample's registered DataStore, with values of seven types and a masked token](../images/prefs-tab.png)
+
 ## HTTP routes
 
 `GET /api/v1/prefs/files` lists the files with their stores, policies, and cursors. A file's
