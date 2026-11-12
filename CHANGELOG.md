@@ -939,6 +939,16 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Fixed
 
+- **A stalled build or install in the CLI end to end no longer holds the CI
+  job for 30 minutes.** In 2 of about 37 CI runs, the emulator job printed
+  `==> Install the debug sample` and then nothing, until GitHub cancelled it at
+  its 30-minute limit. The build and the install print no lines, so the log
+  did not show which one stalled. `.github/scripts/cli-e2e.sh` now prints a
+  step line before each one, stops the build after 5 minutes and
+  `adb install` after 1 minute, and tries the install once more. The logcat
+  read at exit has a 1-minute limit too, because a stalled adb stalls it as
+  well. Without `timeout` or `gtimeout`, as on macOS, the commands run with no
+  limit.
 - **The lint check `LustroDebugUsageInRelease` no longer reports a `DebugTab`
   in test sources.** A fake tab in `src/test` or `src/androidTest`, which a
   test uses, made `lintDebug` and `lintRelease` fail, but test code never goes

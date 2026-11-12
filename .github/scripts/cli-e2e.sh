@@ -25,15 +25,37 @@ PYTHON="${PYTHON:-python3}"
 PACKAGE="io.github.twinsen81.lustro.sample"
 CHECK=".github/scripts/cli_e2e_check.py"
 
+step() {
+  printf '\n==> %s\n' "$*"
+}
+
+# with_timeout SECONDS COMMAND...: runs COMMAND and stops it after SECONDS. In CI,
+# a stalled command otherwise holds the job until its 30-minute limit, and the log
+# does not show which command stalled. macOS has no `timeout`: Homebrew's coreutils
+# installs it as `gtimeout`. Without either, the command runs with no limit.
+TIMEOUT="$(command -v timeout || command -v gtimeout || true)"
+with_timeout() {
+  local seconds="$1"
+  shift
+  local status=0
+  if [ -n "$TIMEOUT" ]; then
+    "$TIMEOUT" -k 10 "$seconds" "$@" || status=$?
+  else
+    "$@" || status=$?
+  fi
+  # 124 when SIGTERM stopped the command, 137 when it took SIGKILL 10 s later.
+  if [ -n "$TIMEOUT" ] && { [ "$status" = 124 ] || [ "$status" = 137 ]; }; then
+    echo "error: '$*' did not finish within $seconds s" >&2
+  fi
+  return "$status"
+}
+
 rm -rf "$OUT"
 mkdir -p "$OUT"
 OUT="$(cd "$OUT" && pwd)"
 RULES="$OUT/rules-to-sync.json"
-trap 'adb logcat -d -v threadtime > "$OUT/logcat.txt" 2>&1 || true' EXIT
-
-step() {
-  printf '\n==> %s\n' "$*"
-}
+# A stalled adb also stalls this read, so it gets a limit too.
+trap 'with_timeout 60 adb logcat -d -v threadtime > "$OUT/logcat.txt" 2>&1 || true' EXIT
 
 # lustro NAME ARGS...: runs the CLI, keeps its stdout in $OUT/NAME and prints it.
 lustro_to() {
@@ -48,9 +70,18 @@ check() {
   "$OUT/venv/bin/python" "$CHECK" "$@"
 }
 
+# Neither command prints a line while it works, so each one has its own step line,
+# and a stall shows which one stalled. In CI, the build and the install together
+# take less than 20 s.
+step "Build the debug sample"
+with_timeout 300 ./gradlew :sample:assembleDebug --console=plain --quiet
+
+APK="sample/build/outputs/apk/debug/sample-debug.apk"
 step "Install the debug sample"
-./gradlew :sample:assembleDebug --console=plain --quiet
-adb install -r sample/build/outputs/apk/debug/sample-debug.apk
+if ! with_timeout 60 adb install -r "$APK"; then
+  step "Install the debug sample again, after the first install failed or stalled"
+  with_timeout 60 adb install -r "$APK"
+fi
 
 # The server listens only while the app is in the foreground, and a locked screen
 # stops the activity.
