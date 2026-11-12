@@ -19,7 +19,7 @@ desktop browser. Every tab is also a JSON API, so AI agents, scripts, and the
     Central snapshots repository. The Kotlin API and the HTTP API can change
     from one snapshot to the next.
 
-![The WorkManager tab in a desktop browser](images/work-tab.png)
+![The Network tab in a desktop browser: the sample app's requests, and the JSON response of one of them](images/network-tab.png)
 
 ## What you get
 

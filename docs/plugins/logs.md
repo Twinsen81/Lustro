@@ -65,6 +65,8 @@ them. Its `POST` routes change only the tab's own buffer. See
     for each run of a worker, opens the tab with only the lines of that time range, and a chip
     that clears it.
 
+![The Logs tab: the sample's lines at the levels V to F with the tag filter ^Sample, repeated lines folded into one row with a count, and a line with JSON](../images/logs-tab.png)
+
 ## HTTP routes
 
 `GET /api/v1/logs/entries` polls the log in the stream envelope, with `level`, `tag`, `q`, and
