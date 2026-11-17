@@ -66,6 +66,11 @@ not end with `debug`, such as `src/main` or `src/release`. Its severity is fatal
 `assembleRelease` and `bundleRelease` run the release lint (`lintVitalRelease`), so a release build
 with such a class fails.
 
+The check takes the source set from the path of the file below the module directory:
+`src/<set>/java/...` or `src/<set>/kotlin/...`. Folders above the module, such as `~/src/` in
+`~/src/MyApp/app/`, and package folders do not change the result. A class in a folder without this
+layout, such as an extra source folder `app/debug-extra/`, is reported.
+
 What the check does not report:
 
 - A tab in `src/debug` or in `src/<flavor>Debug`.

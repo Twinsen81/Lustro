@@ -62,30 +62,21 @@ public class LustroDebugLeakDetector : Detector(), Detector.UastScanner {
     }
 
     /**
-     * True when the analysed file belongs to a `debug` source set. Lint runs per
-     * source file, so the source-set directory is derived from the file path:
-     * `.../src/<sourceSet>/...`. Any segment named `debug` (e.g. `debug`,
-     * `<flavor>Debug` via a `debug`-suffixed dir is not split, so we match the
-     * exact `debug` dir and the common `*debug*` flavor dirs case-insensitively)
-     * marks the file as debug-only. Files outside any recognised `src/<set>/`
-     * layout are treated as non-debug (reported), which is the safe default.
+     * True when the analysed file belongs to a debug source set: `debug`, or a
+     * `<flavor>Debug` set (the name, in lower case, ends with `debug`). A file
+     * outside a recognised `src/<set>/<java|kotlin>/` layout is not debug, so it
+     * is reported. This is the safe default.
+     *
+     * Lint gives no source-set name for a file. `LintModelSourceProvider` has no
+     * name, and AGP always sets its `isDebugOnly()` to false. So the set name comes
+     * from the path, but only from the part below the module directory
+     * (`context.project.dir`): a folder above the module, such as `~/src/` in
+     * `~/src/MyApp/app/src/debug/kotlin/...`, is not part of the parsed path.
      */
     private fun isDebugSourceSet(context: JavaContext): Boolean {
-        val segments = pathSegments(context.file)
-        val srcIndex = segments.indexOf("src")
-        if (srcIndex == -1 || srcIndex + 1 >= segments.size) {
-            // Not in a recognisable Gradle source layout (e.g. a synthetic test
-            // file). Treat as non-debug so genuine leaks are not silently passed.
-            return false
-        }
-        val sourceSet = segments[srcIndex + 1].lowercase()
-        // `debug` and `<flavor>Debug` (lower-cased -> ends with "debug") count as
-        // debug-only source sets.
-        return sourceSet == "debug" || sourceSet.endsWith("debug")
+        val sourceSet = sourceSetName(context.file, context.project.dir) ?: return false
+        return sourceSet.lowercase().endsWith("debug")
     }
-
-    private fun pathSegments(file: File): List<String> =
-        file.invariantSeparatorsPath.split('/').filter { it.isNotEmpty() }
 
     public companion object {
         // Fully-qualified name of the Lustro debug API surface this check tracks.
@@ -132,5 +123,47 @@ public class LustroDebugLeakDetector : Detector(), Detector.UastScanner {
             )
 
         private const val PRIORITY = 8
+
+        private val SOURCE_LANGUAGE_DIRS = setOf("java", "kotlin")
+
+        /**
+         * The name of the source set that contains [file], or null when [file] is
+         * not in a `src/<set>/<java|kotlin>/` layout.
+         *
+         * When [file] is below [moduleDir], the first `src/<set>/<java|kotlin>`
+         * match in the path below [moduleDir] wins. That match is the module's
+         * own source folder: a package folder named `src`, `java`, or `kotlin`
+         * comes after it, so it cannot win.
+         *
+         * When [file] is not below [moduleDir] (a source folder that the build
+         * adds from outside the module), the absolute path is the only data. Then
+         * the last match wins, so a folder named `src` above the project cannot
+         * win.
+         */
+        internal fun sourceSetName(file: File, moduleDir: File?): String? {
+            val relative = moduleDir?.let { relativeSegments(file, it) }
+            if (relative != null) {
+                return sourceSetMatches(relative).firstOrNull()
+            }
+            return sourceSetMatches(pathSegments(file.absoluteFile)).lastOrNull()
+        }
+
+        // Each `<set>` in a `src/<set>/<java|kotlin>` triple, in path order.
+        private fun sourceSetMatches(segments: List<String>): List<String> =
+            (0 until segments.size - 2)
+                .filter { segments[it] == "src" && segments[it + 2] in SOURCE_LANGUAGE_DIRS }
+                .map { segments[it + 1] }
+
+        // The path segments of [file] below [dir], or null when [file] is not below [dir].
+        private fun relativeSegments(file: File, dir: File): List<String>? {
+            val fileSegments = pathSegments(file.absoluteFile)
+            val dirSegments = pathSegments(dir.absoluteFile)
+            if (fileSegments.size <= dirSegments.size) return null
+            if (fileSegments.subList(0, dirSegments.size) != dirSegments) return null
+            return fileSegments.subList(dirSegments.size, fileSegments.size)
+        }
+
+        private fun pathSegments(file: File): List<String> =
+            file.invariantSeparatorsPath.split('/').filter { it.isNotEmpty() }
     }
 }
