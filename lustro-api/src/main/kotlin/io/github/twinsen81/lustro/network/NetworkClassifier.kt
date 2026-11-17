@@ -4,7 +4,9 @@ package io.github.twinsen81.lustro.network
  * Classifies a request URL into zero or more category labels.
  *
  * A host-supplied SPI for tagging captured traffic with category labels, so
- * apps can classify requests (e.g. `"sync"`, `"media"`) however they like. Use
+ * apps can classify requests, such as `"Sync"` or `"Media"`, however they like.
+ * The Network tab gives `Sync`, `Auth`, `Media`, `Config`, `AI`, and `Wiretap`
+ * a color each, case-sensitive, and every other label one gray. Use
  * [NoOpNetworkClassifier] for the default behaviour of no categories.
  *
  * Called on the same threads as [Redactor]: a background capture thread, or

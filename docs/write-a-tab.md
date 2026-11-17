@@ -1,10 +1,11 @@
 # Write a tab
 
 This tutorial builds a Feature Flags tab step by step. The tab keeps a list of flags, shows a switch
-for each flag in the console, and takes a flags file as an upload. Agents and scripts use the same
-flags through three JSON routes. It is the
+for each flag in the console, and adds the flags of a flags file that a client posts. Agents and
+scripts use the same flags through three JSON routes. It is the
 [sample app's flags tab](https://github.com/Twinsen81/Lustro/blob/main/sample/src/debug/kotlin/io/github/twinsen81/lustro/sample/SampleFlagsTab.kt),
-without the parts that connect the flags to the sample's own screens.
+without the parts that connect the flags to the sample's own screens, and without the sample's
+upload dialog: here a flags file comes only through the `upload` route.
 
 [Custom tabs](custom-tabs.md) gives the rules for a tab, and the [styleguide](STYLEGUIDE.md) gives
 the console's components. This page shows where each rule applies, and does not repeat them.
@@ -43,6 +44,12 @@ The server finds the assets by the tab's id, so their names start with the id.
 A tab needs an `id`, a `title`, and an `icon`. The id is the part of the routes after `/api/v1/`,
 and it must match `[a-z][a-z0-9-]{0,30}`. `addTab()` throws an `IllegalArgumentException` for an
 id that does not match.
+
+The id must also be different from the ids of the other tabs, including `network`, `logs`,
+`prefs`, `sqlite`, `work`, and `screen`. `addTab()` does not check this. When two tabs have the
+same id, `start()` does not throw: it logs `Duplicate debug tab id '<id>'` at the `Lustro` tag,
+does not open the server, and returns `LustroStatus.DISABLED`. See
+[Troubleshooting](reference/troubleshooting.md#start-returns-disabled).
 
 ```kotlin
 data class Flag(val id: String, val description: String, val enabled: Boolean)
@@ -239,6 +246,8 @@ The console loads `flags.js` after `shared.js`, so the script can use the helper
     the top bar.
 - `debugFetch(url, options)` rejects on a status that is not `2xx`.
 - `debugEscapeHtml(text)` escapes a value for HTML.
+- `debugToast(message, type)` shows a short message at the bottom right for 3 s. `type` is
+    `success`, `error`, `info`, or `warning`.
 
 ```js
 (function() {

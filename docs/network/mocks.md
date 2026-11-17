@@ -1,7 +1,7 @@
 # Mock rules
 
-A mock rule short-circuits matching requests with a synthetic response: the interceptor answers
-from the rule and the request never leaves the device. In the Network tab, **Mocks**, next to the
+A mock rule answers the requests that it matches with a response that the rule gives: the
+interceptor answers from the rule, and the request does not leave the device. In the Network tab, **Mocks**, next to the
 search field, opens the rules and the rule form in the right pane, and shows how many rules are
 enabled. The rules apply to all traffic, not to the selected request. Rules answer the calls of
 Lustro's OkHttp interceptor. An [adapter for another HTTP client](other-clients.md) applies a rule
@@ -54,8 +54,9 @@ NetworkDebugTab.create(
 Lustro reads the storage once, when the rules are first needed, off the main thread, and writes
 it on every change, in the order the rules are tried.
 
-**A rule must be one the interceptor can serve.** Its `statusCode` has to be within 100–599, its
-`responseHeaders` have to be header names and values OkHttp accepts, and a `Content-Type` among
-them has to parse as a media type. A rule that isn't is rejected with an enveloped `400` naming
-the offending `field`, and one already stored is dropped when it is loaded — an unservable rule
-would otherwise throw inside your own HTTP call, on every request it matched.
+**A rule must be one that the interceptor can serve.** Its `statusCode` must be from 100 to 599,
+its `responseHeaders` must be header names and values that OkHttp accepts, and a `Content-Type`
+among them must parse as a media type. The API refuses a rule that is not valid with a `400` in
+the error envelope, whose `field` names the value. When the app loads a stored rule that is not
+valid, it drops the rule. Such a rule would throw inside your own HTTP call, for every request
+that it matched.

@@ -110,6 +110,24 @@ static synchronized WorkDebugTab work(Application app) {
 }
 ```
 
+`WorkDebugTab.create(context, uniqueNames, bufferBytes)` takes these parameters:
+
+- **`context`.** A context of your app. The tab keeps its application context, for
+    `WorkManager.getInstance`.
+- **`uniqueNames`**, empty by default. The unique work names of your app, such as `"sync"`. The
+    tab reads the unique name of each work from WorkManager's database. When a later WorkManager
+    changes that database and the tab cannot read it, the tab labels the work of these names
+    only. Pass the names of the work that you look at most. `GET items?name=` finds the work of
+    any name, also one that is not in this list.
+- **`bufferBytes`**, 1 MiB (`WorkDebugTab.DEFAULT_BUFFER_BYTES`) by default. The most memory that
+    the events of the runs can use, by the size of their JSON on the heap. When a new event goes
+    over it, the oldest events go first, and `GET events` counts them in `dropped`. Make it larger
+    when many workers run and you need the events of a longer time. A value that is 0 or less
+    throws `IllegalArgumentException`.
+
+`WorkDebugTab.createWithMetrics(context, metrics, uniqueNames, bufferBytes)` takes the same
+parameters and the work-analytics repository: see below.
+
 - **Your listeners keep working.** `configure()` sets the tab's execution and schedule listeners
     on the builder and returns it. Each one records the event and then calls the listener that you
     set before, with the same arguments, so call `configure()` last. What your listener throws

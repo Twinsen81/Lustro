@@ -1,10 +1,11 @@
-# Styleguide — Lustro Debug Console
+# Styleguide
 
-The console is a terminal-flavored developer tool: dark-first, one blue accent,
-monospace everywhere, dense and high-contrast. Everything below ships in
+The Lustro console is a developer tool that looks like a terminal: dark theme
+first, one blue accent, monospace text everywhere, dense, and high-contrast.
+Everything below is in
 [`shared.css`](https://github.com/Twinsen81/Lustro/blob/main/lustro/src/main/assets/lustro/shared.css), which the chrome
-loads on every tab page — **built-in tabs and third-party tabs get the same
-design system with zero setup**. This document is the contract for anyone
+loads on every tab page. So **Lustro's own tabs and your tabs get the same
+design system, with no setup**. This document is the contract for anyone
 writing a tab.
 
 ## 1. Principles
@@ -13,7 +14,7 @@ writing a tab.
   loaded (CSP is `'self'`-only); the stack prefers locally installed terminal
   faces (`Geist Mono`, `SF Mono`, Menlo…) and degrades to the system monospace.
 - **Uppercase, spaced labels.** Section labels and controls:
-  `font-size: 10.5–13px; font-weight: 600; letter-spacing: .08–.1em;
+  `font-size: 10.5-13px; font-weight: 600; letter-spacing: .08-.1em;
   text-transform: uppercase;`. Use **spaces, not underscores**, in UI labels
   ("SEND REQUEST", not "SEND_REQUEST"). Real identifiers (table names, header
   keys) keep their underscores.
@@ -32,10 +33,10 @@ writing a tab.
 ## 2. Tokens
 
 Defined on `:root` (dark default) with light overrides under
-`[data-theme="light"]`. Components never change between themes — only tokens do.
+`[data-theme="light"]`. Components never change between themes: only tokens do.
 
 - **Surfaces** (darkest → raised): `--bg` → `--header`/`--panel` → `--field`
-  (inputs, wells, cards) → `--raise` (active/elevated, e.g. the pane behind an
+  (inputs, wells, cards) → `--raise` (active/elevated, such as the pane behind an
   active tab). `--tabbar` is the recessed strip behind connected tabs; `--menu`
   is the dropdown/toast surface.
 - **Lines**: `--border` (primary), `--border-soft` (faint), `--grid` (table
@@ -70,14 +71,14 @@ Defined on `:root` (dark default) with light overrides under
 
 | Use | Size | Weight | Tracking |
 |---|---|---|---|
-| Section label (UPPER) | 10.5–11px | 600 | .1em |
-| Control / button text | 11–11.5px | 500 | .04em |
-| Table cell / body | 12–12.5px | 400 | normal |
-| Title (e.g. NETWORK TRAFFIC) | 13px | 600 | .06em |
+| Section label (UPPER) | 10.5-11px | 600 | .1em |
+| Control / button text | 11-11.5px | 500 | .04em |
+| Table cell / body | 12-12.5px | 400 | normal |
+| Title (such as NETWORK TRAFFIC) | 13px | 600 | .06em |
 | Nav item | 12px | 500/600 | .1em |
 
 Rhythm: control padding ~`8px 13px`; table cells `9px 14px`; toolbar gaps
-`8–12px`; form field gaps `12–17px`; pane edge padding `22px`.
+`8-12px`; form field gaps `12-17px`; pane edge padding `22px`.
 
 The chrome's content area (`.dc-app__content`) is **full-bleed** (no padding)
 so split-pane tabs can fill the viewport. Tabs own their edge padding (use
@@ -90,7 +91,7 @@ too. Semantic color is passed via the `--c` custom property where noted:
 
 - `.dc-btn` (+ `--primary`, `--soft`, `--active`, `--danger`, `--ghost-danger`,
   `--sm`, `--icon`): transparent 1px-border buttons. Primary is solid accent,
-  `--ghost-danger` is red at rest (e.g. Clear), `--danger` turns red on hover
+  `--ghost-danger` is red at rest (such as Clear), `--danger` turns red on hover
   only, and `--icon` is a bare glyph button (✎ ✕). A disabled `.dc-btn` greys
   out, and a `<select class="dc-btn">` is a dropdown with a drawn ▾.
 - `.dc-chip` + `.dc-chip__dot`: pill filters with a colored leading dot;
@@ -173,7 +174,7 @@ show and hide in the same way.
 
 `shared.js` owns the theme: it cycles auto → light → dark, persists to
 `localStorage['debug-theme']`, and sets `data-theme` on `<html>`. Tabs need to
-do **nothing** — if every color in your CSS is a token (or a `color-mix` of
+do **nothing**: if every color in your CSS is a token (or a `color-mix` of
 one), both themes work automatically. Semantic colors intentionally darken in
 light mode for contrast; never collapse the two sets.
 
@@ -187,7 +188,7 @@ light mode for contrast; never collapse the two sets.
   delegation), no inline `<script>`. Put styles in your tab's CSS file; the
   CSP also allows inline styles (`style-src 'self' 'unsafe-inline'`), so a
   `style` attribute that sets a token, such as `style="--c: ..."`, works.
-- Don't rely on color alone — pair semantic colors with a text label or letter.
+- Don't rely on color alone: pair semantic colors with a text label or letter.
 - Hit targets ≥ 30px tall for buttons/inputs; ≥ 24px for icon affordances.
 
 The sample tab (`sample/src/debug/assets/lustro/flags.css`) is the working

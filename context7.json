@@ -1,7 +1,7 @@
 {
   "$schema": "https://context7.com/schema/context7.json",
   "projectTitle": "Lustro",
-  "description": "A browser-based, agent-friendly debugging library for Android: an embedded debug server with a network inspector, used from a desktop browser or as a JSON API.",
+  "description": "Debug your Android app in a desktop browser: network inspector, logs, databases, and preferences, with a JSON API for AI agents.",
   "folders": [
     "lustro/",
     "lustro-api/",

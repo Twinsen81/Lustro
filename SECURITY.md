@@ -95,7 +95,7 @@ build, and that even in debug builds it stays bound to the local device.
   text or as bytes.
 - **Capture-time redaction, best-effort.** A `Redactor` SPI runs at capture
   time, before anything is stored, so whatever it masks never enters the
-  in-memory capture store and cannot leak through the API, the UI, or fixtures.
+  in-memory capture store and cannot leak through the API, the UI, or an export.
   The default implementation matches on *names*: sensitive request/response
   headers, and URL query parameters, JSON object fields, and form fields whose
   name contains a fragment such as `token`, `key`, `secret`, `password`, `auth`,

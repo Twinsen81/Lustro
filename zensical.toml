@@ -9,7 +9,7 @@
 
 [project]
 site_name = "Lustro"
-site_description = "A browser-based, agent-friendly debugging library for Android."
+site_description = "Debug your Android app in a desktop browser: network inspector, logs, databases, and preferences, with a JSON API for AI agents."
 site_url = "https://twinsen81.github.io/Lustro/"
 repo_url = "https://github.com/Twinsen81/Lustro"
 repo_name = "Twinsen81/Lustro"
@@ -37,10 +37,12 @@ nav = [
   ] },
   { "Network tab" = [
     { "OkHttp capture setup" = "network/okhttp.md" },
+    { "Console controls" = "network/controls.md" },
     { "WebSocket messages" = "network/websockets.md" },
     { "Send Request" = "network/send-request.md" },
     { "Export" = "network/export.md" },
     { "Mock rules" = "network/mocks.md" },
+    { "Redaction and categories" = "network/redaction.md" },
     { "Platform HttpURLConnection capture" = "network/httpurlconnection.md" },
     { "Other HTTP clients" = "network/other-clients.md" },
   ] },
@@ -57,7 +59,7 @@ nav = [
     { "Styleguide" = "STYLEGUIDE.md" },
   ] },
   { "Agents and automation" = [
-    { "Driving Lustro from agents" = "AGENTS.md" },
+    { "Driving Lustro from agents and automation" = "AGENTS.md" },
     { "OpenAPI and wire protocol" = "wire-protocol.md" },
   ] },
   { "Concepts" = [

@@ -3,9 +3,11 @@ package io.github.twinsen81.lustro.network
 /**
  * Sends a [NetworkSendRequest] and returns its [NetworkSendResult].
  *
- * A functional SPI implemented by the host (e.g. an OkHttp-backed sender in
- * `:lustro`). The runtime invokes [send] off the main thread; it is
- * intentionally non-suspending.
+ * The supertype of `OkHttpSender`, the sender of the Network tab's Send form.
+ * `NetworkDebugTab.create` takes only `OkHttpSender`s, so an implementation of
+ * your own has no place to register: make the sender with
+ * `OkHttpSender.create`. The runtime calls [send] off the main thread, and the
+ * call blocks until the response is complete.
  */
 public fun interface NetworkSender {
     /** Sends [request] and returns the result; called off the main thread. */

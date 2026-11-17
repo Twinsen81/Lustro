@@ -1,9 +1,9 @@
 # OkHttp capture setup
 
-`lustro.networkInterceptor()` returns an OkHttp **application** interceptor (despite the
-"network" in the name — it is added with `addInterceptor`, not `addNetworkInterceptor`). It
-feeds captured traffic into the registered `NetworkDebugTab`; if no network tab is registered it
-is a pass-through.
+`lustro.networkInterceptor()` returns an OkHttp **application** interceptor. The name has
+"network" in it, but you add it with `addInterceptor`, not with `addNetworkInterceptor`. It
+gives the captured traffic to the registered `NetworkDebugTab`. When no Network tab is registered,
+it passes each call on and records nothing.
 
 ```kotlin
 OkHttpClient.Builder()
@@ -58,7 +58,8 @@ Lustro captures it, as OkHttp does with its own gzip. Event streams are captured
 a Retrofit `@Multipart` call, Lustro stores the body as multipart text: each part's headers, the
 value of each text part, and, for a file or any other part that is not text, one line with its type
 and size in place of its bytes. The default redactor masks a part whose field name is sensitive.
-The Network tab shows the parts as a table, and **Copy as cURL** builds a `-F` option for each part,
+The Network tab shows the parts as a table, and the **cURL** button copies a command with a `-F`
+option for each part,
 naming the file to send for a part whose bytes Lustro did not keep. When Lustro keeps no body at
 all, as for an octet stream, the Network tab shows its size and type and says that it was not
 stored.
@@ -91,5 +92,6 @@ runs on the thread that makes the call, so keep it fast and thread-safe, and it 
 headers before redaction. A filter that throws doesn't fail the call: the request is captured,
 and the first failure is logged. A marker header still goes out with the request.
 
-To label traffic instead of leaving it out, pass a `NetworkClassifier` as `classifier`. Its labels
-show as category filters in the Network tab and in each transaction's `categories`.
+To label traffic instead of leaving it out, pass a `NetworkClassifier` as `classifier`. To mask
+more than the default redactor does, pass a `Redactor` as `redactor`.
+[Redaction and categories](redaction.md) shows both, with examples.
