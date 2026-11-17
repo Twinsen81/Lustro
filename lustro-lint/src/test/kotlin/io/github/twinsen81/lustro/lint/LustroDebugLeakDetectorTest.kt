@@ -363,7 +363,7 @@ class LustroDebugLeakDetectorTest : LintDetectorTest() {
         assertEquals(
             "debug",
             LustroDebugLeakDetector.sourceSetName(
-                File("/Users/me/src/kotlin/MyApp/shared/src/debug/kotlin/com/example/MyTab.kt"),
+                File("/Users/me/src/work/kotlin/MyApp/shared/src/debug/kotlin/com/example/MyTab.kt"),
                 module,
             ),
         )
