@@ -1,15 +1,18 @@
 # Install
 
-Lustro ships as two interchangeable runtime artifacts that you split by build variant:
+Lustro has six pairs of artifacts: `lustro`, which has the server and the Network tab, and one
+pair for each plugin. Each pair has two halves with the same public API, and you add each half to
+one build type. This page adds the `lustro` pair:
 
-- `io.github.twinsen81:lustro` — the real debug runtime (the embedded server, capture, and UI).
-- `io.github.twinsen81:lustro-noop` — a release-safe no-op AAR that mirrors the same public
-    facades with empty bodies, so your integration code compiles and runs in release with **no
-    server, no capture, and no open socket**.
+- `io.github.twinsen81:lustro` is the debug runtime: the embedded server, the capture, and the
+    console.
+- `io.github.twinsen81:lustro-noop` is the no-op half for release builds. It has the same public
+    classes with empty bodies, so your integration code compiles and runs in a release build with
+    **no server, no capture, and no open socket**.
 
-Both modules declare the same Gradle capability (`io.github.twinsen81:lustro-runtime`), so you
-**cannot** resolve both on one configuration — you must split them by variant
-(`debugImplementation` / `releaseImplementation`):
+The two halves declare the same Gradle capability (`io.github.twinsen81:lustro-runtime`), so
+Gradle **cannot** put both on one configuration. Add each half to its own build type, with
+`debugImplementation` and `releaseImplementation`:
 
 ```toml
 # gradle/libs.versions.toml
@@ -29,8 +32,8 @@ dependencies {
 }
 ```
 
-`-SNAPSHOT` versions resolve from the Sonatype Central snapshots repository, so add it (only
-needed while Lustro is pre-release):
+`-SNAPSHOT` versions come from the Sonatype Central snapshots repository, so add it. You need it
+only until Lustro has a release:
 
 ```kotlin
 // settings.gradle.kts
@@ -43,6 +46,11 @@ dependencyResolutionManagement {
 ```
 
 Lustro declares the `INTERNET` permission in its manifest.
+
+Each plugin is a pair of its own, which you add in the same way: see the Install section of
+[Logs](../plugins/logs.md#install), [Preferences](../plugins/prefs.md#install),
+[SQLite](../plugins/sqlite.md#install), [WorkManager](../plugins/work.md#install), and
+[Screen](../plugins/screen.md#install). [Modules](../reference/modules.md) lists every artifact.
 
 ## Minimum versions
 
@@ -97,16 +105,22 @@ from Java too.
 
 The `lustro` command opens the console with its token, and drives every tab from a terminal, a
 script, or a coding agent: see [Agents and automation](../AGENTS.md#use-the-lustro-cli). It is a
-Python package on PyPI, `lustro-cli`, that needs Python 3.9 or newer and no other package. Each
-release publishes it with the library's version.
+Python package, `lustro-cli`, that needs Python 3.9 or newer and no other package.
+
+Until the first release, the CLI is not on PyPI. Install it from GitHub:
 
 ```bash
-uv tool install lustro-cli    # or: pipx install lustro-cli
+uv tool install "git+https://github.com/Twinsen81/Lustro#subdirectory=lustro-cli"
+# or: pipx install "git+https://github.com/Twinsen81/Lustro#subdirectory=lustro-cli"
 lustro open                   # forwards the port, and opens the console with the token
-uvx lustro-cli net list       # runs the CLI without an install
 ```
 
+From a checkout of this repository, `uv tool install ./lustro-cli` installs the CLI of that
+checkout.
+
+From the first release, each release publishes the CLI to PyPI as `lustro-cli`, with the
+library's version. Then `uv tool install lustro-cli` or `pipx install lustro-cli` installs it, and
+`uvx lustro-cli net list` runs it without an install.
+
 The PyPI package `lustro` is a different project that also installs a `lustro` command, so do not
-install it. Until the first release, the CLI is not on PyPI. Install it from GitHub with
-`uv tool install "git+https://github.com/Twinsen81/Lustro#subdirectory=lustro-cli"`, which pipx also takes, or from a checkout
-of this repository with `uv tool install ./lustro-cli`.
+install it, and do not run `uvx lustro`.

@@ -11,11 +11,12 @@ adb port forwarding:
 
 2. Open <http://localhost:8080> in a desktop browser.
 
-3. The server is **token-authenticated** (always on). Read the token from logcat — Lustro logs
-    one machine-parseable line at the `LustroToken` tag on every successful bind:
+3. Every request needs a token, and this is always on. Read the token from logcat. Lustro logs
+    one line at the `LustroToken` tag each time the server binds its port, in a fixed format that
+    scripts can parse. `-d` prints the log and exits, instead of waiting for new lines:
 
     ```bash
-    adb logcat -s LustroToken
+    adb logcat -d -s LustroToken
     # Lustro ready endpoint=http://127.0.0.1:8080 token=<token>
     ```
 

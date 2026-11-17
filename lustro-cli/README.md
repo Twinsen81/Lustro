@@ -115,7 +115,7 @@ discovery), `--json` (JSON output). They go before or after the command:
 | `lustro mock sync <file.json>` | `POST network/rules/_/sync` (atomic) |
 | `lustro senders` | `GET network/senders`: the clients that `send` can use, the default first |
 | `lustro send --url … [--sender NAME]` | `POST network/send` (synchronous), through the first sender or the one named |
-| `lustro screen tree [--unmerged] [--settle MS] [--all]` | `GET screen/tree`: each window of the app, and its nodes on the screen with a text, a tag, a role, or an action, one line each (see [The screen](#the-screen)) |
+| `lustro screen tree [--unmerged] [--settle MS] [--all]` | `GET screen/tree`: each window of the app, and its nodes on the screen with a text, a tag, a role, an action, or a state, one line each (see [The screen](#the-screen)) |
 | `lustro api METHOD PATH [--param K=V] [--body JSON \| --input FILE]` | any route: prints the response body (see [Any route](#any-route)) |
 
 > **Live use of `lustro open`** requires a running app: the server only listens

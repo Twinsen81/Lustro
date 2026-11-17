@@ -1,6 +1,6 @@
 ---
 title: Lustro
-description: A browser-based, agent-friendly debugging library for Android.
+description: "Debug your Android app in a desktop browser: network inspector, logs, databases, and preferences, with a JSON API for AI agents."
 ---
 
 # Lustro { .md-visually-hidden }
@@ -33,8 +33,9 @@ desktop browser. Every tab is also a JSON API, so AI agents, scripts, and the
 | [**Screen**](plugins/screen.md) | For agents and scripts, through the API only: every window of the app and the UI tree in each, the classic Views and the Compose semantics nodes, read in the app's process in milliseconds. |
 | [**Your own tabs**](custom-tabs.md) | A `DebugTab` subclass with JSON routes and, if you want, a view in the browser. |
 
-The Network tab is in the main artifact. Each of the other built-in tabs is a
-plugin with an artifact of its own.
+The Network tab is built in: it is in the main artifact, `lustro`. Logs,
+Preferences, SQLite, WorkManager, and Screen are plugins, each with an artifact
+of its own.
 
 A release build gets no server. Each artifact has a no-op half with the same
 API and empty method bodies: you add the runtime with `debugImplementation`
@@ -80,15 +81,16 @@ for both build types.
     ```
 
 4. Run the debug build, keep the app in the foreground, and open the console.
-   The `lustro` tool forwards the port and opens the browser with the token:
+   Forward the port and read the token:
 
     ```bash
-    lustro open
+    adb forward tcp:8080 tcp:8080
+    adb logcat -d -s LustroToken      # Lustro ready endpoint=... token=<token>
     ```
 
-    Without the tool, forward the port with `adb forward tcp:8080 tcp:8080`,
-    read the token with `adb logcat -d -s LustroToken`, and open
-    `http://localhost:8080/#lustro_token=<token>`.
+    Then open `http://localhost:8080/#lustro_token=<token>` in a desktop
+    browser. The [`lustro` CLI](get-started/install.md#the-lustro-cli) does
+    these steps with one command, `lustro open`.
 
 Lustro needs `minSdk` 24, `compileSdk` 35, Android Gradle Plugin 8.6, and
 Kotlin 2.0. It does not raise the versions of your app's own dependencies: see

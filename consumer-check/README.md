@@ -57,7 +57,7 @@ cd consumer-check
 The `withLustro` debug APK also runs on a device, and it is the one build that
 runs Lustro on the floor's kotlin-stdlib: install
 `app/build/outputs/apk/withLustro/debug/app-withLustro-debug.apk`, open the app,
-and `adb logcat -s LustroToken` shows the ready line while `lustro --json meta`
+and `adb logcat -d -s LustroToken` shows the ready line while `lustro --json meta`
 answers. Stop other Lustro apps first; they share port 8080.
 
 Every value in `gradle.properties` can be overridden with `-P`. CI runs the

@@ -1,7 +1,7 @@
 # Mock rules
 
-A mock rule short-circuits matching requests with a synthetic response: the interceptor answers
-from the rule and the request never leaves the device. In the Network tab, **Mocks**, next to the
+A mock rule answers the requests that it matches with a response that the rule gives: the
+interceptor answers from the rule, and the request does not leave the device. In the Network tab, **Mocks**, next to the
 search field, opens the rules and the rule form in the right pane, and shows how many rules are
 enabled. The rules apply to all traffic, not to the selected request. Rules answer the calls of
 Lustro's OkHttp interceptor. An [adapter for another HTTP client](other-clients.md) applies a rule
@@ -33,8 +33,9 @@ request, the detail says "Mock rule active" with the rule's name, also for a req
 before the rule existed, and its row in the list has a dashed **MOCK** tag. A request that a rule
 answered says "Mocked by rule" with that rule, and whether it still answers the next request like
 it. **Matching rules**, next to **Mock this request**, shows only the rules whose pattern and method
-match that request, enabled or not, and marks the one that answers it. The app matches the rules
-as the interceptor does, against the URL as captured, which is redacted, and the console updates
+match that request, enabled or not, and marks the one that answers it. For these indicators, the
+app matches the rules as the interceptor does, but against the URL as captured, which is redacted.
+The interceptor itself matches the real URL. The console updates
 when a rule is added, changed, enabled, or disabled. Agents read the same from each transaction's
 `activeMockRuleId`, `mockRuleId`, and `matchingMockRuleIds`.
 
@@ -54,8 +55,9 @@ NetworkDebugTab.create(
 Lustro reads the storage once, when the rules are first needed, off the main thread, and writes
 it on every change, in the order the rules are tried.
 
-**A rule must be one the interceptor can serve.** Its `statusCode` has to be within 100–599, its
-`responseHeaders` have to be header names and values OkHttp accepts, and a `Content-Type` among
-them has to parse as a media type. A rule that isn't is rejected with an enveloped `400` naming
-the offending `field`, and one already stored is dropped when it is loaded — an unservable rule
-would otherwise throw inside your own HTTP call, on every request it matched.
+**A rule must be one that the interceptor can serve.** Its `statusCode` must be from 100 to 599,
+its `responseHeaders` must be header names and values that OkHttp accepts, and a `Content-Type`
+among them must parse as a media type. The API refuses a rule that is not valid with a `400` in
+the error envelope, whose `field` names the value. When the app loads a stored rule that is not
+valid, it drops the rule. Such a rule would throw inside your own HTTP call, for every request
+that it matched.

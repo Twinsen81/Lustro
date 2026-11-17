@@ -30,8 +30,9 @@ try {
     for it do nothing.
 - **The body is what you report.** Cut a large body before you report it, and set `truncated`
     and `byteSize` on the `CapturedBody`. For a body that your code reads later, such as a
-    download, report the response with `.complete(false)` when the headers arrive, and again
-    complete when the body ends.
+    download, call `completeRequest` with a response built with `.complete(false)` when the
+    headers arrive. When the body ends, call `completeRequest` again, with the body and
+    `.complete(true)`.
 - **Mock rules and the throttle are your adapter's.** `sink.findMockRule(url, method)` returns
     the rule that matches, and counts a hit on it. To answer the request from the rule, report the
     response with `.mockedBy(rule)`, so the Network tab can say which rule answered it. Nothing holds

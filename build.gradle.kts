@@ -120,6 +120,15 @@ apply(from = "gradle/cli-version.gradle.kts")
 // See gradle/plugin-docs.gradle.kts.
 apply(from = "gradle/plugin-docs.gradle.kts")
 
+// The title of the API reference site. The root project is not named "lustro": Gradle
+// identifies a project by group:name:version, and the root has the group and version of the
+// modules. With the same name, the root's dependency on :lustro resolved to the root itself, so
+// the root's empty module took the place of :lustro in the aggregation, and the site had an
+// empty page for :lustro.
+dokka {
+    moduleName.set("Lustro")
+}
+
 // The published modules are the ones that apply lustro.publishing, so a new
 // module needs no entry here or in release.yml:
 //   - `./gradlew dokkaGenerate` renders the API docs of those with Dokka (all but

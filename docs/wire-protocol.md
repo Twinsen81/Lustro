@@ -2,9 +2,10 @@
 
 Every tab is a JSON API under `/api/v1/`. Framework routes:
 
-- `GET /api/v1/_meta` — library/protocol versions and the schema-exposing tabs.
-- `GET /api/v1/_schema` — JSON Schema for the shared envelopes.
-- `GET /api/v1/<id>/_schema` — a tab's OpenAPI document.
+- `GET /api/v1/_meta`: the library version, the protocol version, and the tabs that have an
+    OpenAPI document.
+- `GET /api/v1/_schema`: the JSON Schema of the shared envelopes.
+- `GET /api/v1/<id>/_schema`: a tab's OpenAPI document.
 - `POST /api/v1/_auth` with `{"token": "<token>"}`: the only route that needs no token. With the
     right token, it answers `{"ok": true}` and sets the `HttpOnly; SameSite=Strict` cookie that
     the browser console uses; with a wrong one, `401`. A programmatic client does not need it: it
@@ -12,8 +13,8 @@ Every tab is a JSON API under `/api/v1/`. Framework routes:
 
 Shared shapes: a uniform **error envelope** `{ error, message, code?, field?, hint? }`, a
 **list pagination** envelope `{ items, nextCursor }`, and a live-polling **cursor envelope**
-`{ cursor, status, items?, state? }` where `status` is `delta` / `unchanged` / `reset` (unknown values →
-`reset`) and the cursor advances when the route's list changes. A **stream envelope**
+`{ cursor, status, items?, state? }`, where `status` is `delta`, `unchanged`, or `reset` (treat an
+unknown value as `reset`), and the cursor advances when the route's list changes. A **stream envelope**
 `{ cursor, status, items?, dropped?, state? }` has the same statuses for a list that only grows at its
 end: its `delta` carries only the entries after the cursor. In both, `state` is an optional object
 that a tab adds with its own state, such as the Network tab's `paused` and `throttleDelayMs`, also

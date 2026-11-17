@@ -66,9 +66,9 @@ A binary message is stored as it arrived, because a redactor that matches on nam
 Override `redactWebSocketBinary` to change its bytes, or return `null` to store only its size.
 
 **Limits.** A long-lived socket must not fill the heap. A payload is cut at
-`DebugConfig.maxBodyCaptureBytes` (256 KB), and the log keeps its whole size. A connection keeps its
+`DebugConfig.maxBodyCaptureBytes` (256 KiB), and the log keeps its whole size. A connection keeps its
 last `maxWebSocketEvents` events (1000), Lustro keeps `maxCaptureWebSockets` connections (100), and
-all stored payloads together stay under `webSocketCaptureBudgetBytes` (16 MB): past it, the
+all stored payloads together stay under `webSocketCaptureBudgetBytes` (16 MiB): past it, the
 connection that holds the most loses its oldest events. The view says how many events a log no
 longer has.
 

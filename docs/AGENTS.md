@@ -2,8 +2,8 @@
 
 Lustro is a browser-based Android debug toolkit, but every tab is also a JSON API under
 `/api/v1/`, so AI agents, scripts, and the `lustro` CLI can drive it directly instead of scraping
-HTML. This document is the operational guide for non-browser clients. The HTTP wire protocol —
-not the Kotlin API — is the stable contract; it is versioned and SemVer-governed under
+HTML. This document is the operational guide for non-browser clients. The HTTP wire protocol,
+not the Kotlin API, is the stable contract. It is versioned, and SemVer applies to it, under
 [`wire-protocol/v1/`](https://github.com/Twinsen81/Lustro/tree/main/wire-protocol/v1).
 
 This document is about using a running Lustro. To add Lustro to an app, follow
@@ -20,8 +20,8 @@ This document is about using a running Lustro. To add Lustro to an app, follow
 - **Self-describing.** Fetch `GET /api/v1/<id>/_schema` for a tab's OpenAPI document and
   `GET /api/v1/_schema` for the shared envelope schemas. Drive operations from those, not from
   hard-coded paths.
-- **Built-in tab.** v1 ships exactly one built-in tab: `network` (capture, inspect, mock,
-  throttle, replay, and the messages of WebSocket connections). Its contract is
+- **Built-in tab.** `lustro` has one built-in tab: `network` (capture, inspect, mock,
+  throttle, Send Request, and the messages of WebSocket connections). Its contract is
   `lustro/src/main/assets/lustro/network.openapi.json`. The app registers it, as it registers a
   plugin tab (`addTab(NetworkDebugTab.create(...))`); without it, the `network/` routes are an
   enveloped `404 Unknown tab: network`.
@@ -35,12 +35,17 @@ This document is about using a running Lustro. To add Lustro to an app, follow
 
 ## Use the `lustro` CLI
 
-Agents should drive Lustro with the `lustro` CLI. It is a Python client in `lustro-cli/`, and each
-release publishes it to PyPI as `lustro-cli`. Install it with `uv tool install lustro-cli` or
-`pipx install lustro-cli`, or run it without an install as `uvx lustro-cli <command>`. The PyPI
-package `lustro` is a different project with a `lustro` command of its own: do not install it, and
-do not run `uvx lustro`. Until the first release, the CLI is not on PyPI. Install it from GitHub
-with `uv tool install "git+https://github.com/Twinsen81/Lustro#subdirectory=lustro-cli"`, which pipx also takes.
+Agents should drive Lustro with the `lustro` CLI. It is a Python client in `lustro-cli/`. Until
+the first release, the CLI is not on PyPI. Install it from GitHub:
+
+```bash
+uv tool install "git+https://github.com/Twinsen81/Lustro#subdirectory=lustro-cli"   # pipx takes the same URL
+```
+
+From the first release, each release publishes it to PyPI as `lustro-cli`. Then install it with
+`uv tool install lustro-cli` or `pipx install lustro-cli`, or run it without an install as
+`uvx lustro-cli <command>`. The PyPI package `lustro` is a different project with a `lustro`
+command of its own: do not install it, and do not run `uvx lustro`.
 
 The CLI reads the token and the endpoint from the `LustroToken` log line, and it prints much less
 than the routes return: `GET transactions` returns every captured transaction with all its fields,
@@ -122,7 +127,7 @@ An agent reads all of the output, so ask for only what you need:
 - `lustro net list --errors --last 20`: the 20 newest requests that failed or got a status of 400
   or higher.
 - `lustro net get <id> --no-body`: one transaction with its headers, without its bodies. Without
-  `--no-body`, `net get` cuts each body at 2 KB and ends it with a marker such as
+  `--no-body`, `net get` cuts each body at 2 KiB and ends it with a marker such as
   `[... 18251 more bytes: lustro net body <id> response]`. `--full` prints the bodies whole.
 - `lustro net body <id> | head -c 4000`: the first 4,000 bytes of the response body.
 
@@ -246,12 +251,12 @@ Conventions a client should follow:
 - Honor a `LUSTRO_TOKEN` environment variable when present, falling back to the parsed log line,
   then to the app's prefs.
 - The port can differ from the configured one: if `bindFallback` is enabled and the configured
-  port was taken, the server binds an OS-assigned port — the `endpoint=` field reports the actual
-  one, so always trust the log line over assumptions.
+  port was taken, the server binds a port that the system chooses. The `endpoint=` field gives
+  the port in use, so always use the log line, not the configured port.
 
-(Browsers authenticate differently — via the `HttpOnly; SameSite=Strict` `lustro_token` cookie
-set by `POST /api/v1/_auth`, or by opening with a `#lustro_token=<token>` URL fragment. Agents
-should use the Bearer header.)
+(Browsers authenticate in a different way: with the `HttpOnly; SameSite=Strict` `lustro_token`
+cookie that `POST /api/v1/_auth` sets, or by opening a URL with the `#lustro_token=<token>`
+fragment. Agents should use the Bearer header.)
 
 ## Endpoint and host/device
 
@@ -288,22 +293,22 @@ reported as `_meta.protocolVersion`.
 
 | Route | Purpose |
 | --- | --- |
-| `GET /api/v1/_meta` | `{ libraryVersion, protocolVersion, tabs: [{ id, title, schemaUrl, version }] }` — only schema-exposing tabs are listed. A tab's `version` is the `info.version` of its own schema, and the protocol version for a schema without one. |
+| `GET /api/v1/_meta` | `{ libraryVersion, protocolVersion, tabs: [{ id, title, schemaUrl, version }] }`. Only the tabs that have an OpenAPI document are listed. A tab's `version` is the `info.version` of its own schema, and the protocol version for a schema without one. |
 | `GET /api/v1/_schema` | JSON Schema for the shared envelopes. |
 | `GET /api/v1/<id>/_schema` | A tab's OpenAPI document (enveloped `404` if it has none). |
 
 **Shared envelopes**
 
 - **Error** (any failing route): `{ error, message, code?, field?, hint? }`. `error` is a stable
-  machine type derived from the status — `bad_request` (400), `unauthorized` (401), `forbidden`
+  machine-readable type that follows from the status: `bad_request` (400), `unauthorized` (401), `forbidden`
   (403), `not_found` (404), `method_not_allowed` (405), `payload_too_large` (413),
   `internal_error` (500), `unavailable` (503), `timeout` (504).
 - **Pagination** (collection routes): `{ items: [...], nextCursor: "<opaque>" | null }`.
-- **Cursor** (observable routes): `{ cursor, status, items? }` where `status` is `delta`,
+- **Cursor** (observable routes): `{ cursor, status, items?, state? }` where `status` is `delta`,
   `unchanged`, or `reset`. Echo `cursor` back on the next poll; **treat any unknown `status` as
   `reset`** and re-sync the full list. The cursor advances when the route's list changes, and a
   cursor from before an app restart gets a `reset`.
-- **Stream** (routes whose list only grows at its end): `{ cursor, status, items?, dropped? }`,
+- **Stream** (routes whose list only grows at its end): `{ cursor, status, items?, dropped?, state? }`,
   with the same statuses. Here a `delta` carries only the entries after the cursor, oldest first:
   append them. A `reset` carries the last entries of the list: replace what you have. `dropped`
   counts the entries the list evicted before you got them. Treat any unknown `status` as `reset`.
@@ -359,9 +364,9 @@ rules, and `revision`, which changes with every change to the rules but a hit: f
 again when it does. These fields arrived in protocol 1.9.
 
 **Rules are validated on the way in.** A `regex:` pattern must compile and must not be empty,
-`statusCode` must be within 100–599, `responseHeaders` must
+`statusCode` must be from 100 to 599, `responseHeaders` must
 be header names and values OkHttp accepts, and a `Content-Type` among them must parse as a media
-type — the interceptor builds a real response from the rule inside the app's own call. A rule that
+type: the interceptor builds a real response from the rule inside the app's own call. A rule that
 fails any of these gets an enveloped `400` whose `field` names what to fix (`urlPattern`,
 `statusCode`, or `responseHeaders`; a blank or missing `id` gets a new id, so it is never an
 error); for `rules/_/sync` the message also carries the array index, and the whole batch is
@@ -466,7 +471,7 @@ of their own), and `error`. The capture has no phase timings, so each entry spen
 `durationMs` in `timings.wait` and the throttle's wait in `timings.blocked`, and `_resourceType`
 (`fetch`, or `image` for an image) tells Chrome DevTools how to file it. A body kept as bytes is base64: `content.encoding` says so for a
 response, and `postData._encoding` for a request. The request line and its headers must stay
-under 8 KB, so send many ids in batches; `lustro net export --har FILE [--ids ID ...]` does that,
+under 8 KiB, so send many ids in batches; `lustro net export --har FILE [--ids ID ...]` does that,
 and `--har -` writes the document to stdout. This route is part of protocol 1.2. From protocol 1.3,
 the entry of a WebSocket's handshake has `_resourceType: "websocket"`, the socket's messages in
 `_webSocketMessages` (`type` `send` or `receive`, `time` in seconds, `opcode` 1 for text and 2 for
@@ -1094,25 +1099,26 @@ lustro --json api POST work/prune
 
 Errors use the shared envelope; key statuses:
 
-- **`401 unauthorized`** — missing/invalid token. Send `Authorization: Bearer <token>`.
-- **`403 forbidden`** — Origin / `Sec-Fetch-Site` rejected, on any method (a cross-origin,
+- **`401 unauthorized`**: the token is missing or not valid. Send `Authorization: Bearer <token>`.
+- **`403 forbidden`**: the Origin / `Sec-Fetch-Site` check refused the request, on any method (a cross-origin,
   non-allowed Origin; only the server's own origin and configured `allowedOrigins` pass). Missing
   Origin/`Sec-Fetch-Site` headers are accepted, so plain CLI clients are unaffected.
-- **`400 bad_request`** — invalid input. Also a body sent with a `Transfer-Encoding` or a malformed
+- **`400 bad_request`**: the input is not valid. Also a body sent with a `Transfer-Encoding` or a malformed
   `Content-Length`: chunked request bodies are not supported. Also any request, on any route, whose
-  request line and headers exceed 8 KB (`Request headers too large`); its connection then closes.
+  request line and headers exceed 8 KiB (`Request headers too large`); its connection then closes.
   Browsers get there with large cookies that other local servers set on the same host.
-- **`413 payload_too_large`** — request body exceeds the configured max (1 MB by default; 1 KB for
-  `POST /api/v1/_auth`).
-- **`503 unavailable`** — the server is at its concurrency + queue limit; back off and retry.
-- **`504 timeout`** — a handler (e.g. a slow `send`) exceeded the per-request timeout. On
+- **`413 payload_too_large`**: the request body is larger than `maxRequestBodyBytes` (1 MiB by
+  default; 1 KiB for `POST /api/v1/_auth`).
+- **`503 unavailable`**: the server is at its limit of concurrent and queued requests. Wait, and
+  then try again.
+- **`504 timeout`**: a handler, such as a slow `send`, ran longer than the request timeout. On
   `screen/tree`, with `code: "main_thread_blocked"`: the app's main thread did not start and finish
   the read within 5 s plus the settle time, because the app is busy or does not respond. Try
   again, or look for an ANR in the log.
 - **`500 internal_error` with `code: "read_failed"`** on `screen/tree`: the read threw on the main
   thread, as with a View of the app whose getter throws. The message names the exception; the app
   goes on.
-- **`404 not_found`** — unknown route, missing transaction, a body that wasn't kept, or `send` with
+- **`404 not_found`**: an unknown route, missing transaction, a body that wasn't kept, or `send` with
   no sender configured. Also a WebSocket connection that the app cleared or evicted, and a message
   with no stored payload. Also every `network/` route when the app did not register the Network tab
   (`Unknown tab: network`), every `logs/` route without the Logs plugin
@@ -1152,8 +1158,8 @@ Errors use the shared envelope; key statuses:
 - **No log lines**: check `state.reader` in `GET logs/entries`: `failed` with `readerError` when
   logcat could not run, `stopped` when Lustro is stopped, and `state.paused` when the capture is
   paused. Lines from other processes are never shown: the tab reads the app's own process only.
-- **Connection refused / no response** — the app is backgrounded (the server only listens while
-  foregrounded) or `adb forward` isn't set up. Re-check the `LustroToken` log line for the live
+- **Connection refused / no response**: the app is in the background (the server listens only
+  while the app is in the foreground), or there is no `adb forward`. Re-check the `LustroToken` log line for the live
   endpoint. A connection closed without a response can also mean the server is at its
   open-connection limit (concurrency + queue + 16, 96 by default); close idle connections and retry.
   The CLI reports both cases as `connection_failed`, with a hint.

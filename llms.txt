@@ -1,6 +1,6 @@
 # Lustro
 
-> A browser-based, agent-friendly debugging library for Android. Lustro embeds a small web server in an app's debug builds and serves its tools as tabs that a desktop browser opens over adb. The built-in Network tab captures OkHttp traffic, shows the messages of OkHttp WebSockets, and can mock responses, throttle connections, and replay requests. Every tab is also a JSON API under `/api/v1/`, so agents and scripts can use it directly.
+> Debug your Android app in a desktop browser: network inspector, logs, databases, and preferences, with a JSON API for AI agents. Lustro is an open-source debugging library for the debug builds of Android apps. It embeds a small web server in the app and serves its tools as tabs that a desktop browser opens over adb. The built-in Network tab captures OkHttp traffic, shows the messages of OkHttp WebSockets, and can mock responses, delay each request with a throttle, and send requests again through the app's own clients (Send Request). Every tab is also a JSON API under `/api/v1/`, so agents and scripts can use it directly.
 
 Facts to get right when you add Lustro to an app:
 
@@ -29,10 +29,12 @@ Facts to get right when you add Lustro to an app:
 - [Accessing the UI](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/get-started/console.md): the port forward, the token, and the browser login
 - [Check the integration](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/get-started/check.md): six checks that capture works and that the release build has no runtime
 - [OkHttp capture setup](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/network/okhttp.md): the interceptor's place, request and compressed bodies, multipart, streams, and the capture filter
+- [Console controls](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/network/controls.md): the Network tab's Pause, Overwrite, throttle, Clear, search, filters, selection, and the buttons of a request
 - [WebSocket messages](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/network/websockets.md): `webSocketFactory`, the libraries that take a `WebSocket.Factory`, redaction, and limits
 - [Send Request](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/network/send-request.md): named senders through the app's own clients
 - [Export](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/network/export.md): HAR and Markdown export
 - [Mock rules](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/network/mocks.md): matching, order, `MockRuleStorage`, and what makes a rule valid
+- [Redaction and categories](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/network/redaction.md): what `DefaultRedactor` masks, a custom `Redactor`, and a `NetworkClassifier` with the labels that have their own color
 - [Platform HttpURLConnection capture](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/network/httpurlconnection.md): the opt-in and its limits
 - [Other HTTP clients](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/network/other-clients.md): an adapter that reports to `networkCaptureSink()`
 - [Logs plugin](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/plugins/logs.md): the app's own logcat
@@ -47,10 +49,11 @@ Facts to get right when you add Lustro to an app:
 - [Security model](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/concepts/security.md): loopback, the token, the CSP, redaction, and release builds
 - [LAN exposure and port forwarding](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/concepts/lan.md): binding all interfaces, and its risk
 - [OpenAPI and wire protocol](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/wire-protocol.md): the framework routes, the shared envelopes, and each tab's OpenAPI document
-- [Troubleshooting](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/reference/troubleshooting.md): no connection, `401`, nothing captured, and dependency verification
+- [Troubleshooting](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/reference/troubleshooting.md): no connection, `401`, `start()` returns `DISABLED`, nothing captured, the capture filter, several devices, WorkManager `listeners: missing`, the other `lustro` package, and dependency verification
 - [Modules](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/reference/modules.md): every published module and its coordinates
 - [Configuration](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/reference/configuration.md): every `DebugConfig` option, with its type, default, and effect
-- [Driving Lustro from agents](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/AGENTS.md): token discovery, authentication, the wire protocol, and the Network, Logs, Preferences, SQLite, WorkManager, and Screen routes, for agents that use a running Lustro
+- [Glossary](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/reference/glossary.md): the terms that these docs use, each with a link to the page that explains it
+- [Driving Lustro from agents and automation](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/AGENTS.md): token discovery, authentication, the wire protocol, and the Network, Logs, Preferences, SQLite, WorkManager, and Screen routes, for agents that use a running Lustro
 - [Security policy](https://raw.githubusercontent.com/Twinsen81/Lustro/main/SECURITY.md): the threat model, and what keeps Lustro out of release builds
 
 ## API contracts
@@ -65,8 +68,8 @@ Facts to get right when you add Lustro to an app:
 
 ## Tools
 
-- [lustro CLI](https://raw.githubusercontent.com/Twinsen81/Lustro/main/lustro-cli/README.md): a Python command-line client for the HTTP API, on PyPI as `lustro-cli`. `lustro open` forwards the port and opens the console with the token
-- Install the CLI with `uv tool install lustro-cli` or `pipx install lustro-cli`, or run it without an install as `uvx lustro-cli <command>`. The PyPI package `lustro` is a different project with a `lustro` command of its own: do not install it, and do not run `uvx lustro`. Until the first release, the CLI is not on PyPI: install it from GitHub with `uv tool install "git+https://github.com/Twinsen81/Lustro#subdirectory=lustro-cli"`, which pipx also takes
+- [lustro CLI](https://raw.githubusercontent.com/Twinsen81/Lustro/main/lustro-cli/README.md): a Python command-line client for the HTTP API, the package `lustro-cli`. `lustro open` forwards the port and opens the console with the token
+- Until the first release, the CLI is not on PyPI: install it from GitHub with `uv tool install "git+https://github.com/Twinsen81/Lustro#subdirectory=lustro-cli"`, which pipx also takes. From the first release, `uv tool install lustro-cli` or `pipx install lustro-cli` installs it, and `uvx lustro-cli <command>` runs it without an install. The PyPI package `lustro` is a different project with a `lustro` command of its own: do not install it, and do not run `uvx lustro`
 - [lustro skill](https://raw.githubusercontent.com/Twinsen81/Lustro/main/skills/lustro/SKILL.md): an Agent Skill that debugs the app through the CLI, and adds Lustro and checks the integration ([integration steps](https://raw.githubusercontent.com/Twinsen81/Lustro/main/skills/lustro/references/integrate.md)). `npx skills add Twinsen81/Lustro --skill lustro` installs it into a project, so that later sessions there use it
 - Agents: use the `lustro` CLI rather than curl, and keep its output small with `lustro net list --errors --last 20`, `lustro net get <id> --no-body`, and `lustro net body <id> | head -c 4000`. `lustro net wait --url <text> -- <command>` runs the command and waits for the request it causes, and `lustro net export --har out.har [--ids <id> ...]` saves transactions as a HAR file. For WebSockets, `lustro net ws list` prints the connections, `lustro net ws events <id> --last 20` the last events of one, and `lustro net ws payload <id> <seq>` one message's payload. `lustro api GET <tabId>/<route> --param key=value` (or `POST ... --body '<json>'`) sends a request to any route, also of a tab without commands of its own, and prints the response: `lustro api GET logs/text --param level=W` prints the app's warnings and errors, `lustro api GET prefs/entries --param file=<name>` a SharedPreferences file, `lustro api GET sqlite/rows --param db=<name> --param table=<table>` a page of a table's rows, and `lustro api GET work/events --param type=finished,exception` the results and failures of the app's workers. `lustro screen tree --settle 500` waits up to 500 ms for the screen to be at rest, then prints the app's windows and the nodes on the screen, and says when the screen was not at rest by then
 
