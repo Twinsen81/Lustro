@@ -33,8 +33,9 @@ request, the detail says "Mock rule active" with the rule's name, also for a req
 before the rule existed, and its row in the list has a dashed **MOCK** tag. A request that a rule
 answered says "Mocked by rule" with that rule, and whether it still answers the next request like
 it. **Matching rules**, next to **Mock this request**, shows only the rules whose pattern and method
-match that request, enabled or not, and marks the one that answers it. The app matches the rules
-as the interceptor does, against the URL as captured, which is redacted, and the console updates
+match that request, enabled or not, and marks the one that answers it. For these indicators, the
+app matches the rules as the interceptor does, but against the URL as captured, which is redacted.
+The interceptor itself matches the real URL. The console updates
 when a rule is added, changed, enabled, or disabled. Agents read the same from each transaction's
 `activeMockRuleId`, `mockRuleId`, and `matchingMockRuleIds`.
 

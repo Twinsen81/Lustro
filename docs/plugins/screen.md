@@ -140,13 +140,16 @@ context: {"screen":"home","stack":["home"],"historyOpen":false}
 
 How to read it:
 
-- **The window line.** The index of the window, its kind, its title, `focus` when it has the
-    window focus, and its bounds. A dialog or a bottom sheet over the activity is a second window
-    line, with its own nodes.
-- **A node line.** The node's id, its role, or `node` when it has none, its texts, its test tag
-    after `#`, its states and actions, and the part of it that is on the screen. An id that starts
-    with `v` is a View. An id that starts with `c` is a Compose semantics node: `c5.33` is a node
-    of the Compose host View `v5`. The indent shows the parent of each node.
+- **The window line.** The index of the window, its kind, its title when it has one, `focus`
+    when it has the window focus or `no-focus` when it does not, `hidden` for a window that is not
+    visible, and its bounds. A dialog or a bottom sheet over the activity is a second window line,
+    with its own nodes, and the activity's line then says `no-focus`.
+- **A node line.** The node's id; its role, else the last part of its class name, such as
+    `TextView`, else `node`; its texts; its test tag after `#`; its states and actions; and the part
+    of it that is on the screen. An id that starts with `v` is a View. An id that starts with `c`
+    is a Compose semantics node: `c5.33` is a node of the Compose host View `v5`. A Compose node
+    has no class name, so one without a role says `node`. The indent shows the nearest ancestor
+    that the output has a line for: without `--all`, the containers between them have no line.
 - **Texts.** In the merged tree, a node also has the texts of its children, and the CLI joins
     them with ` / `, so `"CONSOLE / :8080 / RUNNING"` is three texts. `"LUSTRO / DEBUG CONSOLE"` is one text that has
     a slash: `--json` and `--unmerged` show the difference. The CLI cuts a text at 60 characters.

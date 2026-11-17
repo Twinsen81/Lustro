@@ -120,6 +120,15 @@ apply(from = "gradle/cli-version.gradle.kts")
 // See gradle/plugin-docs.gradle.kts.
 apply(from = "gradle/plugin-docs.gradle.kts")
 
+// The title of the API reference site. The root project is not named "lustro": Gradle
+// identifies a project by group:name:version, and the root has the group and version of the
+// modules. With the same name, the root's dependency on :lustro resolved to the root itself, so
+// the root's empty module took the place of :lustro in the aggregation, and the site had an
+// empty page for :lustro.
+dokka {
+    moduleName.set("Lustro")
+}
+
 // The published modules are the ones that apply lustro.publishing, so a new
 // module needs no entry here or in release.yml:
 //   - `./gradlew dokkaGenerate` renders the API docs of those with Dokka (all but
@@ -128,13 +137,6 @@ apply(from = "gradle/plugin-docs.gradle.kts")
 //   - `./gradlew collectReleaseArtifacts` copies the AAR of each Android module and
 //     the jar of each JVM module into build/release-artifacts, which release.yml
 //     attaches to the GitHub Release.
-// The title of the API reference site. The root project's own name is not "lustro": Gradle
-// identifies a project by group:name:version, so a root named like the :lustro module took the
-// root's place in the aggregation, and the site had an empty page for :lustro.
-dokka {
-    moduleName.set("Lustro")
-}
-
 val collectReleaseArtifacts = tasks.register<Sync>("collectReleaseArtifacts") {
     group = "distribution"
     description = "Copies the AAR or jar of every published module into build/release-artifacts."

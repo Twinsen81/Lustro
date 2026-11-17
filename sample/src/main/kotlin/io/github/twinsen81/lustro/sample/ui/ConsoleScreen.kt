@@ -43,7 +43,7 @@ internal fun ConsoleScreen(viewModel: SampleViewModel, latest: Map<String, Actio
                 StepCard(
                     2,
                     "Or by hand",
-                    listOf("adb forward tcp:$CONSOLE_PORT tcp:$CONSOLE_PORT", "adb logcat -s LustroToken"),
+                    listOf("adb forward tcp:$CONSOLE_PORT tcp:$CONSOLE_PORT", "adb logcat -d -s LustroToken"),
                     "Then open http://localhost:$CONSOLE_PORT/#lustro_token=<token>.",
                     viewModel,
                     latest,

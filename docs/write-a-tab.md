@@ -47,8 +47,9 @@ id that does not match.
 
 The id must also be different from the ids of the other tabs, including `network`, `logs`,
 `prefs`, `sqlite`, `work`, and `screen`. `addTab()` does not check this. When two tabs have the
-same id, `start()` does not throw: it logs `Duplicate debug tab id '<id>'` at the `Lustro` tag,
-does not open the server, and returns `LustroStatus.DISABLED`. See
+same id, `start()` does not throw: it logs the warning `Failed to arm the debug server` at the
+`Lustro` tag, with an exception whose message is `Duplicate debug tab id '<id>'`, does not open
+the server, and returns `LustroStatus.DISABLED`. See
 [Troubleshooting](reference/troubleshooting.md#start-returns-disabled).
 
 ```kotlin

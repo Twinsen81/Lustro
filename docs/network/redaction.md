@@ -18,13 +18,13 @@ Both apply to every capture: OkHttp, platform `HttpURLConnection`, WebSockets, a
     has a sensitive word, such as `X-Api-Key` or `X-Auth-Token`. `WWW-Authenticate`,
     `Proxy-Authenticate`, and `Access-Control-Allow-Credentials` stay as they are, because they
     hold no secret.
-- **A URL query parameter, a JSON field, or a form field** has a sensitive word in its name:
-    `token`, `key`, `secret`, `password`, `passwd`, `pwd`, `auth`, `access_token`,
-    `refresh_token`, `api_key`, `apikey`, `client_secret`, `session`, `credential`, `bearer`,
-    `signature`, or `sig`. The word must be a word of the name, at a separator or a camelCase
-    boundary: `accessToken` and `presigned_url` are masked, but `author_name`, `keywords`, and
-    `assignments` are not. Names such as `Idempotency-Key`, `public_key`, `max_tokens`,
-    `primary_key`, and `is_password_protected` hold no secret, and stay as they are.
+- **A URL query parameter, a JSON field, or a form field** has a sensitive word in its name, in
+    any case: `token`, `key`, `secret`, `password`, `passwd`, `pwd`, `auth`, `session`,
+    `credential`, `bearer`, `signature`, or `sig`. The word can be part of a longer word:
+    `accessToken`, `presigned_url`, and `monkey` are masked. A few ordinary words that contain one
+    do not count, in any of their forms, such as `author`, `design`, `signal`, `assignment`,
+    `keyword`, and `insight`. So `author_name`, `keywords`, and `assignments` stay as they are. Names such as `Idempotency-Key`, `public_key`, `max_tokens`,
+    `primary_key`, and `is_password_protected` hold no secret, and stay as they are too.
 - **A multipart part** has a sensitive field name. The redactor masks the whole part, and redacts
     each other part as a body of its own type.
 - **Any other text body**, such as an event stream, XML, or plain text, has a value under a
@@ -77,8 +77,13 @@ Keep these rules in mind:
 - **A body can end in the middle of a value.** A body larger than the capture limit is cut, and
     the tab redacts an event stream again each time more of it arrives. Mask a sensitive value
     also when its end is missing.
-- **The mock rules match the stored URL.** A rule whose pattern has a value that the redactor
-    masks does not match. See [Mock rules](mocks.md).
+- **The mock rules match the real URL.** The interceptor looks for a rule with the URL that the
+    app sends, before the redactor runs, so a pattern such as `token=abc` answers the request.
+    Only the rule indicators of a captured request, **Matching rules** in the console and
+    `activeMockRuleId` and `matchingMockRuleIds` in the API, use the stored URL, so they do not
+    show that rule. A pattern that you copy from a stored URL can have `[REDACTED]` in it, and then
+    it does not match the real request. **Mock this request** avoids this: its pattern matches any
+    value in place of a masked query value. See [Mock rules](mocks.md).
 - **Some data never goes through it.** The error text of a failed request, an image body, and the
     close reason of a WebSocket are stored as they arrived. To keep such a request out of the
     capture, use a [capture filter](okhttp.md).

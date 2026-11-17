@@ -50,10 +50,10 @@ The Network tab is in the main artifact. Each other tab is a plugin with its own
 - **Made for automation.** Each tab has JSON routes and an OpenAPI document. The `lustro` CLI and
   an agent skill let Claude Code, Codex, Cursor, and other coding agents debug the running app.
 - **Not in release builds.** Each artifact has a no-op half for release builds. The runtime does
-  not start in a build that is not debuggable, and a lint check fails the release build if your own
-  debug tabs are in the wrong source set.
+  not start in a build that is not debuggable, unless you opt in, and a lint check fails the
+  release build if your own debug tabs are in the wrong source set.
 - **Private by default.** The server listens on `127.0.0.1` only, while the app is in the
-  foreground, and every request needs a 256-bit token. Captured traffic and logs stay in memory.
+  foreground, and every API request needs a 256-bit token. Captured traffic and logs stay in memory.
 - **Extensible.** Add your own tabs through the same plugin contract that Lustro's own tabs use.
 
 ## Quick start: add Lustro to an Android app
@@ -145,13 +145,14 @@ See [With a coding agent](https://twinsen81.github.io/Lustro/get-started/coding-
 
 No server and no capture code. A release build gets only the `-noop` artifacts, which have the
 same API with empty method bodies, and the small `lustro-api` module, so the same code compiles for
-both build types. The Lustro runtime also refuses to start in a build that is not debuggable. See
+both build types. By default, the Lustro runtime also refuses to start in a build that is not
+debuggable. See
 [Release safety](https://twinsen81.github.io/Lustro/concepts/release-safety/).
 
 ### Is the Lustro server open to my network?
 
 No. By default the Lustro server binds to `127.0.0.1` on the device, and you reach it from your
-computer with `adb forward`. Every request needs a token. You can bind all interfaces for LAN
+computer with `adb forward`. Every API request needs a token. You can bind all interfaces for LAN
 access, but you must opt in. See [Security model](https://twinsen81.github.io/Lustro/concepts/security/).
 
 ### Which HTTP clients does Lustro capture?

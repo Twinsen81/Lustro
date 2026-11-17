@@ -12,8 +12,8 @@ The `id` is the part of the routes after `/api/v1/`. Two rules apply to it:
     `IllegalArgumentException` at once for an id that does not match.
 - **It must be different from the id of every other tab.** The builder does not check this. Then
     `start()` finds two tabs with the same id, does not open the server, logs the warning
-    `Failed to arm the debug server` with the message `Duplicate debug tab id '<id>'` at the
-    `Lustro` tag, and returns `LustroStatus.DISABLED`. It does not throw. The ids of Lustro's own
+    `Failed to arm the debug server` at the `Lustro` tag, with an exception whose message is
+    `Duplicate debug tab id '<id>'`, and returns `LustroStatus.DISABLED`. It does not throw. The ids of Lustro's own
     tabs are `network`, `logs`, `prefs`, `sqlite`, `work`, and `screen`, so do not use them.
 
 A tab is your code, and it reads your app's internals, so put it in `src/debug`. The release build

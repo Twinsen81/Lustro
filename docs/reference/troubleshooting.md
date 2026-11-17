@@ -99,13 +99,18 @@ ANDROID_SERIAL=emulator-5554 lustro open          # the console of that device
 ```
 
 The CLI then uses a forward to that device, on whatever local port the forward has, or makes one.
-Without a selected device and with more than one connected, adb does not know the device, and
-the CLI stops with `Pass --device SERIAL when more than one device is connected.`
+Without a selected device and with more than one connected, adb does not know which device to
+use. The CLI then cannot read the token from the log, and stops with
+`no token: set --token or LUSTRO_TOKEN, ...`. When `--token` or `LUSTRO_TOKEN` gives the token,
+it stops at the forward instead, with `Pass --device SERIAL when more than one device is
+connected.`
 
-## The WorkManager tab says `listeners: missing`
+## The WorkManager tab has no events
 
-The tab has no events of the runs, because WorkManager runs with a `Configuration` that did not
-go through `WorkDebugTab.configure()`. `state.reason` in each response says which case it is:
+The console says `No events: the tab's listeners are not installed`, and the API's `state` has
+`listeners: "missing"`. WorkManager runs with a `Configuration` that did not go through
+`WorkDebugTab.configure()`, so the tab gets no events of the runs. `state.reason` in each
+response says which case it is:
 
 - **`WorkManagerInitializer` is still in the manifest.** It initializes WorkManager with the
     default configuration at startup, and never asks your `Configuration.Provider`. Remove it, as

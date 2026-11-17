@@ -1,9 +1,10 @@
 # Console controls
 
 The Network tab has a list of the captured requests on the left, and the selected request on the
-right. This page explains the controls above the list and above the request. The settings that
-change the app's traffic, Pause, Overwrite, and the throttle, are in the app's memory: they apply
-to every console and every CLI client, and the app forgets them when its process ends.
+right. This page explains the controls above the list and above the request. Pause and Overwrite
+change what Lustro records, and the throttle changes the app's traffic. The three settings are in
+the app's memory: they apply to every console and every CLI client, and the app forgets them when
+its process ends.
 
 ![The Network tab: the sample's requests, with several methods, statuses, and categories, and the JSON response of GET /json in the Tree view](../images/network-tab.png)
 
@@ -48,8 +49,9 @@ same result: see
 Three rows of buttons under the search field hide rows of the list. The console remembers them
 in your browser.
 
-- **Categories.** One button for each label that the app's `NetworkClassifier` gave, in the order
-    the console first saw them. A row shows when one of its labels is on. A row without a label
+- **Categories.** One button for each label that the app's `NetworkClassifier` gave. `Sync`,
+    `Auth`, `Media`, `Config`, `AI`, and `Wiretap` come first, in this order, and the other labels
+    after them, in the order the console first saw them. A row shows when one of its labels is on. A row without a label
     always shows. See [Redaction and categories](redaction.md).
 - **Statuses.** `2xx`, `3xx`, `4xx`, `5xx`, `Error` for a request that failed without a
     response, and `Mocked` for a request that a mock rule answered.
@@ -57,7 +59,8 @@ in your browser.
 
 ## The list
 
-Each row has the method, the URL, the status, the time, and the categories. Click a row to show
+Each row has the method, the path of the URL without its query, the status, the time, and the
+categories. Click a row to show
 the request on the right.
 
 The checkbox of a row selects it. Shift-click selects the rows between two checkboxes, and the
@@ -82,5 +85,5 @@ The bar above the request has these buttons:
 
 Each body has the views that its type permits: **Tree** for JSON, **Pretty** for markup such as
 XML or HTML, **Table** for a form, **Parts** for a multipart body, **Preview** for an image, and
-**Raw** for the body as it is stored, with line numbers. The console remembers the view that you
+**Raw** for the body as it is stored, with line numbers, or as a hex dump for a binary body. The console remembers the view that you
 select for each content type.
