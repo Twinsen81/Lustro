@@ -939,6 +939,22 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Fixed
 
+- **The lint check `LustroDebugUsageInRelease` no longer reports a `DebugTab`
+  in `src/debug` when a folder above the project is named `src`.** The check
+  took the source set from the first `src` folder in the absolute path of the
+  file. For a project in `~/src/MyApp/`, it read `MyApp` as the source set, so
+  it reported every tab in `src/debug` and `src/<flavor>Debug`, and
+  `lintDebug` failed with a fatal error. The release build was not affected,
+  because the release lint does not read `src/debug`. The check now reads the
+  path below the module directory, and takes the source set from the first
+  `src/<set>/java` or `src/<set>/kotlin` in it, so a parent folder or a
+  package folder named `src`, `java`, or `kotlin` does not change the result.
+  A tab in `src/main` or `src/release` is still reported. A tab in a folder
+  without the `java` or `kotlin` level, such as `src/debug/extra/`, is now
+  reported too. Verified with the consumer check copied into a `src/MyApp/` folder: before the change,
+  `lintWithLustroDebug` reported the tabs in `src/debug` and
+  `src/withLustroDebug`; after it, the lint passes, and a tab in `src/main` is
+  still reported.
 - **A stalled build or install in the CLI end to end no longer holds the CI
   job for 30 minutes.** In 2 of about 37 CI runs, the emulator job printed
   `==> Install the debug sample` and then nothing, until GitHub cancelled it at

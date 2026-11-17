@@ -5,6 +5,8 @@ import com.android.tools.lint.checks.infrastructure.TestFile
 import com.android.tools.lint.detector.api.Detector
 import com.android.tools.lint.detector.api.Issue
 import com.android.tools.lint.detector.api.Severity
+import java.io.File
+import java.nio.file.Files
 
 /**
  * Unit tests for [LustroDebugLeakDetector] using the lint-tests harness. Each test
@@ -257,7 +259,134 @@ class LustroDebugLeakDetectorTest : LintDetectorTest() {
             .expectContains("src/main/kotlin/com/example/MyTab.kt:3: Error")
     }
 
+    // The source set comes from the path below the module directory. A folder
+    // named `src` above the project, such as `~/src/MyApp/`, must not be read as
+    // the `src` folder of the module.
+    fun testDebugTabSubclassInDebugIsCleanUnderParentFolderNamedSrc() {
+        withRootUnderParentFolderNamedSrc { root ->
+            lint()
+                .allowMissingSdk()
+                .rootDirectory(root)
+                .files(debugTabStub, fakeTab("src/debug/kotlin/com/example/MyTab.kt"))
+                .run()
+                .expectClean()
+        }
+    }
+
+    fun testDebugTabSubclassInMainIsFlaggedUnderParentFolderNamedSrc() {
+        withRootUnderParentFolderNamedSrc { root ->
+            lint()
+                .allowMissingSdk()
+                .rootDirectory(root)
+                .files(debugTabStub, fakeTab("src/main/kotlin/com/example/MyTab.kt"))
+                // With a root directory from the test, the report shows the
+                // absolute path, which contains the folder of each test mode.
+                .expectIdenticalTestModeOutput(false)
+                .run()
+                .expectErrorCount(1)
+        }
+    }
+
+    // A package folder named `src`, `java`, or `kotlin` comes after the source
+    // folder of the module, so it does not change the source set.
+    fun testDebugTabSubclassInPackageNamedSrcInMainIsFlagged() {
+        lint()
+            .allowMissingSdk()
+            .files(
+                debugTabStub,
+                fakeTab("src/main/kotlin/com/example/src/MyTab.kt", "com.example.src"),
+                fakeTab(
+                    "src/main/kotlin/com/example/src/debug/kotlin/OtherTab.kt",
+                    "com.example.src.debug.kotlin",
+                ),
+            )
+            .run()
+            .expectErrorCount(2)
+    }
+
+    fun testDebugTabSubclassInPackageNamedSrcInDebugIsClean() {
+        lint()
+            .allowMissingSdk()
+            .files(
+                debugTabStub,
+                fakeTab("src/debug/kotlin/com/example/src/MyTab.kt", "com.example.src"),
+                fakeTab(
+                    "src/debug/java/com/example/src/release/java/OtherTab.kt",
+                    "com.example.src.release.java",
+                ),
+            )
+            .run()
+            .expectClean()
+    }
+
+    fun testDebugTabSubclassInFlavorDebugIsClean() {
+        lint()
+            .allowMissingSdk()
+            .files(debugTabStub, fakeTab("src/freeDebug/kotlin/com/example/MyTab.kt"))
+            .run()
+            .expectClean()
+    }
+
+    fun testDebugTabSubclassInFlavorIsFlagged() {
+        lint()
+            .allowMissingSdk()
+            .files(debugTabStub, fakeTab("src/free/kotlin/com/example/MyTab.kt"))
+            .run()
+            .expectErrorCount(1)
+    }
+
+    fun testSourceSetNameBelowModuleDir() {
+        val module = File("/Users/me/src/MyApp/app")
+        assertEquals(
+            "debug",
+            LustroDebugLeakDetector.sourceSetName(
+                File(module, "src/debug/kotlin/com/example/MyTab.kt"),
+                module,
+            ),
+        )
+        assertEquals(
+            "main",
+            LustroDebugLeakDetector.sourceSetName(
+                File(module, "src/main/java/com/example/src/debug/kotlin/MyTab.kt"),
+                module,
+            ),
+        )
+        assertNull(
+            LustroDebugLeakDetector.sourceSetName(File(module, "debug/MyTab.kt"), module),
+        )
+    }
+
+    // A source folder that the build adds from outside the module: the absolute
+    // path is the only data, and the last match wins.
+    fun testSourceSetNameOutsideModuleDir() {
+        val module = File("/Users/me/src/MyApp/app")
+        assertEquals(
+            "debug",
+            LustroDebugLeakDetector.sourceSetName(
+                File("/Users/me/src/kotlin/MyApp/shared/src/debug/kotlin/com/example/MyTab.kt"),
+                module,
+            ),
+        )
+        assertEquals(
+            "main",
+            LustroDebugLeakDetector.sourceSetName(
+                File("/Users/me/src/MyApp/shared/src/main/kotlin/com/example/MyTab.kt"),
+                null,
+            ),
+        )
+    }
+
     private companion object {
+        // The lint harness does not delete a root directory that a test gives it.
+        fun withRootUnderParentFolderNamedSrc(block: (File) -> Unit) {
+            val tmp = Files.createTempDirectory("lustro-lint").toFile()
+            try {
+                block(File(tmp, "src/MyApp").apply { mkdirs() })
+            } finally {
+                tmp.deleteRecursively()
+            }
+        }
+
         fun gradleBuild(checkTestSources: Boolean): TestFile =
             gradle(
                 """
@@ -270,12 +399,12 @@ class LustroDebugLeakDetectorTest : LintDetectorTest() {
                 """,
             ).indented()
 
-        fun fakeTab(path: String): TestFile {
+        fun fakeTab(path: String, packageName: String = "com.example"): TestFile {
             val name = path.substringAfterLast('/').removeSuffix(".kt")
             return kotlin(
                 path,
                 """
-                package com.example
+                package $packageName
                 import io.github.twinsen81.lustro.DebugTab
                 class $name : DebugTab() {
                     override val id = "fake"
