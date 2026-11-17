@@ -59,20 +59,24 @@ the connection. When the port is taken, the server tries again for 10 s, or bind
 Every request to `/api/v1/` passes the same checks, in this order. The first check that fails
 answers with the [error envelope](../wire-protocol.md):
 
-1. A request with a `Transfer-Encoding` header, such as a chunked body, or with a `Content-Length`
+1. A request whose request line and headers are larger than 8 KiB gets a `400` with the message
+    `Request headers too large`, and the server closes the connection. This limit is fixed, and
+    it applies to every route, `_auth` too. A browser usually gets there with large cookies that
+    other local servers set for the same host name.
+2. A request with a `Transfer-Encoding` header, such as a chunked body, or with a `Content-Length`
     that is not valid, gets a `400`.
-2. A body larger than [`maxRequestBodyBytes`](../reference/configuration.md) gets a `413`, before
+3. A body larger than [`maxRequestBodyBytes`](../reference/configuration.md) gets a `413`, before
     the server reads it.
-3. A request without a valid token gets a `401`.
-4. A browser request from another origin gets a `403`: see [Security model](security.md).
-5. The server reads the body. All the bodies in memory at one time stay under
+4. A request without a valid token gets a `401`.
+5. A browser request from another origin gets a `403`: see [Security model](security.md).
+6. The server reads the body. All the bodies in memory at one time stay under
     `maxConcurrentRequests` × `maxRequestBodyBytes`, so a request can wait for room first.
-6. The request waits for one of the [`maxConcurrentRequests`](../reference/configuration.md)
+7. The request waits for one of the [`maxConcurrentRequests`](../reference/configuration.md)
     slots. When the slots and the queue are full, or when a wait for room or for a slot is longer
     than `requestTimeoutMs`, it gets a `503`.
-7. The server routes the request. It answers the framework routes `_meta` and `_schema` itself.
+8. The server routes the request. It answers the framework routes `_meta` and `_schema` itself.
     For `/api/v1/<id>/<path>`, it finds the tab with that id and calls its `handle(request)`.
-8. When `handle` returns `null`, the client gets a `404`. When it throws anything, the client gets
+9. When `handle` returns `null`, the client gets a `404`. When it throws anything, the client gets
     a `500`, and the app does not crash. When it runs longer than
     [`requestTimeoutMs`](../reference/configuration.md), the client gets a `504`, and the server
     cancels the request.
@@ -118,7 +122,7 @@ sequenceDiagram
 
 The server removes the `Authorization` and `Cookie` headers before it calls a tab, so a tab never
 sees the token. The details of token discovery are in
-[Driving Lustro from agents](../AGENTS.md#auth-and-token-discovery).
+[Driving Lustro from agents and automation](../AGENTS.md#auth-and-token-discovery).
 
 ## The anatomy of a tab
 

@@ -7,6 +7,10 @@ The terms that these docs use, in alphabetical order. Each term links the page t
     that have an OpenAPI document. Agents start here. See
     [OpenAPI and wire protocol](../wire-protocol.md).
 
+Built-in tab
+:   The Network tab, the one tab in `lustro` itself. The other tabs that Lustro has are plugins.
+    See [OkHttp capture setup](../network/okhttp.md).
+
 Capture
 :   The Network tab's record of an HTTP request and its response, or of a WebSocket connection and
     its messages. The app's OkHttp interceptor, `webSocketFactory`, or `networkCaptureSink()` makes
@@ -22,6 +26,11 @@ Capture budget
 Capture filter
 :   A `NetworkCaptureFilter` that the app gives to `NetworkDebugTab.create`. The Network tab does
     not record a request that the filter leaves out. See [OkHttp capture setup](../network/okhttp.md).
+
+Category
+:   A label that the app's `NetworkClassifier` gives a request, such as `Auth` or `Media`. The
+    Network tab shows it in the **Cat** column and as a filter button. See
+    [Redaction and categories](../network/redaction.md#label-requests-with-categories).
 
 Chrome
 :   The parts of the console that the server sends without a token: the tab bar, the empty content
@@ -61,8 +70,10 @@ Headless tab
     [How Lustro works](../concepts/how-it-works.md#the-anatomy-of-a-tab).
 
 Lint check
-:   `LustroDebugUsageInRelease`, which `lustro` and `lustro-noop` ship. It fails a release build that
-    has a `DebugTab` subclass outside `src/debug`. See
+:   `LustroDebugUsageInRelease`, which `lustro` and `lustro-noop` ship. It reports a `DebugTab`
+    subclass in a source set whose name does not end with `debug`, such as `src/main` or
+    `src/release`, and its severity is fatal, so a release build with such a class fails.
+    `src/debug` and `src/<flavor>Debug` pass, and it does not check test sources. See
     [Release safety](../concepts/release-safety.md#the-lint-check).
 
 `LustroToken` line
@@ -89,14 +100,10 @@ Origin check
     The server's own origin, and the origins in `allowedOrigins`, pass it. See
     [Security model](../concepts/security.md).
 
-Pair capability
-:   The Gradle capability that the runtime and its no-op half both declare, such as
-    `io.github.twinsen81:lustro-runtime`. Gradle refuses to put both halves on one configuration.
-    See [Release safety](../concepts/release-safety.md#the-shared-capability).
-
 Plugin
 :   A tab in an artifact of its own, with a no-op half: Logs, Preferences, SQLite, WorkManager, and
-    Screen. The Network tab is in `lustro` itself. See [Modules](modules.md).
+    Screen. The Network tab is not a plugin: it is the built-in tab, in `lustro` itself. See
+    [Modules](modules.md).
 
 Port forward
 :   An `adb forward tcp:8080 tcp:8080`, which connects a port on the computer to the same port on
@@ -107,7 +114,8 @@ Port forward
 Redactor
 :   A `Redactor` masks the sensitive headers, query parameters, and body fields of a request before
     the Network tab stores it. It goes by name, so it cannot find a secret under a name that it does
-    not know. See [Security model](../concepts/security.md).
+    not know. See [Redaction and categories](../network/redaction.md) and
+    [Security model](../concepts/security.md).
 
 Runtime
 :   The debug artifact of a pair, such as `lustro` or `lustro-logs`, which the app adds with
@@ -116,6 +124,11 @@ Runtime
 Sender
 :   A named client that the Network tab's Send form sends through, made with
     `OkHttpSender.create`. See [Send Request](../network/send-request.md).
+
+Shared capability
+:   The Gradle capability that the runtime and its no-op half both declare, such as
+    `io.github.twinsen81:lustro-runtime`. Gradle refuses to put both halves on one configuration.
+    See [Release safety](../concepts/release-safety.md#the-shared-capability).
 
 Stream envelope
 :   The response shape of a polled list that only grows at its end, such as a log:

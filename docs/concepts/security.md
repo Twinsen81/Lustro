@@ -7,16 +7,17 @@ Lustro deliberately surfaces app internals, so its defaults are conservative. Se
     itself (and your desktop via `adb forward`).
 - **Token auth, always on.** A 256-bit token is generated on first run and stored in private
     debug preferences. Programmatic clients send `Authorization: Bearer <token>`; browsers use an
-    `HttpOnly; SameSite=Strict` cookie set via `/api/v1/_auth`. Before auth, only framework chrome
-    is served — no tab output or captured data. The token is logged at the `LustroToken` tag.
+    `HttpOnly; SameSite=Strict` cookie that `/api/v1/_auth` sets. Before a client sends the token,
+    the server sends only the console's frame: no tab content and no captured data. The server
+    logs the token at the `LustroToken` tag.
 - **Tabs never see the credentials.** The server authenticates a request before dispatching it,
     and the `DebugRequest` a tab receives carries no `Authorization` or `Cookie` header, so a tab
     that logs or echoes its request can't leak the token.
 - **Content Security Policy.** Chrome and tab views ship a CSP (`default-src 'self'; script-src
     'self'; style-src 'self' 'unsafe-inline'; ...`) plus `X-Content-Type-Options: nosniff`.
-    **Scripts are `'self'`-only — no inline scripts**, so tab JS loads as an external same-origin
-    resource and there are no inline handlers; **styles allow `'unsafe-inline'`** so tabs can use
-    inline `style=` attributes and `<style>` blocks. Every API request, whatever its method, passes
+    **Scripts must come from the server itself, and inline scripts do not run**, so a tab's JS
+    loads as an external file from the same origin, and there are no inline handlers. **Styles
+    allow `'unsafe-inline'`**, so tabs can use inline `style=` attributes and `<style>` blocks. Every API request, whatever its method, passes
     an Origin / `Sec-Fetch-Site` check: the server's own origin is always allowed, and any other
     cross-origin caller must be listed in `DebugConfig.allowedOrigins` (other localhost ports are not
     trusted by default). A request with neither an `Origin` nor a `Sec-Fetch-Site` header passes the
@@ -24,7 +25,7 @@ Lustro deliberately surfaces app internals, so its defaults are conservative. Se
     `GET` with neither header, so a tab must not change state on `GET` or `HEAD`.
 - **Capture-time redaction, best-effort.** A `Redactor` masks sensitive headers, URL/query
     params, and JSON/form body fields **before** anything is stored, so what it masks never reaches
-    the API, UI, or fixtures. It matches on names, so it cannot find a secret that isn't keyed by a
+    the API, the console, or an export. It matches on names, so it cannot find a secret that isn't keyed by a
     name it recognizes: see [SECURITY.md](https://github.com/Twinsen81/Lustro/blob/main/SECURITY.md#threat-model) for the known gaps, and pass
     your own `Redactor` when your traffic needs more, or a capture filter to keep a request out of
     capture entirely. A JSON body with no sensitive field in it is stored exactly as it arrived, so
@@ -42,6 +43,8 @@ Lustro deliberately surfaces app internals, so its defaults are conservative. Se
       [SQLite](../plugins/sqlite.md) tab changes a database that is `writable`, when a client asks
       for an edit. The [WorkManager](../plugins/work.md) tab changes WorkManager's database when a
       client cancels or prunes work.
+    - SQLite itself can leave the empty `-wal` and `-shm` files of a `SqliteDb.file` database in
+      WAL mode after the SQLite tab reads it. See the [SQLite limits](../plugins/sqlite.md#limits).
 - **Release builds are inert.** Release variants depend on the no-op halves, so no server ships
     in a release build, and the runtime refuses to start in a build that is not debuggable. See
     [Release safety](release-safety.md).

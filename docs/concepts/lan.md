@@ -16,7 +16,7 @@ val lustro = Lustro.builder(application)
 > to everyone on the same network. Token auth still applies, but you lose the loopback boundary.
 > Use it only on trusted networks, and prefer `adb forward` whenever you can.
 
-> **Browser login over LAN:** add the browser's origin to `DebugConfig.allowedOrigins`, e.g.
+> **Browser login over LAN:** add the browser's origin to `DebugConfig.allowedOrigins`, such as
 > `allowedOrigins(listOf("http://192.168.1.42:8080"))` for the address the browser shows. The
 > `/api/v1/_auth` route is origin-checked like every other API route, and only a loopback host on
 > the listening port counts as the server's own origin, so a page loaded over LAN is rejected with

@@ -15,21 +15,19 @@ this file is for an app that has Lustro.
 
 ## Get the CLI
 
-```bash
-lustro-cli --version || uv tool install lustro-cli    # or: pipx install lustro-cli
-```
-
-Until the first Lustro release, `lustro-cli` is not on PyPI, and the install above fails. Install
-it from GitHub instead; pipx takes the same URL:
+Until the first Lustro release, `lustro-cli` is not on PyPI. Install it from GitHub; pipx takes
+the same URL:
 
 ```bash
-uv tool install "git+https://github.com/Twinsen81/Lustro#subdirectory=lustro-cli"
+lustro-cli --version || uv tool install "git+https://github.com/Twinsen81/Lustro#subdirectory=lustro-cli"
 ```
+
+From the first release, `uv tool install lustro-cli` or `pipx install lustro-cli` installs it from
+PyPI, and `uvx lustro-cli <command>` runs it without an install.
 
 The package installs one command under two names, `lustro` and `lustro-cli`; this file uses
-`lustro`. `uvx lustro-cli <command>` runs it without an install. The PyPI package `lustro` is a
-different project with a `lustro` command of its own: never install it, and never run
-`uvx lustro`.
+`lustro`. The PyPI package `lustro` is a different project with a `lustro` command of its own:
+never install it, and never run `uvx lustro`.
 
 ## Connect
 

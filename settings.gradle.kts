@@ -23,7 +23,10 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "lustro"
+// Not "lustro": the root shares the modules' group and version, and Gradle resolves a dependency
+// on a project with the root's own group:name:version to the root itself. See the Dokka block in
+// build.gradle.kts.
+rootProject.name = "lustro-root"
 
 include(":lustro-api")
 include(":lustro")

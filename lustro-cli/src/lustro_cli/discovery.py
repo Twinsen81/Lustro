@@ -264,7 +264,7 @@ def resolve(
     if not r_token:
         raise DiscoveryError(
             "no token: set --token or LUSTRO_TOKEN, or ensure the app is "
-            "running in the foreground and `adb logcat -s LustroToken` shows the ready line "
+            "running in the foreground and `adb logcat -d -s LustroToken` shows the ready line "
             "(`Lustro ready endpoint=http://<host>:<port> token=<token>`). "
             "A device with `adb shell getprop log.tag` set to E drops that line: "
             "`adb shell setprop log.tag.LustroToken I` lets it through until the device "

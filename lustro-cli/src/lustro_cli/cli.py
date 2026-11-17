@@ -1855,7 +1855,7 @@ def build_parser() -> argparse.ArgumentParser:
     s_tree = screen_sub.add_parser(
         "tree",
         parents=[common],
-        help="GET screen/tree: each window of the app, and the nodes on screen that have a text, tag, role, or action",
+        help="GET screen/tree: each window of the app, and the nodes on screen that have a text, tag, role, action, or state",
         description="Print each window of the app and its nodes, one line each: the id, the role or class, the text, "
         "the test tag, the states and actions, and the visible bounds on the screen in uiautomator's format. "
         "Without --all, only the nodes on the screen that have a text, a tag, a role, an action, or a state. "

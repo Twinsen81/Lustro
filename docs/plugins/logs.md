@@ -69,10 +69,22 @@ them. Its `POST` routes change only the tab's own buffer. See
 
 ## HTTP routes
 
-`GET /api/v1/logs/entries` polls the log in the stream envelope, with `level`, `tag`, `q`, and
-`mq` filters, and `from` and `to`, a time range in epoch milliseconds, such as the run of a
-worker. `GET /api/v1/logs/text` exports it as logcat's threadtime text. `POST clear`, `pause`,
-and `compact` control it. See [Agents and automation](../AGENTS.md#logs-tab-operations) and
+`GET /api/v1/logs/entries` polls the log in the stream envelope. `GET /api/v1/logs/text` exports
+it as logcat's threadtime text. Both take the same filters, and a line must pass all of them:
+
+- **`level`**: the lowest level, one of `V D I W E F`. `W` gives W, E, and F.
+- **`tag`**: a Java regular expression that the tag must contain, case-sensitive.
+- **`q`**: a text that the message must contain, ignoring case.
+- **`mq`**: a Java regular expression that the message must contain, case-sensitive. Use it when
+    `q` is not enough, such as `mq=(?i)timeout|refused` for either word in any case, or
+    `mq=^HTTP 5\d\d` for a message that starts with a 5xx status.
+- **`from` and `to`**: a time range in epoch milliseconds, both ends included, such as the run of
+    a worker.
+
+`tag` and `mq` are found anywhere in the text: anchor them with `^` and `$`, and add `(?i)` to
+ignore case. Each is at most 200 characters, and one that does not compile gets a `400` with its
+`field`. Keep them simple: a regular expression that backtracks a lot, such as `(a+)+$`, can hold
+the request for a long time. `POST clear`, `pause`, and `compact` control the log. See [Agents and automation](../AGENTS.md#logs-tab-operations) and
 [`logs.openapi.json`](https://github.com/Twinsen81/Lustro/blob/main/lustro-logs/src/main/assets/lustro/logs.openapi.json).
 
 ## CLI examples
@@ -88,6 +100,9 @@ lustro api GET logs/entries --param tag=OkHttp --param limit=50
 
 # The lines whose message contains a text, ignoring case.
 lustro api GET logs/text --param q=timeout
+
+# The lines whose message matches a regular expression: here, either word, in any case.
+lustro api GET logs/text --param 'mq=(?i)timeout|refused'
 
 # Empty the buffer before a test step.
 lustro api POST logs/clear

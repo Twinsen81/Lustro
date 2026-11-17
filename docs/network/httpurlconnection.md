@@ -8,8 +8,8 @@ OkHttp capture is the default and needs no opt-in. To **also** capture platform
 val tab = NetworkDebugTab.create(senderClient = client, capturePlatformHttp = true)
 ```
 
-Caveats — this path is gated by `@ExperimentalPlatformCapture` because it relies on a non-public
-platform detail (a process-global URL stream handler):
+This capture needs the `@ExperimentalPlatformCapture` opt-in, because it uses a platform detail
+that is not public: a URL stream handler for the whole process. Know these limits:
 
 - **Best-effort and fail-open**: if it cannot install, capture is simply skipped; your app keeps
     working.
