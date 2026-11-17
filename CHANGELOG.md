@@ -939,6 +939,16 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Fixed
 
+- **The Kotlin API reference has the `lustro` module again.** The docs site's
+  `/api/` listed `lustro-api`, the plugins, and the no-op halves, but its
+  `lustro` page was empty, so `Lustro`, `DebugConfig`, `NetworkDebugTab`,
+  `OkHttpSender`, and `DefaultRedactor` had KDoc only in their `lustro-noop`
+  copies. The root Gradle project was also named `lustro`, with the modules'
+  group and version, so Gradle resolved the root's dependency on `:lustro` to
+  the root itself, and Dokka put the root's empty module in its place. The root
+  project is now `lustro-root`, and the site keeps the title "Lustro". Verified
+  with `./gradlew dokkaGenerate`: `build/dokka/html/lustro/` has the two
+  packages of the module.
 - **A stalled build or install in the CLI end to end no longer holds the CI
   job for 30 minutes.** In 2 of about 37 CI runs, the emulator job printed
   `==> Install the debug sample` and then nothing, until GitHub cancelled it at

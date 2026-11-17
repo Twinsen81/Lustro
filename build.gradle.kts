@@ -128,6 +128,13 @@ apply(from = "gradle/plugin-docs.gradle.kts")
 //   - `./gradlew collectReleaseArtifacts` copies the AAR of each Android module and
 //     the jar of each JVM module into build/release-artifacts, which release.yml
 //     attaches to the GitHub Release.
+// The title of the API reference site. The root project's own name is not "lustro": Gradle
+// identifies a project by group:name:version, so a root named like the :lustro module took the
+// root's place in the aggregation, and the site had an empty page for :lustro.
+dokka {
+    moduleName.set("Lustro")
+}
+
 val collectReleaseArtifacts = tasks.register<Sync>("collectReleaseArtifacts") {
     group = "distribution"
     description = "Copies the AAR or jar of every published module into build/release-artifacts."
