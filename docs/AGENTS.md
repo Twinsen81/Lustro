@@ -206,6 +206,47 @@ A connection is listed only when the app creates its socket with the factory fro
 `Lustro.webSocketFactory`. For any other socket, `lustro net list` shows the handshake, as a
 request with the status `101`.
 
+## The MCP server, for agents without a shell
+
+An agent that can run shell commands, such as Claude Code, Codex, Cursor, or Gemini CLI, should
+use the `lustro` CLI. An agent that can only call [MCP](https://modelcontextprotocol.io) tools,
+such as Claude Desktop, can use `lustro mcp`: an MCP server on stdin and stdout. Add it to the
+client's MCP config as `{"command": "lustro", "args": ["mcp"]}`; [With a coding
+agent](get-started/coding-agent.md#agents-without-a-shell-the-mcp-server) has the config of each
+client. The client starts the server when a session starts and stops it when the session ends,
+so nothing runs between sessions. The tools call the routes below through the CLI's own discovery
+and `adb forward`, so the app needs nothing new.
+
+The client puts the description of each tool into the agent's context in every session, and a
+CLI command costs context only when the agent runs it. So the server has few tools: about 2,000
+tokens for all of them.
+
+| Tool | Changes the app | What it does |
+| --- | --- | --- |
+| `list_requests` | no | `GET network/transactions`: the capture state, then the newest 50 requests as `lustro net list` prints them. Takes `search`, `regex`, `url`, `method`, `status`, `errors`, and `last` |
+| `get_request` | no | `GET network/transactions/<id>`, with each body cut at 2 KB, as `lustro net get`. The id can be a row's short id |
+| `list_mock_rules` | no | `GET network/rules` |
+| `add_mock_rule` | yes | `POST network/rules`: adds a rule on top of the list, or replaces the rule with the same `id` |
+| `delete_mock_rule` | yes | `POST network/rules/delete` |
+| `set_throttle` | yes | `POST network/throttle` |
+| `read_logs` | no | `GET logs/text`: the newest 100 lines that pass the filters, as logcat's threadtime text |
+| `call_api` | when the route writes | any route, as `lustro api`, with the response cut at 20 KB |
+| `get_schema` | no | `GET _meta` without a tab, and `GET <tab>/_schema` with one, as `lustro schema` |
+
+`call_api` and `get_schema` reach every tab without a tool of its own: the Preferences, SQLite,
+WorkManager, and Screen tabs, and the app's own tabs. Each tool says whether it changes the app,
+in its annotations (`readOnlyHint`, and `destructiveHint` for a tool that changes the app) and in
+the first words of its description. A tool that fails, for example because the app is not in the
+foreground, returns the CLI's error message with `isError: true`.
+
+The server takes the global flags: `lustro mcp --device SERIAL` selects the device for every call,
+as `ANDROID_SERIAL` in the server's environment does. It serves the protocol versions from
+`2024-11-05` to `2026-07-28`: a client that opens with `initialize`, and a client that sends the
+version in the `_meta` of each request. Only protocol messages go to stdout, and its own messages
+go to stderr. When `adb` is not on the server's `PATH`, as for a desktop app that starts it with a
+short `PATH`, the server looks for it in `$ANDROID_HOME/platform-tools`, then in the default place
+of the Android SDK.
+
 ## Auth and token discovery
 
 Token auth is **always on**. Every `/api/v1/*` route except `/api/v1/_auth` requires a valid
