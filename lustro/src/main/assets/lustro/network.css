@@ -755,3 +755,5 @@
    the body Mock this request copied. */
 .net-form-fixed { flex: 1; color: var(--t2); font-family: var(--font-mono); font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .net-form-warning { color: var(--lvl-w); font-size: 12px; line-height: 1.5; margin: 0 0 10px; }
+/* What a failure rule does to the app's call, in place of the response fields. */
+.net-form-note { color: var(--t2); font-size: 12px; line-height: 1.5; margin: 0 0 12px; }

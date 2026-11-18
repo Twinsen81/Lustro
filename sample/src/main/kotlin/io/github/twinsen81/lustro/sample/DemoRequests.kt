@@ -151,8 +151,10 @@ internal class DemoRequests(
             budgetSeconds?.let { call.timeout().timeout(it, TimeUnit.SECONDS) }
             call.enqueue(
                 object : Callback {
+                    // The exception's class says which failure it was, such as the
+                    // one a Lustro mock rule throws for a connection error.
                     override fun onFailure(call: Call, e: IOException) {
-                        feedback.failed(what, e.message ?: e.javaClass.simpleName)
+                        feedback.failed(what, e.message?.let { "${e.javaClass.simpleName}: $it" } ?: e.javaClass.simpleName)
                     }
 
                     override fun onResponse(call: Call, response: Response) {

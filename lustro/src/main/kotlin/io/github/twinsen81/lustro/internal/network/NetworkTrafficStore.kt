@@ -199,10 +199,15 @@ internal class NetworkTrafficStore(
         }
     }
 
+    override fun failRequest(id: TransactionId, durationMs: Long, error: String) = submitFailure(id, durationMs, error, mockRuleId = null)
+
+    override fun failRequest(id: TransactionId, durationMs: Long, error: String, mockedBy: MockRule) =
+        submitFailure(id, durationMs, error, mockedBy.id)
+
     @Suppress("RestrictedApi") // id.value is @RestrictTo(LIBRARY_GROUP); same-group call (see beginRequest).
-    override fun failRequest(id: TransactionId, durationMs: Long, error: String) {
+    private fun submitFailure(id: TransactionId, durationMs: Long, error: String, mockRuleId: String?) {
         val completedAt = System.currentTimeMillis() // Now, as in completeRequest.
-        worker.submit(id.value, 0L) { updateWithError(id.value, durationMs, error, completedAt) }
+        worker.submit(id.value, 0L) { updateWithError(id.value, durationMs, error, completedAt, mockRuleId) }
     }
 
     /**
@@ -410,10 +415,11 @@ internal class NetworkTrafficStore(
         if (updated != null || evicted) sequence.incrementAndGet()
     }
 
-    fun updateWithError(id: String, durationMs: Long, error: String, completedAt: Long) {
+    fun updateWithError(id: String, durationMs: Long, error: String, completedAt: Long, mockRuleId: String? = null) {
         val updated =
             transactionMap.computeIfPresent(id) { _, tx ->
-                tx.copy(durationMs = durationMs, responseComplete = true, completedAt = completedAt, error = error)
+                val failed = tx.copy(durationMs = durationMs, responseComplete = true, completedAt = completedAt, error = error)
+                if (mockRuleId == null) failed else failed.copy(isMocked = true, mockRuleId = mockRuleId)
             }
         if (updated != null) sequence.incrementAndGet()
     }
@@ -668,6 +674,7 @@ internal class NetworkTrafficStore(
                 responseHeaders = responseHeaders,
                 responseBody = responseBody,
                 hitCount = hitCount,
+                failure = failure,
             )
 
     private companion object {

@@ -14,7 +14,12 @@ import io.github.twinsen81.lustro.network.NoOpNetworkClassifier
 import io.github.twinsen81.lustro.network.Redactor
 import io.github.twinsen81.lustro.network.TransactionId
 import java.io.IOException
+import java.net.ConnectException
+import java.net.SocketException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 import java.util.concurrent.TimeUnit
+import javax.net.ssl.SSLHandshakeException
 import okhttp3.Call
 import okhttp3.Connection
 import okhttp3.Interceptor
@@ -364,7 +369,119 @@ class LustroNetworkInterceptorTest {
         assertEquals(0, chain.proceedCount) // the real request is not sent in its place
         assertNull(hitId) // a rule that never produced a response did not hit
         assertTrue(sink.completions.isEmpty())
-        assertEquals(1, sink.failures.size)
+        // The console links the request to the rule to fix.
+        assertEquals("rule-bad", sink.failures.single().mockRuleId)
+    }
+
+    @Test
+    fun `a failure rule throws the exception OkHttp throws for that error`() {
+        val expected =
+            mapOf(
+                "timeout" to SocketTimeoutException::class.java,
+                "unknownHost" to UnknownHostException::class.java,
+                "connectionRefused" to ConnectException::class.java,
+                "connectionReset" to SocketException::class.java,
+                "tls" to SSLHandshakeException::class.java,
+            )
+        assertEquals(MockFailure.entries.map { it.wireName }.toSet(), expected.keys)
+        for ((failure, type) in expected) {
+            val rule = MockRuleImpl(id = "fail-$failure", name = failure, urlPattern = "example.com/orders", failure = failure)
+            val hits = mutableListOf<String>()
+            val sink = RecordingSink(mockRule = rule)
+            val request = Request.Builder().url("https://example.com/orders").build()
+            val chain = FakeChain(request, responseFor(request, TrackingResponseBody("text/plain".toMediaType(), "real", 4)))
+
+            val thrown = assertThrows(IOException::class.java) { interceptor(sink, onMockHit = { hits += it }).intercept(chain) }
+
+            assertEquals(failure, type, thrown.javaClass)
+            assertTrue(thrown.message!!, "fail-$failure" in thrown.message!!)
+            assertEquals(failure, 0, chain.proceedCount)
+            assertEquals(failure, listOf("fail-$failure"), hits)
+            assertTrue(failure, sink.completions.isEmpty())
+            assertEquals(failure, Failure(TransactionId("tx-0"), thrown.message!!, "fail-$failure"), sink.failures.single())
+        }
+    }
+
+    @Test
+    fun `a failure rule names the host and port of the request`() {
+        val rule = MockRuleImpl(id = "dns", name = "offline", urlPattern = "example.com", failure = "unknownHost")
+        val request = Request.Builder().url("https://api.example.com/v1/orders").build()
+        val chain = FakeChain(request, responseFor(request, TrackingResponseBody("text/plain".toMediaType(), "real", 4)))
+
+        val thrown = assertThrows(UnknownHostException::class.java) { interceptor(RecordingSink(rule)).intercept(chain) }
+        assertTrue(thrown.message!!, thrown.message!!.startsWith("Unable to resolve host \"api.example.com\""))
+
+        val refused = rule.copy(failure = "connectionRefused")
+        val connect = assertThrows(ConnectException::class.java) { interceptor(RecordingSink(refused)).intercept(chain) }
+        assertTrue(connect.message!!, connect.message!!.startsWith("Failed to connect to api.example.com:443"))
+    }
+
+    @Test
+    fun `a request that a failure rule fails is listed as failed and mocked by the rule, with its body`() {
+        val store = store()
+        store.addMockRule(
+            MockRuleImpl(
+                id = "rule-1",
+                name = "upload times out",
+                urlPattern = "example.com/upload",
+                statusCode = 201,
+                responseBody = "ignored",
+                failure = "timeout",
+            ),
+        )
+        val requestBody = TrackingRequestBody("the payload", contentType = null)
+        val request = Request.Builder().url("https://example.com/upload").put(requestBody).build()
+        val chain = FakeChain(request, responseFor(request, TrackingResponseBody("text/plain".toMediaType(), "real", 4)))
+
+        val thrown = assertThrows(SocketTimeoutException::class.java) { interceptor(store, onMockHit = { store.incrementHitCount(it) }).intercept(chain) }
+
+        assertEquals(0, chain.proceedCount)
+        assertEquals(1, requestBody.writes)
+        val tx = store.getTransactions().single()
+        assertEquals(thrown.message, tx.error)
+        assertTrue(tx.isMocked)
+        assertEquals("rule-1", tx.mockRuleId)
+        assertTrue(tx.responseComplete)
+        // The status and the body of a failure rule are never served.
+        assertNull(tx.statusCode)
+        assertNull(tx.responseBody)
+        assertEquals("the payload", tx.requestBody)
+        assertEquals(1, store.getMockRules().single().hitCount)
+    }
+
+    @Test
+    fun `a failure rule fails a request that capture skips`() {
+        val rule = MockRuleImpl(id = "rule-1", name = "reset", urlPattern = "example.com", failure = "connectionReset")
+        val sink = RecordingSink(mockRule = rule)
+        val hits = mutableListOf<String>()
+        val request = Request.Builder().url("https://example.com/x").build()
+        val chain = FakeChain(request, responseFor(request, TrackingResponseBody("text/plain".toMediaType(), "real", 4)))
+
+        assertThrows(SocketException::class.java) { interceptor(sink, captureEnabled = false, onMockHit = { hits += it }).intercept(chain) }
+
+        assertEquals(0, chain.proceedCount)
+        assertEquals(0, sink.begun)
+        assertTrue(sink.failures.isEmpty())
+        // The hit counts whether or not the request is listed.
+        assertEquals(listOf("rule-1"), hits)
+    }
+
+    @Test
+    fun `a failure name that the interceptor does not know fails the call as an invalid rule`() {
+        // A rule from an app's own MockRuleStorage, or from a later release.
+        val rule = MockRuleImpl(id = "rule-new", name = "future", urlPattern = "example.com", failure = "proxyAuth")
+        var hitId: String? = null
+        val sink = RecordingSink(mockRule = rule)
+        val request = Request.Builder().url("https://example.com/x").build()
+        val chain = FakeChain(request, responseFor(request, TrackingResponseBody("text/plain".toMediaType(), "real", 4)))
+
+        val thrown = assertThrows(IOException::class.java) { interceptor(sink, onMockHit = { hitId = it }).intercept(chain) }
+
+        assertEquals(IOException::class.java, thrown.javaClass)
+        assertTrue(thrown.message!!, thrown.message!!.startsWith("Invalid mock rule 'rule-new'"))
+        assertEquals(0, chain.proceedCount)
+        assertNull(hitId)
+        assertEquals("rule-new", sink.failures.single().mockRuleId)
     }
 
     @Test
@@ -1608,7 +1725,7 @@ class LustroNetworkInterceptorTest {
         override fun withWriteTimeout(timeout: Int, unit: TimeUnit): Interceptor.Chain = this
     }
 
-    private data class Failure(val id: TransactionId, val error: String)
+    private data class Failure(val id: TransactionId, val error: String, val mockRuleId: String? = null)
 
     private class RecordingSink(private val mockRule: MockRule? = null) : NetworkCaptureSink {
         val completions = mutableListOf<CapturedResponse>()
@@ -1639,6 +1756,10 @@ class LustroNetworkInterceptorTest {
 
         override fun failRequest(id: TransactionId, durationMs: Long, error: String) {
             failures.add(Failure(id, error))
+        }
+
+        override fun failRequest(id: TransactionId, durationMs: Long, error: String, mockedBy: MockRule) {
+            failures.add(Failure(id, error, mockedBy.id))
         }
     }
 

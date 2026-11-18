@@ -8,6 +8,7 @@ import io.github.twinsen81.lustro.internal.network.CaptureSource
 import io.github.twinsen81.lustro.internal.network.NetworkTrafficStore
 import io.github.twinsen81.lustro.internal.network.SearchQuery
 import io.github.twinsen81.lustro.internal.toDebugTimestamp
+import java.net.UnknownHostException
 import java.util.concurrent.TimeUnit
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
@@ -18,6 +19,7 @@ import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -605,6 +607,44 @@ class NetworkDebugTabTest {
             assertEquals("featured", row.stringOrNull("mockRuleId"))
             assertEquals("featured", tab.handle(get("transactions/${row.getString("id")}"))!!.json().stringOrNull("mockRuleId"))
         }
+    }
+
+    @Test
+    fun `a failure rule is listed with its failure and fails the app's call, mocked by the rule`() {
+        val tab = tab()
+        val add = tab.handle(post("rules", """{"id":"offline","urlPattern":"/orders","failure":"unknownHost"}"""))!!
+        assertEquals(200, add.status)
+        val client = OkHttpClient.Builder().addInterceptor(tab.createInterceptor { true }).build()
+
+        assertThrows(UnknownHostException::class.java) {
+            client.newCall(okhttp3.Request.Builder().url("http://127.0.0.1:9/orders").build()).execute()
+        }
+        assertTrue((tab.captureSink as NetworkTrafficStore).awaitCaptures())
+
+        val rule = tab.handle(get("rules"))!!.json().getJSONArray("items").getJSONObject(0)
+        assertEquals("unknownHost", rule.getString("failure"))
+        assertEquals(1, rule.getInt("hitCount"))
+        val row = tab.byUrlAndMethod().getValue("GET http://127.0.0.1:9/orders")
+        assertTrue(row.getBoolean("isMocked"))
+        assertEquals("offline", row.stringOrNull("mockRuleId"))
+        assertTrue(row.isNull("statusCode"))
+        assertTrue(row.getString("error"), row.getString("error").startsWith("Unable to resolve host \"127.0.0.1\""))
+    }
+
+    @Test
+    fun `a rule without a failure is listed with a null failure`() {
+        val tab = tab()
+        tab.handle(post("rules", """{"id":"r","urlPattern":"/x"}"""))
+        assertTrue(tab.handle(get("rules"))!!.json().getJSONArray("items").getJSONObject(0).isNull("failure"))
+    }
+
+    @Test
+    fun `add rule rejects a failure name the interceptor does not know`() {
+        val tab = tab()
+        val res = tab.handle(post("rules", """{"urlPattern":"/x","failure":"dns"}"""))!!
+        assertEquals(400, res.status)
+        assertEquals("failure", res.json().getString("field"))
+        assertEquals(0, tab.handle(get("rules"))!!.json().getJSONArray("items").length())
     }
 
     @Test

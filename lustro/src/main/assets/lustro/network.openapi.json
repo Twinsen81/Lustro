@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Lustro Network debug tab",
-    "version": "1.11",
+    "version": "1.12",
     "description": "Capture, inspect, mock, throttle, and replay HTTP traffic, and inspect the messages of WebSocket connections. All routes are token-authenticated (Bearer header or HttpOnly cookie) and live under /api/v1/network. Errors use the shared error envelope."
   },
   "servers": [
@@ -200,7 +200,7 @@
       "post": {
         "operationId": "addMockRule",
         "summary": "Add (or upsert by id) a mock rule.",
-        "description": "A new rule goes first, so the rule added last wins when two match a request. A rule with the id of an existing one replaces it in place, whole: send enabled and responseHeaders when editing one, or they fall back to true and empty.",
+        "description": "A new rule goes first, so the rule added last wins when two match a request. A rule with the id of an existing one replaces it in place, whole: send enabled, responseHeaders, and failure when editing one, or they fall back to true, empty, and null.",
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MockRuleInput" } } } },
         "responses": {
           "200": { "description": "Created.", "content": { "application/json": { "schema": { "type": "object", "required": ["status", "id"], "properties": { "status": { "const": "ok" }, "id": { "type": "string" } } } } } },
@@ -418,7 +418,7 @@
           "throttledMs": { "type": ["integer", "null"], "description": "How long the global throttle held the request before it was sent, in milliseconds, or null when it wasn't throttled. The request is listed, with startedAt, from when the app made the call. Since protocol 1.4." },
           "categories": { "type": "array", "items": { "type": "string" }, "description": "Labels from the configured NetworkClassifier (may be empty)." },
           "isMocked": { "type": "boolean" },
-          "mockRuleId": { "type": ["string", "null"], "description": "The id of the mock rule that produced the response, as recorded when the request was answered: the rule can have changed or been deleted since. null when the response isn't mocked, and when an app's adapter reported it with mocked(true) instead of mockedBy(rule). Since protocol 1.9." },
+          "mockRuleId": { "type": ["string", "null"], "description": "The id of the mock rule that produced the response, as recorded when the request was answered: the rule can have changed or been deleted since. null when the response isn't mocked, and when an app's adapter reported it with mocked(true) instead of mockedBy(rule). Since protocol 1.9. Since protocol 1.12, also the rule that failed the request: a failure rule, or a rule that the interceptor could not serve. Such a transaction has isMocked true, error set, and statusCode null." },
           "activeMockRuleId": { "type": ["string", "null"], "description": "The id of the mock rule that answers the next request with this method and URL: the first enabled rule that matches, as the interceptor tries them. It is worked out when the transaction is listed, so it follows the rules as they change, also for a request captured before the rule existed, and a change to the rules advances the list's cursor. The rules are matched against the URL as captured, which is redacted, so a pattern that names a redacted value doesn't match here. null when no enabled rule matches, and for a platform transaction, which no rule answers; for an app transaction, the rule answers only if the app's adapter asks for it. Since protocol 1.9." },
           "replacedCount": { "type": "integer", "minimum": 0, "description": "How many earlier copies of this request overwrite mode removed when the app sent it: the completed transactions with the same method and URL path that started before it, each counted with the copies it had replaced in turn. 0 when it replaced none, as when overwrite mode is off. Since protocol 1.10." },
           "source": { "type": "string", "enum": ["okhttp", "platform", "app"], "description": "The adapter that captured the request. okhttp: Lustro's OkHttp interceptor, where mock rules and the throttle apply. platform: platform HttpURLConnection capture, which only records, so no mock rule answers the request and the throttle doesn't hold it. app: the app's own adapter, through Lustro.networkCaptureSink(), where a mock rule applies only if the adapter asks for it, and the throttle doesn't. Since protocol 1.6; treat a value you don't know as one that no mock rule or throttle reaches." },
@@ -686,6 +686,7 @@
           "statusCode": { "type": "integer" },
           "responseHeaders": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Headers applied to the mocked response (e.g. Content-Type)." },
           "responseBody": { "type": "string" },
+          "failure": { "type": ["string", "null"], "description": "The connection error the rule fails a matching request with, in place of a response: timeout, unknownHost, connectionRefused, connectionReset, or tls. null for a rule that answers with statusCode, responseHeaders, and responseBody, which a failure rule ignores. Since protocol 1.12; a later protocol can add names." },
           "enabled": { "type": "boolean" },
           "hitCount": { "type": "integer", "description": "Runtime-only; not persisted." }
         }
@@ -701,6 +702,7 @@
           "statusCode": { "type": "integer", "default": 200, "minimum": 100, "maximum": 599, "description": "Rejected with 400 outside 100-599." },
           "responseHeaders": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Headers applied to the mocked response (e.g. Content-Type). Names and values must be ones OkHttp accepts and a Content-Type must parse as a media type; otherwise 400. Replaced wholesale, so send them again when editing a rule by id." },
           "responseBody": { "type": "string" },
+          "failure": { "type": ["string", "null"], "enum": ["timeout", "unknownHost", "connectionRefused", "connectionReset", "tls", null], "default": null, "description": "Fails a matching request with a connection error instead of answering it: Lustro's OkHttp interceptor throws the exception OkHttp throws for that error, SocketTimeoutException, UnknownHostException, ConnectException, SocketException (Connection reset), or SSLHandshakeException, and records the transaction as failed, with error, isMocked true, and the rule's mockRuleId. statusCode, responseHeaders, and responseBody are ignored then. The request fails at once; set a throttle to fail it after a wait. Omit it, or send null, for a rule that answers. Any other value is a 400 with field failure. Replaced wholesale, as enabled is. Since protocol 1.12." },
           "enabled": { "type": "boolean", "default": true, "description": "Replaced wholesale, so send it again when editing a rule by id or the rule comes back enabled." }
         }
       }

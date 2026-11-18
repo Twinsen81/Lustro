@@ -108,6 +108,39 @@ class MockRuleCodecTest {
     }
 
     @Test
+    fun `each failure name is accepted and round-trips`() {
+        for (failure in MockFailure.entries) {
+            val rule = valid("""{"id":"r","urlPattern":"/x","failure":"${failure.wireName}"}""")
+            assertEquals(failure.wireName, rule.failure)
+            assertEquals(rule, valid(serializeOne(rule).toString()))
+        }
+    }
+
+    @Test
+    fun `a rule with no failure, or a null one, answers with its response`() {
+        for (json in listOf("""{"urlPattern":"/x"}""", """{"urlPattern":"/x","failure":null}""")) {
+            assertNull(json, valid(json).failure)
+        }
+        assertTrue(serializeOne(valid("""{"id":"r","urlPattern":"/x"}""")).isNull("failure"))
+    }
+
+    @Test
+    fun `a failure name the interceptor does not know is rejected`() {
+        for (failure in listOf("", " ", "Timeout", "unknown_host", "dns", "SocketTimeoutException")) {
+            val rejection = invalid("""{"urlPattern":"/x","failure":"$failure"}""")
+            assertEquals("failure", rejection.field)
+            assertTrue(rejection.message, "timeout, unknownHost, connectionRefused, connectionReset, tls" in rejection.message)
+        }
+    }
+
+    @Test
+    fun `a rule stored before failures existed still loads`() {
+        val stored = """{"id":"r1","name":"n","urlPattern":"/x","method":null,"statusCode":503,"responseHeaders":{},"responseBody":"down","enabled":true}"""
+        val rule = (MockRuleCodec.parse(JSONObject(stored), generateMissingId = false) as MockRuleParseResult.Valid).rule
+        assertEquals(MockRuleImpl(id = "r1", name = "n", urlPattern = "/x", statusCode = 503, responseBody = "down"), rule)
+    }
+
+    @Test
     fun `hitCount is never read from input`() {
         assertEquals(0, valid("""{"urlPattern":"/x","hitCount":42}""").hitCount)
     }

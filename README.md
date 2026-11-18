@@ -165,7 +165,8 @@ reports each request to `networkCaptureSink()`. See
 ### Can I mock API responses with Lustro?
 
 Yes. The Network tab has mock rules that match requests and return the response that you define,
-and a throttle that delays each request. See [Mock rules](https://twinsen81.github.io/Lustro/network/mocks/).
+or fail them with a connection error such as a timeout or an unknown host, and a throttle that
+delays each request. See [Mock rules](https://twinsen81.github.io/Lustro/network/mocks/).
 
 ### Do I need Android Studio or a desktop app?
 

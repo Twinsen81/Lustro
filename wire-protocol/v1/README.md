@@ -11,7 +11,7 @@ the protocol a stable public contract independent of the library's Kotlin API.
   A future incompatible revision becomes `/api/v2/`, and the old major stays
   alive for at least one major release.
 - The **minor** protocol version is reported at runtime in
-  `GET /api/v1/_meta` as `_meta.protocolVersion` (currently `1.11`).
+  `GET /api/v1/_meta` as `_meta.protocolVersion` (currently `1.12`).
 
 ## Contents
 
@@ -161,6 +161,19 @@ gives its shape.
   two, and its `count` was the number of rules posted, so a rule was lost
   without an error. A rule without an `id` still gets a new one. `count` is
   now the number of rules set, which is the number posted.
+
+- **1.12** - A mock rule can fail a request with a connection error instead
+  of answering it. `MockRule` and `MockRuleInput` gain `failure`: `timeout`,
+  `unknownHost`, `connectionRefused`, `connectionReset`, or `tls`, or `null`
+  for a rule that answers with its response, as before. Lustro's OkHttp
+  interceptor then throws the exception that OkHttp throws for that error,
+  and ignores the rule's status, headers, and body. The transaction is failed:
+  `error` is set, `statusCode` is `null`, `isMocked` is `true`, and
+  `mockRuleId` names the rule. A rule that the interceptor cannot serve now
+  sets `isMocked` and `mockRuleId` on its failed transaction too. `POST rules`
+  and `POST rules/_/sync` reject any other `failure` with a `400`,
+  `field: "failure"`. A rule without the field, as stored before, answers as
+  before.
 
 ## Plugin tabs
 
