@@ -10,6 +10,7 @@
         "Content-Type": "application/json"
       },
       "responseBody": "{\"error\":\"boom\"}",
+      "failure": null,
       "enabled": true,
       "hitCount": 3
     },
@@ -23,8 +24,21 @@
         "Content-Type": "application/json"
       },
       "responseBody": "{\"users\":[]}",
+      "failure": null,
       "enabled": false,
       "hitCount": 0
+    },
+    {
+      "id": "feed-offline",
+      "name": "Feed offline",
+      "urlPattern": "/v1/feed",
+      "method": null,
+      "statusCode": 200,
+      "responseHeaders": {},
+      "responseBody": "",
+      "failure": "unknownHost",
+      "enabled": true,
+      "hitCount": 1
     }
   ]
 }

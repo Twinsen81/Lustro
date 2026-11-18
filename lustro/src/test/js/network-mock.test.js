@@ -160,3 +160,31 @@ test('Copy as cURL quotes a file name that curl would split', () => {
     });
     assert.strictEqual(command, "curl -X POST -F 'file=@\"photo,edited;v2.png\"' 'https://a.test/upload'");
 });
+
+test('A rule card shows the status a rule answers with, or the error it fails with', async (t) => {
+    await t.test('a rule that answers shows its status', () => {
+        const badge = network.netRuleOutcomeBadge({ statusCode: 503, failure: null });
+        assert.match(badge, />503</);
+        assert.match(badge, /HTTP status returned to the app/);
+    });
+
+    await t.test('a failure rule shows the error and the exception the app gets', () => {
+        const badge = network.netRuleOutcomeBadge({ statusCode: 200, failure: 'unknownHost' });
+        assert.match(badge, />Unknown host</);
+        assert.match(badge, /throws UnknownHostException/);
+        assert.doesNotMatch(badge, />200</);
+    });
+
+    await t.test('a failure name from a newer app is shown as it is, escaped', () => {
+        const badge = network.netRuleOutcomeBadge({ statusCode: 200, failure: '<b>proxyAuth</b>' });
+        assert.match(badge, /&lt;b&gt;proxyAuth&lt;\/b&gt;/);
+        assert.doesNotMatch(badge, /<b>/);
+    });
+});
+
+test('A request that a failure rule failed says which rule mocked it', () => {
+    const rules = [{ id: 'r1', name: 'Feed offline', urlPattern: '/feed', failure: 'unknownHost' }];
+    const tx = { isMocked: true, mockRuleId: 'r1', activeMockRuleId: 'r1', error: 'Unable to resolve host', statusCode: null };
+    const line = network.netMockRuleLine(tx, rules);
+    assert.match(line, /Mocked by rule .*Feed offline/);
+});

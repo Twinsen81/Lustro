@@ -138,6 +138,7 @@ public class NetworkDebugTab private constructor(
             maxBodySize = maxBodyCaptureBytes,
             recordThrottle = { id, delayMs -> store.recordThrottle(id, delayMs) },
             recordRequestBody = { id, body, contentType -> store.recordRequestBody(id, body, contentType) },
+            failMocked = { id, durationMs, error, ruleId -> store.failRequest(id, durationMs, error, ruleId) },
         )
 
     override fun createAppCaptureSink(captureEnabled: () -> Boolean): NetworkCaptureSink =

@@ -217,6 +217,7 @@ public final class io/github/twinsen81/lustro/network/CapturedResponse$Builder {
 
 public abstract interface class io/github/twinsen81/lustro/network/MockRule {
 	public abstract fun getEnabled ()Z
+	public fun getFailure ()Ljava/lang/String;
 	public abstract fun getHitCount ()I
 	public abstract fun getId ()Ljava/lang/String;
 	public abstract fun getMethod ()Ljava/lang/String;
@@ -225,6 +226,10 @@ public abstract interface class io/github/twinsen81/lustro/network/MockRule {
 	public abstract fun getResponseHeaders ()Lio/github/twinsen81/lustro/Headers;
 	public abstract fun getStatusCode ()I
 	public abstract fun getUrlPattern ()Ljava/lang/String;
+}
+
+public final class io/github/twinsen81/lustro/network/MockRule$DefaultImpls {
+	public static fun getFailure (Lio/github/twinsen81/lustro/network/MockRule;)Ljava/lang/String;
 }
 
 public abstract interface class io/github/twinsen81/lustro/network/NetworkCaptureFilter {

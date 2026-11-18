@@ -989,7 +989,7 @@
         var adapter = tx.source === 'app' ? APP_MOCK_NOTE : '';
         return {
             disabled: false,
-            mockThisTitle: 'Open the mock rules with a new rule filled in from this request: its URL, method, status, and body. Edit the status or the body before you save to set the response of the next request like this one.' + adapter,
+            mockThisTitle: 'Open the mock rules with a new rule filled in from this request: its URL, method, status, and body. Edit the status or the body before you save to set the response of the next request like this one, or choose a Failure to make it fail with a connection error.' + adapter,
             rulesTitle: 'Show the mock rules whose URL pattern and method match this request, enabled or not. The first enabled one answers the next request like this one.' + adapter,
             ruleCount: (tx.matchingMockRuleIds || []).length,
         };
@@ -1896,6 +1896,43 @@
         return ' style="--c: var(--danger)"';
     }
 
+    // The connection errors a rule can fail a request with, by their wire names,
+    // and the exception that the app's OkHttp call throws for each.
+    var MOCK_FAILURES = [
+        { name: 'timeout', label: 'Timeout', exception: 'SocketTimeoutException' },
+        { name: 'unknownHost', label: 'Unknown host', exception: 'UnknownHostException' },
+        { name: 'connectionRefused', label: 'Connection refused', exception: 'ConnectException' },
+        { name: 'connectionReset', label: 'Connection reset', exception: 'SocketException' },
+        { name: 'tls', label: 'TLS handshake failure', exception: 'SSLHandshakeException' },
+    ];
+
+    function mockFailure(name) {
+        return MOCK_FAILURES.find(function(f) { return f.name === name; }) || null;
+    }
+
+    function failureNote(name) {
+        var failure = mockFailure(name);
+        if (!failure) return '';
+        return "The app's call throws " + failure.exception + ' at once, and the request never leaves the device.'
+            + ' The status and the body are not used. Set a throttle to fail the call after a wait.';
+    }
+
+    // What a rule does with a request it matches: the status it answers with, or
+    // the connection error it fails it with.
+    window.netRuleOutcomeBadge = ruleOutcomeBadge;
+    function ruleOutcomeBadge(rule) {
+        if (rule.failure) {
+            var failure = mockFailure(rule.failure);
+            var title = failure
+                ? "The app's call throws " + failure.exception + ' when this rule matches.'
+                : 'The app\'s call fails with this connection error when this rule matches.';
+            return '<span class="dc-badge" style="--c: var(--danger)" title="' + debugEscapeHtml(title) + '">'
+                + debugEscapeHtml(failure ? failure.label : rule.failure) + '</span>';
+        }
+        return '<span class="dc-badge"' + ruleStatusStyle(rule.statusCode) + ' title="HTTP status returned to the app when this rule matches.">'
+            + debugEscapeHtml(rule.statusCode) + '</span>';
+    }
+
     function renderRules(rules) {
         loadedRules = rules || [];
         var listEl = document.getElementById('rules-list');
@@ -1921,7 +1958,7 @@
                     ? '<span class="dc-badge" style="--c: var(--ai)" title="The first enabled rule that matches this request, so the next request like it gets this response.">Answers it</span>'
                     : '';
                 var bodyPreview = '';
-                if (r.responseBody) {
+                if (r.responseBody && !r.failure) {
                     bodyPreview = '<pre class="net-rule-body dc-code dc-json">' + window.debugSyntaxHighlightJson(r.responseBody) + '</pre>';
                 }
                 return '<div class="net-rule-card' + disabled + editing + '">'
@@ -1929,7 +1966,7 @@
                     + '<label class="dc-switch" title="Enable or disable this rule. Disabled rules stay in the list but do not match traffic."><input id="rule-toggle-' + debugEscapeHtml(r.id) + '" name="ruleEnabled" type="checkbox" aria-label="Enable mock rule ' + debugEscapeHtml(r.name || r.urlPattern) + '"' + checked + ' data-action="toggleRule" data-rule-id="' + debugEscapeHtml(r.id) + '"><span class="dc-switch__track"></span></label>'
                     + '<span class="net-rule-name" title="' + debugEscapeHtml(r.name || r.urlPattern) + '">' + debugEscapeHtml(r.name || r.urlPattern) + '</span>'
                     + answers
-                    + '<span class="dc-badge"' + ruleStatusStyle(r.statusCode) + ' title="HTTP status returned to the app when this rule matches.">' + debugEscapeHtml(r.statusCode) + '</span>'
+                    + ruleOutcomeBadge(r)
                     + '<button class="dc-btn dc-btn--icon" data-action="editRule" data-rule-id="' + debugEscapeHtml(r.id) + '" title="Edit this rule (loads it into the form below).">✎</button>'
                     + '<button class="dc-btn dc-btn--icon dc-btn--danger" data-action="deleteRule" data-rule-id="' + debugEscapeHtml(r.id) + '" title="Delete this rule permanently.">✕</button>'
                     + '</div>'
@@ -1964,6 +2001,7 @@
         var redactedNote = !isEdit && String(prefill.responseBody || '').indexOf('[REDACTED]') >= 0
             ? '<div class="net-form-warning">The captured body has values that Lustro redacted. Replace each [REDACTED] before you save, or the app gets that text in their place.</div>'
             : '';
+        var failing = !!mockFailure(prefill.failure);
         var heading = isEdit ? 'Edit Mock Rule' : 'Add Mock Rule';
         var submitText = isEdit ? 'Update Rule' : 'Add Rule';
         var submitTooltip = isEdit
@@ -1982,16 +2020,39 @@
                 return '<option value="' + m + '"' + sel + '>' + m + '</option>';
             }).join('')
             + '</select></div>'
+            + '<div class="net-form-row"><label class="dc-label" for="rf-failure" title="Fail the request with a connection error instead of answering it.">Failure</label>'
+            + '<select class="dc-input--block" id="rf-failure" name="failure" data-action="setRuleFailure" title="Choose an error to make the app\'s call throw the exception OkHttp throws for it on a real network, such as UnknownHostException. None answers with the status and the body below.">'
+            + '<option value="">None: answer with the response below</option>'
+            + MOCK_FAILURES.map(function(f) {
+                var sel = prefill.failure === f.name ? ' selected' : '';
+                return '<option value="' + f.name + '"' + sel + '>' + debugEscapeHtml(f.label + ' (' + f.exception + ')') + '</option>';
+            }).join('')
+            + '</select></div>'
+            + '<div class="net-form-note" id="rf-failure-note"' + (failing ? '' : ' hidden') + '>' + debugEscapeHtml(failureNote(prefill.failure)) + '</div>'
+            + '<div id="rf-response"' + (failing ? ' hidden' : '') + '>'
             + '<div class="net-form-row"><label class="dc-label" for="rf-status" title="HTTP status code returned to the app.">Status</label><input class="dc-input--block" id="rf-status" name="statusCode" type="number" value="' + (prefill.statusCode || 200) + '" style="width:80px;flex:none" title="Status code returned to the app (e.g. 200, 404, 503)."></div>'
             + headersRow
             + '<div class="net-form-row"><label class="dc-label" for="rf-body" title="Body returned to the app when this rule matches.">Body <button type="button" class="net-format-btn" data-action="formatRuleBody" title="Pretty-print the body as JSON (no-op if not valid JSON).">Format</button></label><textarea class="dc-textarea" id="rf-body" name="responseBody" placeholder="Response body (JSON, text, etc.)" title="Response body returned to the app. Can be any string; JSON is auto-formatted in the rule preview.">' + debugEscapeHtml(prefill.responseBody || '') + '</textarea></div>'
             + redactedNote
+            + '</div>'
             + '<div class="net-form-actions">'
             + '<button class="dc-btn dc-btn--primary" data-action="submitRule" title="' + submitTooltip + '">' + submitText + '</button>'
             + (isEdit ? '<button class="dc-btn" data-action="cancelEditRule" title="Discard changes and return to the empty Add form.">Cancel</button>' : '')
             + '</div>'
             + '</div>';
     }
+
+    // A failure rule has no response, so its fields are put away while one is chosen.
+    window.setRuleFailure = function(name) {
+        var response = document.getElementById('rf-response');
+        var note = document.getElementById('rf-failure-note');
+        var failing = !!mockFailure(name);
+        if (response) response.hidden = failing;
+        if (note) {
+            note.hidden = !failing;
+            note.textContent = failureNote(name);
+        }
+    };
 
     window.editRule = function(id) {
         var rule = loadedRules.find(function(r) { return r.id === id; });
@@ -2004,6 +2065,7 @@
             method: rule.method || '',
             statusCode: rule.statusCode,
             responseBody: rule.responseBody,
+            failure: rule.failure || '',
         });
         renderRules(loadedRules);
         var formEl = document.getElementById('rule-form-container');
@@ -2350,6 +2412,7 @@
             method: document.getElementById('rf-method').value || null,
             statusCode: parseInt(document.getElementById('rf-status').value) || 200,
             responseBody: document.getElementById('rf-body').value,
+            failure: document.getElementById('rf-failure').value || null,
         };
         if (!rule.urlPattern) { debugToast('URL pattern is required', 'warning'); return; }
         var wasEdit = !!rule.id;
@@ -2415,6 +2478,8 @@
         if (!tx || tx.id !== selectedTxId || tx.source === 'platform') return;
         var url = tx.url || '';
         var contentType = headerValue(tx.responseHeaders, 'content-type');
+        // A request that a failure rule failed gets a rule that fails it the same way.
+        var failedBy = tx.isMocked && tx.error ? findRule(tx.mockRuleId) : null;
         editingRuleId = null;
         openRulesPane(tx.id);
         renderRuleForm({
@@ -2424,6 +2489,7 @@
             statusCode: tx.statusCode || 200,
             responseHeaders: contentType ? { 'Content-Type': contentType } : null,
             responseBody: tx.responseBody || '',
+            failure: failedBy && failedBy.failure ? failedBy.failure : '',
         });
         var formEl = document.getElementById('rule-form-container');
         if (formEl && formEl.scrollIntoView) formEl.scrollIntoView({ block: 'nearest' });
@@ -3643,6 +3709,8 @@
             window.setThrottle(el.value);
         } else if (action === 'toggleRule') {
             window.toggleRule(el.dataset.ruleId);
+        } else if (action === 'setRuleFailure') {
+            window.setRuleFailure(el.value);
         } else if (action === 'setSendSender') {
             window.setSendSender(el.value);
         } else if (action === 'setSendMethod') {

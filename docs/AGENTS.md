@@ -74,6 +74,7 @@ lustro net throttle 2000          # hold each OkHttp request for 2000 ms; 0 turn
 lustro mock list                  # the mock rules, in the order they are tried
 lustro mock add --id orders-500 --url-pattern /v1/orders --method GET --status 500 \
   --header 'Content-Type: application/json' --body '{"error":"boom"}'
+lustro mock add --id feed-offline --url-pattern /v1/feed --failure unknownHost   # fail it as an offline network does
 lustro mock toggle orders-500     # turn one rule off or on
 lustro mock delete orders-500     # remove one rule
 lustro mock sync rules.json       # replace every rule with the JSON array in the file
@@ -350,6 +351,18 @@ persisted). Rules answer the calls of Lustro's OkHttp interceptor, and the calls
 that asks for a rule with `findMockRule`. A platform `HttpURLConnection` request is captured, but
 no rule matches it, so a rule for one keeps `hitCount` at 0. A transaction's `source` says which
 adapter captured it (see "Capture source" below).
+
+**Failure rules.** A rule with `failure` fails each request that it matches with a connection error
+instead of answering it: `timeout`, `unknownHost`, `connectionRefused`, `connectionReset`, or `tls`.
+The app's OkHttp call throws `SocketTimeoutException`, `UnknownHostException`, `ConnectException`,
+`SocketException`, or `SSLHandshakeException`, whose message ends with
+`(mocked by Lustro rule '<id>')`, so the app takes its path for a failed network, not for an HTTP
+error. The rule's `statusCode`, `responseHeaders`, and `responseBody` are ignored. The transaction
+has `error` set, `statusCode: null`, `isMocked: true`, and the rule's `mockRuleId`, and the hit
+counts. The call fails at once; set a throttle as well to fail it after a wait. `failure` is `null`
+for a rule that answers, and any other name gets a `400` with `field: "failure"`. A rule that the
+interceptor can't serve also fails its request, as an `IOException` that names the rule, with the
+same `isMocked` and `mockRuleId`. This arrived in protocol 1.12.
 
 **Which rule answers a request.** Don't match the rules yourself: the app does, as the interceptor
 does, and puts the result in each transaction. `activeMockRuleId`, in the list and the detail, is
@@ -946,6 +959,17 @@ lustro mock add --id orders-500 --url-pattern /v1/orders --method GET --status 5
 Reusing the same `id` updates the rule in place (idempotent). Remove it with
 `POST rules/delete {"id":"orders-500"}`, or `lustro mock delete orders-500`.
 
+**Make a request fail as a bad network does**
+
+```bash
+lustro mock add --id feed-offline --url-pattern /v1/feed --failure unknownHost
+lustro net throttle 3000          # optional: fail after 3 s, as a slow timeout does
+```
+
+The app's call throws `UnknownHostException`, and the transaction has the `error`, `isMocked:
+true`, and `mockRuleId: "feed-offline"`. Check what the app shows, then undo both:
+`lustro mock delete feed-offline` and `lustro net throttle 0`.
+
 **Capture and inspect**
 
 1. Poll `GET transactions` with no cursor → `reset` snapshot; keep the returned `cursor`.
@@ -971,8 +995,10 @@ paused, check `skipped` and read `description`.
    and append each `delta`.
 3. For a message whose preview is cut, `lustro net ws payload <id> <seq>`.
 
-To test how the app handles a refused connection, add a mock rule for the handshake: its URL has
-`https` for `wss`, and any status but `101` makes OkHttp fail the socket.
+To test how the app handles a refused upgrade, add a mock rule for the handshake: its URL has
+`https` for `wss`, and any status but `101` makes OkHttp fail the socket with that response. A rule
+with a `failure`, such as `connectionRefused`, fails the socket with the exception and no response,
+as a network that drops the connection does.
 
 **Send a request**
 

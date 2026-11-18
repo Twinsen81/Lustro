@@ -59,6 +59,7 @@ what the app gets, and to undo it:
 
 ```bash
 lustro mock add --url-pattern /v1/orders --status 500 --body '{"error":"down"}'
+lustro mock add --url-pattern /v1/orders --failure timeout   # or unknownHost, connectionRefused, connectionReset, tls
 lustro mock list                         # the rules, each with its whole id
 lustro mock delete <whole id>            # a short id deletes nothing and still prints ok
 lustro net throttle 3000                 # each request waits 3 s; `lustro net throttle 0` ends it

@@ -37,6 +37,27 @@ try {
     the rule that matches, and counts a hit on it. To answer the request from the rule, report the
     response with `.mockedBy(rule)`, so the Network tab can say which rule answered it. Nothing holds
     the request for the throttle.
+- **A rule can fail the request.** When `rule.failure` is not `null`, don't answer from the rule:
+    throw your client's exception for that [connection error](mocks.md), call `failRequest` with
+    its message, and ignore the rule's status, headers, and body. The Network tab then shows the
+    request as failed, but not which rule failed it: `failRequest` has no rule. Throw an
+    `IOException` for a name that your adapter does not know, as a later release can add names:
+
+    ```kotlin
+    val rule = sink.findMockRule(url, method)
+    rule?.failure?.let { failure ->
+        val error = when (failure) {
+            "timeout" -> SocketTimeoutException("timeout")
+            "unknownHost" -> UnknownHostException("Unable to resolve host")
+            "connectionRefused" -> ConnectException("Connection refused")
+            "connectionReset" -> SocketException("Connection reset")
+            "tls" -> SSLHandshakeException("SSL handshake aborted")
+            else -> IOException("Mock rule failure: $failure")
+        }
+        sink.failRequest(id, 0, error.message ?: failure)
+        throw error
+    }
+    ```
 - **No call throws.** The capture filter runs on your thread. Redaction and storing run on a
     background thread, except during a burst of large bodies, when a call captures on your thread
     until the background thread catches up, as OkHttp capture does.

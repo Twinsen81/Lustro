@@ -60,6 +60,30 @@ class SharedPreferencesMockRuleStorageTest {
     }
 
     @Test
+    fun `a failure round-trips`() {
+        val storage = storage()
+        storage.save(listOf(MockRuleImpl(id = "r", name = "n", urlPattern = "/x", failure = "connectionRefused")))
+        assertEquals("connectionRefused", storage.load().single().failure)
+    }
+
+    @Test
+    fun `a rule stored before failures existed loads as a rule that answers`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val prefs = context.getSharedPreferences("lustro-test-rules", Context.MODE_PRIVATE)
+        prefs.edit().clear().commit()
+        prefs.edit().putString(
+            "rules",
+            """[{"id":"old","name":"n","urlPattern":"/x","method":"GET","statusCode":503,"responseHeaders":{},"responseBody":"down","enabled":true}]""",
+        ).commit()
+
+        val loaded = SharedPreferencesMockRuleStorage(prefs).load().single()
+
+        assertEquals("old", loaded.id)
+        assertEquals(503, loaded.statusCode)
+        assertNull(loaded.failure)
+    }
+
+    @Test
     fun `null method round-trips as null`() {
         val storage = storage()
         storage.save(listOf(MockRuleImpl(id = "r", name = "n", urlPattern = "/x", method = null)))
@@ -93,6 +117,7 @@ class SharedPreferencesMockRuleStorageTest {
             [{"id":"bad-type","urlPattern":"/get","responseHeaders":{"Content-Type":"not a media type"}},
              {"id":"bad-status","urlPattern":"/get","statusCode":-1},
              {"id":"bad-header","urlPattern":"/get","responseHeaders":{"Bad Name":"v"}},
+             {"id":"bad-failure","urlPattern":"/get","failure":"proxyAuth"},
              {"id":"good","urlPattern":"/get","statusCode":200}]
             """.trimIndent(),
         ).commit()

@@ -135,6 +135,22 @@ def test_every_mock_rule_matches_mockrule_component():
         validator.validate(rule)
 
 
+def test_mock_rules_carry_failure_since_1_12():
+    schemas = wire.load_openapi()["components"]["schemas"]
+    assert "failure" in schemas["MockRule"]["properties"]
+    assert schemas["MockRuleInput"]["properties"]["failure"]["enum"] == [
+        "timeout",
+        "unknownHost",
+        "connectionRefused",
+        "connectionReset",
+        "tls",
+        None,
+    ]
+    rules = wire.load_golden("rules-list.json")["items"]
+    assert all("failure" in rule for rule in rules)
+    assert any(rule["failure"] for rule in rules)
+
+
 # ── protocol version ──────────────────────────────────────────────────────────
 
 # Added in 1.2. The server sends each of them on every transaction, list and
