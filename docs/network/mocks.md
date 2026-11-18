@@ -45,8 +45,8 @@ filled in for that request: a `regex:` pattern that matches its URL and no other
 `/items/1/comments`, its method, its status, its `Content-Type`, and its body. A query value that
 Lustro redacted matches any value, because the app sends the real one. The body is the stored one,
 so a redacted value in it is `[REDACTED]`: the form says when that is so, and you replace those
-values before you save. For a request that a failure rule failed, the new rule has the same
-failure. The button is disabled for a request that
+values before you save. For a request that a failure rule failed, the new rule has the failure
+that the rule has now. The button is disabled for a request that
 [platform `HttpURLConnection` capture](httpurlconnection.md) recorded,
 because no rule answers one.
 

@@ -117,8 +117,8 @@ class MockRuleCodecTest {
     }
 
     @Test
-    fun `a rule with no failure, null, or a blank one answers with its response`() {
-        for (json in listOf("""{"urlPattern":"/x"}""", """{"urlPattern":"/x","failure":null}""", """{"urlPattern":"/x","failure":""}""")) {
+    fun `a rule with no failure, or a null one, answers with its response`() {
+        for (json in listOf("""{"urlPattern":"/x"}""", """{"urlPattern":"/x","failure":null}""")) {
             assertNull(json, valid(json).failure)
         }
         assertTrue(serializeOne(valid("""{"id":"r","urlPattern":"/x"}""")).isNull("failure"))
@@ -126,7 +126,7 @@ class MockRuleCodecTest {
 
     @Test
     fun `a failure name the interceptor does not know is rejected`() {
-        for (failure in listOf("Timeout", "unknown_host", "dns", "SocketTimeoutException")) {
+        for (failure in listOf("", " ", "Timeout", "unknown_host", "dns", "SocketTimeoutException")) {
             val rejection = invalid("""{"urlPattern":"/x","failure":"$failure"}""")
             assertEquals("failure", rejection.field)
             assertTrue(rejection.message, "timeout, unknownHost, connectionRefused, connectionReset, tls" in rejection.message)

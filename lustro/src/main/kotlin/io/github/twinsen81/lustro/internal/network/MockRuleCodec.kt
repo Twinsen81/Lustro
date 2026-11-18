@@ -46,8 +46,9 @@ internal object MockRuleCodec {
                 responseHeaders = headersFrom(obj.optJSONObject("responseHeaders")),
                 responseBody = obj.optString("responseBody", ""),
                 // hitCount is a runtime counter: never read from input, never persisted.
-                // A rule stored before failures existed has no failure field.
-                failure = if (obj.isNull("failure")) null else obj.optString("failure").ifBlank { null },
+                // A rule stored before failures existed has no failure field. A blank
+                // name is kept, so that validate() rejects it with the other unknown names.
+                failure = if (obj.isNull("failure")) null else obj.optString("failure"),
             )
         return validate(rule) ?: MockRuleParseResult.Valid(rule)
     }
