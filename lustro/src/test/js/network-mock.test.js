@@ -160,3 +160,54 @@ test('Copy as cURL quotes a file name that curl would split', () => {
     });
     assert.strictEqual(command, "curl -X POST -F 'file=@\"photo,edited;v2.png\"' 'https://a.test/upload'");
 });
+
+test('A rule card shows the status a rule answers with, or the error it fails with', async (t) => {
+    await t.test('a rule that answers shows its status', () => {
+        const badge = network.netRuleOutcomeBadge({ statusCode: 503, failure: null });
+        assert.match(badge, />503</);
+        assert.match(badge, /HTTP status returned to the app/);
+    });
+
+    await t.test('a failure rule shows the error and the exception the app gets', () => {
+        const badge = network.netRuleOutcomeBadge({ statusCode: 200, failure: 'unknownHost' });
+        assert.match(badge, />Unknown host</);
+        assert.match(badge, /throws UnknownHostException/);
+        assert.doesNotMatch(badge, />200</);
+    });
+
+    await t.test('a failure name from a newer app is shown as it is, escaped', () => {
+        const badge = network.netRuleOutcomeBadge({ statusCode: 200, failure: '<b>proxyAuth</b>' });
+        assert.match(badge, /&lt;b&gt;proxyAuth&lt;\/b&gt;/);
+        assert.doesNotMatch(badge, /<b>/);
+    });
+});
+
+test('The detail says that a failure rule fails a request, not that it answers it', async (t) => {
+    const rules = [
+        { id: 'r1', name: 'Feed offline', urlPattern: '/feed', failure: 'unknownHost' },
+        { id: 'r2', name: 'Feed 200', urlPattern: '/feed', failure: null },
+        { id: 'r3', name: 'Feed later', urlPattern: '/feed', failure: 'proxyAuth' },
+    ];
+    const text = (html) => html.replace(/<[^>]+>/g, '');
+
+    await t.test('the request it failed, while it is still active', () => {
+        const tx = { isMocked: true, mockRuleId: 'r1', activeMockRuleId: 'r1', error: 'Unable to resolve host', statusCode: null };
+        assert.strictEqual(text(network.netMockRuleLine(tx, rules)),
+            'Mocked by rule Feed offline. The rule is still active, so it also fails the next request like this one.');
+    });
+
+    await t.test('a request that it would fail if the app made it again', () => {
+        const line = network.netMockRuleLine({ isMocked: false, activeMockRuleId: 'r1' }, rules);
+        assert.strictEqual(text(line), 'Mock rule active: Feed offline. The next request like this one fails with UnknownHostException.');
+    });
+
+    await t.test('a failure rule that took the place of a rule that answered', () => {
+        const line = network.netMockRuleLine({ isMocked: true, mockRuleId: 'r2', activeMockRuleId: 'r1' }, rules);
+        assert.match(text(line), /Now rule Feed offline fails the next request like this one\.$/);
+    });
+
+    await t.test('a failure name from a newer app', () => {
+        const line = network.netMockRuleLine({ isMocked: false, activeMockRuleId: 'r3' }, rules);
+        assert.match(text(line), /fails with a connection error\.$/);
+    });
+});

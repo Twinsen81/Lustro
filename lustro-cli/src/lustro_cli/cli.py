@@ -1385,6 +1385,9 @@ def cmd_net_throttle(args: argparse.Namespace) -> int:
 
 # ── mock subcommands ───────────────────────────────────────────────────────────
 
+# The failure names of a mock rule that protocol 1.12 defines.
+MOCK_FAILURES = ("timeout", "unknownHost", "connectionRefused", "connectionReset", "tls")
+
 
 def cmd_mock_list(args: argparse.Namespace) -> int:
     client = _build_client(args)
@@ -1394,13 +1397,14 @@ def cmd_mock_list(args: argparse.Namespace) -> int:
         return 0
     for rule in (data.get("items") or []):
         enabled = "on " if rule.get("enabled") else "off"
+        failure = rule.get("failure")
         print(
-            "{id}  [{enabled}]  {method} {pattern} -> {status}  hits={hits}".format(
+            "{id}  [{enabled}]  {method} {pattern} -> {outcome}  hits={hits}".format(
                 id=rule.get("id"),
                 enabled=enabled,
                 method=rule.get("method") or "*",
                 pattern=rule.get("urlPattern"),
-                status=rule.get("statusCode"),
+                outcome="failure={}".format(failure) if failure else rule.get("statusCode"),
                 hits=rule.get("hitCount", 0),
             )
         )
@@ -1408,6 +1412,11 @@ def cmd_mock_list(args: argparse.Namespace) -> int:
 
 
 def cmd_mock_add(args: argparse.Namespace) -> int:
+    # The app ignores the response of a failure rule, so a response given with
+    # one is a mistake, not something to drop without a word.
+    if args.failure is not None and (args.status is not None or args.body is not None or args.header):
+        print("--failure fails the request, so it takes no --status, --body, or --header", file=sys.stderr)
+        return 2
     client = _build_client(args)
     rule: dict = {"urlPattern": args.url_pattern}
     if args.id is not None:
@@ -1422,6 +1431,8 @@ def cmd_mock_add(args: argparse.Namespace) -> int:
         rule["responseBody"] = args.body
     if args.header:
         rule["responseHeaders"] = _parse_headers(args.header)
+    if args.failure is not None:
+        rule["failure"] = args.failure
     _emit(client.post(NETWORK + "/rules", json_body=rule), raw_json=args.json)
     return 0
 
@@ -1846,6 +1857,14 @@ def build_parser() -> argparse.ArgumentParser:
     m_add.add_argument("--status", type=int, default=None, help="mocked response status code")
     m_add.add_argument("--body", default=None, help="mocked response body")
     m_add.add_argument("--header", action="append", metavar="K:V", help="response header (repeatable)")
+    # Not argparse choices: the app checks the name, and a newer app can know more.
+    m_add.add_argument(
+        "--failure",
+        default=None,
+        metavar="NAME",
+        help="fail the request with a connection error instead of a response: "
+        + ", ".join(MOCK_FAILURES),
+    )
     m_add.set_defaults(func=cmd_mock_add)
 
     m_delete = mock_sub.add_parser("delete", parents=[common], help="POST rules/delete <id>")

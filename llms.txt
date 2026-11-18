@@ -33,7 +33,7 @@ Facts to get right when you add Lustro to an app:
 - [WebSocket messages](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/network/websockets.md): `webSocketFactory`, the libraries that take a `WebSocket.Factory`, redaction, and limits
 - [Send Request](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/network/send-request.md): named senders through the app's own clients
 - [Export](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/network/export.md): HAR and Markdown export
-- [Mock rules](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/network/mocks.md): matching, order, `MockRuleStorage`, and what makes a rule valid
+- [Mock rules](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/network/mocks.md): matching, order, failure rules, `MockRuleStorage`, and what makes a rule valid
 - [Redaction and categories](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/network/redaction.md): what `DefaultRedactor` masks, a custom `Redactor`, and a `NetworkClassifier` with the labels that have their own color
 - [Platform HttpURLConnection capture](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/network/httpurlconnection.md): the opt-in and its limits
 - [Other HTTP clients](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/network/other-clients.md): an adapter that reports to `networkCaptureSink()`

@@ -276,6 +276,38 @@ def test_mock_add_route(rec):
     assert body["responseHeaders"] == {"Content-Type": "application/json"}
 
 
+def test_mock_add_failure(rec):
+    run(["mock", "add", "--url-pattern", "/v1/feed", "--failure", "unknownHost"])
+    method, path, _, body = rec.calls[-1]
+    assert (method, path) == ("POST", "/api/v1/network/rules")
+    assert body == {"urlPattern": "/v1/feed", "failure": "unknownHost"}
+
+
+def test_mock_add_failure_takes_no_response(rec, capsys):
+    for extra in (["--status", "500"], ["--body", "{}"], ["--header", "X-A: b"]):
+        code = run(["mock", "add", "--url-pattern", "/v1/feed", "--failure", "timeout"] + extra)
+        assert code == 2
+        assert "--failure" in capsys.readouterr().err
+    assert rec.calls == []
+
+
+def test_mock_list_shows_the_failure_in_place_of_the_status(rec, capsys):
+    rec.response = {
+        "items": [
+            {"id": "a", "enabled": True, "method": "GET", "urlPattern": "/v1/orders", "statusCode": 500, "failure": None, "hitCount": 3},
+            {"id": "b", "enabled": True, "method": None, "urlPattern": "/v1/feed", "statusCode": 200, "failure": "unknownHost", "hitCount": 1},
+            # A 1.11 app sends no failure.
+            {"id": "c", "enabled": False, "method": None, "urlPattern": "/v1/old", "statusCode": 204, "hitCount": 0},
+        ]
+    }
+    run(["mock", "list"])
+    assert capsys.readouterr().out.splitlines() == [
+        "a  [on ]  GET /v1/orders -> 500  hits=3",
+        "b  [on ]  * /v1/feed -> failure=unknownHost  hits=1",
+        "c  [off]  * /v1/old -> 204  hits=0",
+    ]
+
+
 def test_mock_delete_route(rec):
     run(["mock", "delete", "r1"])
     method, path, _, body = rec.calls[-1]

@@ -16,7 +16,7 @@ its process ends.
 | **⚠** | Shows when the app's capture filter left out a request: see [OkHttp capture setup](okhttp.md). | `lustro net state` |
 | **⏸ Pause** | Stops the recording of new requests and WebSocket messages, and changes to **▶ Resume**. The interceptor still runs: mock rules and the throttle still apply. | `lustro net pause` |
 | **Overwrite** | When on, a new request removes the earlier finished requests with the same method and URL path, so the list keeps one row for each endpoint. A request that is still in flight stays. The new row says how many rows it replaced. | `lustro net overwrite` |
-| Throttle | Holds each OkHttp request for the time that you select, from 500 ms to 1 min, before it goes out or before a mock rule answers it. | `lustro net throttle <ms>` |
+| Throttle | Holds each OkHttp request for the time that you select, from 500 ms to 1 min, before it goes out or before a mock rule answers or fails it. | `lustro net throttle <ms>` |
 | **Clear** | Removes the captured requests and WebSocket connections, and starts the capture filter's counts again. The mock rules and the settings stay. Shortcut: **C**. | `lustro net clear` |
 
 **Use the throttle** to see a loading state, to test a timeout, or to find a race between two
@@ -54,7 +54,7 @@ in your browser.
     after them, in the order the console first saw them. A row shows when one of its labels is on. A row without a label
     always shows. See [Redaction and categories](redaction.md).
 - **Statuses.** `2xx`, `3xx`, `4xx`, `5xx`, `Error` for a request that failed without a
-    response, and `Mocked` for a request that a mock rule answered.
+    response, and `Mocked` for a request that a mock rule answered or failed.
 - **Methods.** `GET`, `POST`, `PUT`, `DELETE`, `PATCH`, and `Other`.
 
 ## The list
@@ -77,7 +77,7 @@ The bar above the request has these buttons:
 | Button | What it does |
 | --- | --- |
 | **Edit and resend** | Opens the request in the Send form, where you change it and send it again. It shows when the app gave Lustro a sender. See [Send Request](send-request.md). |
-| **Mock this request** | Opens a mock rule for this method and URL, with the captured response. See [Mock rules](mocks.md). |
+| **Mock this request** | Opens a mock rule for this method and URL, with the captured response, or with the failure of the rule that failed the request. See [Mock rules](mocks.md). |
 | **Matching rules** | Lists the mock rules that match this request, enabled or not, in the order the app tries them. |
 | **cURL** | Copies a `curl` command that sends the same request. |
 | **Markdown** | Copies the request and the response as Markdown, for a bug report or a pull request. |

@@ -129,15 +129,15 @@ See [With a coding agent](https://twinsen81.github.io/Lustro/get-started/coding-
 
 ## How Lustro compares
 
-| Tool | Where you inspect the app | Notes |
-| --- | --- | --- |
-| **Lustro** | A desktop browser, through `adb forward` | Network, logs, preferences, databases, WorkManager. JSON API and OpenAPI for each tab, `lustro` CLI, agent skill. |
-| [Chucker](https://github.com/ChuckerTeam/chucker) | On the device | HTTP inspector for OkHttp. |
-| [Pluto](https://github.com/androidPluto/pluto) | On the device | Network, crashes and ANRs, app data. |
-| [Flocon](https://github.com/openflocon/Flocon) | A desktop app | Inspired by Flipper. Network, databases, preferences, and more, for Android, Kotlin Multiplatform, iOS, and Flutter. MCP server for AI agents. |
-| [Flipper](https://github.com/meta/flipper) | A desktop app | From Meta. The repository is archived. |
-| [Stetho](https://github.com/meta/stetho) | Chrome DevTools | From Meta. The repository is archived. |
-| Android Studio Network Inspector | Android Studio | Built into the IDE. No library to add. |
+| Tool | Where you inspect the app | What Lustro adds | Choose it instead when |
+| --- | --- | --- | --- |
+| [Chucker](https://github.com/ChuckerTeam/chucker) | On the device | Changes the traffic, not only records it: mock rules, a throttle, and Send Request. Also shows logs, preferences, databases, and WorkManager work. | You want to see the traffic on the phone, without a computer. |
+| [Pluto](https://github.com/androidPluto/pluto) | On the device | A full desktop screen, not an overlay on the phone. A JSON API and a CLI, so coding agents and scripts read the same data. | You want to inspect the app on the phone, without a computer. |
+| [Flocon](https://github.com/openflocon/Flocon) | A desktop app | Nothing to install on the computer: a browser and `adb` are enough, and no desktop app must match the SDK version. The Logs tab shows the app's logcat with no code change. | You need iOS, Flutter, or Kotlin Multiplatform. |
+| Android Studio App Inspection | Android Studio | Agents, scripts, and CI read the data through a JSON API, with no IDE open. Edits SharedPreferences and DataStores. | You do not want to add a library to the app. |
+
+[Flipper](https://github.com/meta/flipper) and [Stetho](https://github.com/meta/stetho), from Meta,
+are archived.
 
 ## FAQ
 
@@ -165,7 +165,8 @@ reports each request to `networkCaptureSink()`. See
 ### Can I mock API responses with Lustro?
 
 Yes. The Network tab has mock rules that match requests and return the response that you define,
-and a throttle that delays each request. See [Mock rules](https://twinsen81.github.io/Lustro/network/mocks/).
+or fail them with a connection error such as a timeout or an unknown host, and a throttle that
+delays each request. See [Mock rules](https://twinsen81.github.io/Lustro/network/mocks/).
 
 ### Do I need Android Studio or a desktop app?
 

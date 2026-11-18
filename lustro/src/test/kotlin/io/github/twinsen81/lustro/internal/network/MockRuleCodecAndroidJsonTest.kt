@@ -3,6 +3,7 @@ package io.github.twinsen81.lustro.internal.network
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -32,6 +33,13 @@ class MockRuleCodecAndroidJsonTest {
             }
         assertTrue("no id is the text null: $ids", "null" !in ids)
         assertNotEquals(ids[0], ids[1])
+    }
+
+    @Test
+    fun `a null failure is no failure, not the name null`() {
+        val result = parse("""{"id":"r","urlPattern":"/a","failure":null}""", generateMissingId = false)
+        assertTrue("expected the rule to be accepted, got $result", result is MockRuleParseResult.Valid)
+        assertNull((result as MockRuleParseResult.Valid).rule.failure)
     }
 
     @Test

@@ -88,7 +88,8 @@ MCP server
 
 Mock rule
 :   A rule of the Network tab that answers a matching request with the response that the rule
-    gives. The request does not leave the device. See [Mock rules](../network/mocks.md).
+    gives, or fails it with a connection error, such as a timeout. The request does not leave the
+    device. See [Mock rules](../network/mocks.md).
 
 No-op half
 :   The release artifact of a pair, such as `lustro-noop` for `lustro`, or `lustro-logs-noop` for

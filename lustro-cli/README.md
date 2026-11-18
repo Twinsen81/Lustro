@@ -109,7 +109,7 @@ discovery), `--json` (JSON output). They go before or after the command:
 | `lustro net overwrite` | `POST network/overwrite-mode` |
 | `lustro net throttle <ms>` | `POST network/throttle` |
 | `lustro mock list` | `GET network/rules` |
-| `lustro mock add --url-pattern …` | `POST network/rules` |
+| `lustro mock add --url-pattern … [--failure NAME]` | `POST network/rules` |
 | `lustro mock delete <id>` | `POST network/rules/delete` |
 | `lustro mock toggle <id>` | `POST network/rules/toggle` |
 | `lustro mock sync <file.json>` | `POST network/rules/_/sync` (atomic) |

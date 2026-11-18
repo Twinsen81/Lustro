@@ -15,6 +15,7 @@ import io.github.twinsen81.lustro.internal.LustroServer
 import io.github.twinsen81.lustro.internal.LustroTokenStore
 import io.github.twinsen81.lustro.internal.network.NetworkCaptureProvider
 import io.github.twinsen81.lustro.internal.network.NoOpCaptureSink
+import io.github.twinsen81.lustro.network.MockRule
 import io.github.twinsen81.lustro.network.NetworkCaptureSink
 import io.github.twinsen81.lustro.network.NetworkDebugTab
 import java.util.concurrent.Executors
@@ -173,7 +174,10 @@ public class Lustro internal constructor(
      * as OkHttp's. A request that the filter leaves out, or that starts while
      * capture is paused, is not recorded, and the calls for it do nothing. Mock
      * rules and the throttle are your adapter's to apply: [NetworkCaptureSink.findMockRule]
-     * returns the matching rule and counts a hit on it. No call throws.
+     * returns the matching rule and counts a hit on it. A rule with a
+     * [MockRule.failure] fails the request with a connection error instead of
+     * answering it: report that with the [NetworkCaptureSink.failRequest] that
+     * takes the rule. No call throws.
      *
      * When no network tab is registered, the sink records nothing.
      */

@@ -9,7 +9,7 @@ import io.github.twinsen81.lustro.MediaType
  * The OkHttp adapter lives in `:lustro`; this SPI lets any HTTP client report
  * the lifecycle of a request: [beginRequest] on dispatch, then one or more
  * [completeRequest] calls (progressive for event streams) or a single
- * [failRequest].
+ * [failRequest]. A request that a mock rule failed reports the rule with it.
  *
  * The built-in sink returns from each call right away and records the
  * transaction on a background thread once it's redacted, so a transaction can
@@ -53,4 +53,18 @@ public interface NetworkCaptureSink {
      * kept.
      */
     public fun failRequest(id: TransactionId, durationMs: Long, error: String)
+
+    /**
+     * Records the transaction [id] as failed after [durationMs], with the
+     * [error] description, because the mock rule [mockedBy] failed it: a rule
+     * with a [MockRule.failure], as returned by [findMockRule]. The Network tab
+     * then says which rule failed the request, as
+     * [CapturedResponse.Builder.mockedBy] does for a rule that answered one.
+     *
+     * The default implementation calls [failRequest] without the rule, so a
+     * sink written before this method keeps working.
+     */
+    public fun failRequest(id: TransactionId, durationMs: Long, error: String, mockedBy: MockRule) {
+        failRequest(id, durationMs, error)
+    }
 }

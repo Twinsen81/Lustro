@@ -19,6 +19,7 @@ internal data class MockRuleImpl(
     override val responseHeaders: Headers = Headers.EMPTY,
     override val responseBody: String = "",
     override val hitCount: Int = 0,
+    override val failure: String? = null,
 ) : MockRule {
     // Compile the regex once per rule rather than on every request. MockRuleCodec
     // rejects a pattern that doesn't compile, but a rule built in code skips it, so

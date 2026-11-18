@@ -63,6 +63,15 @@ internal class AppCaptureSink(
             logCaptureFailure("Could not record a failure reported by the app", t)
         }
     }
+
+    override fun failRequest(id: TransactionId, durationMs: Long, error: String, mockedBy: MockRule) {
+        if (id == SKIPPED_TRANSACTION) return
+        try {
+            store.failRequest(id, durationMs, error, mockedBy)
+        } catch (t: Throwable) {
+            logCaptureFailure("Could not record a failure reported by the app", t)
+        }
+    }
 }
 
 /** A sink that records nothing, for an app with no network tab. */
@@ -80,6 +89,8 @@ internal object NoOpCaptureSink : NetworkCaptureSink {
     override fun completeRequest(id: TransactionId, response: CapturedResponse) = Unit
 
     override fun failRequest(id: TransactionId, durationMs: Long, error: String) = Unit
+
+    override fun failRequest(id: TransactionId, durationMs: Long, error: String, mockedBy: MockRule) = Unit
 }
 
 // The id of a request that is not recorded. The store's ids are UUIDs, so none is empty.

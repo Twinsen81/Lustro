@@ -103,28 +103,32 @@ internal class LustroNetworkInterceptor(
         val startTime = System.currentTimeMillis()
 
         if (mockRule != null) {
-            // Build the response before recording anything: rules are validated
-            // where they enter, but a rule that still can't be turned into one
-            // must fail this call the way a network error does — never as a
-            // RuntimeException thrown out of the app's own execute()/enqueue().
+            // Build the response, or the exception of a failure rule, before
+            // recording anything: rules are validated where they enter, but a
+            // rule that still can't be served must fail this call the way a
+            // network error does, never as a RuntimeException thrown out of the
+            // app's own execute()/enqueue().
+            val failure = mockRule.failure
+            if (failure != null) {
+                val exception =
+                    MockFailure.fromWireName(failure)?.exception(request.url, mockRule)
+                        ?: failUnservableRule(id, mockRule, startTime, IllegalArgumentException("Unknown failure: $failure"))
+                incrementMockHit(mockRule.id)
+                if (id != null) {
+                    recordUnsentRequestBody(id, request, contentType, bodyOnWrite)
+                    sink.failRequest(id, System.currentTimeMillis() - startTime, failureReason(exception), mockRule)
+                }
+                throw exception
+            }
             val mockResponse =
                 try {
                     buildMockResponse(request, mockRule)
                 } catch (e: RuntimeException) {
-                    Log.w(TAG, "Mock rule '${mockRule.id}' cannot be served; failing the request", e)
-                    val durationMs = System.currentTimeMillis() - startTime
-                    val reason = "Invalid mock rule '${mockRule.id}': ${e.message}"
-                    if (id != null) {
-                        sink.failRequest(id, durationMs, reason)
-                    }
-                    throw IOException(reason, e)
+                    failUnservableRule(id, mockRule, startTime, e)
                 }
             incrementMockHit(mockRule.id)
             if (id != null) {
-                // No request is sent, so nothing else writes the body.
-                if (bodyOnWrite) {
-                    captureRequestBody(request, contentType, sent = false)?.let { recordRequestBody(id, it, contentType.toApiMediaType()) }
-                }
+                recordUnsentRequestBody(id, request, contentType, bodyOnWrite)
                 val durationMs = System.currentTimeMillis() - startTime
                 val mockBodyBytes = mockRule.responseBody.toByteArray(Charsets.UTF_8)
                 // No protocol: the mock response's HTTP/1.1 is made up, not negotiated.
@@ -178,6 +182,30 @@ internal class LustroNetworkInterceptor(
             }
             throw t
         }
+    }
+
+    // The transaction says which rule failed it, so the console can link it.
+    private fun failUnservableRule(
+        id: TransactionId?,
+        rule: MockRule,
+        startTime: Long,
+        cause: RuntimeException,
+    ): Nothing {
+        Log.w(TAG, "Mock rule '${rule.id}' cannot be served; failing the request", cause)
+        val reason = "Invalid mock rule '${rule.id}': ${cause.message}"
+        if (id != null) sink.failRequest(id, System.currentTimeMillis() - startTime, reason, rule)
+        throw IOException(reason, cause)
+    }
+
+    // A mocked request is never sent, so nothing else writes its body.
+    private fun recordUnsentRequestBody(
+        id: TransactionId,
+        request: okhttp3.Request,
+        contentType: okhttp3.MediaType?,
+        bodyOnWrite: Boolean,
+    ) {
+        if (!bodyOnWrite) return
+        captureRequestBody(request, contentType, sent = false)?.let { recordRequestBody(id, it, contentType.toApiMediaType()) }
     }
 
     // An IOException's message says what went wrong; another throwable is named

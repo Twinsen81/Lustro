@@ -40,4 +40,20 @@ public interface MockRule {
 
     /** How many times this rule has matched a request. */
     public val hitCount: Int
+
+    /**
+     * The connection error the rule fails a matching request with, in place of
+     * a response, or `null` for a rule that answers with [statusCode],
+     * [responseHeaders], and [responseBody], which a failure rule ignores.
+     *
+     * One of `timeout`, `unknownHost`, `connectionRefused`, `connectionReset`,
+     * and `tls`. Lustro's OkHttp interceptor throws the exception OkHttp throws
+     * for that error: `SocketTimeoutException`, `UnknownHostException`,
+     * `ConnectException`, `SocketException`, or `SSLHandshakeException`. An
+     * adapter for another HTTP client throws its own client's equivalent, and
+     * an `IOException` for a name it does not know, as a later release can add
+     * names.
+     */
+    public val failure: String?
+        get() = null
 }

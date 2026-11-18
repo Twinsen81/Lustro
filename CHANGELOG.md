@@ -33,9 +33,38 @@ see [DECISIONS.md](DECISIONS.md).
   Verified on a physical device: the MCP Inspector lists the tools with no
   schema warning, and an agent session that had only these tools (Claude
   Code with its built-in tools turned off) listed the sample's requests and
-  added and deleted a mock rule. Android Studio's agent
-  connects only to MCP servers over HTTP, so it can't use the server; the docs
-  say so.
+  added and deleted a mock rule. Android Studio's agent connects only to MCP
+  servers over HTTP, so it can't use the server; the docs say so.
+- **A mock rule can fail a request with a connection error (wire protocol
+  1.12).** A rule could only answer with a response, so a developer or an
+  agent could not make a request fail the way it fails on a bad network. In
+  most apps that is a different path from an HTTP error: OkHttp throws an
+  `IOException`, and the app shows its offline state or retries. The throttle
+  came near it only for an app that sets `callTimeout`, because it sleeps
+  inside the interceptor, where the connect, read, and write timeouts never
+  fire. A rule now has an optional `failure`: `timeout`, `unknownHost`,
+  `connectionRefused`, `connectionReset`, or `tls`. Lustro's OkHttp
+  interceptor then throws `SocketTimeoutException`, `UnknownHostException`,
+  `ConnectException`, `SocketException`, or `SSLHandshakeException`, with the
+  rule's id at the end of the message, and ignores the rule's status, headers,
+  and body. The Network tab lists the request as failed, mocked by that rule,
+  and the rule's hit counts. A rule that the interceptor cannot serve now also
+  says which rule failed the request. The console's rule form has a
+  **Failure** select, which **Mock this request** fills in for a request that
+  a failure rule failed, and the rule list shows the error in place of the
+  status. `lustro mock add --failure NAME` sets one, and `lustro mock list`
+  shows it. `POST rules` and `POST rules/_/sync` refuse any other name with a
+  `400`, `field: "failure"`. The public `MockRule` has a `failure` property,
+  `null` by default, so an app's own `MockRuleStorage` and its `MockRule`
+  classes keep compiling, and rules that were stored before load as rules
+  that answer. A `MockRuleStorage` of the app's own must store `failure` too:
+  the compiler does not ask for it, and a failure rule saved without it loads
+  as a rule that answers. An adapter for another HTTP client reads `failure` from
+  `findMockRule`, throws its own client's exception, and reports it with the
+  new `NetworkCaptureSink.failRequest(id, durationMs, error, mockedBy)`, so
+  that the Network tab says which rule failed the request. Its default
+  implementation calls the `failRequest` without the rule, so a sink that an
+  app wrote before keeps compiling.
 - **An Agent Skill for coding agents, and a check of the integration.**
   `skills/lustro/` is an Agent Skill that debugs an app through the `lustro`
   CLI: its requests and WebSocket messages, mock rules and throttling, and its

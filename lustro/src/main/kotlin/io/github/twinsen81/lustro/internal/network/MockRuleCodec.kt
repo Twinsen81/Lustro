@@ -46,6 +46,9 @@ internal object MockRuleCodec {
                 responseHeaders = headersFrom(obj.optJSONObject("responseHeaders")),
                 responseBody = obj.optString("responseBody", ""),
                 // hitCount is a runtime counter: never read from input, never persisted.
+                // A rule stored before failures existed has no failure field. A blank
+                // name is kept, so that validate() rejects it with the other unknown names.
+                failure = if (obj.isNull("failure")) null else obj.optString("failure"),
             )
         return validate(rule) ?: MockRuleParseResult.Valid(rule)
     }
@@ -61,6 +64,15 @@ internal object MockRuleCodec {
             return MockRuleParseResult.Invalid("urlPattern is required", "urlPattern")
         }
         regexRejection(rule.urlPattern)?.let { return it }
+        // A name the interceptor doesn't know would fail every request it matched
+        // with an error the client never asked for.
+        val failure = rule.failure
+        if (failure != null && MockFailure.fromWireName(failure) == null) {
+            return MockRuleParseResult.Invalid(
+                "failure must be one of ${MockFailure.WIRE_NAMES}, was $failure",
+                "failure",
+            )
+        }
         if (rule.statusCode !in MIN_STATUS..MAX_STATUS) {
             return MockRuleParseResult.Invalid(
                 "statusCode must be between $MIN_STATUS and $MAX_STATUS, was ${rule.statusCode}",
@@ -97,6 +109,8 @@ internal object MockRuleCodec {
         appendHeadersJson(out, rule.responseHeaders)
         out.append(",")
         out.append("\"responseBody\":\"").append(rule.responseBody.escapeForJson()).append("\",")
+        out.append("\"failure\":")
+        out.append(rule.failure?.let { "\"${it.escapeForJson()}\"" } ?: "null").append(",")
         out.append("\"enabled\":").append(rule.enabled)
         if (includeHitCount) {
             out.append(",\"hitCount\":").append(rule.hitCount)
