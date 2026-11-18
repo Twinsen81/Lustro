@@ -38,10 +38,10 @@ try {
     response with `.mockedBy(rule)`, so the Network tab can say which rule answered it. Nothing holds
     the request for the throttle.
 - **A rule can fail the request.** When `rule.failure` is not `null`, don't answer from the rule:
-    throw your client's exception for that [connection error](mocks.md), call `failRequest` with
-    its message, and ignore the rule's status, headers, and body. The Network tab then shows the
-    request as failed, but not which rule failed it: `failRequest` has no rule. Throw an
-    `IOException` for a name that your adapter does not know, as a later release can add names:
+    throw your client's exception for that [connection error](mocks.md), and ignore the rule's
+    status, headers, and body. Report it with `failRequest(id, durationMs, error, rule)`, so the
+    Network tab shows the request as failed and mocked by that rule. Throw an `IOException` for a
+    name that your adapter does not know, as a later release can add names:
 
     ```kotlin
     val rule = sink.findMockRule(url, method)
@@ -54,7 +54,7 @@ try {
             "tls" -> SSLHandshakeException("SSL handshake aborted")
             else -> IOException("Mock rule failure: $failure")
         }
-        sink.failRequest(id, 0, error.message ?: failure)
+        sink.failRequest(id, 0, error.message ?: failure, rule)
         throw error
     }
     ```

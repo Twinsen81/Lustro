@@ -199,14 +199,13 @@ internal class NetworkTrafficStore(
         }
     }
 
-    override fun failRequest(id: TransactionId, durationMs: Long, error: String) = failRequest(id, durationMs, error, mockRuleId = null)
+    override fun failRequest(id: TransactionId, durationMs: Long, error: String) = submitFailure(id, durationMs, error, mockRuleId = null)
 
-    /**
-     * Records a failed transaction [id], as [failRequest] does, and, with a
-     * [mockRuleId], that the mock rule with that id failed it.
-     */
+    override fun failRequest(id: TransactionId, durationMs: Long, error: String, mockedBy: MockRule) =
+        submitFailure(id, durationMs, error, mockedBy.id)
+
     @Suppress("RestrictedApi") // id.value is @RestrictTo(LIBRARY_GROUP); same-group call (see beginRequest).
-    fun failRequest(id: TransactionId, durationMs: Long, error: String, mockRuleId: String?) {
+    private fun submitFailure(id: TransactionId, durationMs: Long, error: String, mockRuleId: String?) {
         val completedAt = System.currentTimeMillis() // Now, as in completeRequest.
         worker.submit(id.value, 0L) { updateWithError(id.value, durationMs, error, completedAt, mockRuleId) }
     }

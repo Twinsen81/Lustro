@@ -2,11 +2,15 @@ package io.github.twinsen81.lustro
 
 import android.app.Application
 import androidx.test.core.app.ApplicationProvider
+import io.github.twinsen81.lustro.internal.network.MockRuleImpl
 import io.github.twinsen81.lustro.internal.network.NetworkTrafficStore
 import io.github.twinsen81.lustro.network.CapturedBody
 import io.github.twinsen81.lustro.network.CapturedResponse
+import io.github.twinsen81.lustro.network.MockRule
 import io.github.twinsen81.lustro.network.NetworkCaptureFilter
+import io.github.twinsen81.lustro.network.NetworkCaptureSink
 import io.github.twinsen81.lustro.network.NetworkDebugTab
+import io.github.twinsen81.lustro.network.TransactionId
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -70,6 +74,54 @@ class LustroCaptureSinkTest {
         awaitCaptures(tab)
 
         assertEquals("connection reset", transactions(tab).getJSONObject(0).getString("error"))
+    }
+
+    @Test
+    fun `a failure that a mock rule caused is listed as mocked by that rule`() {
+        val tab = NetworkDebugTab.create()
+        val sink = Lustro.builder(app).addTab(tab).build().networkCaptureSink()
+        val rule = """{"id":"offline","urlPattern":"/status.php","failure":"unknownHost"}"""
+        tab.handle(DebugRequest(path = "rules", method = "POST", body = rule.toByteArray(), contentType = MediaType.JSON))
+
+        val found = sink.findMockRule("https://cloud.example.com/status.php", "GET")!!
+        val id = sink.beginRequest("https://cloud.example.com/status.php", "GET", Headers.Builder().build(), null, null)
+        sink.failRequest(id, 0, "Unable to resolve host", found)
+        awaitCaptures(tab)
+
+        assertEquals("unknownHost", found.failure)
+        val tx = transactions(tab).getJSONObject(0)
+        assertEquals("Unable to resolve host", tx.getString("error"))
+        assertTrue(tx.getBoolean("isMocked"))
+        assertEquals("offline", tx.getString("mockRuleId"))
+        assertTrue(tx.isNull("statusCode"))
+    }
+
+    @Test
+    fun `a sink written before failures had a rule records the failure without it`() {
+        val failures = mutableListOf<String>()
+        val sink =
+            object : NetworkCaptureSink {
+                override fun beginRequest(
+                    url: String,
+                    method: String,
+                    headers: Headers,
+                    requestBody: CapturedBody?,
+                    contentType: MediaType?,
+                ): TransactionId = throw UnsupportedOperationException()
+
+                override fun findMockRule(url: String, method: String): MockRule? = null
+
+                override fun completeRequest(id: TransactionId, response: CapturedResponse) = Unit
+
+                override fun failRequest(id: TransactionId, durationMs: Long, error: String) {
+                    failures += error
+                }
+            }
+        val rule = MockRuleImpl(id = "offline", name = "offline", urlPattern = "/x", failure = "timeout")
+
+        sink.failRequest(TransactionId("tx"), 1, "timeout", rule)
+
+        assertEquals(listOf("timeout"), failures)
     }
 
     @Test

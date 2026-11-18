@@ -257,7 +257,12 @@ public abstract interface class io/github/twinsen81/lustro/network/NetworkCaptur
 	public abstract fun beginRequest (Ljava/lang/String;Ljava/lang/String;Lio/github/twinsen81/lustro/Headers;Lio/github/twinsen81/lustro/network/CapturedBody;Lio/github/twinsen81/lustro/MediaType;)Lio/github/twinsen81/lustro/network/TransactionId;
 	public abstract fun completeRequest (Lio/github/twinsen81/lustro/network/TransactionId;Lio/github/twinsen81/lustro/network/CapturedResponse;)V
 	public abstract fun failRequest (Lio/github/twinsen81/lustro/network/TransactionId;JLjava/lang/String;)V
+	public fun failRequest (Lio/github/twinsen81/lustro/network/TransactionId;JLjava/lang/String;Lio/github/twinsen81/lustro/network/MockRule;)V
 	public abstract fun findMockRule (Ljava/lang/String;Ljava/lang/String;)Lio/github/twinsen81/lustro/network/MockRule;
+}
+
+public final class io/github/twinsen81/lustro/network/NetworkCaptureSink$DefaultImpls {
+	public static fun failRequest (Lio/github/twinsen81/lustro/network/NetworkCaptureSink;Lio/github/twinsen81/lustro/network/TransactionId;JLjava/lang/String;Lio/github/twinsen81/lustro/network/MockRule;)V
 }
 
 public abstract interface class io/github/twinsen81/lustro/network/NetworkClassifier {

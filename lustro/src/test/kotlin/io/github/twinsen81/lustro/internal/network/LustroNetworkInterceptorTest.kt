@@ -101,13 +101,6 @@ class LustroNetworkInterceptorTest {
             maxBodySize = maxBodySize,
             recordThrottle = { id, delayMs -> (sink as? NetworkTrafficStore)?.recordThrottle(id, delayMs) },
             recordRequestBody = { id, body, contentType -> (sink as? NetworkTrafficStore)?.recordRequestBody(id, body, contentType) },
-            failMocked = { id, durationMs, error, ruleId ->
-                when (sink) {
-                    is NetworkTrafficStore -> sink.failRequest(id, durationMs, error, ruleId)
-                    is RecordingSink -> sink.failures.add(Failure(id, error, ruleId))
-                    else -> sink.failRequest(id, durationMs, error)
-                }
-            },
         )
 
     @Test
@@ -1760,6 +1753,10 @@ class LustroNetworkInterceptorTest {
 
         override fun failRequest(id: TransactionId, durationMs: Long, error: String) {
             failures.add(Failure(id, error))
+        }
+
+        override fun failRequest(id: TransactionId, durationMs: Long, error: String, mockedBy: MockRule) {
+            failures.add(Failure(id, error, mockedBy.id))
         }
     }
 

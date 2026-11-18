@@ -362,7 +362,8 @@ has `error` set, `statusCode: null`, `isMocked: true`, and the rule's `mockRuleI
 counts. The call fails at once; set a throttle as well to fail it after a wait. `failure` is `null`
 for a rule that answers, and any other name gets a `400` with `field: "failure"`. A rule that the
 interceptor can't serve also fails its request, as an `IOException` that names the rule, with the
-same `isMocked` and `mockRuleId`. This arrived in protocol 1.12.
+same `isMocked` and `mockRuleId`. An app's own adapter reports such a failure with
+`failRequest(id, durationMs, error, rule)`. This arrived in protocol 1.12.
 
 **Which rule answers a request.** Don't match the rules yourself: the app does, as the interceptor
 does, and puts the result in each transaction. `activeMockRuleId`, in the list and the detail, is

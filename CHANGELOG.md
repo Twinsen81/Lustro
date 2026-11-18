@@ -37,7 +37,11 @@ see [DECISIONS.md](DECISIONS.md).
   `null` by default, so an app's own `MockRuleStorage` and its `MockRule`
   classes keep compiling, and rules that were stored before load as rules
   that answer. An adapter for another HTTP client reads `failure` from
-  `findMockRule` and throws its own client's exception.
+  `findMockRule`, throws its own client's exception, and reports it with the
+  new `NetworkCaptureSink.failRequest(id, durationMs, error, mockedBy)`, so
+  that the Network tab says which rule failed the request. Its default
+  implementation calls the `failRequest` without the rule, so a sink that an
+  app wrote before keeps compiling.
 - **An Agent Skill for coding agents, and a check of the integration.**
   `skills/lustro/` is an Agent Skill that debugs an app through the `lustro`
   CLI: its requests and WebSocket messages, mock rules and throttling, and its

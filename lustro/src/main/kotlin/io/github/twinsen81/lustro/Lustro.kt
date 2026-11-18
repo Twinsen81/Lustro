@@ -176,7 +176,8 @@ public class Lustro internal constructor(
      * rules and the throttle are your adapter's to apply: [NetworkCaptureSink.findMockRule]
      * returns the matching rule and counts a hit on it. A rule with a
      * [MockRule.failure] fails the request with a connection error instead of
-     * answering it. No call throws.
+     * answering it: report that with the [NetworkCaptureSink.failRequest] that
+     * takes the rule. No call throws.
      *
      * When no network tab is registered, the sink records nothing.
      */

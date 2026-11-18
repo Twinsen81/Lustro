@@ -72,10 +72,6 @@ internal class LustroNetworkInterceptor(
     private val maxBodySize: Long,
     private val recordThrottle: (TransactionId, Long) -> Unit = { _, _ -> },
     private val recordRequestBody: (TransactionId, CapturedBody, MediaType?) -> Unit = { _, _, _ -> },
-    // Fails the transaction as one that the mock rule with the given id failed.
-    private val failMocked: (TransactionId, Long, String, String) -> Unit = { id, durationMs, error, _ ->
-        sink.failRequest(id, durationMs, error)
-    },
 ) : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
@@ -120,7 +116,7 @@ internal class LustroNetworkInterceptor(
                 incrementMockHit(mockRule.id)
                 if (id != null) {
                     recordUnsentRequestBody(id, request, contentType, bodyOnWrite)
-                    failMocked(id, System.currentTimeMillis() - startTime, failureReason(exception), mockRule.id)
+                    sink.failRequest(id, System.currentTimeMillis() - startTime, failureReason(exception), mockRule)
                 }
                 throw exception
             }
@@ -197,7 +193,7 @@ internal class LustroNetworkInterceptor(
     ): Nothing {
         Log.w(TAG, "Mock rule '${rule.id}' cannot be served; failing the request", cause)
         val reason = "Invalid mock rule '${rule.id}': ${cause.message}"
-        if (id != null) failMocked(id, System.currentTimeMillis() - startTime, reason, rule.id)
+        if (id != null) sink.failRequest(id, System.currentTimeMillis() - startTime, reason, rule)
         throw IOException(reason, cause)
     }
 
