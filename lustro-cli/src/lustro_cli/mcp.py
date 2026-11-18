@@ -207,7 +207,10 @@ def _full_id(client: LustroClient, given: str) -> str:
 
 
 def _list_mock_rules(args: argparse.Namespace, a: Dict[str, Any]) -> str:
-    return _dumps(_client(args).get(cli.NETWORK + "/rules"))
+    data = _client(args).get(cli.NETWORK + "/rules")
+    for rule in cli._list_items(data):
+        cli._cut_bodies(rule, cli.DEFAULT_MAX_BODY, more="call_api GET network/rules")
+    return _dumps(data)
 
 
 def _add_mock_rule(args: argparse.Namespace, a: Dict[str, Any]) -> str:
@@ -383,7 +386,7 @@ TOOLS: Tuple[Tool, ...] = (
         "list_mock_rules",
         "List mock rules",
         "Read-only. The mock rules as JSON, in the order that the app tries them: the first enabled rule that "
-        "matches a request answers it.",
+        "matches a request answers it. Each response body is cut at 2 KB.",
         _schema({}),
         READ_ONLY,
         _list_mock_rules,
@@ -629,9 +632,12 @@ class Server:
         except Exception as exc:  # a bug: report it, and keep serving
             traceback.print_exc(file=sys.stderr)
             return _error(request_id, INTERNAL_ERROR, "Internal error: {}".format(exc))
-        result = dict(result, resultType="complete")
         if modern:
-            result["_meta"] = {META_SERVER_INFO: SERVER_INFO}
+            # Fields of 2026-07-28 only: a legacy client can check a result strictly, as
+            # the TypeScript SDK does for the empty result of ping.
+            result = dict(result, resultType="complete", _meta={META_SERVER_INFO: SERVER_INFO})
+            if method == "tools/list":
+                result.update(CACHE)
         return {"jsonrpc": "2.0", "id": request_id, "result": result}
 
     def _check_meta(self, method: str, params: Dict[str, Any]) -> bool:
@@ -661,8 +667,10 @@ class Server:
         }
 
     def _discover(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        # A modern method: its result has the modern fields also for a request without _meta.
         return dict(
             {
+                "resultType": "complete",
                 "supportedVersions": list(SUPPORTED_VERSIONS),
                 "capabilities": {"tools": {"listChanged": False}},
                 "_meta": {META_SERVER_INFO: SERVER_INFO},
@@ -672,7 +680,7 @@ class Server:
         )
 
     def _tools_list(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        return dict({"tools": [tool.describe() for tool in self.tools.values()]}, **CACHE)
+        return {"tools": [tool.describe() for tool in self.tools.values()]}
 
     def _tools_call(self, params: Dict[str, Any]) -> Dict[str, Any]:
         name = params.get("name")

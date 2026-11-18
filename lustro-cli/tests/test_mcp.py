@@ -8,18 +8,23 @@ import io
 import json
 import os
 import stat
+import subprocess
+import sys
 import threading
+import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
+import lustro_cli
 from lustro_cli import cli, mcp, wire
 
 TOKEN = "test-token-123"
 FULL_ID = "3f2a7c10-1b2c-4d5e-8f90-a1b2c3d4e5f6"
-# The real one: a fixture below replaces it in the module for every test.
+# The real ones: fixtures replace them in their modules for every test.
 add_sdk_adb_to_path = mcp.add_sdk_adb_to_path
+adb_forward = cli._adb_forward
 MODERN_META = {
     mcp.META_PROTOCOL_VERSION: "2026-07-28",
     mcp.META_CLIENT_CAPABILITIES: {},
@@ -83,7 +88,24 @@ def test_notifications_and_responses_get_no_reply():
             _request("ping", request_id=2),
         ]
     )
-    assert replies == [{"jsonrpc": "2.0", "id": 2, "result": {"resultType": "complete"}}]
+    assert replies == [{"jsonrpc": "2.0", "id": 2, "result": {}}]
+
+
+def test_a_legacy_result_has_only_the_fields_of_its_era():
+    """The TypeScript SDK checks the empty result of ping strictly, and rejects resultType."""
+    replies = _serve(
+        [
+            _request("initialize", {"protocolVersion": "2025-11-25", "capabilities": {}}, request_id=1),
+            _request("ping", request_id=2),
+            _request("tools/list", request_id=3),
+            _request("tools/call", {"name": "set_throttle", "arguments": {}}, request_id=4),
+        ]
+    )
+    results = [reply["result"] for reply in replies]
+    assert set(results[0]) == {"protocolVersion", "capabilities", "serverInfo", "instructions"}
+    assert results[1] == {}
+    assert set(results[2]) == {"tools"}
+    assert set(results[3]) == {"content", "isError"}
 
 
 def test_tools_list_names_each_tool_and_whether_it_changes_the_app():
@@ -147,6 +169,12 @@ def test_server_discover_names_the_versions_capabilities_and_server():
     assert result["capabilities"] == {"tools": {"listChanged": False}}
     assert result["_meta"][mcp.META_SERVER_INFO]["name"] == "lustro"
     assert result["ttlMs"] > 0 and result["cacheScope"] == "public"
+
+
+def test_server_discover_has_the_modern_fields_also_without_meta():
+    (reply,) = _serve([_request("server/discover")])
+    assert reply["result"]["resultType"] == "complete"
+    assert reply["result"]["_meta"][mcp.META_SERVER_INFO]["name"] == "lustro"
 
 
 def test_a_modern_request_gets_the_server_info_and_a_cacheable_tool_list():
@@ -306,7 +334,9 @@ class _Recorder(BaseHTTPRequestHandler):
             tx["responseBody"] = "x" * 5000
             self._send(200, tx)
         elif route == ("GET", "/api/v1/network/rules"):
-            self._send(200, wire.load_golden("rules-list.json"))
+            rules = wire.load_golden("rules-list.json")
+            rules["items"][0]["responseBody"] = "y" * 3000
+            self._send(200, rules)
         elif route == ("POST", "/api/v1/network/rules"):
             self._send(200, {"status": "ok", "id": body.get("id", "generated")})
         elif route == ("POST", "/api/v1/network/rules/delete"):
@@ -387,10 +417,12 @@ def test_get_request_with_an_unknown_id_says_which_tool_lists_them(app):
     assert "`list_requests` prints the transactions" in result["content"][0]["text"]
 
 
-def test_list_mock_rules_reads_the_rules(app):
+def test_list_mock_rules_reads_the_rules_and_cuts_their_bodies(app):
     rules = json.loads(_text(app("list_mock_rules")))
     assert app.requests == [("GET", "/api/v1/network/rules", [], None)]
     assert rules["items"][0]["id"] == "orders-500"
+    assert rules["items"][0]["responseBody"] == "y" * 2048 + "[... 952 more bytes: call_api GET network/rules]"
+    assert rules["items"][1]["responseBody"] == '{"users":[]}'
 
 
 def test_add_mock_rule_posts_the_rule_with_the_wire_names(app):
@@ -520,3 +552,64 @@ def test_the_path_stays_as_it_is_when_it_has_adb(tmp_path):
     environ = {"PATH": tools, "ANDROID_HOME": str(tmp_path / "sdk")}
     assert add_sdk_adb_to_path(environ) is None
     assert environ["PATH"] == tools
+
+
+# ── the server's stdin ────────────────────────────────────────────────────────
+
+
+@pytest.mark.skipif(os.name == "nt", reason="the stand-in adb is a script that runs through its #! line")
+def test_adb_does_not_read_the_messages_on_the_servers_stdin(tmp_path):
+    """`adb shell` can forward its stdin to the device. The server's stdin carries the
+    client's messages, so an adb child that inherits it can take the next one. Here a
+    stand-in adb reads its stdin while discovery runs, and the client sends a ping."""
+    taken = tmp_path / "taken-by-adb"
+    adb = tmp_path / "bin" / "adb"
+    adb.parent.mkdir()
+    adb.write_text(
+        "#!{}\n"
+        "import os, select, sys\n"
+        "if sys.argv[1:2] == ['shell'] and select.select([0], [], [], 2)[0]:\n"
+        "    open({!r}, 'ab').write(os.read(0, 65536))\n"
+        "sys.exit(1)\n".format(sys.executable, str(taken))
+    )
+    adb.chmod(0o755)
+    env = dict(os.environ, PATH=str(adb.parent) + os.pathsep + os.environ.get("PATH", ""))
+    env["PYTHONPATH"] = os.path.dirname(os.path.dirname(lustro_cli.__file__))
+    env.pop("LUSTRO_TOKEN", None)
+    server = subprocess.Popen(
+        [sys.executable, "-c", "import sys; from lustro_cli.cli import main; sys.exit(main())", "mcp"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        env=env,
+    )
+    replies = []
+    reader = threading.Thread(target=lambda: replies.extend(json.loads(line) for line in server.stdout), daemon=True)
+    reader.start()
+    try:
+        # No token anywhere, so discovery asks adb which app is in the foreground.
+        server.stdin.write((json.dumps(_request("tools/call", {"name": "list_mock_rules"})) + "\n").encode())
+        server.stdin.flush()
+        time.sleep(0.5)
+        server.stdin.write((json.dumps(_request("ping", request_id=2)) + "\n").encode())
+        server.stdin.flush()
+        deadline = time.monotonic() + 20
+        while len(replies) < 2 and time.monotonic() < deadline:
+            time.sleep(0.05)
+    finally:
+        server.stdin.close()
+        server.wait(timeout=20)
+    assert [reply["id"] for reply in replies] == [1, 2]
+    assert not taken.exists() or taken.read_bytes() == b""
+
+
+def test_adb_forward_does_not_inherit_stdin(monkeypatch):
+    calls = []
+
+    def run(cmd, **kwargs):
+        calls.append(kwargs)
+        return subprocess.CompletedProcess(cmd, 0, b"", b"")
+
+    monkeypatch.setattr(cli.subprocess, "run", run)
+    assert adb_forward(18080, 8080, "emulator-5554") == (18080, None)
+    assert calls[0]["stdin"] is subprocess.DEVNULL

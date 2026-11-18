@@ -554,7 +554,8 @@ def _adb_forward(local_port: int, device_port: int, device: Optional[str]) -> Tu
     cmd += ["forward", "--no-rebind", "tcp:{}".format(local_port), "tcp:{}".format(device_port)]
     try:
         proc = subprocess.run(
-            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False, timeout=10
+            # stdin=DEVNULL: for `lustro mcp`, the CLI's stdin carries the client's messages.
+            cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False, timeout=10
         )
     except FileNotFoundError:
         raise
