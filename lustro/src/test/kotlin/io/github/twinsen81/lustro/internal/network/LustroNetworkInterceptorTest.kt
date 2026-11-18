@@ -453,14 +453,17 @@ class LustroNetworkInterceptorTest {
     fun `a failure rule fails a request that capture skips`() {
         val rule = MockRuleImpl(id = "rule-1", name = "reset", urlPattern = "example.com", failure = "connectionReset")
         val sink = RecordingSink(mockRule = rule)
+        val hits = mutableListOf<String>()
         val request = Request.Builder().url("https://example.com/x").build()
         val chain = FakeChain(request, responseFor(request, TrackingResponseBody("text/plain".toMediaType(), "real", 4)))
 
-        assertThrows(SocketException::class.java) { interceptor(sink, captureEnabled = false).intercept(chain) }
+        assertThrows(SocketException::class.java) { interceptor(sink, captureEnabled = false, onMockHit = { hits += it }).intercept(chain) }
 
         assertEquals(0, chain.proceedCount)
         assertEquals(0, sink.begun)
         assertTrue(sink.failures.isEmpty())
+        // The hit counts whether or not the request is listed.
+        assertEquals(listOf("rule-1"), hits)
     }
 
     @Test

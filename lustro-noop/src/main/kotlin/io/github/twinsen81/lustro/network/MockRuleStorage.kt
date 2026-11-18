@@ -13,6 +13,11 @@ import android.content.SharedPreferences
  * answers it. Provide an implementation to survive app restarts (see
  * [SharedPreferencesMockRuleStorage]); pass `null` to [NetworkDebugTab.create]
  * for in-memory-only rules.
+ *
+ * An implementation of your own must persist every [MockRule] property,
+ * [MockRule.failure] too: the compiler does not ask for it, because it has a
+ * default, and a failure rule saved without it loads as a rule that answers
+ * with its status and body. [SharedPreferencesMockRuleStorage] persists them all.
  */
 public interface MockRuleStorage {
     /** Returns the persisted mock rules, or an empty list when none are stored. */

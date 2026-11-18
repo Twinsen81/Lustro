@@ -182,9 +182,32 @@ test('A rule card shows the status a rule answers with, or the error it fails wi
     });
 });
 
-test('A request that a failure rule failed says which rule mocked it', () => {
-    const rules = [{ id: 'r1', name: 'Feed offline', urlPattern: '/feed', failure: 'unknownHost' }];
-    const tx = { isMocked: true, mockRuleId: 'r1', activeMockRuleId: 'r1', error: 'Unable to resolve host', statusCode: null };
-    const line = network.netMockRuleLine(tx, rules);
-    assert.match(line, /Mocked by rule .*Feed offline/);
+test('The detail says that a failure rule fails a request, not that it answers it', async (t) => {
+    const rules = [
+        { id: 'r1', name: 'Feed offline', urlPattern: '/feed', failure: 'unknownHost' },
+        { id: 'r2', name: 'Feed 200', urlPattern: '/feed', failure: null },
+        { id: 'r3', name: 'Feed later', urlPattern: '/feed', failure: 'proxyAuth' },
+    ];
+    const text = (html) => html.replace(/<[^>]+>/g, '');
+
+    await t.test('the request it failed, while it is still active', () => {
+        const tx = { isMocked: true, mockRuleId: 'r1', activeMockRuleId: 'r1', error: 'Unable to resolve host', statusCode: null };
+        assert.strictEqual(text(network.netMockRuleLine(tx, rules)),
+            'Mocked by rule Feed offline. The rule is still active, so it also fails the next request like this one.');
+    });
+
+    await t.test('a request that it would fail if the app made it again', () => {
+        const line = network.netMockRuleLine({ isMocked: false, activeMockRuleId: 'r1' }, rules);
+        assert.strictEqual(text(line), 'Mock rule active: Feed offline. The next request like this one fails with UnknownHostException.');
+    });
+
+    await t.test('a failure rule that took the place of a rule that answered', () => {
+        const line = network.netMockRuleLine({ isMocked: true, mockRuleId: 'r2', activeMockRuleId: 'r1' }, rules);
+        assert.match(text(line), /Now rule Feed offline fails the next request like this one\.$/);
+    });
+
+    await t.test('a failure name from a newer app', () => {
+        const line = network.netMockRuleLine({ isMocked: false, activeMockRuleId: 'r3' }, rules);
+        assert.match(text(line), /fails with a connection error\.$/);
+    });
 });

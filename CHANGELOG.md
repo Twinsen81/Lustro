@@ -36,7 +36,9 @@ see [DECISIONS.md](DECISIONS.md).
   `400`, `field: "failure"`. The public `MockRule` has a `failure` property,
   `null` by default, so an app's own `MockRuleStorage` and its `MockRule`
   classes keep compiling, and rules that were stored before load as rules
-  that answer. An adapter for another HTTP client reads `failure` from
+  that answer. A `MockRuleStorage` of the app's own must store `failure` too:
+  the compiler does not ask for it, and a failure rule saved without it loads
+  as a rule that answers. An adapter for another HTTP client reads `failure` from
   `findMockRule`, throws its own client's exception, and reports it with the
   new `NetworkCaptureSink.failRequest(id, durationMs, error, mockedBy)`, so
   that the Network tab says which rule failed the request. Its default

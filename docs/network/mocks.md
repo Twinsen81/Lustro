@@ -75,7 +75,9 @@ NetworkDebugTab.create(
 ```
 
 Lustro reads the storage once, when the rules are first needed, off the main thread, and writes
-it on every change, in the order the rules are tried.
+it on every change, in the order the rules are tried. A `MockRuleStorage` of your own must keep
+every property of a rule, `failure` too: a failure rule that it saves without `failure` loads as a
+rule that answers with its status and body. `SharedPreferencesMockRuleStorage` keeps them all.
 
 **A rule must be one that the interceptor can serve.** Its `statusCode` must be from 100 to 599,
 its `responseHeaders` must be header names and values that OkHttp accepts, a `Content-Type`

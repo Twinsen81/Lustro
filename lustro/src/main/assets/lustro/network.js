@@ -1005,12 +1005,25 @@
         return rule.name || ((rule.method ? rule.method + ' ' : '') + rule.urlPattern);
     }
 
+    // What the next request that a rule matches gets: the rule's response, or
+    // the exception of its connection error. A rule not loaded yet is taken as
+    // one that answers.
+    function nextRequestOutcome(rule) {
+        if (!rule || !rule.failure) return 'gets the mocked response';
+        var failure = mockFailure(rule.failure);
+        return 'fails with ' + (failure ? failure.exception : 'a connection error');
+    }
+
+    function ruleVerb(rule) {
+        return rule && rule.failure ? 'fails' : 'answers';
+    }
+
     // A dashed MOCK on a row that a rule would answer if the app made it again,
     // such as one captured before the rule existed.
     function armedMockTag(tx) {
         if (!tx.activeMockRuleId) return '';
         var rule = findRule(tx.activeMockRuleId);
-        var title = 'Mock rule active' + (rule ? ': ' + ruleLabel(rule) : '') + '. The next request like this one gets the mocked response.'
+        var title = 'Mock rule active' + (rule ? ': ' + ruleLabel(rule) : '') + '. The next request like this one ' + nextRequestOutcome(rule) + '.'
             + (tx.source === 'app' ? APP_MOCK_NOTE : '');
         return ' <span class="dc-tag dc-tag--mock net-mock-armed" title="' + debugEscapeHtml(title) + '">Mock</span>';
     }
@@ -1037,14 +1050,14 @@
             else parts.push('Mocked by a rule.');
             if (activeKnown && tx.activeMockRuleId === tx.mockRuleId) {
                 // The rule can have been edited since, so it answers with what it says now.
-                parts.push('The rule is still active, so it also answers the next request like this one' + adapter + '.');
+                parts.push('The rule is still active, so it also ' + ruleVerb(answered) + ' the next request like this one' + adapter + '.');
             } else if (activeKnown) {
-                parts.push('Now rule ' + (active ? link(active) : 'another rule') + ' answers the next request like this one' + adapter + '.');
+                parts.push('Now rule ' + (active ? link(active) : 'another rule') + ' ' + ruleVerb(active) + ' the next request like this one' + adapter + '.');
             } else if (tx.activeMockRuleId === null) {
                 parts.push('No enabled rule matches it now, so the next request like this one goes to the server.');
             }
         } else if (activeKnown) {
-            parts.push('Mock rule active: ' + (active ? link(active) : 'a rule') + '. The next request like this one gets the mocked response' + adapter + '.');
+            parts.push('Mock rule active: ' + (active ? link(active) : 'a rule') + '. The next request like this one ' + nextRequestOutcome(active) + adapter + '.');
         }
         if (!parts.length) return '';
         return '<div class="net-mock-line' + (activeKnown ? ' net-mock-line--active' : '') + '">' + parts.join(' ') + '</div>';
@@ -1955,7 +1968,9 @@
                 var checked = r.enabled ? ' checked' : '';
                 var editing = r.id === editingRuleId ? ' editing' : '';
                 var answers = answeringId && r.id === answeringId
-                    ? '<span class="dc-badge" style="--c: var(--ai)" title="The first enabled rule that matches this request, so the next request like it gets this response.">Answers it</span>'
+                    ? (r.failure
+                        ? '<span class="dc-badge" style="--c: var(--ai)" title="The first enabled rule that matches this request, so the next request like it fails with this error.">Fails it</span>'
+                        : '<span class="dc-badge" style="--c: var(--ai)" title="The first enabled rule that matches this request, so the next request like it gets this response.">Answers it</span>')
                     : '';
                 var bodyPreview = '';
                 if (r.responseBody && !r.failure) {
@@ -2005,8 +2020,8 @@
         var heading = isEdit ? 'Edit Mock Rule' : 'Add Mock Rule';
         var submitText = isEdit ? 'Update Rule' : 'Add Rule';
         var submitTooltip = isEdit
-            ? 'Save changes to this rule. Future matching requests use the updated response.'
-            : 'Save this rule. Future matching requests get the synthetic response. Rules live in the app, and survive a restart when it gives Lustro a rule storage.';
+            ? 'Save changes to this rule. Future matching requests get the updated response, or fail with the chosen error.'
+            : 'Save this rule. Future matching requests get the synthetic response, or fail with the chosen error. Rules live in the app, and survive a restart when it gives Lustro a rule storage.';
         formEl.innerHTML = '<div class="net-rule-form">'
             + '<h4>' + heading + (isEdit ? ' <button class="dc-btn dc-btn--icon" data-action="cancelEditRule" title="Cancel editing and return to the empty Add form.">✕</button>' : '') + '</h4>'
             + '<input type="hidden" id="rf-id" name="id" value="' + debugEscapeHtml(prefill.id || '') + '">'
