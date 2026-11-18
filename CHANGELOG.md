@@ -14,6 +14,27 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Added
 
+- **An MCP server in the CLI, for agents that can only call MCP tools.**
+  `lustro mcp` is a Model Context Protocol server on stdin and stdout. An
+  agent client without a shell, such as Claude Desktop, starts it when a
+  session starts, with `{"command": "lustro", "args": ["mcp"]}` in its MCP
+  config, and stops it at the end, so nothing runs between sessions. Its nine
+  tools list and get the captured requests, list, add, and delete mock rules,
+  set the throttle, and read the log; `call_api` reaches any route, as
+  `lustro api` does, and `get_schema` returns the tabs or a tab's OpenAPI
+  document, so every tab is reachable without a tool of its own. Each tool
+  says in its annotations and its description whether it changes the app. The
+  tools call the app's routes through the CLI's discovery and `adb forward`, so
+  nothing changes in the app. The protocol is implemented with the standard
+  library, so the CLI keeps zero runtime dependencies and Python 3.9, and it
+  serves the protocol versions from 2024-11-05 to 2026-07-28. When `adb` is
+  not on the `PATH`, as for a desktop app, the server looks for it in the
+  Android SDK. The CLI end to end in CI drives the server as an MCP client.
+  Verified on a physical device: the MCP Inspector lists the tools with no
+  schema warning, and an agent session that had only these tools (Claude
+  Code with its built-in tools turned off) listed the sample's requests and
+  added and deleted a mock rule. Android Studio's agent connects only to MCP
+  servers over HTTP, so it can't use the server; the docs say so.
 - **A mock rule can fail a request with a connection error (wire protocol
   1.12).** A rule could only answer with a response, so a developer or an
   agent could not make a request fail the way it fails on a bad network. In

@@ -275,6 +275,12 @@ step "lustro net export --har: the handshake carries the WebSocket"
 lustro net export --har "$OUT/export-ws.har"
 check ws-har "$RULES" < "$OUT/export-ws.har"
 
+# An MCP client drives `lustro mcp` over its stdin and stdout: it adds a mock rule,
+# finds the request that the rule answers, and deletes the rule. It runs before
+# the Logs steps clear the log, because read_logs looks for the start-up line.
+step "lustro mcp: an MCP client adds a mock rule, reads the request it answers, and deletes it"
+with_timeout 120 "$OUT/venv/bin/python" .github/scripts/cli_e2e_mcp.py "$OUT" lustro mcp
+
 # The Logs tab reads the sample's logcat from the start of its process, so the
 # first poll has the line the sample writes before Lustro.start(). After a clear,
 # the cursor that clear returns gets the lines since, with no dropped count.

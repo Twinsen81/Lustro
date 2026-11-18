@@ -3,7 +3,8 @@
 Argparse-based dispatch over the Lustro HTTP wire protocol. Every subcommand
 maps to a route in ``network.openapi.json`` or ``screen.openapi.json``, or a framework route
 (``/api/v1/_meta``, ``/api/v1/_schema``, ``/api/v1/<id>/_schema``), except
-``api``, which sends a request to any route.
+``api``, which sends a request to any route, and ``mcp``, which runs an MCP
+server whose tools call these routes (see ``mcp.py``).
 
 The output is small by default, because agents read all of it: ``net list``
 prints the newest rows only, a row shows a short id, ``net get`` cuts long
@@ -255,9 +256,10 @@ def _list_items(data: Any) -> List[dict]:
     return [tx for tx in items or [] if isinstance(tx, dict)]
 
 
-def _cut_bodies(tx: dict, limit: int) -> None:
+def _cut_bodies(tx: dict, limit: int, more: str = "lustro net body {id} {direction}") -> None:
     """Cut each text body to ``limit`` UTF-8 bytes, and end it with a marker that
-    says how many bytes are left out and which command prints them."""
+    says how many bytes are left out and which command prints them: ``more``,
+    with the transaction's ``{id}`` and the body's ``{direction}``."""
     for direction in ("request", "response"):
         key = direction + "Body"
         text = tx.get(key)
@@ -270,8 +272,10 @@ def _cut_bodies(tx: dict, limit: int) -> None:
         # Keep whole characters: move back to the first byte of the one at the cut.
         while cut > 0 and (data[cut] & 0xC0) == 0x80:
             cut -= 1
-        tx[key] = "{}[... {} more bytes: lustro net body {} {}]".format(
-            data[:cut].decode("utf-8", "surrogatepass"), len(data) - cut, tx.get("id"), direction
+        tx[key] = "{}[... {} more bytes: {}]".format(
+            data[:cut].decode("utf-8", "surrogatepass"),
+            len(data) - cut,
+            more.format(id=tx.get("id"), direction=direction),
         )
 
 
@@ -550,7 +554,8 @@ def _adb_forward(local_port: int, device_port: int, device: Optional[str]) -> Tu
     cmd += ["forward", "--no-rebind", "tcp:{}".format(local_port), "tcp:{}".format(device_port)]
     try:
         proc = subprocess.run(
-            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False, timeout=10
+            # stdin=DEVNULL: for `lustro mcp`, the CLI's stdin carries the client's messages.
+            cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False, timeout=10
         )
     except FileNotFoundError:
         raise
@@ -1492,6 +1497,13 @@ def cmd_send(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_mcp(args: argparse.Namespace) -> int:
+    # Imported here: only this command needs the server, and the server reuses this module.
+    from . import mcp
+
+    return mcp.serve(args)
+
+
 def _parse_headers(pairs: List[str]) -> dict:
     headers: dict = {}
     for pair in pairs:
@@ -1903,6 +1915,20 @@ def build_parser() -> argparse.ArgumentParser:
     p_send.add_argument("--header", action="append", metavar="K:V", help="request header (repeatable)")
     p_send.add_argument("--body", default=None, help="request body")
     p_send.set_defaults(func=cmd_send)
+
+    # mcp
+    p_mcp = sub.add_parser(
+        "mcp",
+        parents=[common],
+        help="run an MCP server on stdin and stdout, for agents that can only call MCP tools",
+        description="Run a Model Context Protocol server on stdin and stdout, for an agent that can only call "
+        "MCP tools, such as Claude Desktop. The agent's client starts this command "
+        "when a session starts and stops it at the end; add it to the client's MCP config as "
+        '{"command": "lustro", "args": ["mcp"]}. Each tool call finds the app as the other commands do, so '
+        "--device, --package, --port, and --token apply to every call. An agent that can run shell commands "
+        "should run the other commands instead: a command costs context only when the agent runs it.",
+    )
+    p_mcp.set_defaults(func=cmd_mcp)
 
     return parser
 

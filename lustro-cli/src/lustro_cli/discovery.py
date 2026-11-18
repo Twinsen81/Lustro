@@ -100,6 +100,9 @@ def _run(cmd: List[str], timeout: float = 10.0) -> Optional[str]:
     try:
         proc = subprocess.run(
             cmd,
+            # Not the CLI's stdin: for `lustro mcp` it carries the client's messages,
+            # and `adb shell` can forward its stdin to the device.
+            stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             timeout=timeout,

@@ -81,6 +81,11 @@ Lint check
     tag. The server logs it after each bind. The CLI and agents read the address and the token
     from it. See [Accessing the UI](../get-started/console.md).
 
+MCP server
+:   `lustro mcp`, a Model Context Protocol server in the CLI, for an agent that can only call
+    tools. The agent's client starts it for a session, and its tools call the app's routes. See
+    [With a coding agent](../get-started/coding-agent.md#agents-without-a-shell-the-mcp-server).
+
 Mock rule
 :   A rule of the Network tab that answers a matching request with the response that the rule
     gives, or fails it with a connection error, such as a timeout. The request does not leave the

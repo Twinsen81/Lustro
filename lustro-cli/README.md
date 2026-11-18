@@ -117,6 +117,7 @@ discovery), `--json` (JSON output). They go before or after the command:
 | `lustro send --url … [--sender NAME]` | `POST network/send` (synchronous), through the first sender or the one named |
 | `lustro screen tree [--unmerged] [--settle MS] [--all]` | `GET screen/tree`: each window of the app, and its nodes on the screen with a text, a tag, a role, an action, or a state, one line each (see [The screen](#the-screen)) |
 | `lustro api METHOD PATH [--param K=V] [--body JSON \| --input FILE]` | any route: prints the response body (see [Any route](#any-route)) |
+| `lustro mcp` | an MCP server on stdin and stdout, whose tools call the routes above (see [The MCP server](#the-mcp-server)) |
 
 > **Live use of `lustro open`** requires a running app: the server only listens
 > while the app is foregrounded, and discovery reads the `LustroToken` log line
@@ -264,6 +265,45 @@ response prints the error from its envelope on stderr, such as
 that the app rejects (a `400` with `field: "search"`) exits 2, as a bad flag
 does.
 
+## The MCP server
+
+`lustro mcp` is a [Model Context Protocol](https://modelcontextprotocol.io) server on stdin and
+stdout, for an agent that can only call MCP tools, such as Claude Desktop. An agent that can run
+shell commands should run the commands above: the client puts the server's tools into the
+agent's context in every session, and a command costs context only when the agent runs it.
+
+The agent's client starts the server when a session starts, and stops it when the session ends.
+Add it to the client's MCP config:
+
+```json
+{
+  "mcpServers": {
+    "lustro": {
+      "command": "lustro",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+[With a coding agent](../docs/get-started/coding-agent.md#agents-without-a-shell-the-mcp-server)
+has the config for Claude Desktop, Claude Code, Cursor, VS Code, Codex, and Gemini CLI. A desktop
+app starts the server with a short `PATH`: give `command` the full path that `which lustro`
+prints. When `adb` is not on the `PATH`, the server looks for it in `$ANDROID_HOME/platform-tools`,
+then in the default place of the Android SDK.
+
+The tools: `list_requests`, `get_request`, `list_mock_rules`, `add_mock_rule`,
+`delete_mock_rule`, `set_throttle`, `read_logs`, `call_api`, which reaches any route as
+`lustro api` does, and `get_schema`, which returns the tabs or a tab's OpenAPI document. Each says
+in its annotations and its description whether it changes the app.
+[docs/AGENTS.md](../docs/AGENTS.md#the-mcp-server-for-agents-without-a-shell) lists the route of
+each.
+
+Each tool call finds the app as a command does, so the global flags apply to every call:
+`lustro mcp --device SERIAL` selects the device. The server implements JSON-RPC 2.0 with the
+standard library, one message per line, and serves the protocol versions from `2024-11-05` to
+`2026-07-28`. Only protocol messages go to stdout; its own messages go to stderr.
+
 ## Contract tests
 
 ```bash
@@ -273,5 +313,6 @@ pytest
 
 The tests validate every golden fixture against its JSON Schema / OpenAPI
 component, exercise the cursor-polling state machine, the error-envelope parser,
-the `LustroToken` log-line parser, the output of each command, and a client
-smoke test against a local `http.server`.
+the `LustroToken` log-line parser, the output of each command, the MCP server's
+messages and the route of each tool, and a client smoke test against a local
+`http.server`.
