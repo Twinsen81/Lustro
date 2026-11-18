@@ -214,6 +214,9 @@ def _list_mock_rules(args: argparse.Namespace, a: Dict[str, Any]) -> str:
 
 
 def _add_mock_rule(args: argparse.Namespace, a: Dict[str, Any]) -> str:
+    # The app ignores the response of a failure rule, so a response given with one is a mistake.
+    if a.get("failure") is not None and any(a.get(name) is not None for name in ("status", "body", "headers")):
+        raise ToolError("failure fails the request, so it takes no status, body, or headers")
     rule: Dict[str, Any] = {"urlPattern": a["url_pattern"]}
     for name, wire_name in (
         ("id", "id"),
@@ -222,6 +225,7 @@ def _add_mock_rule(args: argparse.Namespace, a: Dict[str, Any]) -> str:
         ("status", "statusCode"),
         ("body", "responseBody"),
         ("headers", "responseHeaders"),
+        ("failure", "failure"),
         ("enabled", "enabled"),
     ):
         if a.get(name) is not None:
@@ -395,8 +399,8 @@ TOOLS: Tuple[Tool, ...] = (
         "add_mock_rule",
         "Add a mock rule",
         "Changes the app. Adds a mock rule, or replaces the rule that has the same id. While the rule is enabled, "
-        "an OkHttp request whose URL contains url_pattern gets the mocked response and does not reach the "
-        "network. Returns the rule's id.",
+        "an OkHttp request whose URL contains url_pattern gets the mocked response, or fails with the "
+        "connection error that failure names, and does not reach the network. Returns the rule's id.",
         _schema(
             {
                 "url_pattern": {
@@ -416,6 +420,13 @@ TOOLS: Tuple[Tool, ...] = (
                     "type": "object",
                     "additionalProperties": {"type": "string"},
                     "description": "The mocked response headers, such as {\"Content-Type\": \"application/json\"}.",
+                },
+                # Not an enum: the app checks the name, and a newer app can know more.
+                "failure": {
+                    "type": "string",
+                    "description": "Fail the request with a connection error instead of a response: "
+                    + ", ".join(cli.MOCK_FAILURES)
+                    + ". Takes no status, body, or headers.",
                 },
                 "enabled": {"type": "boolean", "description": "Default true."},
             },

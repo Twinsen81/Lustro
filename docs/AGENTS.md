@@ -227,7 +227,7 @@ tokens for all of them.
 | `list_requests` | no | `GET network/transactions`: the capture state, then the newest 50 requests as `lustro net list` prints them. Takes `search`, `regex`, `url`, `method`, `status`, `errors`, and `last` |
 | `get_request` | no | `GET network/transactions/<id>`, with each body cut at 2 KB, as `lustro net get`. The id can be a row's short id |
 | `list_mock_rules` | no | `GET network/rules`, with each response body cut at 2 KB |
-| `add_mock_rule` | yes | `POST network/rules`: adds a rule on top of the list, or replaces the rule with the same `id` |
+| `add_mock_rule` | yes | `POST network/rules`: adds a rule on top of the list, or replaces the rule with the same `id`. `failure` fails the request with a connection error, as `lustro mock add --failure` |
 | `delete_mock_rule` | yes | `POST network/rules/delete` |
 | `set_throttle` | yes | `POST network/throttle` |
 | `read_logs` | no | `GET logs/text`: the newest 100 lines that pass the filters, as logcat's threadtime text |

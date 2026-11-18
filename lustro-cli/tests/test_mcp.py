@@ -274,6 +274,7 @@ def test_a_print_in_a_tool_goes_to_stderr_not_into_the_protocol(monkeypatch, cap
         ("read_logs", {"level": "X"}, "level must be one of V, D, I, W, E, F"),
         ("add_mock_rule", {"url_pattern": "/x", "headers": {"A": 1}}, "headers.A must be of type string, not int"),
         ("add_mock_rule", {"url_pattern": "/x", "status": 600}, "status must be at most 599"),
+        ("add_mock_rule", {"url_pattern": "/x", "failure": "timeout", "status": 500}, "failure fails the request"),
         ("call_api", {"method": "GET", "path": "x", "body": 5}, "body must be of type object or array or string"),
         ("call_api", {"method": "GET", "path": "x", "params": {"a": "1", "b": {}}}, "params.b must be of type"),
         ("call_api", {"method": "GET", "path": "http://example.com/"}, "PATH is a route"),
@@ -454,6 +455,12 @@ def test_add_mock_rule_posts_the_rule_with_the_wire_names(app):
             },
         )
     ]
+
+
+def test_add_mock_rule_posts_a_failure(app):
+    _text(app("add_mock_rule", url_pattern="/v1/orders", failure="unknownHost"))
+    rule = {"urlPattern": "/v1/orders", "failure": "unknownHost"}
+    assert app.requests == [("POST", "/api/v1/network/rules", [], rule)]
 
 
 def test_delete_mock_rule_posts_the_id(app):
