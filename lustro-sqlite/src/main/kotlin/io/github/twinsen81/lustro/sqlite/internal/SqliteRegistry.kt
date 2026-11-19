@@ -44,8 +44,11 @@ internal class DbEntry(
 
 /**
  * The registered databases, and, with a [directory], the other database files in
- * it. The directory is listed on each call, so a file that the app creates later
- * shows too. A discovered file is read-only, masks sensitive columns with no exceptions, and has no hints.
+ * it and in [noBackupDirectory]. The directories are listed on each call, so a file
+ * that the app creates later shows too. A discovered file is read-only, masks
+ * sensitive columns with no exceptions, and has no hints. A file in
+ * [noBackupDirectory] is named by its file name too, unless a registration or a
+ * file in [directory] has that name: then it is `no_backup/<file name>`.
  *
  * [isDatabase] decides whether a file is a database. It runs only on the files that no
  * registration stands for, so the tab opens the app's own databases only through the
@@ -54,6 +57,7 @@ internal class DbEntry(
 internal class SqliteRegistry(
     databases: List<SqliteDb>,
     private val directory: File?,
+    private val noBackupDirectory: File? = null,
     private val isDatabase: (File) -> Boolean = ::openable,
 ) {
     private val registered =
@@ -61,22 +65,30 @@ internal class SqliteRegistry(
 
     fun list(): List<DbEntry> = registered + discovered()
 
-    fun find(name: String): DbEntry? = registered.firstOrNull { it.name == name } ?: discovered(name).firstOrNull()
+    fun find(name: String): DbEntry? = registered.firstOrNull { it.name == name } ?: discovered(name).firstOrNull { it.name == name }
 
-    // With a name, only the file of that name is asked about.
+    // With a name, only the files of that file name are asked about.
     private fun discovered(name: String? = null): List<DbEntry> {
-        val candidates =
-            directory?.listFiles().orEmpty()
-                .filter { file -> file.isFile && (name == null || file.name == name) && !NOT_DATABASES.containsMatchIn(file.name) }
-                .map { it.absoluteFile.normalize() }
-        if (candidates.isEmpty()) return emptyList()
+        val fileName = name?.removePrefix(NO_BACKUP_PREFIX)
+        val primary = candidates(directory, fileName)
+        val secondary = candidates(noBackupDirectory, fileName)
+        if (primary.isEmpty() && secondary.isEmpty()) return emptyList()
         val names = registered.mapTo(HashSet()) { it.name }
         val covered = registeredFiles()
-        return candidates
-            .filter { it.name !in names && it !in covered && isDatabase(it) }
-            .sortedBy { it.name }
-            .map { DbEntry(it.name, registered = false, writable = false, emptyMap(), SqliteValuePolicy.MASK_SENSITIVE, FileSource(it)) }
+        val inDirectory = primary.filter { it.name !in names && it !in covered && isDatabase(it) }.sortedBy { it.name }
+        val taken = names + inDirectory.map { it.name }
+        val inNoBackup = secondary.filter { it !in covered && isDatabase(it) }.sortedBy { it.name }
+        return inDirectory.map { discoveredEntry(it.name, it) } +
+            inNoBackup.map { discoveredEntry(if (it.name in taken) NO_BACKUP_PREFIX + it.name else it.name, it) }
     }
+
+    private fun candidates(directory: File?, fileName: String?): List<File> =
+        directory?.listFiles().orEmpty()
+            .filter { file -> file.isFile && (fileName == null || file.name == fileName) && !NOT_DATABASES.containsMatchIn(file.name) }
+            .map { it.absoluteFile.normalize() }
+
+    private fun discoveredEntry(name: String, file: File): DbEntry =
+        DbEntry(name, registered = false, writable = false, emptyMap(), SqliteValuePolicy.MASK_SENSITIVE, FileSource(file))
 
     // The files that the registrations stand for. A live handle names its file only once
     // it is open, so this asks the app for it, as a read of that database would.
@@ -94,6 +106,9 @@ internal class SqliteRegistry(
         }
 
     private companion object {
+        // The name of a file in noBackupFilesDir whose file name is taken starts with it.
+        const val NO_BACKUP_PREFIX = "no_backup/"
+
         // SQLite's own files next to a database (rollback journal, WAL, shared memory, super-journal),
         // and lock files, which a process can hold a lock on.
         val NOT_DATABASES = Regex("""(-journal|-wal|-shm|-mj[0-9A-Fa-f]+|\.lck|\.lock)$""")

@@ -631,7 +631,7 @@ with the reason in `readerError` (the buffer keeps what it has, and `entries` st
 Base path `/api/v1/prefs`, when the app registers the Preferences plugin
 (`PrefsDebugTab.create(context, ...)`; without it, the routes are an enveloped
 `404 Unknown tab: prefs`). The authoritative contract is
-`lustro-prefs/src/main/assets/lustro/prefs.openapi.json`, version `1.1` (`1.1` sends a long past 2^53 - 1 as a string). The CLI has no `prefs`
+`lustro-prefs/src/main/assets/lustro/prefs.openapi.json`, version `1.2` (`1.1` sends a long past 2^53 - 1 as a string; `1.2` adds `redacted`, and refuses an empty key in `POST edit`). The CLI has no `prefs`
 commands: use `lustro api`.
 
 | Operation | Route | Notes |
@@ -639,7 +639,7 @@ commands: use `lustro api`.
 | List the files | `GET files` | `{ items: [{ name, store, registered, policy, readOnly, encrypted, keyCount, cursor, error? }] }`: the SharedPreferences files and then the Preferences DataStores that the app registered, in its order, then the files that the tab found in `shared_prefs` and `files/datastore`, by name. `store` is `shared_prefs` or `preferences_datastore`. `cursor` is the file's cursor now; compare it with the one you polled with to see that the file changed. `error` says why a file's instance can't read it. |
 | Poll a file | `GET entries?store=&file=&cursor=` | Cursor envelope. `reset` or `delta` carries every entry of the file, by key; `unchanged` carries none. A cursor of another file, or from before an app restart, gets a `reset`. |
 | Read one value whole | `GET entry?store=&file=&key=` | `{ item }`, after the value policy, never cut. `404` with `field: "key"` when the file has no such key. |
-| Write a value | `POST edit` | Body `{ store?, file, key, type, value }`. Returns `{ status: "ok", item }`: the entry as the file now holds it, cut at 4096 characters as in `entries`. |
+| Write a value | `POST edit` | Body `{ store?, file, key, type, value }`; an empty `key` is a `400` with `field: "key"`, which `POST delete` takes. Returns `{ status: "ok", item }`: the entry as the file now holds it, cut at 4096 characters as in `entries`. |
 | Remove a key | `POST delete` | Body `{ store?, file, key }`. Returns `{ status: "ok", deleted }`, `false` when the key was not there. |
 | Empty a file | `POST clear` | Body `{ store?, file, confirm: true }`; without `confirm: true`, a `400` with `field: "confirm"`. Returns `{ status: "ok", removed }`. |
 
@@ -649,7 +649,7 @@ commands: use `lustro api`.
 writes a registered DataStore through the app's own instance. A DataStore that the tab found in
 `files/datastore` is read from its file, and it is always read-only.
 
-**An item.** `{ key, type, value?, bytes, masked?, truncated? }`. `type` is `string`, `int`,
+**An item.** `{ key, type, value?, bytes, masked?, redacted?, truncated? }`. `type` is `string`, `int`,
 `long`, `float`, `double`, `boolean`, `string_set`, `bytes`, or `unknown` (a value that only a
 custom SharedPreferences implementation can hold). `double` and `bytes` come only from a
 DataStore. `value` is a JSON string, number, boolean, or, for `string_set`, a sorted array of
@@ -658,7 +658,9 @@ WorkManager routes; a float or a double that is not finite is the string `"NaN"`
 `"-Infinity"`, and `bytes` is padded base64. `bytes` (the field) is the size of the whole value:
 a string's UTF-8 bytes, the sum of those of a set's strings, a byte array's length, or 4, 8, 4,
 8, and 1 for `int`, `long`, `float`, `double`, and `boolean`.
-`masked: true` comes instead of `value` when the policy leaves it out. In `entries`, and in the
+`masked: true` comes instead of `value` when the policy leaves it out. `redacted: true` comes
+with a string that is a JSON object or array, under `mask_sensitive`, when the values of its
+sensitive fields, at any depth, are replaced by `[REDACTED]`: do not write such a value back. In `entries`, and in the
 item of the `POST edit` response, a value longer than 4096 characters (for a set, all its strings
 together) is cut and has `truncated: true`; read it with `GET entry`.
 
@@ -668,7 +670,8 @@ redaction's key check; a `boolean`, `float`, or `double` value always shows, as 
 use it for a secret), or `keys_only` (no value). The keys always show. Under `mask_sensitive`,
 the app can list keys whose values show although the check finds them sensitive, such as
 `auth_method`, by their exact names in any case; `files` does not list them, and such an item
-has its `value` and no `masked`. A discovered file is `mask_sensitive`, with no such keys. `encrypted` is `true` when the file on disk is encrypted: the app registered an
+has its `value` and no `masked`. The app can also list keys that every policy masks, such as
+`account_info` with a token in its JSON. A discovered file is `mask_sensitive`, with no such keys. `encrypted` is `true` when the file on disk is encrypted: the app registered an
 `EncryptedSharedPreferences`, which shows plain values as its policy lets it, or the file has the
 keysets of one and a plain instance reads it, which is always `keys_only` and read-only.
 
@@ -707,7 +710,7 @@ Base path `/api/v1/sqlite`, when the app registers the SQLite plugin
 
 | Operation | Route | Notes |
 | --- | --- | --- |
-| List the databases | `GET databases` | `{ items: [{ name, registered, source, writable, policy, path, sizeBytes, walBytes, schemaVersion, error? }] }`: the databases that the app registered, in its order, then the files that the tab found in the app's `databases` directory, by file name. `source` is `support` (the app's `SupportSQLiteDatabase`, such as Room's), `framework` (the app's `SQLiteDatabase`), or `file` (opened read-only for each request). `schemaVersion` is `PRAGMA user_version`; Room and `SQLiteOpenHelper` set it to the schema's version. `policy` is the value policy, `visible` or `mask_sensitive` (see below). `path` and `sizeBytes` are `null` for a database in memory; `sizeBytes` leaves out the `-wal` file, and `walBytes` is that file's size, or `null` when there is none. In WAL mode, as Room keeps a database, the `-wal` file holds the changes until SQLite copies them into the database file at a checkpoint, so it can be the larger one. `error` says why a database does not open. |
+| List the databases | `GET databases` | `{ items: [{ name, registered, source, writable, policy, path, sizeBytes, walBytes, schemaVersion, error? }] }`: the databases that the app registered, in its order, then the files that the tab found in the app's `databases` directory, by file name, and then those in `noBackupFilesDir`, such as WorkManager's `androidx.work.workdb`, also by file name, or as `no_backup/<file name>` when a registration or a file in `databases` has that name. `source` is `support` (the app's `SupportSQLiteDatabase`, such as Room's), `framework` (the app's `SQLiteDatabase`), or `file` (opened read-only for each request). `schemaVersion` is `PRAGMA user_version`; Room and `SQLiteOpenHelper` set it to the schema's version. `policy` is the value policy, `visible` or `mask_sensitive` (see below). `path` and `sizeBytes` are `null` for a database in memory; `sizeBytes` leaves out the `-wal` file, and `walBytes` is that file's size, or `null` when there is none. In WAL mode, as Room keeps a database, the `-wal` file holds the changes until SQLite copies them into the database file at a checkpoint, so it can be the larger one. `error` says why a database does not open. |
 | List the tables | `GET tables?db=` | `{ database, writable, items: [{ name, type, internal, hasRowId?, rowCount?, entity?, purpose?, error? }] }`, by name. `type` is `table` or `view`. A view has no `rowCount`: counting runs its query. A table that the tab can't read, such as a view on a table that is gone, or whose count stops at the 2 s limit (see below), has `error` with the reason and can have no `hasRowId` and no `rowCount`; the route still answers `200`. `internal` flags `sqlite_*`, `android_metadata`, `room_master_table`, and the shadow tables of a full-text or R*Tree index. `entity` and `purpose` are the app's hint. |
 | Read a schema | `GET schema?db=&table=` | `{ database, table, type, internal, hasRowId, rowCount, sql, entity?, purpose?, columns: [{ name, type, notNull, defaultValue, primaryKey, generated, masked }], foreignKeys: [{ table, from, to, onUpdate, onDelete }] }`. `primaryKey` is the column's place in the key, from 1, or 0. `generated` is `true` for a column that SQLite computes (`GENERATED ALWAYS AS`). `masked` is `true` for a column whose values the value policy leaves out. A key over several columns has them in order in `from` and `to`; a `null` in `to` stands for the other table's primary key. |
 | Read rows | `GET rows?db=&table=&limit=&cursor=&filter=&sort=&dir=` | Pagination envelope `{ items, nextCursor }`. 50 rows by default, `limit` 1 to 500. Pass `nextCursor` as `cursor` for the next page; it is `null` on the last one. |

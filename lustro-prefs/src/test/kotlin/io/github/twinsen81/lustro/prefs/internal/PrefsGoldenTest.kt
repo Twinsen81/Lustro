@@ -65,6 +65,7 @@ class PrefsGoldenTest {
             .putFloat("text_scale", 1.25f)
             .putBoolean("notifications", true)
             .putStringSet("pinned_tags", setOf("work", "travel"))
+            .putString("profile", """{"name":"ann","refresh_token":"r-1"}""")
             .commit()
         session.edit().putString("session_id", "8f2c9a").putLong("expires_at", 1_792_423_340_010L).commit()
         prefs("sdk_cache").edit().putString("install_id", "c1d2e3").putString("api_key", "k-4f9a").putInt("config_version", 12).commit()

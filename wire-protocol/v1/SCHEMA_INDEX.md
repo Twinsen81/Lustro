@@ -10,7 +10,7 @@
 | `_schema.json` (in the `lustro` AAR assets) | `GET /api/v1/_schema` response: the shared envelopes, in one document | present |
 | `network.openapi.json` (in AAR assets) | Network tab routes | present |
 | `logs.openapi.json` (in the `lustro-logs` AAR assets) | Logs tab routes, version `1.1` | present |
-| `prefs.openapi.json` (in the `lustro-prefs` AAR assets) | Preferences tab routes, version `1.1` | present |
+| `prefs.openapi.json` (in the `lustro-prefs` AAR assets) | Preferences tab routes, version `1.2` | present |
 | `sqlite.openapi.json` (in the `lustro-sqlite` AAR assets) | SQLite tab routes, version `1.1` | present |
 | `work.openapi.json` (in the `lustro-work` AAR assets) | WorkManager tab routes, version `1.3` | present |
 | `screen.openapi.json` (in the `lustro-screen` AAR assets) | Screen tab routes, version `1.0` | present |

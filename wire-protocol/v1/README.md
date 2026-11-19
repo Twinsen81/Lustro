@@ -190,16 +190,19 @@ with the core wire.
   `GET text` exports the held lines as logcat's threadtime text. `POST clear`
   returns the cursor of the empty log; `POST pause` and `POST compact` set or
   toggle their flags.
-- **Preferences `1.1`** (`:lustro-prefs`) - the app's SharedPreferences files
+- **Preferences `1.2`** (`:lustro-prefs`) - the app's SharedPreferences files
   under `/api/v1/prefs/`. `GET files` lists them with their value policies,
   read-only flags, and cursors. `GET entries?file=` polls one file in the
   cursor envelope, each entry with its `type`, its `value` unless the policy
   masks it, and its size in `bytes`; from `1.1`, a long past 2^53 - 1 is the
-  string of its digits; a value is cut at 4096 characters, with
+  string of its digits; from `1.2`, under `mask_sensitive`, a string that is a
+  JSON object or array has the values of its sensitive fields replaced by
+  `[REDACTED]`, with `redacted`; a value is cut at 4096 characters, with
   `truncated`, and `GET entry?file=&key=` returns it whole. Each file's cursor
   has an epoch of its own, so a cursor of one file is foreign to another.
   `POST edit`, `POST delete`, and `POST clear` change a file and answer `403`
-  with the code `read_only` for a read-only one.
+  with the code `read_only` for a read-only one; from `1.2`, `POST edit` answers
+  `400` with the field `key` for an empty key.
 - **SQLite `1.0`** (`:lustro-sqlite`) - the app's SQLite and Room databases
   under `/api/v1/sqlite/`. `GET databases` lists them with their
   source, file, size, and `schemaVersion`; `GET tables?db=` lists the tables

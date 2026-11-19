@@ -411,6 +411,24 @@ test('the dialog opens a JSON string indented and a set as a JSON array', () => 
     assert.deepStrictEqual(plain(prefs.prefsEditorFor('string', undefined, true)), { control: 'input', text: '' });
 });
 
+test('a JSON value with redacted fields shows them in the row and opens empty to edit, so that Save never writes the placeholder', () => {
+    const entry = golden('prefs-reset.json').items.find((item) => item.key === 'profile');
+    assert.strictEqual(entry.redacted, true);
+
+    const row = prefs.prefsRowHtml(entry, ctx({ file: listed('settings') }));
+    assert.match(row, /refresh_token&quot;:&quot;\[REDACTED\]/);
+    assert.match(row, /title="Fields of this JSON value that look like they hold a secret show as \[REDACTED\]/);
+    assert.strictEqual(prefs.prefsInlineKind(Object.assign({}, entry, { value: 'short' })), null);
+
+    assert.deepStrictEqual(plain(prefs.prefsEditorOf(entry, false)), { control: 'input', text: '' });
+    // To read only, the dialog shows what the page has, the placeholder too.
+    const view = prefs.prefsEditorOf(entry, true);
+    assert.strictEqual(view.json, true);
+    assert.match(view.text, /"refresh_token": "\[REDACTED\]"/);
+    // A value with nothing redacted opens as it is.
+    assert.strictEqual(prefs.prefsEditorOf({ key: 'k', type: 'string', value: 'ann', bytes: 3 }, false).text, 'ann');
+});
+
 test('a JSON string goes back as the file held it, or compact when it was, with every digit', () => {
     const original = '{"user":{"id":12345678901234567890,"name":"a b"},"tags":["x"]}';
     const editor = prefs.prefsEditorFor('string', original);

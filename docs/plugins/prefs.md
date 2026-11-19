@@ -88,11 +88,23 @@ val lustro = Lustro.builder(application)
     set, or bytes under such a key stay masked: register a settings file that holds no secret as
     `VISIBLE`, or list those keys in `unmasked`. `KEYS_ONLY` leaves out every value. The keys, the
     types, and the sizes always show.
+- **Secrets inside a JSON value.** Under `MASK_SENSITIVE`, a string value that is a JSON object or
+    array shows with the values of its sensitive fields replaced by `[REDACTED]`, at any depth, by
+    the same check: `{"name":"ann","access_token":"[REDACTED]"}`. A boolean or a `null` stays. The
+    entry has `redacted: true`, and the console opens such a value empty to edit it, so that the
+    placeholder never goes back into the file. A string that does not parse as one JSON object or
+    array stays as it is.
+- **Keys that are always masked.** `masked` on a `PrefsFile` or a `PrefsDataStore` lists the keys
+    whose values the tab leaves out under every policy, also `VISIBLE`: a key whose name the check
+    does not find, such as an `account_info` key that holds a token, or a key that must stay hidden
+    when someone changes the policy. A name there matches a key with exactly that name, in any
+    case, and wins over `unmasked`.
 - **Exceptions to the mask.** `unmasked` on a `PrefsFile` or a `PrefsDataStore` lists the keys
     whose values `MASK_SENSITIVE` shows although the check finds them sensitive, such as
     `auth_method`, which holds no secret. A name there matches a key with exactly that name, in
-    any case; it is no pattern. `VISIBLE` and `KEYS_ONLY` ignore it, so a change of the policy
-    never shows more than the policy says, and a discovered file has no exceptions.
+    any case; it is no pattern. The JSON value of such a key shows whole. `VISIBLE` and `KEYS_ONLY`
+    ignore it, so a change of the policy never shows more than the policy says, and a discovered
+    file has no exceptions.
 - **Read-only files.** `readOnly = true` on a `PrefsFile` or a `PrefsDataStore` makes every edit
     of it answer `403`.
 - **Discovered files are read-only.** A discovered file is `MASK_SENSITIVE` and read-only, because
@@ -129,11 +141,13 @@ and whether it is read-only.
 
 - `GET /api/v1/prefs/entries?file=` polls a file in the cursor envelope: every entry, by key, with
     its `type`, its `value` unless the policy masks it, and its size in `bytes`. A value longer than
-    4096 characters is cut there, and `GET entry?file=&key=` returns it whole.
+    4096 characters is cut there, and `GET entry?file=&key=` returns it whole. A JSON value whose
+    sensitive fields the policy replaced has `redacted: true`.
 - `POST edit` writes one typed value (`string`, `int`, `long`, `float`, `boolean`, or
     `string_set`, and for a data store also `double`, and `bytes` as base64), `POST delete` removes
     a key, and `POST clear` (with `confirm: true`) empties a file. They return when the file on disk
-    has the change, and answer `403` for a read-only file.
+    has the change, and answer `403` for a read-only file. `POST edit` answers `400` for an empty
+    key, which is most often a shell variable that did not expand; `POST delete` takes one.
 
 See [Agents and automation](../AGENTS.md#preferences-tab-operations) and
 [`prefs.openapi.json`](https://github.com/Twinsen81/Lustro/blob/main/lustro-prefs/src/main/assets/lustro/prefs.openapi.json).

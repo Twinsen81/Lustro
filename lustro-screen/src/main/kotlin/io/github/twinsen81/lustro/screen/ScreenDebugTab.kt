@@ -70,6 +70,17 @@ public class ScreenDebugTab private constructor(private val source: ScreenSource
         /**
          * Creates a [ScreenDebugTab].
          *
+         * Create it in `Application.onCreate`, before the first activity starts. The
+         * tab registers activity lifecycle callbacks here, and Android has no public
+         * API to find the activities that started before. When the app creates the
+         * tab later, for example when a user turns the server on in a settings
+         * screen, the tab does not know the activities that are already started.
+         * Where it lists the windows of the process, from API 29 and on most devices
+         * before, that changes nothing. Where it can't, which the tree shows as
+         * `windowSource` `activities`, `GET tree` has no window of such an activity
+         * until the activity stops and starts again, for example after the user goes
+         * to the home screen and back.
+         *
          * @param context a context of the app. The tab registers activity lifecycle
          *   callbacks on its application, to find the activities' windows on a device
          *   where it can't list the windows of the process.

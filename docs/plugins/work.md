@@ -243,6 +243,6 @@ lustro api POST work/cancel --body '{"name":"sync"}'
     is in logcat (`WM-WorkerWrapper`).
 - **Not shown:** a work's input data, which WorkManager's public API does not have, and the place
     in your code that enqueued the work: the listeners run on WorkManager's own threads. The SQLite
-    tab can read WorkManager's database as a file:
-    `SqliteDb.file("workmanager", File(app.noBackupFilesDir, "androidx.work.workdb"))`, but its
-    schema changes between releases.
+    tab can read WorkManager's database, but its schema changes between releases: with
+    `discoverFrom = context`, the tab lists it as `androidx.work.workdb`, and without discovery,
+    register it as `SqliteDb.file("workmanager", File(app.noBackupFilesDir, "androidx.work.workdb"))`.

@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Lustro Preferences debug tab",
-    "version": "1.1",
-    "description": "The app's SharedPreferences files and Preferences DataStores: the ones that the app registers, each with a value policy and a read-only flag, and, with discovery on, the other files in its shared_prefs directory, which are read-only by default, and the other Preferences DataStore files in its files/datastore directory, which are always read-only. A file's store says which kind it is: shared_prefs or preferences_datastore. The tab reads and writes a registered DataStore through the app's own instance; it reads a discovered one from its .preferences_pb file, because the app's DataStore would not see an edit to the file. A value policy says what the tab shows of the values: visible shows every value; mask_sensitive leaves out the value of a key that looks like it holds a secret, such as auth_token or password, as the Network tab's redaction finds them, except a boolean, float, or double value, which an app does not use for a secret; keys_only leaves out every value. A file that has the keysets of EncryptedSharedPreferences, read by a plain instance, shows its keys only and is read-only. Each file has a cursor that moves when a value changes, through the tab or through the app. The tab sees the app's changes to a registered file while Lustro is started; before API 30, a clear of a SharedPreferences file by the app shows only with the next change to the file. A discovered DataStore file's cursor moves when its bytes change. All routes are token-authenticated (Bearer header or HttpOnly cookie) and live under /api/v1/prefs. Errors use the shared error envelope."
+    "version": "1.2",
+    "description": "The app's SharedPreferences files and Preferences DataStores: the ones that the app registers, each with a value policy and a read-only flag, and, with discovery on, the other files in its shared_prefs directory, which are read-only by default, and the other Preferences DataStore files in its files/datastore directory, which are always read-only. A file's store says which kind it is: shared_prefs or preferences_datastore. The tab reads and writes a registered DataStore through the app's own instance; it reads a discovered one from its .preferences_pb file, because the app's DataStore would not see an edit to the file. A value policy says what the tab shows of the values: visible shows every value; mask_sensitive leaves out the value of a key that looks like it holds a secret, such as auth_token or password, as the Network tab's redaction finds them, except a boolean, float, or double value, which an app does not use for a secret, and shows a string value that is a JSON object or array with the values of its sensitive fields replaced by [REDACTED], at any depth, as the Network tab's redaction does in a JSON body; keys_only leaves out every value. A registered file can list keys whose values every policy leaves out, and, under mask_sensitive, keys whose values show whole although they look sensitive. A file that has the keysets of EncryptedSharedPreferences, read by a plain instance, shows its keys only and is read-only. Each file has a cursor that moves when a value changes, through the tab or through the app. The tab sees the app's changes to a registered file while Lustro is started; before API 30, a clear of a SharedPreferences file by the app shows only with the next change to the file. A discovered DataStore file's cursor moves when its bytes change. All routes are token-authenticated (Bearer header or HttpOnly cookie) and live under /api/v1/prefs. Errors use the shared error envelope."
   },
   "servers": [
     {
@@ -208,7 +208,7 @@
       "post": {
         "operationId": "editPref",
         "summary": "Write one value, with its type.",
-        "description": "Puts the value with the type's setter and waits until the file on disk has it, so the response shows what the file holds: a SharedPreferences file commits, and a DataStore updates its data through the app's instance. It adds the key, or replaces its value, also with a value of another type: then the app's getter of the old type throws a ClassCastException. The cursor moves when the value changes. A value that is masked for reading can still be written. 403 with code read_only and field file when the file is read-only. 400 with field key, type, or value when one is missing or the value is not of the type, and with field type for a type that the file's store can't write. 500 when the write fails: for a SharedPreferences file, the instance's memory holds the value, and the app sees it until the process ends; a DataStore keeps what it had.",
+        "description": "Puts the value with the type's setter and waits until the file on disk has it, so the response shows what the file holds: a SharedPreferences file commits, and a DataStore updates its data through the app's instance. It adds the key, or replaces its value, also with a value of another type: then the app's getter of the old type throws a ClassCastException. The cursor moves when the value changes. A value that is masked or redacted for reading can still be written. 403 with code read_only and field file when the file is read-only. 400 with field key when the key is empty, and with field key, type, or value when one is missing or the value is not of the type, and with field type for a type that the file's store can't write. 500 when the write fails: for a SharedPreferences file, the instance's memory holds the value, and the app sees it until the process ends; a DataStore keeps what it had.",
         "requestBody": {
           "required": true,
           "description": "The value to write.",
@@ -232,7 +232,7 @@
                   },
                   "key": {
                     "type": "string",
-                    "description": "The key. It can be empty."
+                    "description": "The key. It can't be empty: an empty key is most often a client's mistake, such as a shell variable that did not expand. POST delete takes an empty key, to remove one that is already there."
                   },
                   "type": {
                     "$ref": "#/components/schemas/PrefWriteType"
@@ -659,7 +659,7 @@
             "$ref": "#/components/schemas/PrefType"
           },
           "value": {
-            "description": "Absent when masked, and for an unknown value that is null. A string, a number, a boolean, or for string_set an array of strings, sorted. A long beyond 2^53 - 1 either way, which a JavaScript number can't hold, is the string of its digits. A float or a double that is not finite is the string \"NaN\", \"Infinity\", or \"-Infinity\". Bytes are a padded base64 string.",
+            "description": "Absent when masked, and for an unknown value that is null. When redacted, the string with the values of its sensitive JSON fields replaced. A string, a number, a boolean, or for string_set an array of strings, sorted. A long beyond 2^53 - 1 either way, which a JavaScript number can't hold, is the string of its digits. A float or a double that is not finite is the string \"NaN\", \"Infinity\", or \"-Infinity\". Bytes are a padded base64 string.",
             "type": [
               "string",
               "number",
@@ -678,6 +678,10 @@
           "masked": {
             "const": true,
             "description": "Only when the value policy leaves the value out."
+          },
+          "redacted": {
+            "const": true,
+            "description": "Only under mask_sensitive, for a string value that is a JSON object or array with a sensitive field: value has the values of those fields, at any depth, replaced by [REDACTED], except a boolean or a null, and is rebuilt from the parse, so it is compact, and a number in it comes as the parser read it: 1.0 as 1, and an integer outside the range of a 64-bit long as a double, with fewer digits. bytes is the size of the value in the file. Never with masked. A client must not write the value back: it would replace the secrets with the placeholder."
           },
           "truncated": {
             "const": true,

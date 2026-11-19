@@ -49,6 +49,7 @@
     // Lustro's own file, which holds the token.
     var LUSTRO_FILE = 'lustro_debug';
     var BYTES_HINT = '// the bytes as padded base64, such as AAEC/w==';
+    var REDACTED_TITLE = 'Fields of this JSON value that look like they hold a secret show as [REDACTED].';
 
     // ── Reading the routes' JSON ────────────────────────────────
 
@@ -225,7 +226,7 @@
     // The editor in a row: a switch for a boolean, a field for an int or a short
     // string on one line that is not JSON, or null when the value opens in the dialog.
     function inlineKind(entry) {
-        if (!entry || entry.masked || entry.truncated || !('value' in entry)) return null;
+        if (!entry || entry.masked || entry.redacted || entry.truncated || !('value' in entry)) return null;
         if (entry.type === 'boolean' && typeof entry.value === 'boolean') return 'boolean';
         if (entry.type === 'int' && typeof entry.value === 'number') return 'int';
         if (entry.type === 'string' && typeof entry.value === 'string') {
@@ -357,6 +358,14 @@
         return { control: 'input', text: formatValue(type, value) };
     }
 
+    // The dialog's field for an entry. A value with redacted JSON fields opens
+    // empty to edit, as a masked one does, so that Save never writes the
+    // placeholder over the app's secrets; to read only, it shows what the page has.
+    function editorOf(entry, readOnly) {
+        var hidden = entry.masked || !('value' in entry) || (!!entry.redacted && !readOnly);
+        return editorFor(entry.type, entry.value, hidden);
+    }
+
     // What Save sends. A JSON string opens indented: saved as it opened, it goes
     // back as the file held it, and edited, it goes back compact when it was.
     function valueToSave(type, raw, editor, original) {
@@ -420,7 +429,7 @@
     function hiddenTitle(file) {
         if (file && file.encrypted && file.policy === 'keys_only') return 'The file is encrypted, and the tab shows its keys only.';
         if (file && file.policy === 'keys_only') return 'The file\'s policy shows its keys only.';
-        return 'The key looks like it holds a secret, so the file\'s policy leaves its value out.';
+        return 'The key looks like it holds a secret, or the app masks it, so the file\'s policy leaves its value out.';
     }
 
     function badgeHtml(type) {
@@ -505,6 +514,7 @@
         }
         var text = valueText(entry);
         var title = lock ? 'Read-only. ' + lock + ' Click to see the whole value.' : 'Click to edit.';
+        if (entry.redacted) title = REDACTED_TITLE + ' ' + title;
         if (entry.truncated) title = 'The value is longer than 4096 characters; the dialog reads it whole. ' + title;
         return '<button type="button" class="prefs-value" data-action="openEdit" data-key="' + key + '" title="' + esc(title) + '">'
             + (text === '' ? '<span class="dc-comment">// empty string</span>' : '<span class="prefs-value__text">' + esc(text) + '</span>')
@@ -580,6 +590,7 @@
     window.prefsReadValue = readValue;
     window.prefsCompactJson = compactJson;
     window.prefsEditorFor = editorFor;
+    window.prefsEditorOf = editorOf;
     window.prefsValueToSave = valueToSave;
     window.prefsPreviewHtml = previewHtml;
     window.prefsMatches = matches;
@@ -1052,9 +1063,11 @@
 
     function fillEditor(entry, readOnly) {
         var file = byId[edit.file];
-        renderEditor(editorFor(entry.type, entry.value, entry.masked || !('value' in entry)), readOnly);
+        renderEditor(editorOf(entry, readOnly), readOnly);
         if (entry.masked) {
             setEditMessage(els.editHint, '// ' + hiddenTitle(file) + (readOnly ? '' : ' What you save replaces the value.'));
+        } else if (entry.redacted) {
+            setEditMessage(els.editHint, '// ' + REDACTED_TITLE + (readOnly ? '' : ' The value opens empty, so that the placeholder is never saved: what you save replaces the whole value.'));
         } else if (entry.type === 'unknown') {
             setEditMessage(els.editHint, '// a value that no SharedPreferences getter returns: the tab can show it, not write it');
         } else if (!canWrite(file, entry.type)) {

@@ -32,7 +32,8 @@ import java.io.File
  *
  * The tab shows the [registered databases][SqliteDb], and, when the app passes
  * a context as `discoverFrom`, the other database files in the app's
- * `databases` directory, such as those of its libraries. It opens a discovered
+ * `databases` and `noBackupFilesDir` directories, such as those of its
+ * libraries and WorkManager's `androidx.work.workdb`. It opens a discovered
  * file read-only for each request, as a [SqliteDb.file] database.
  *
  * The routes that browse run only the SQL that the tab builds itself: a client
@@ -87,14 +88,16 @@ public class SqliteDebugTab private constructor(registry: SqliteRegistry) : Debu
          * @param databases the databases to show, in this order, before the
          *   discovered ones.
          * @param discoverFrom a context of the app, to show the other database
-         *   files in its `databases` directory too, read-only, or `null` to show
-         *   only [databases]. The tab lists the directory on each request, so it
-         *   also finds a file that the app creates later. It leaves out a file
-         *   that one of [databases] stands for, SQLite's journal, WAL, and lock
-         *   files, and a file that is not a SQLite database, which the platform's
-         *   SQLite finds out. Leave discovery off when the directory has a
-         *   database that the app opens with another copy of SQLite, as
-         *   [SqliteDb.file] says.
+         *   files in its `databases` and `noBackupFilesDir` directories too,
+         *   read-only, or `null` to show only [databases]. A file is named by its
+         *   file name; a file in `noBackupFilesDir` whose name a registration or a
+         *   file in `databases` already has is `no_backup/<file name>`. The tab
+         *   lists the directories on each request, so it also finds a file that
+         *   the app creates later. It leaves out a file that one of [databases]
+         *   stands for, SQLite's journal, WAL, and lock files, and a file that is
+         *   not a SQLite database, which the platform's SQLite finds out. Leave
+         *   discovery off when a directory has a database that the app opens
+         *   with another copy of SQLite, as [SqliteDb.file] says.
          * @throws IllegalArgumentException when two of [databases] have the
          *   same name, or two [SqliteDb.file] databases the same file. The tab
          *   does not know the file of a live handle before it reads, so it can't
@@ -111,10 +114,11 @@ public class SqliteDebugTab private constructor(registry: SqliteRegistry) : Debu
                 val other = files.put(file, database.name)
                 require(other == null) { "The databases \"$other\" and \"${database.name}\" are the same file: $file" }
             }
-            // Where ContextImpl keeps the files that getDatabasePath names. getDatabasePath() would
-            // create the directory, on the caller's thread.
-            val directory = discoverFrom?.let { File((it.applicationContext ?: it).dataDir, "databases") }
-            return SqliteDebugTab(SqliteRegistry(databases, directory))
+            // Where ContextImpl keeps the files that getDatabasePath names, and noBackupFilesDir, where
+            // WorkManager keeps its database. getDatabasePath() and getNoBackupFilesDir() would create
+            // the directories, on the caller's thread.
+            val dataDir = discoverFrom?.let { (it.applicationContext ?: it).dataDir }
+            return SqliteDebugTab(SqliteRegistry(databases, dataDir?.let { File(it, "databases") }, dataDir?.let { File(it, "no_backup") }))
         }
     }
 }

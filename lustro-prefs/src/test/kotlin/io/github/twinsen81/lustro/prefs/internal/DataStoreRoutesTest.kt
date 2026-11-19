@@ -152,6 +152,24 @@ class DataStoreRoutesTest {
     }
 
     @Test
+    fun `a registered store masks its masked keys under every policy, and replaces the sensitive fields of a JSON value`() {
+        val store = PrefsDataStore("app_state", appState, ValuePolicy.VISIBLE, masked = setOf("THEME"))
+        assertEquals(setOf("THEME"), store.masked)
+        val visible = get(routes(store), "entries", "store" to STORE, "file" to "app_state")
+        assertTrue(item(visible, "theme").getBoolean("masked"))
+        assertFalse(item(visible, "theme").has("value"))
+        assertEquals("t0k3n", item(visible, "auth_token").getString("value"))
+
+        val routes = routes(PrefsDataStore("app_state", appState))
+        val edit = post(routes, "edit", """{"store":"$STORE","file":"app_state","key":"profile","type":"string","value":"{\"session\":\"s-1\",\"name\":\"ann\"}"}""")
+        val item = JSONObject(edit.text()).getJSONObject("item")
+        assertTrue(item.getBoolean("redacted"))
+        val shown = JSONObject(item.getString("value"))
+        assertEquals("[REDACTED]", shown.getString("session"))
+        assertEquals("ann", shown.getString("name"))
+    }
+
+    @Test
     fun `edit writes every type through the app's instance`() {
         val routes = routes(PrefsDataStore("app_state", appState, ValuePolicy.VISIBLE))
         val cases =

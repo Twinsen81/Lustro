@@ -26,10 +26,17 @@ import androidx.datastore.preferences.core.Preferences
  * @param unmasked the keys whose values [ValuePolicy.MASK_SENSITIVE] shows
  *   although they look like they hold a secret, such as an `oauth_scopes` key,
  *   which has `auth` in its name but holds no secret. A name matches a key with
- *   exactly that name, in any case: it is no pattern. It changes nothing under
+ *   exactly that name, in any case: it is no pattern. A JSON value of such a
+ *   key shows whole, with no field replaced. It changes nothing under
  *   [ValuePolicy.VISIBLE], which shows every value, or [ValuePolicy.KEYS_ONLY],
  *   which shows none: the tab ignores it there, so that a change of the policy
  *   never shows more than the policy says.
+ * @param masked the keys whose values the tab always leaves out, under every
+ *   policy, also [ValuePolicy.VISIBLE]: a key whose name the check does not
+ *   find, such as an `account_info` key that holds a JSON string with a token
+ *   in it, or a key that must stay hidden when someone changes the policy. A
+ *   name matches a key with exactly that name, in any case: it is no pattern.
+ *   A key in both [unmasked] and [masked] is masked.
  * @throws IllegalArgumentException when [name] is empty or contains `/` or `\`.
  */
 public class PrefsDataStore @JvmOverloads constructor(
@@ -38,9 +45,13 @@ public class PrefsDataStore @JvmOverloads constructor(
     public val policy: ValuePolicy = ValuePolicy.MASK_SENSITIVE,
     public val readOnly: Boolean = false,
     unmasked: Set<String> = emptySet(),
+    masked: Set<String> = emptySet(),
 ) {
     /** The keys whose values [ValuePolicy.MASK_SENSITIVE] shows, as the app passed them. A key matches in any case. */
     public val unmasked: Set<String> = unmasked.toSet()
+
+    /** The keys whose values the tab always leaves out, as the app passed them. A key matches in any case. */
+    public val masked: Set<String> = masked.toSet()
 
     init {
         require(name.isNotEmpty() && '/' !in name && '\\' !in name) { "name must be a file name, without / or \\: \"$name\"" }

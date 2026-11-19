@@ -703,6 +703,46 @@ class SqliteRoutesTest {
     }
 
     @Test
+    fun `discovery lists the databases in noBackupFilesDir after the others, and names one whose name is taken by its directory`() {
+        val noBackup = File(app.dataDir, "no_backup")
+        Fixtures.file(databases, "library.db")
+        val workDb = Fixtures.file(noBackup, "androidx.work.workdb")
+        Fixtures.file(noBackup, "library.db", notes = 1)
+        Fixtures.file(noBackup, "named.db", notes = 2)
+        File(noBackup, "androidx.work.workdb-wal").writeBytes(ByteArray(4096))
+        File(noBackup, "com.google.android.gms.appid-no-backup").createNewFile()
+        val routes = SqliteRoutes(SqliteRegistry(listOf(SqliteDb.framework("named.db") { live }), databases, noBackup))
+
+        val items = Fixtures.get(routes, "databases").json().getJSONArray("items")
+        val names = (0 until items.length()).map { items.getJSONObject(it).getString("name") }
+
+        assertEquals(listOf("named.db", "library.db", "androidx.work.workdb", "no_backup/library.db", "no_backup/named.db"), names)
+        val work = items.getJSONObject(2)
+        assertFalse(work.getBoolean("registered"))
+        assertFalse(work.getBoolean("writable"))
+        assertEquals(workDb.path, work.getString("path"))
+        assertEquals(3, rowCount(routes, "library.db"))
+        assertEquals(1, rowCount(routes, "no_backup/library.db"))
+        assertEquals(2, rowCount(routes, "no_backup/named.db"))
+        assertEquals(3, rowCount(routes, "androidx.work.workdb"))
+        // The name that a file in no_backup has only when its file name is taken is no other name of it.
+        assertEquals(404, Fixtures.get(routes, "tables", "db" to "no_backup/androidx.work.workdb").status)
+    }
+
+    @Test
+    fun `discovery without the noBackupFilesDir directory lists the databases directory only`() {
+        Fixtures.file(databases, "library.db")
+        Fixtures.file(File(app.dataDir, "no_backup"), "androidx.work.workdb")
+
+        val names = SqliteRegistry(emptyList(), databases).list().map { it.name }
+
+        assertEquals(listOf("app.db", "library.db"), names)
+    }
+
+    private fun rowCount(routes: SqliteRoutes, db: String): Int =
+        Fixtures.get(routes, "rows", "db" to db, "table" to "notes").json().getJSONArray("items").length()
+
+    @Test
     fun `a registration of the app's support handle reads as a framework one`() {
         val helper =
             androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory().create(

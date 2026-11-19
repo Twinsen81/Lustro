@@ -22,6 +22,24 @@ see [DECISIONS.md](DECISIONS.md).
   artifact has the same API. The sample's logger appends a 12 KB line, which
   showed once and in full in the console and in `GET logs/entries` on an
   emulator (API 29).
+- **Preferences: keys that are always masked, secrets inside JSON values, and
+  no empty key in an edit (Preferences schema 1.2).** `PrefsFile` and
+  `PrefsDataStore` take `masked`, the counterpart of `unmasked`: the values of
+  these keys are left out under every policy, also `VISIBLE`. Under
+  `MASK_SENSITIVE`, a string value that is a JSON object or array shows with
+  the values of its sensitive fields replaced by `[REDACTED]`, at any depth,
+  by the same check as the Network tab's redaction; the entry has
+  `redacted: true`, and the console opens it empty to edit, so that the
+  placeholder never goes back into the app's file. `POST prefs/edit` with an
+  empty key is now a `400` with `field: "key"`; `POST prefs/delete` still
+  takes one. The SQLite tab's discovery also lists `noBackupFilesDir`, so it
+  finds WorkManager's `androidx.work.workdb`; a file there whose name is taken
+  is `no_backup/<file name>`. The Screen tab's docs say to create the tab in
+  `Application.onCreate`, and what a later call misses. Verified on an
+  emulator (API 28): the sample's `account_info` shows its `refresh_token` as
+  `[REDACTED]` with the rest of the JSON, opens empty in the console's editor,
+  `user_email` is masked through `masked`, an edit with an empty key is a
+  `400`, and `GET sqlite/databases` lists `androidx.work.workdb`.
 - **An MCP server in the CLI, for agents that can only call MCP tools.**
   `lustro mcp` is a Model Context Protocol server on stdin and stdout. An
   agent client without a shell, such as Claude Desktop, starts it when a
