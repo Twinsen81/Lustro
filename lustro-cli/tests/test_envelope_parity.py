@@ -23,10 +23,14 @@ EXPECTED_ERROR_ENUM = {
     "forbidden",
     "not_found",
     "method_not_allowed",
+    "conflict",
     "payload_too_large",
+    "unprocessable_entity",
+    "too_many_requests",
     "internal_error",
     "unavailable",
     "timeout",
+    "error",
 }
 
 

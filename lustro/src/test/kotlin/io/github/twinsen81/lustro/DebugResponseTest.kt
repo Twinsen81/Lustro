@@ -107,13 +107,13 @@ class DebugResponseTest {
         val withAll = JSONObject(
             DebugResponse.error(
                 message = "boom",
-                status = 422,
+                status = 418,
                 code = "C1",
                 field = "name",
                 hint = "try again",
             ).bodyString(),
         )
-        assertEquals("error", withAll.getString("error")) // 422 -> generic "error"
+        assertEquals("error", withAll.getString("error")) // 418 -> generic "error"
         assertEquals("boom", withAll.getString("message"))
         assertEquals("C1", withAll.getString("code"))
         assertEquals("name", withAll.getString("field"))
@@ -312,7 +312,10 @@ class DebugResponseTest {
                 403 to "forbidden",
                 404 to "not_found",
                 405 to "method_not_allowed",
+                409 to "conflict",
                 413 to "payload_too_large",
+                422 to "unprocessable_entity",
+                429 to "too_many_requests",
                 500 to "internal_error",
                 503 to "unavailable",
                 504 to "timeout",

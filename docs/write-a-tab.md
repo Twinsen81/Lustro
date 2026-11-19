@@ -67,6 +67,12 @@ class FlagsTab : DebugTab() {
 
 The server escapes the title and the icon before it puts them in the tab bar.
 
+A tab with only routes, for agents and scripts, sets `showInTabBar = false`. It is then headless:
+its routes work, but it has no link in the tab bar and no page, so `/tab/<id>` answers `404`, as
+for an unknown tab. It must still set `title` and `icon`. `GET /api/v1/_meta` lists the `title`
+when the tab has an OpenAPI document, and nothing shows the `icon`, so `""` is enough. See
+[Headless tabs](custom-tabs.md#headless-tabs).
+
 ## 3. Keep the state thread-safe
 
 The server calls the tab on its own worker threads, never on the main thread, and it can call it
@@ -176,6 +182,32 @@ make the error envelope: `error(...)` is a `400` by default, and `notFound(...)`
     }
 ```
 
+The other error types follow from the status, such as `conflict` for `409`,
+`unprocessable_entity` for `422`, and `too_many_requests` for `429`. [Custom tabs](custom-tabs.md)
+lists them all.
+
+To also accept a form body, such as `curl -d id=offline-sync`, give `toggle` the request in place
+of the body, and choose the parser by the content type. `request.formParams()` parses an
+`application/x-www-form-urlencoded` body with the rules of the query parameters. A form body
+without an `id` then gets `id is required`, and not `Invalid JSON`:
+
+```kotlin
+    private fun toggle(request: DebugRequest): DebugResponse {
+        val flagId =
+            if (request.contentType?.subtype == "x-www-form-urlencoded") {
+                request.formParams()["id"]?.firstOrNull().orEmpty()
+            } else {
+                try {
+                    JSONObject(request.bodyAsString() ?: "{}").optString("id")
+                } catch (e: JSONException) {
+                    return DebugResponse.error("Invalid JSON: ${e.message}")
+                }
+            }
+        if (flagId.isBlank()) return DebugResponse.error("id is required", field = "id")
+        // The rest is as above.
+    }
+```
+
 `upload` takes a JSON array of flags, or an object with a `flags` array. It puts each flag, and
 advances the sequence once when it added at least one:
 
@@ -203,7 +235,8 @@ advances the sequence once when it added at least one:
 ```
 
 The server reads at most [`maxRequestBodyBytes`](reference/configuration.md) of a body, 1 MiB by
-default, and answers a larger one with a `413` before the tab sees it.
+default, and answers a larger one with a `413` before the tab sees it. The limit is the same for
+every tab: a tab that needs more raises it in `DebugConfig`, for the whole server.
 
 These handlers return at once. A route that waits, for a network call or a long query, must stop
 when the request times out: the client then has a `504`, and the request still holds one of the
@@ -215,6 +248,10 @@ server's slots. Check `request.isCancelled` in a loop, and give a blocking call 
     request.onCancel { call.cancel() }
     call.execute().use { response -> /* ... */ }
 ```
+
+Work that takes longer than the timeout, 30 s by default, does not fit in one request. Start it in
+the background from one route, answer at once with an id, and report its progress from a second
+route: [Custom tabs](custom-tabs.md#long-work) shows the pattern.
 
 ## 7. Render the view
 
@@ -243,9 +280,14 @@ The console loads `flags.js` after `shared.js`, so the script can use the helper
 
 - `lustroApiUrl(path)` gives the URL of a route of this tab, such as `/api/v1/flags/snapshot`.
 - `lustroOnContentReady(fn)` runs `fn` when the view is in the page.
-- `debugPoll(urlOrFunction, intervalMs, callback)` polls a route, and shows the connection state in
-    the top bar.
-- `debugFetch(url, options)` rejects on a status that is not `2xx`.
+- `debugPoll(urlOrFunction, intervalMs, callback, options)` polls a route, and shows the
+    connection state in the top bar. `options.onConnectionChange(connected)` runs when that state
+    changes, so the tab can react when the app goes away.
+- `debugFetch(url, options)` rejects on a status that is not `2xx`. `debugErrorMessage(err)`
+    gives a Promise of the text to show for the rejection: the `message` of the error envelope,
+    or else `err.message`.
+- `debugModal(id, { onHide })` shows and hides a dialog of the tab's markup. `onHide` runs when
+    the dialog is hidden, also by Escape or a click on the scrim.
 - `debugEscapeHtml(text)` escapes a value for HTML.
 - `debugToast(message, type)` shows a short message at the bottom right for 3 s. `type` is
     `success`, `error`, `info`, or `warning`.
@@ -286,14 +328,23 @@ The console loads `flags.js` after `shared.js`, so the script can use the helper
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ id: el.dataset.flagId })
         }).catch(function(e) {
-            window.debugToast('Failed to toggle: ' + e.message, 'error');
             render(); // The browser already moved the switch: put it back.
+            window.debugErrorMessage(e).then(function(message) {
+                window.debugToast('Failed to toggle: ' + message, 'error');
+            });
+        });
+    }
+
+    // While the app does not answer, a toggle would only fail.
+    function onConnectionChange(connected) {
+        document.querySelectorAll('[data-action="toggleFlag"]').forEach(function(el) {
+            el.disabled = !connected;
         });
     }
 
     window.lustroOnContentReady(function() {
         document.getElementById('lustro-tab-content').addEventListener('change', onChange);
-        window.debugPoll(snapshotUrl, 1500, onSnapshot);
+        window.debugPoll(snapshotUrl, 1500, onSnapshot, { onConnectionChange: onConnectionChange });
     });
 })();
 ```
@@ -301,7 +352,8 @@ The console loads `flags.js` after `shared.js`, so the script can use the helper
 The listener is on `#lustro-tab-content`, the content area, and not on each switch. Then it keeps
 working when `render()` replaces the switches. When the toggle fails, the script renders the list
 again, because the browser moved the switch before the request, and the next polls are
-`unchanged`. The script treats a status that it does not know as
+`unchanged`. The toast shows the `message` of the error envelope, such as `Unknown flag: x`, and
+not only `HTTP 404`. The script treats a status that it does not know as
 `reset`, as the envelope's rules require. The fetch sends the console's cookie, so the script
 needs no token.
 
@@ -417,3 +469,23 @@ class FlagsTabTest {
 
 To test a timeout, call `request.cancel()`: `isCancelled` turns `true`, and the `onCancel`
 actions run.
+
+`request.formParams()` does not use `org.json`, so a test of the `toggle` that reads a form body
+needs no Robolectric. Give the request a `contentType`:
+
+```kotlin
+class FlagsTabFormTest {
+    @Test
+    fun `a form body toggles a flag`() {
+        val request =
+            DebugRequest(
+                path = "toggle",
+                method = "POST",
+                body = "id=offline-sync".toByteArray(),
+                contentType = MediaType.parse("application/x-www-form-urlencoded"),
+            )
+
+        assertEquals(200, FlagsTab().handle(request)?.status)
+    }
+}
+```

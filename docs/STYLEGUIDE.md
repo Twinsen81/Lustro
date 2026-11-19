@@ -126,7 +126,9 @@ too. Semantic color is passed via the `--c` custom property where noted:
   checkboxes; close via a `.dc-menu-scrim` layer.
 - `.dc-modal` family: keep the `.dc-modal-scrim` in your markup with the
   `hidden` attribute and show or hide it with `debugModal(id)`; Escape and a
-  click on the scrim close it. Actions go in `.dc-modal__foot`, primary first.
+  click on the scrim close it. `debugModal(id, { onHide })` runs `onHide` each
+  time the dialog is hidden, also by Escape or the scrim. Actions go in
+  `.dc-modal__foot`, primary first.
 - `.dc-toast`: shown by `debugToast(message, type)`, where `type` is `success`,
   `error`, `info` or `warning`. Toasts stack bottom-right and go away after 3 s.
 - `.dc-split` / `.dc-pane` / `.dc-divider`: resizable panes, in the order pane,

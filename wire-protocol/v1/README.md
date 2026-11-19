@@ -11,7 +11,7 @@ the protocol a stable public contract independent of the library's Kotlin API.
   A future incompatible revision becomes `/api/v2/`, and the old major stays
   alive for at least one major release.
 - The **minor** protocol version is reported at runtime in
-  `GET /api/v1/_meta` as `_meta.protocolVersion` (currently `1.12`).
+  `GET /api/v1/_meta` as `_meta.protocolVersion` (currently `1.13`).
 
 ## Contents
 
@@ -174,6 +174,16 @@ gives its shape.
   and `POST rules/_/sync` reject any other `failure` with a `400`,
   `field: "failure"`. A rule without the field, as stored before, answers as
   before.
+
+- **1.13** - The error envelope has three more `error` types: `conflict` for
+  a `409`, `unprocessable_entity` for a `422`, and `too_many_requests` for a
+  `429`. Before, these statuses had the type `error`, as any status without a
+  type still has. Lustro's own tabs do not answer 409, 422, or 429; an app's
+  tab can. The schemas now also list `error` in the enum of the type, which
+  left it out although the server sent it. A headless tab
+  (`showInTabBar = false`) has no page: `GET /tab/<id>` answers `404`, as for
+  an unknown tab, where it answered `200` with an empty content area. Its
+  routes do not change.
 
 ## Plugin tabs
 

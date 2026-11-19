@@ -5,6 +5,9 @@
 
     var allFlags = [];
     var lastCursor = null; // opaque cursor; omitted on the first poll
+    // Whether the app answers the poll. While it does not, a toggle or an upload
+    // would only fail, so their controls are disabled.
+    var connected = false;
 
     function renderFlags() {
         var listEl = document.getElementById('flags-list');
@@ -22,7 +25,7 @@
             var checked = f.enabled ? ' checked' : '';
             return '<div class="flag-card">'
                 + '<label class="dc-switch" title="Toggle this flag. The change advances the poll cursor and is reflected immediately.">'
-                + '<input type="checkbox"' + checked + ' data-action="toggleFlag" data-flag-id="' + window.debugEscapeHtml(f.id) + '">'
+                + '<input type="checkbox"' + checked + (connected ? '' : ' disabled') + ' data-action="toggleFlag" data-flag-id="' + window.debugEscapeHtml(f.id) + '">'
                 + '<span class="dc-switch__track"></span></label>'
                 + '<div class="flag-meta">'
                 + '<span class="flag-id">' + window.debugEscapeHtml(f.id) + '</span>'
@@ -43,14 +46,17 @@
             // immediate refresh so the UI feels responsive.
             fetchSnapshot();
         }).catch(function(e) {
-            window.debugToast('Failed to toggle: ' + e.message, 'error');
+            renderFlags(); // The browser already moved the switch: put it back.
+            window.debugErrorMessage(e).then(function(message) {
+                window.debugToast('Failed to toggle: ' + message, 'error');
+            });
         });
     };
 
     var uploadModal = null;
 
     window.openUploadModal = function() {
-        if (!uploadModal) uploadModal = window.debugModal('flags-upload-modal');
+        if (!uploadModal) uploadModal = window.debugModal('flags-upload-modal', { onHide: onUploadHidden });
         var ta = document.getElementById('flags-upload-text');
         if (ta && !ta.value) {
             ta.value = JSON.stringify([
@@ -59,6 +65,13 @@
         }
         uploadModal.show();
     };
+
+    // Runs also when Escape or a click on the scrim hides the dialog. Clearing the
+    // picked file lets the next pick of the same file fire change again.
+    function onUploadHidden() {
+        var picker = document.querySelector('#flags-upload-modal input[type="file"]');
+        if (picker) picker.value = '';
+    }
 
     window.closeUploadModal = function() {
         if (uploadModal) uploadModal.hide();
@@ -91,7 +104,9 @@
               fetchSnapshot();
           })
           .catch(function(e) {
-              window.debugToast('Upload failed: ' + e.message, 'error');
+              window.debugErrorMessage(e).then(function(message) {
+                  window.debugToast('Upload failed: ' + message, 'error');
+              });
           });
     };
 
@@ -125,8 +140,17 @@
             .catch(function() { /* next poll retries */ });
     }
 
+    function onConnectionChange(isConnected) {
+        connected = isConnected;
+        var upload = document.querySelector('[data-action="openUpload"]');
+        if (upload) upload.disabled = !connected;
+        renderFlags();
+    }
+
     function startPolling() {
-        window.debugPoll(function() { return snapshotUrl(); }, 1500, handleSnapshot);
+        window.debugPoll(function() { return snapshotUrl(); }, 1500, handleSnapshot, {
+            onConnectionChange: onConnectionChange
+        });
     }
 
     // The served HTML uses NO inline on*= handlers. Every interactive element

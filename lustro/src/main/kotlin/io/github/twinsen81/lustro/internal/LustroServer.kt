@@ -533,7 +533,11 @@ internal class LustroServer(
     }
 
     private fun handleTabPage(tabId: String): Response {
-        val tab = registry.findTab(tabId) ?: return toNanoResponse(DebugResponse.notFound("Tab not found: $tabId"))
+        // A headless tab has no page, only routes. It gets the same 404 as an
+        // unknown id, so the page, which needs no token, does not tell them apart.
+        val tab =
+            registry.findTab(tabId)?.takeIf { it.showInTabBar }
+                ?: return toNanoResponse(DebugResponse.notFound("Tab not found: $tabId"))
         return newFixedLengthResponse(Response.Status.OK, "text/html; charset=utf-8", buildPageHtml(tab))
     }
 

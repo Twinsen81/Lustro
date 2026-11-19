@@ -14,6 +14,41 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Added
 
+- **More help for tab authors: connection and dialog callbacks, an error
+  message helper, form bodies, three error types, and docs for headless tabs
+  and long work (wire protocol 1.13).** A tab that had to react when the app
+  went away, when a dialog closed, or when a request failed had to repeat the
+  same code. In `shared.js`, `debugPoll` takes an options object as its fourth
+  argument, with `onConnectionChange(connected)`, which runs when the poll's
+  connection state changes: connected after an answer, and not connected
+  after three failed polls in a row. `onRejected` still works
+  as the fourth argument or in the options. `debugModal(id, { onHide })` runs
+  `onHide` each time the dialog is hidden, also by Escape and by a click on
+  the scrim, so the tab can clear the state of the dialog.
+  `debugErrorMessage(err)` gives a Promise of the error envelope's `message`
+  for a rejected `debugFetch`, or else `err.message`. `DebugRequest.formParams()`
+  parses an `application/x-www-form-urlencoded` body, as `curl -d key=value`
+  sends it, with the rules of the query parameters, and needs no Robolectric
+  in a test. `DebugResponse.error` gives the types `conflict` (409),
+  `unprocessable_entity` (422), and `too_many_requests` (429), which were
+  `error`; the envelope schemas, the OpenAPI documents, and the CLI list them,
+  and the enum of the type in every envelope schema and OpenAPI document now
+  also lists `error`, the type of any other status, which it left out before.
+  The page `/tab/<id>` of a headless tab now answers `404`, as for an unknown
+  tab, in place of a `200` with an empty content area; its routes do not
+  change. The KDoc of `DebugTab` says what `title` and `icon` are for in a
+  headless tab. The custom tabs page and the tab tutorial cover all of this,
+  and show how to run work that takes longer than `requestTimeoutMs` in the
+  background, with a route that starts it and a route that reports its
+  progress, and that `maxRequestBodyBytes` and `requestTimeoutMs` are global.
+  The sample's flags tab uses the new helpers. Verified on an API 28 emulator
+  with the debug sample: `curl -d id=dark-mode-v2` toggled the flag, as the
+  JSON body does; a toggle of an unknown flag in the console showed "Failed
+  to toggle: Unknown flag: no-such-flag"; Escape, a click on the scrim, and
+  Cancel each closed the upload dialog and cleared its picked file; after a
+  force-stop of the app, the switches and the upload button were disabled
+  within 9 s, and enabled again when the app started; `_meta` reported
+  protocol 1.13.
 - **The Logs tab shows the app's own long log lines in full.** logcat keeps
   about 4 KB of a message. An app's logger can now give each line to
   `LogsDebugTab.append(priority, tag, message, throwable)`, which keeps up to

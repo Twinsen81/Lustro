@@ -14,10 +14,18 @@ public abstract class DebugTab {
      */
     public abstract val id: String
 
-    /** The human-readable tab title. HTML-escaped by the server before render. */
+    /**
+     * The human-readable tab title, shown in the tab bar and listed for the tab
+     * in `GET /api/v1/_meta`. HTML-escaped by the server before render. A
+     * headless tab (see [showInTabBar]) must still set it: `_meta` lists it.
+     */
     public abstract val title: String
 
-    /** The tab icon. HTML-escaped by the server before render. */
+    /**
+     * The tab icon, shown before the [title] in the tab bar. HTML-escaped by the
+     * server before render. Nothing shows the icon of a headless tab (see
+     * [showInTabBar]), so such a tab can set any value, such as `""`.
+     */
     public abstract val icon: String
 
     /** Sort order; lower comes first. Ties are broken alphabetically by [id]. */
@@ -25,7 +33,9 @@ public abstract class DebugTab {
 
     /**
      * Whether the tab appears in the tab bar. When `false` the tab is headless:
-     * still routable and discoverable, but hidden from the tab bar.
+     * its routes work and `_meta` lists it when it has an OpenAPI document, but
+     * it has no link in the tab bar and no page: `/tab/<id>` answers `404`, as
+     * for an unknown tab.
      */
     public open val showInTabBar: Boolean = true
 

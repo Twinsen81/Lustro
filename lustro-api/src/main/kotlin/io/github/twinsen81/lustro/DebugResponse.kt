@@ -235,7 +235,12 @@ public interface DebugResponse {
         /**
          * An enveloped error response. The body is the uniform error envelope
          * JSON `{"error":<type>,"message":...,"code":?,"field":?,"hint":?}`,
-         * where `<type>` is derived from [status]. Optional [code], [field], and
+         * where `<type>` follows from [status]: `bad_request` (400),
+         * `unauthorized` (401), `forbidden` (403), `not_found` (404),
+         * `method_not_allowed` (405), `conflict` (409), `payload_too_large`
+         * (413), `unprocessable_entity` (422), `too_many_requests` (429),
+         * `internal_error` (500), `unavailable` (503), `timeout` (504), and
+         * `error` for any other status. Optional [code], [field], and
          * [hint] keys are omitted when `null`. All string values are escaped via
          * [escapeForJson].
          */
@@ -279,7 +284,10 @@ public interface DebugResponse {
                 403 -> "forbidden"
                 404 -> "not_found"
                 405 -> "method_not_allowed"
+                409 -> "conflict"
                 413 -> "payload_too_large"
+                422 -> "unprocessable_entity"
+                429 -> "too_many_requests"
                 500 -> "internal_error"
                 503 -> "unavailable"
                 504 -> "timeout"

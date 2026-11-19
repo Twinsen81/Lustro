@@ -14,10 +14,14 @@
         "forbidden",
         "not_found",
         "method_not_allowed",
+        "conflict",
         "payload_too_large",
+        "unprocessable_entity",
+        "too_many_requests",
         "internal_error",
         "unavailable",
-        "timeout"
+        "timeout",
+        "error"
       ],
       "description": "Short, stable, machine-readable error identifier (e.g. \"not_found\")."
     },

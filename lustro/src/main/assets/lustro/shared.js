@@ -1156,16 +1156,30 @@ window.debugHexDump = function(bytes) {
 };
 
 // Controls a .dc-modal-scrim kept in the tab markup with the hidden attribute.
-window.debugModal = function(modalId) {
+// options.onHide, when given, runs each time the dialog goes from shown to
+// hidden: by hide() or toggle(), by Escape, or by a click on the scrim. Use it
+// to clear the state that belongs to the dialog, such as the id of the item
+// being edited.
+window.debugModal = function(modalId, options) {
     var el = document.getElementById(modalId);
     if (!el) return { show: function(){}, hide: function(){}, toggle: function(){}, isVisible: function(){ return false; } };
+    var onHide = options && typeof options.onHide === 'function' ? options.onHide : null;
+    function hide() {
+        if (el.hidden) return;
+        el.hidden = true;
+        if (onHide) {
+            try { onHide(); } catch (e) { console.error('debugModal onHide failed', e); }
+        }
+    }
     el.addEventListener('mousedown', function(e) {
-        if (e.target === el) el.hidden = true;
+        if (e.target === el) hide();
     });
+    // The Escape handler below finds the dialog by its element, not by this object.
+    el.__lustroModalHide = hide;
     return {
         show: function() { el.hidden = false; },
-        hide: function() { el.hidden = true; },
-        toggle: function() { el.hidden = !el.hidden; },
+        hide: hide,
+        toggle: function() { if (el.hidden) el.hidden = false; else hide(); },
         isVisible: function() { return !el.hidden; }
     };
 };
@@ -1177,7 +1191,8 @@ document.addEventListener('keydown', function(e) {
         // any more, so mark the key as used: the tab then leaves its state alone.
         if (open.length) e.preventDefault();
         open.forEach(function(m) {
-            m.hidden = true;
+            if (typeof m.__lustroModalHide === 'function') m.__lustroModalHide();
+            else m.hidden = true;
         });
     }
 });
@@ -1201,15 +1216,56 @@ window.debugFetch = async function(url, options) {
     }
 };
 
+// The message to show for a rejected debugFetch: the message of the error
+// envelope that the app answered with, or else err.message (such as "HTTP 500",
+// or the browser's text for a network failure). Returns a Promise of a string.
+// It reads a copy of err.response, so the tab can still read the response.
+window.debugErrorMessage = function(err) {
+    var fallback = err && err.message ? String(err.message) : 'Request failed';
+    var resp = err && err.response;
+    if (!resp || typeof resp.clone !== 'function') return Promise.resolve(fallback);
+    var copy;
+    try {
+        copy = resp.clone();
+    } catch (e) {
+        // The tab already read the body, so there is nothing left to read.
+        return Promise.resolve(fallback);
+    }
+    return copy.json().then(function(envelope) {
+        return envelope && typeof envelope.message === 'string' && envelope.message ? envelope.message : fallback;
+    }, function() {
+        return fallback;
+    });
+};
+
+// The fourth argument is onRejected, or an options object with onRejected and
+// onConnectionChange.
+//
 // onRejected, when given, gets a response that isn't ok as (status, error
 // envelope or null), and returns true when it handled it: the poll then counts
 // the response as an answer from a connected app, not as a lost connection.
-window.debugPoll = function(endpointOrFn, intervalMs, callback, onRejected) {
+//
+// onConnectionChange(connected), when given, runs when the poll's connection
+// state changes, at the same time as the status pill in the top bar: with true
+// at the first answer and at the first answer after a lost connection, and with
+// false after three failed polls in a row. The poll starts as not connected.
+window.debugPoll = function(endpointOrFn, intervalMs, callback, onRejectedOrOptions) {
+    var options = onRejectedOrOptions && typeof onRejectedOrOptions === 'object' ? onRejectedOrOptions : {};
+    var onRejected = typeof onRejectedOrOptions === 'function' ? onRejectedOrOptions : options.onRejected;
+    var onConnectionChange = typeof options.onConnectionChange === 'function' ? options.onConnectionChange : null;
     var consecutiveFailures = 0;
     var MAX_FAILURES = 3;
     var SLOW_INTERVAL = 5000;
     var stopped = false;
     var isConnected = false;
+
+    function setConnected(connected) {
+        isConnected = connected;
+        window.debugSetStatus(connected ? 'connected' : 'error');
+        if (onConnectionChange && !stopped) {
+            try { onConnectionChange(connected); } catch (e) { console.error('debugPoll onConnectionChange failed', e); }
+        }
+    }
 
     async function tick() {
         if (stopped) return;
@@ -1227,17 +1283,11 @@ window.debugPoll = function(endpointOrFn, intervalMs, callback, onRejected) {
             }
             var data = handled ? null : await resp.json();
             consecutiveFailures = 0;
-            if (!isConnected) {
-                isConnected = true;
-                window.debugSetStatus('connected');
-            }
+            if (!isConnected) setConnected(true);
             if (!handled) callback(data);
         } catch(e) {
             consecutiveFailures++;
-            if (consecutiveFailures >= MAX_FAILURES && isConnected) {
-                isConnected = false;
-                window.debugSetStatus('error');
-            }
+            if (consecutiveFailures >= MAX_FAILURES && isConnected) setConnected(false);
         }
         if (!stopped) {
             setTimeout(tick, isConnected ? intervalMs : SLOW_INTERVAL);

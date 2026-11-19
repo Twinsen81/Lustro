@@ -65,8 +65,9 @@ Error envelope
     [OpenAPI and wire protocol](../wire-protocol.md).
 
 Headless tab
-:   A tab with `showInTabBar = false`. It has no link in the tab bar, but its routes work, and
-    `_meta` lists it when it has an OpenAPI document. See
+:   A tab with `showInTabBar = false`. It has no link in the tab bar and no page (`/tab/<id>` is a
+    `404`), but its routes work, and `_meta` lists it with its `title` when it has an OpenAPI
+    document. See
     [How Lustro works](../concepts/how-it-works.md#the-anatomy-of-a-tab).
 
 Lint check
