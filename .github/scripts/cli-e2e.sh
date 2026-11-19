@@ -111,6 +111,15 @@ step "Install the CLI from the checkout"
 "$OUT/venv/bin/python" -m pip install --quiet --disable-pip-version-check "./lustro-cli[test]"
 export PATH="$OUT/venv/bin:$PATH"
 
+# Each CLI call also copies its stderr to $OUT/stderr.txt, also when the caller
+# sends stderr to a file or to /dev/null, so that the last step finds a warning
+# from the app. fd 3 carries stdout past the pipe, and with pipefail the status
+# is the CLI's.
+: > "$OUT/stderr.txt"
+lustro() {
+  { command lustro "$@" 2>&1 1>&3 3>&- | tee -a "$OUT/stderr.txt" >&2; } 3>&1
+}
+
 # Also runs `adb forward` to the discovered port, and fails when the forward
 # fails, for example when another process holds CLI_E2E_LOCAL_PORT.
 lustro_to open.txt open --print-only ${CLI_E2E_LOCAL_PORT:+--local-port "$CLI_E2E_LOCAL_PORT"}
@@ -517,5 +526,13 @@ lustro_to screen-dialog.json --json screen tree --settle 1000
 check screen-dialog < "$OUT/screen-dialog.json"
 adb shell input keyevent KEYCODE_BACK
 adb shell input keyevent KEYCODE_BACK
+
+# A command or an MCP tool that sends a query parameter that its route does not
+# declare gets a warning, which every user would then see.
+step "No CLI command or MCP tool got a warning about a query parameter"
+if grep -n "warning: unknown query parameter" "$OUT/stderr.txt" "$OUT/mcp-transcript.jsonl"; then
+  echo "error: the CLI sent a query parameter that its route does not declare" >&2
+  exit 1
+fi
 
 step "The CLI end to end passed"

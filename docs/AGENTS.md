@@ -77,18 +77,24 @@ lustro mock add --id orders-500 --url-pattern /v1/orders --method GET --status 5
 lustro mock add --id feed-offline --url-pattern /v1/feed --failure unknownHost   # fail it as an offline network does
 lustro mock toggle orders-500     # turn one rule off or on
 lustro mock delete orders-500     # remove one rule
-lustro mock sync rules.json       # replace every rule with the JSON array in the file
+lustro mock sync rules.json       # replace every rule with the rules in the file
 ```
 
 `mock add` with an `--id` that a rule has replaces that rule, and without `--id` the app gives the
 rule a new id. See [Network tab operations](#network-tab-operations) for what each route does.
+
+`mock sync` takes a JSON array of rules, or the output of `lustro mock list --json`, so a test can
+save the rules and restore them after: `lustro mock list --json > rules.json`, change the rules,
+then `lustro mock sync rules.json`.
 
 `lustro api METHOD PATH` reaches every route, also those of a tab that has no commands of its own,
 with the same discovery and the same error output: it prints the response body, and for an error
 the error from the envelope on stderr, with exit status 1. When the app rejects a search (a `400`
 with `field: "search"`), the exit status is 2, as for a bad flag. A PATH without a leading `/` is
 under `/api/v1/`. `--param KEY=VALUE` adds a query parameter, `--body JSON` or `--input FILE` (`-`
-for stdin) sends a JSON body. `lustro schema <tabId>` prints the tab's OpenAPI document, which
+for stdin) sends a JSON body. A parameter that the route does not declare gets a warning on stderr,
+such as `warning: unknown query parameter "uniqueName"` (see [Unknown query
+parameters](#unknown-query-parameters)), from every command. `lustro schema <tabId>` prints the tab's OpenAPI document, which
 describes its routes.
 
 Each row of `net list` starts with a short transaction id: the first 8 characters of the id, or more
@@ -238,7 +244,9 @@ tokens for all of them.
 WorkManager, and Screen tabs, and the app's own tabs. Each tool says whether it changes the app,
 in its annotations (`readOnlyHint`, and `destructiveHint` for a tool that changes the app) and in
 the first words of its description. A tool that fails, for example because the app is not in the
-foreground, returns the CLI's error message with `isError: true`.
+foreground, returns the CLI's error message with `isError: true`. A warning from the app, such as
+`warning: unknown query parameter "uniqueName"` for a `call_api` with a parameter that the route
+does not declare, is a text block of its own after the output.
 
 The server takes the global flags: `lustro mcp --device SERIAL` selects the device for every call,
 as `ANDROID_SERIAL` in the server's environment does. It serves the protocol versions from
@@ -288,6 +296,19 @@ Lustro listens only while its app is in the foreground, so the package is that o
 activity (`adb shell "dumpsys activity activities | grep ResumedActivity"`). The last line in the
 log can also be stale, from an earlier install of the app, when the device dropped the newer one:
 a `401` to a token from the log means read the prefs.
+
+**A no-op build has no ready line.** A build with the `-noop` artifacts, such as a release-like
+build with the package of the debug build, has no server and logs nothing. Its APK has no entry
+under `assets/lustro/`, which a build with the Lustro runtime always has. `grep` finds the entry
+name, because a zip stores it as plain text; API 28 emulator images have no `unzip`:
+
+```bash
+adb shell grep -c -F assets/lustro/ "$(adb shell pm path <package> | grep base.apk | cut -d: -f2 | tr -d '\r')"   # 0: a no-op build
+```
+
+When the CLI finds no token and knows the app, from `--package` or as the app in the foreground,
+it makes this check, and its error then says that the installed build does not contain the Lustro
+runtime and that a debug build must be installed.
 
 Conventions a client should follow:
 - Honor a `LUSTRO_TOKEN` environment variable when present, falling back to the parsed log line,
@@ -359,10 +380,28 @@ reported as `_meta.protocolVersion`.
   `unchanged`, or `reset`. Echo `cursor` back on the next poll; **treat any unknown `status` as
   `reset`** and re-sync the full list. The cursor advances when the route's list changes, and a
   cursor from before an app restart gets a `reset`.
+- **Warning header**: see [Unknown query parameters](#unknown-query-parameters).
 - **Stream** (routes whose list only grows at its end): `{ cursor, status, items?, dropped?, state? }`,
   with the same statuses. Here a `delta` carries only the entries after the cursor, oldest first:
   append them. A `reset` carries the last entries of the list: replace what you have. `dropped`
   counts the entries the list evicted before you got them. Treat any unknown `status` as `reset`.
+
+### Unknown query parameters
+
+A route ignores a query parameter that it does not know: `GET work/items?uniqueName=X` returns
+every item, because the parameter is `name`. So the server compares a request's query parameters
+with those that the tab's OpenAPI document declares for the route (`"in": "query"`), and names
+each one that it does not declare in a `Lustro-Warning` response header (protocol 1.15):
+
+```
+Lustro-Warning: unknown query parameter "uniqueName"
+```
+
+More than one is a comma-separated list in one header. A name is a quoted string, in which `\`
+escapes `"` and `\`, and `\uXXXX` stands for a character outside printable ASCII. The status and
+the body do not change, so a client that sends an extra parameter keeps working; read the header.
+There is no check for a tab without an OpenAPI document, nor for a route that its document does
+not describe. Each `lustro` command prints the warning on stderr.
 
 ## Network tab operations
 
@@ -1243,6 +1282,10 @@ Errors use the shared envelope; key statuses:
 - **No log lines**: check `state.reader` in `GET logs/entries`: `failed` with `readerError` when
   logcat could not run, `stopped` when Lustro is stopped, and `state.paused` when the capture is
   paused. Lines from other processes are never shown: the tab reads the app's own process only.
+- **`no token` from the CLI**: discovery found no `LustroToken` line and no token in the app's
+  prefs. When the error says that the installed build does not contain the Lustro runtime, the
+  app is a no-op build: install a debug build. Otherwise start the app (see [Auth and token
+  discovery](#auth-and-token-discovery)).
 - **Connection refused / no response**: the app is in the background (the server listens only
   while the app is in the foreground), or there is no `adb forward`. Re-check the `LustroToken` log line for the live
   endpoint. A connection closed without a response can also mean the server is at its

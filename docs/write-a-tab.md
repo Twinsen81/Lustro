@@ -401,7 +401,9 @@ console, but `GET /api/v1/_meta` does not list it, so an agent does not find it:
 }
 ```
 
-`_meta` gives `info.version` as the tab's version: change it when the routes change. The sample's
+`_meta` gives `info.version` as the tab's version: change it when the routes change. Declare each
+query parameter that a route reads: a request with a query parameter that its route does not
+declare gets a `Lustro-Warning` header that names it, because the route ignores it. The sample's
 [`flags.openapi.json`](https://github.com/Twinsen81/Lustro/blob/main/sample/src/debug/assets/lustro/flags.openapi.json)
 has all three routes, with their bodies, responses, and errors.
 

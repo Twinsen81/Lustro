@@ -16,9 +16,12 @@ Resolution order (first that yields a value wins, per field):
    (``log.tag`` set to ``E``, for example), which drops the ready line.
 
 If none of these determine the endpoint/token, a clear, actionable error is
-raised. A token from the ready line can be stale, when the app was installed
-again and the device dropped the new line; :func:`token_from_prefs` reads the
-current one, for a client to retry with after a 401.
+raised. When the app is known, :func:`has_lustro_runtime` first checks its
+installed APK: a build with the no-op artifacts has no server, so the error
+then says that, and not that the app must be started. A token from the ready
+line can be stale, when the app was installed again and the device dropped the
+new line; :func:`token_from_prefs` reads the current one, for a client to retry
+with after a 401.
 
 The port that these give is the app's port. On a device, the CLI reaches it
 through an ``adb forward``, whose local port can differ: :func:`forwarded_ports`
@@ -29,6 +32,7 @@ from __future__ import annotations
 
 import os
 import re
+import shlex
 import subprocess
 from typing import List, NamedTuple, Optional, Tuple
 
@@ -170,6 +174,43 @@ def foreground_package(device: Optional[str] = None) -> Optional[str]:
     return match.group("package") if match else None
 
 
+# Every build with the Lustro runtime has assets under this directory, and a build
+# with only the no-op artifacts has none. A zip stores its entry names as plain text.
+RUNTIME_ASSET_ENTRY = "assets/lustro/"
+
+
+def installed_apk(package: str, device: Optional[str] = None) -> Optional[str]:
+    """The path of the package's ``base.apk`` on the device, or ``None``."""
+    out = _run(_adb_base(device) + ["shell", "pm", "path", package])
+    for line in (out or "").splitlines():
+        line = line.strip()
+        if line.startswith("package:") and line.endswith("/base.apk"):
+            return line[len("package:") :]
+    return None
+
+
+def has_lustro_runtime(package: str, device: Optional[str] = None) -> Optional[bool]:
+    """Whether the installed build of ``package`` contains the Lustro runtime, or ``None``
+    when adb can't tell.
+
+    It searches ``base.apk`` for the entry name ``assets/lustro/`` with ``grep -c -F``,
+    not ``unzip``: API 28 emulator images have no ``unzip``, and toybox ``grep`` is on
+    every API level. ``|| true`` because grep exits 1 when it counts 0.
+    """
+    apk = installed_apk(package, device)
+    if apk is None:
+        return None
+    out = _run(
+        _adb_base(device)
+        + ["shell", "grep -c -F {} {} || true".format(shlex.quote(RUNTIME_ASSET_ENTRY), shlex.quote(apk))],
+        timeout=30.0,
+    )
+    count = (out or "").strip()
+    if not count.isdigit():
+        return None
+    return int(count) > 0
+
+
 def token_from_prefs(device: Optional[str] = None, package: Optional[str] = None) -> Optional[str]:
     """The token in the prefs of ``package``, or of the app in the foreground."""
     ra = discover_from_run_as(package or foreground_package(device) or "", device)
@@ -248,8 +289,10 @@ def resolve(
     # device that drops Info logs drops the line. They have the host and port of
     # the last bind too, unless the app predates storing them, so a token from
     # --token or LUSTRO_TOKEN still gets the app's own port.
+    app = package
     if r_token is None or r_host is None or r_port is None:
-        ra = discover_from_run_as(package or foreground_package(device) or "", device)
+        app = package or foreground_package(device)
+        ra = discover_from_run_as(app or "", device)
         if ra is not None and ra.token:
             if r_token is None:
                 r_token = ra.token
@@ -265,6 +308,8 @@ def resolve(
         r_port = DEFAULT_PORT
 
     if not r_token:
+        if app and has_lustro_runtime(app, device) is False:
+            raise DiscoveryError(_no_runtime_message(app, from_foreground=not package))
         raise DiscoveryError(
             "no token: set --token or LUSTRO_TOKEN, or ensure the app is "
             "running in the foreground and `adb logcat -d -s LustroToken` shows the ready line "
@@ -277,3 +322,21 @@ def resolve(
         )
 
     return Endpoint(host=r_host, port=int(r_port), token=r_token)
+
+
+def _no_runtime_message(package: str, *, from_foreground: bool) -> str:
+    """The error for an app whose APK has no Lustro runtime. Without --package, the app
+    is the one in the foreground, which is the launcher when the user's app is closed."""
+    no_op = (
+        "a no-op build, which uses the -noop artifacts: they have no server and log nothing. Install a debug "
+        "build that uses the Lustro artifacts, and start it"
+    )
+    if from_foreground:
+        return (
+            "no token: the app in the foreground, {pkg}, does not contain the Lustro runtime: its APK has no {entry} "
+            "entries. If it is your app, it is {no_op}. If it is not, start your app, or pass --package <id>."
+        ).format(pkg=package, entry=RUNTIME_ASSET_ENTRY, no_op=no_op)
+    return (
+        "no token: the installed build of {pkg} does not contain the Lustro runtime: its APK has no {entry} entries. "
+        "It is {no_op}."
+    ).format(pkg=package, entry=RUNTIME_ASSET_ENTRY, no_op=no_op)

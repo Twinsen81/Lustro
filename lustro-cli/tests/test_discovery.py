@@ -324,3 +324,76 @@ def test_resolve_takes_the_port_from_the_prefs_for_a_token_from_the_environment(
     monkeypatch.setattr(discovery, "discover_from_run_as", lambda package, device=None: pytest.fail("read the prefs"))
     assert resolve(host="127.0.0.1", port=9000, token="t", env={}) == Endpoint("127.0.0.1", 9000, "t")
 
+
+# ── the no-op build check ─────────────────────────────────────────────────────
+
+_PM_PATH = "package:/data/app/~~Xy==/com.example.app-Ab==/base.apk\r\n"
+_GREP = "adb shell grep -c -F assets/lustro/ '/data/app/~~Xy==/com.example.app-Ab==/base.apk' || true"
+
+
+def _no_token(monkeypatch, outputs, **kwargs):
+    calls = _fake_adb_run(monkeypatch, outputs)
+    with pytest.raises(DiscoveryError) as excinfo:
+        resolve(env={}, **kwargs)
+    return str(excinfo.value), calls
+
+
+def test_a_known_app_without_the_runtime_is_a_no_op_build(monkeypatch):
+    message, calls = _no_token(
+        monkeypatch, {"adb shell pm path com.example.app": _PM_PATH, _GREP: "0\n"}, package="com.example.app"
+    )
+    assert message.startswith("no token: the installed build of com.example.app does not contain the Lustro runtime")
+    assert "no-op build" in message
+    assert "Install a debug build" in message
+    assert "logcat" not in message
+    assert " ".join(calls[-1]) == _GREP
+
+
+def test_a_known_app_with_the_runtime_gets_the_message_for_a_stopped_server(monkeypatch):
+    message, _ = _no_token(
+        monkeypatch, {"adb shell pm path com.example.app": _PM_PATH, _GREP: "4\n"}, package="com.example.app"
+    )
+    assert "LustroToken" in message
+    assert "no-op" not in message
+
+
+def test_the_app_in_the_foreground_is_checked_and_named(monkeypatch):
+    dumpsys = "  topResumedActivity=ActivityRecord{1a2b u0 com.example.app/.MainActivity t12}\n"
+    message, _ = _no_token(
+        monkeypatch,
+        {
+            "adb shell dumpsys activity activities | grep ResumedActivity": dumpsys,
+            "adb shell pm path com.example.app": _PM_PATH,
+            _GREP: "0",
+        },
+    )
+    assert message.startswith("no token: the app in the foreground, com.example.app, does not contain the Lustro runtime")
+    assert "--package <id>" in message
+
+
+@pytest.mark.parametrize(
+    "outputs",
+    [
+        {},  # no adb, or no device
+        {"adb shell pm path com.example.app": ""},  # not installed
+        {"adb shell pm path com.example.app": _PM_PATH},  # grep failed
+        {"adb shell pm path com.example.app": _PM_PATH, _GREP: "grep: Permission denied\n"},
+    ],
+)
+def test_when_adb_can_not_tell_the_message_is_the_one_for_a_stopped_server(monkeypatch, outputs):
+    message, _ = _no_token(monkeypatch, outputs, package="com.example.app")
+    assert "LustroToken" in message
+    assert "no-op" not in message
+
+
+def test_without_a_known_app_there_is_no_check(monkeypatch):
+    message, calls = _no_token(monkeypatch, {})
+    assert "LustroToken" in message
+    assert not any("pm" in cmd for cmd in calls)
+
+
+def test_a_found_token_needs_no_check(monkeypatch):
+    calls = _fake_adb_run(monkeypatch, {"adb logcat -d -s LustroToken": "Lustro ready endpoint=http://127.0.0.1:8080 token=t"})
+    assert resolve(env={}, package="com.example.app").token == "t"
+    assert not any("pm" in cmd or "grep" in " ".join(cmd) for cmd in calls)
+

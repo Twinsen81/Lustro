@@ -129,8 +129,20 @@ def _changes(*, destructive: bool, idempotent: bool) -> Dict[str, Any]:
 # ── tools ─────────────────────────────────────────────────────────────────────
 
 
+# The warnings of the tool call in progress, from the app's Lustro-Warning headers. The
+# server runs one call at a time, and the result of the call passes them on.
+_call_warnings: List[str] = []
+
+
 def _client(args: argparse.Namespace) -> LustroClient:
-    return cli._build_client(args)
+    client = cli._build_client(args)
+    client.on_warning = _keep_warning
+    return client
+
+
+def _keep_warning(warning: str) -> None:
+    if warning not in _call_warnings:
+        _call_warnings.append(warning)
 
 
 def _dumps(obj: Any) -> str:
@@ -731,13 +743,23 @@ class Server:
             arguments = {}
         if not isinstance(arguments, dict):
             raise RpcError(INVALID_PARAMS, "Invalid params: arguments must be an object")
+        del _call_warnings[:]
         try:
             text = tool.handler(self.args, check_arguments(tool.input_schema, arguments))
         except (ToolError, cli.UsageError) as exc:
             return _text_result("error: {}".format(exc), is_error=True)
         except (LustroError, DiscoveryError) as exc:
-            return _text_result("error: {}{}".format(exc, _adb_note()), is_error=True)
-        return _text_result(text)
+            return _with_warnings(_text_result("error: {}{}".format(exc, _adb_note()), is_error=True))
+        return _with_warnings(_text_result(text))
+
+
+def _with_warnings(result: Dict[str, Any]) -> Dict[str, Any]:
+    """The result with the app's warnings, such as an unknown query parameter, in a text
+    block of their own after the output, so that a cut in the output can't drop them."""
+    if _call_warnings:
+        text = "\n".join("warning: {}".format(warning) for warning in _call_warnings)
+        result["content"].append({"type": "text", "text": text})
+    return result
 
 
 def _text_result(text: str, *, is_error: bool = False) -> Dict[str, Any]:

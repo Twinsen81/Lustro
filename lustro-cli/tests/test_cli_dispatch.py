@@ -331,6 +331,26 @@ def test_mock_sync_route(rec, tmp_path):
     assert body == [{"urlPattern": "/a", "statusCode": 200}]
 
 
+def test_mock_sync_takes_the_output_of_mock_list(rec, tmp_path):
+    # `mock list --json > rules.json`, then `mock sync rules.json` restores the rules.
+    listed = {"items": [{"id": "r1", "urlPattern": "/a", "statusCode": 500, "enabled": True, "hitCount": 3}]}
+    f = tmp_path / "rules.json"
+    f.write_text(json.dumps(listed), encoding="utf-8")
+    assert run(["mock", "sync", str(f)]) == 0
+    method, path, _, body = rec.calls[-1]
+    assert (method, path) == ("POST", "/api/v1/network/rules/_/sync")
+    assert body == listed["items"]
+
+
+@pytest.mark.parametrize("content", ['{"rules": []}', '{"items": {}}', '"x"'])
+def test_mock_sync_rejects_a_file_without_rules(rec, tmp_path, capsys, content):
+    f = tmp_path / "rules.json"
+    f.write_text(content, encoding="utf-8")
+    assert run(["mock", "sync", str(f)]) == 2
+    assert "mock list --json" in capsys.readouterr().err
+    assert rec.calls == []
+
+
 def test_send_route(rec):
     run(
         [

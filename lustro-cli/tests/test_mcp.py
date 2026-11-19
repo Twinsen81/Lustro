@@ -314,10 +314,12 @@ class _Recorder(BaseHTTPRequestHandler):
     def log_message(self, *args):  # silence
         pass
 
-    def _send(self, status, body, content_type="application/json"):
+    def _send(self, status, body, content_type="application/json", warning=None):
         data = body if isinstance(body, bytes) else json.dumps(body).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", content_type)
+        if warning:
+            self.send_header("Lustro-Warning", warning)
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
@@ -358,6 +360,11 @@ class _Recorder(BaseHTTPRequestHandler):
             self._send(200, {"openapi": "3.1.0", "info": {"title": "Network"}})
         elif route == ("GET", "/api/v1/screen/image"):
             self._send(200, b"\x89PNG\r\n\x1a\n\xff\xfe", "image/png")
+        elif route == ("GET", "/api/v1/work/items"):
+            names = [name for name, _ in urllib.parse.parse_qsl(url.query) if name != "name"]
+            warning = ", ".join('unknown query parameter "{}"'.format(name) for name in names)
+            self._send(400 if "fail" in names else 200, {"items": []} if "fail" not in names else
+                       {"error": "bad_request", "message": "no"}, warning=warning)
         elif route == ("GET", "/api/v1/big"):
             self._send(200, b"a" * 50, "text/plain")
         else:
@@ -645,3 +652,25 @@ def test_adb_forward_does_not_inherit_stdin(monkeypatch):
     monkeypatch.setattr(cli.subprocess, "run", run)
     assert adb_forward(18080, 8080, "emulator-5554") == (18080, None)
     assert calls[0]["stdin"] is subprocess.DEVNULL
+
+
+def test_a_warning_from_the_app_is_a_text_block_after_the_output(app):
+    result = app("call_api", method="GET", path="work/items", params={"uniqueName": "X", "name": "Y"})
+    assert result["isError"] is False
+    assert [block["text"] for block in result["content"]] == [
+        '{"items":[]}',
+        'warning: unknown query parameter "uniqueName"',
+    ]
+
+
+def test_only_declared_parameters_add_no_warning_block(app):
+    result = app("call_api", method="GET", path="work/items", params={"name": "Y"})
+    assert len(result["content"]) == 1
+
+
+def test_an_error_result_keeps_its_warning_and_the_next_call_starts_without_it(app):
+    result = app("call_api", method="GET", path="work/items", params={"fail": 1})
+    assert result["isError"] is True
+    assert result["content"][1]["text"] == 'warning: unknown query parameter "fail"'
+    assert len(app("call_api", method="GET", path="work/items")["content"]) == 1
+

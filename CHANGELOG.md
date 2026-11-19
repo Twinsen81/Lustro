@@ -14,6 +14,37 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Added
 
+- **Agents learn of a query parameter that a route ignores, `mock sync`
+  restores the output of `mock list`, and the CLI says when the app is a
+  no-op build (wire protocol 1.15).** A route ignores a query parameter that
+  it does not know, so `GET work/items?uniqueName=X` returned every item, with
+  no sign that the parameter is `name`. The server now compares a request's
+  query parameters with those that the tab's OpenAPI document declares for
+  the route, and names each other one in a `Lustro-Warning` response header,
+  such as `unknown query parameter "uniqueName"`. The status and the body do
+  not change, so a client that sends an extra parameter keeps working. A tab
+  without an OpenAPI document gets no check. Every CLI command prints the
+  warning on stderr, once, and an MCP tool returns it in a text block after
+  its output. `lustro mock sync` takes the output of `lustro mock list
+  --json`, the envelope `{"items": [...]}`, as well as an array, so a test
+  can save the rules and restore them after; it exited 2 for it before. When
+  discovery finds no token and the app is known, from `--package` or as the
+  app in the foreground, the CLI searches the installed `base.apk` for the
+  entry `assets/lustro/` with `grep` (API 28 emulator images have no
+  `unzip`). A build with the `-noop` artifacts has none, and the error then
+  says that the build does not contain the Lustro runtime and that a debug
+  build must be installed, in place of telling the user to start the app and
+  read logcat. Verified on an API 28 emulator with the sample: `lustro api
+  GET work/items --param uniqueName=X` printed the items on stdout and
+  `warning: unknown query parameter "uniqueName"` on stderr, and `--param
+  name=X` printed no warning; the MCP tool `call_api` returned the warning
+  in a second text block; `mock list --json > rules.json`, a change to the
+  rules, and `mock sync rules.json` restored the two rules as they were; the
+  CLI end to end passed with no warning; with the sample's release build (the
+  no-op artifacts) installed under the same package, `lustro net list` said
+  that the build does not contain the Lustro runtime, and for the debug build
+  with the launcher in the foreground the message stayed the one for an app
+  that is not running.
 - **More help for tab authors: connection and dialog callbacks, an error
   message helper, form bodies, three error types, and docs for headless tabs
   and long work (wire protocol 1.13).** A tab that had to react when the app

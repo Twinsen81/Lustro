@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import pytest
 
 from lustro_cli import cli, wire
-from lustro_cli.client import LustroClient
+from lustro_cli.client import LustroClient, split_warnings
 
 TOKEN = "test-token-123"
 SCRIPT = b"export function mount() {}\n"
@@ -21,9 +21,11 @@ class _Handler(BaseHTTPRequestHandler):
     def log_message(self, *args):  # silence
         pass
 
-    def _send(self, status, body, content_type):
+    def _send(self, status, body, content_type, warning=None):
         self.send_response(status)
         self.send_header("Content-Type", content_type)
+        if warning:
+            self.send_header("Lustro-Warning", warning)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
@@ -49,6 +51,13 @@ class _Handler(BaseHTTPRequestHandler):
                     "body": body,
                 },
             )
+        elif url.path == "/api/v1/warn":
+            # Like the app: each parameter but "known" is undeclared, and "fail" also fails.
+            names = [name for name, _ in urllib.parse.parse_qsl(url.query) if name != "known"]
+            warning = ", ".join('unknown query parameter "{}"'.format(name) for name in names)
+            status = 404 if "fail" in names else 200
+            self._send(status, json.dumps({"error": "not_found", "message": "no"} if status == 404 else {}).encode(),
+                       "application/json", warning)
         elif url.path == "/api/v1/logs/_view.js":
             self._send(200, SCRIPT, "text/javascript")
         elif url.path == "/api/v1/network/clear":
@@ -192,3 +201,46 @@ def test_client_url_appends_params_to_a_query():
     client = LustroClient("http://127.0.0.1:8080")
     assert client._url("/api/v1/x?a=1", [("b", "2"), ("b", "3")]) == "http://127.0.0.1:8080/api/v1/x?a=1&b=2&b=3"
     assert client._url("/api/v1/x", {"a": "1", "b": None}) == "http://127.0.0.1:8080/api/v1/x?a=1"
+
+
+def test_a_warning_from_the_app_goes_to_stderr_and_the_body_to_stdout(lustro, capsys, monkeypatch):
+    monkeypatch.setattr(cli, "_printed_warnings", set())
+    assert lustro("GET", "warn", "--param", "known=1", "--param", "uniqueName=X", "--param", "b=2") == 0
+    captured = capsys.readouterr()
+    assert json.loads(captured.out) == {}
+    assert captured.err == 'warning: unknown query parameter "uniqueName"\nwarning: unknown query parameter "b"\n'
+
+
+def test_only_declared_parameters_print_no_warning(lustro, capsys, monkeypatch):
+    monkeypatch.setattr(cli, "_printed_warnings", set())
+    assert lustro("GET", "warn", "--param", "known=1") == 0
+    assert capsys.readouterr().err == ""
+
+
+def test_an_error_response_prints_its_warning_too(lustro, capsys, monkeypatch):
+    monkeypatch.setattr(cli, "_printed_warnings", set())
+    assert lustro("GET", "warn", "--param", "fail=1") == 1
+    err = capsys.readouterr().err
+    assert err.startswith('warning: unknown query parameter "fail"\n')
+    assert "error: 404 not_found" in err
+
+
+def test_a_command_that_polls_prints_each_warning_once(capsys, monkeypatch):
+    monkeypatch.setattr(cli, "_printed_warnings", set())
+    cli._print_warning('unknown query parameter "a"')
+    cli._print_warning('unknown query parameter "a"')
+    assert capsys.readouterr().err == 'warning: unknown query parameter "a"\n'
+
+
+@pytest.mark.parametrize(
+    "value, warnings",
+    [
+        ('unknown query parameter "a"', ['unknown query parameter "a"']),
+        ('unknown query parameter "a", unknown query parameter "b"', ['unknown query parameter "a"', 'unknown query parameter "b"']),
+        # A comma and an escaped quote in a name don't split it.
+        ('unknown query parameter "x, \\"y", other', ['unknown query parameter "x, \\"y"', "other"]),
+        ("", []),
+    ],
+)
+def test_split_warnings_splits_at_the_commas_outside_quotes(value, warnings):
+    assert split_warnings(value) == warnings

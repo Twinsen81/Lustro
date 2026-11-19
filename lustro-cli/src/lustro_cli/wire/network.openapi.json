@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Lustro Network debug tab",
-    "version": "1.14",
+    "version": "1.15",
     "description": "Capture, inspect, mock, throttle, and replay HTTP traffic, and inspect the messages of WebSocket connections. All routes are token-authenticated (Bearer header or HttpOnly cookie) and live under /api/v1/network. Errors use the shared error envelope."
   },
   "servers": [

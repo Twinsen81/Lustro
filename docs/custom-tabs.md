@@ -101,6 +101,8 @@ Lustro.builder(application)
 - **Give the tab an OpenAPI document, so that agents find it.** `/api/v1/_meta` lists only the
     tabs that have one: a static `assets/lustro/<id>.openapi.json`, or a `schema()` that returns
     one. A tab without a document works in the console, but agents do not see it in `_meta`.
+    Declare each query parameter that a route reads (`"in": "query"`): the server names every
+    other one in a `Lustro-Warning` response header, and the CLI prints it.
 
 ## Headless tabs
 
