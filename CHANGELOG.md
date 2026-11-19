@@ -31,7 +31,9 @@ see [DECISIONS.md](DECISIONS.md).
   sends it, with the rules of the query parameters, and needs no Robolectric
   in a test. `DebugResponse.error` gives the types `conflict` (409),
   `unprocessable_entity` (422), and `too_many_requests` (429), which were
-  `error`; the envelope schemas, the OpenAPI documents, and the CLI list them.
+  `error`; the envelope schemas, the OpenAPI documents, and the CLI list them,
+  and the enum of the type in every envelope schema and OpenAPI document now
+  also lists `error`, the type of any other status, which it left out before.
   The page `/tab/<id>` of a headless tab now answers `404`, as for an unknown
   tab, in place of a `200` with an empty content area; its routes do not
   change. The KDoc of `DebugTab` says what `title` and `icon` are for in a

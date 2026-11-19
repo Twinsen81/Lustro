@@ -178,11 +178,12 @@ gives its shape.
 - **1.13** - The error envelope has three more `error` types: `conflict` for
   a `409`, `unprocessable_entity` for a `422`, and `too_many_requests` for a
   `429`. Before, these statuses had the type `error`, as any status without a
-  type still has. The schemas now list `error` in the enum of the type, which
-  left it out although the server sent it. Lustro's own tabs do not answer them; an app's tab can. A
-  headless tab (`showInTabBar = false`) has no page: `GET /tab/<id>` answers
-  `404`, as for an unknown tab, where it answered `200` with an empty content
-  area. Its routes do not change.
+  type still has. Lustro's own tabs do not answer 409, 422, or 429; an app's
+  tab can. The schemas now also list `error` in the enum of the type, which
+  left it out although the server sent it. A headless tab
+  (`showInTabBar = false`) has no page: `GET /tab/<id>` answers `404`, as for
+  an unknown tab, where it answered `200` with an empty content area. Its
+  routes do not change.
 
 ## Plugin tabs
 
