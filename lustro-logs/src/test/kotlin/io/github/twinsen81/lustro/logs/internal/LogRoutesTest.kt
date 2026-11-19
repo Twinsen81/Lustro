@@ -211,6 +211,15 @@ class LogRoutesTest {
     }
 
     @Test
+    fun `text prints each line of a multi-line message with the prefix, as logcat does`() {
+        val format = ThreadtimeFormat(TimeZone.getDefault())
+        buffer.append(line("failed\n\tat A.b\nend", at = 0L, level = 'E', tag = "App", pid = 1, tid = 2))
+        buffer.append(line("failed\n\tat A.b\nend", at = 1L, level = 'E', tag = "App", pid = 1, tid = 2))
+        val prefix = "${format.format(0)}     1     2 E App     : "
+        assertEquals("${prefix}failed\n$prefix\tat A.b\n${prefix}end [×2]\n", routes.handle(get("text"))!!.text())
+    }
+
+    @Test
     fun `text with a cursor prints only the lines after it`() {
         append("a")
         val cursor = entries().getString("cursor")

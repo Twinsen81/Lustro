@@ -44,6 +44,40 @@ val lustro = Lustro.builder(application)
     the size of their text on the heap, about 12,000 lines of 100 characters):
     `LogsDebugTab.create(bufferBytes = 8 * 1024 * 1024)`.
 
+### Lines from the app's own logger
+
+logcat keeps at most about 4 KB of a message, so a long one, such as a dump of a screen's state,
+reaches the tab cut. When your app has a logger of its own, such as a Timber tree, the logger can
+give each line to the tab in full with `append`, and name its tags in `appendedTags`, so that the
+tab drops the cut copies that come from logcat:
+
+```kotlin
+val logs = LogsDebugTab.create(appendedTags = { it == "MyApp" })
+
+// In the app's logger, after it writes the line to logcat:
+logs.append(Log.DEBUG, "MyApp", message, throwable)
+```
+
+- **One list.** An appended line goes into the same buffer as the logcat lines, with the time,
+    the process, and the thread of the `append` call, so the console, `GET entries`, and
+    `GET text` show it as any other line. A throwable adds its stack trace after a line break, as
+    `Log.e` does, and the line keeps its line breaks: `GET text` prints each of its lines with the
+    prefix, as logcat does.
+- **Each line once.** `appendedTags` takes a tag and says whether the logger appends its lines.
+    The tab drops the logcat lines of those tags, so each line shows once, in full. Pass
+    `setOf("A", "B")::contains` for a fixed set, or a test on the tag when the logger uses many
+    tags. The lines of the platform and of libraries still come from logcat. The rule holds from
+    `create()` on: older lines of those tags come from logcat, cut, because the app could not
+    append them yet. So create the tab before the logger writes its first line.
+- **A cap.** An appended text keeps at most 65,536 characters (`MAX_APPENDED_CHARS`), and in a
+    small buffer at most an eighth of `bufferBytes`, so that one line can't empty the buffer. A
+    longer text ends with `… cut (N more characters)`.
+- **The order.** An appended line goes into the buffer at once, and a logcat line comes a few
+    milliseconds after it was written. So the list can show an appended line before a logcat line
+    that is a little older.
+- `append` is safe to call from any thread, also before `start()` and after `stop()`. In
+    `lustro-logs-noop` it does nothing.
+
 ## Safety options
 
 The Logs tab has no safety options. Log lines are served as the app wrote them, not redacted,
@@ -119,5 +153,6 @@ lustro api POST logs/clear
 - **No crash that ends the process.** A crash that ends the app's process ends the server too, so
     the tab never shows it: read it with `adb logcat`.
 - **Logcat's own limits.** A message longer than logcat's limit of about 4 KB is cut, as in
-    `adb logcat`. So is a tag longer than about 88 bytes: logcat prints the first part of it, and
+    `adb logcat`, unless the app's logger appends it (see
+    [Lines from the app's own logger](#lines-from-the-apps-own-logger)). So is a tag longer than about 88 bytes: logcat prints the first part of it, and
     the message after.

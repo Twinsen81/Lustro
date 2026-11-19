@@ -193,6 +193,42 @@ class LogcatReaderTest {
         awaitMessages("after")
     }
 
+    @Test
+    fun `the lines of an appended tag from the tab's creation on stay out of the buffer, and the others come in`() {
+        val logcat = FakeLogcat()
+        launcher.add(logcat)
+        val appendedTags = setOf("AppLog", "Broken")
+        val dropping =
+            LogcatReader(
+                buffer,
+                pid = 4321,
+                processStartMs = { now - 60_000 },
+                launch = launcher,
+                parser = ThreadtimeParser(utc) { now },
+                appendedTags = { tag -> if (tag == "Broken") error("the app's check failed") else tag in appendedTags },
+                appendedSince = now - 5,
+            )
+        try {
+            dropping.start()
+            launcher.nextLaunch()
+            logcat.emit(
+                // Before the tab was created: the app could not append it, so it stays.
+                "10-19 14:22:20.000  4321  4330 D AppLog  : early",
+                "10-19 14:22:20.005  4321  4330 D AppLog  : appended",
+                "10-19 14:22:20.006  4321  4330 I okhttp  : library",
+                // A check that throws keeps the line, and the reader runs on.
+                "10-19 14:22:20.007  4321  4330 I Broken  : kept",
+                "10-19 14:22:20.008  4321  4330 D AppLog  : appended too",
+                "10-19 14:22:20.009  4321  4330 I okhttp  : last",
+            )
+            awaitMessages("early", "library", "kept", "last")
+            assertEquals("the dropped lines count as read", now - 1, dropping.newestLineAt)
+            assertEquals(LogcatReader.Status.RUNNING, dropping.status)
+        } finally {
+            dropping.stop()
+        }
+    }
+
     private fun awaitMessages(vararg expected: String) {
         val deadline = System.currentTimeMillis() + 5_000
         var messages: List<String>

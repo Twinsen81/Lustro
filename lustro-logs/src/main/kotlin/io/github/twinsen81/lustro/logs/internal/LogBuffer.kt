@@ -21,7 +21,7 @@ import kotlin.random.Random
  * [clear] empties the ring and starts a new epoch, so a cursor from before gets
  * a reset, not a `dropped` count for the lines that were cleared.
  */
-internal class LogBuffer(private val maxBytes: Int) {
+internal class LogBuffer(val maxBytes: Int) {
     private val lock = Any()
 
     // Guarded by lock.

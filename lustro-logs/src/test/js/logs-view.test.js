@@ -195,6 +195,9 @@ test('a long message folds, and a repeated one shows its count', () => {
     assert.ok(open.includes('class="logs-msg logs-msg--long logs-msg--open"'), open);
     const short = logs.logsRowHtml(line(1, { message: 'x'.repeat(240) }), allColumns(), false);
     assert.ok(short.includes('class="logs-msg">'), short);
+    // Only an appended line has line breaks, such as a message with its stack trace.
+    const lines = logs.logsRowHtml(line(1, { message: 'sync failed\n\tat Sync.run' }), allColumns(), false);
+    assert.ok(lines.includes('class="logs-msg logs-msg--long" data-action="toggleMessage"'), lines);
 
     const repeated = logs.logsRowHtml(line(1, { count: 4, at: 1000, lastAt: 4000 }), allColumns(), false);
     assert.ok(repeated.includes('title="Repeated 4 times in a row, over 3.0 s.">×4</span>'), repeated);

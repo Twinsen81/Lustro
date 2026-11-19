@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.Application
 import android.content.Context
 import android.os.Looper
+import android.util.Log
 import androidx.startup.InitializationProvider
 import androidx.test.core.app.ApplicationProvider
 import io.github.twinsen81.lustro.DebugConfig
@@ -38,6 +39,7 @@ class LogsDebugTabServerTest {
     private val launcher = FakeLauncher(logcat)
     private val http = OkHttpClient()
     private lateinit var lustro: Lustro
+    private lateinit var tab: LogsDebugTab
     private lateinit var base: String
 
     @Before
@@ -55,11 +57,14 @@ class LogsDebugTabServerTest {
                 processStartMs = { 0L },
                 launch = launcher,
                 parser = ThreadtimeParser(TimeZone.getTimeZone("UTC")) { NOW },
+                appendedTags = { it == APP_TAG },
+                appendedSince = 0L,
             )
+        tab = LogsDebugTab.create(buffer, reader)
         lustro =
             Lustro.builder(app)
                 .config(DebugConfig.builder().serverPort(0).build())
-                .addTab(LogsDebugTab.create(buffer, reader))
+                .addTab(tab)
                 .build()
         // The server listens while the app is in the foreground: an activity puts it there.
         // Robolectric creates no content provider, so ProcessLifecycleOwner is attached here.
@@ -102,6 +107,31 @@ class LogsDebugTabServerTest {
 
         lustro.stop()
         assertTrue("stop destroys logcat", logcat.destroyed)
+    }
+
+    @Test
+    fun `a line that the app appends and also writes to logcat shows once, in full`() {
+        launcher.nextLaunch()
+        val state = "screen state: " + "0123456789".repeat(600)
+        tab.append(Log.DEBUG, APP_TAG, state)
+        // The app's logger also wrote it to logcat, which keeps about 4 KB: here in two chunks.
+        logcat.emit(
+            "10-19 14:22:20.000  4321  4330 D $APP_TAG  : ${state.take(4_000)}",
+            "10-19 14:22:20.000  4321  4330 D $APP_TAG  : ${state.drop(4_000)}",
+            "10-19 14:22:20.001  4321  4330 I Sync    : after",
+        )
+
+        val items = awaitItems(2).getJSONArray("items")
+        assertEquals(2, items.length())
+        val appended = items.getJSONObject(0)
+        assertEquals(state, appended.getString("message"))
+        assertEquals("D", appended.getString("level"))
+        assertEquals(APP_TAG, appended.getString("tag"))
+        assertEquals("after", items.getJSONObject(1).getString("message"))
+
+        val text = get("text").body!!.string()
+        assertTrue(text, text.contains(" D $APP_TAG  : $state\n"))
+        assertEquals(text, 2, text.lines().count { it.isNotEmpty() })
     }
 
     @Test
@@ -181,6 +211,7 @@ class LogsDebugTabServerTest {
 
     private companion object {
         const val TOKEN = "test-token-0123456789"
+        const val APP_TAG = "AppLog"
 
         // 2026-10-19 14:22:20.010 UTC
         const val NOW = 1_792_419_740_010L

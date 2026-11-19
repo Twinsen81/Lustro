@@ -64,6 +64,9 @@ public object LustroBootstrap {
     @Volatile
     private var workTab: WorkDebugTab? = null
 
+    @Volatile
+    private var logsTab: LogsDebugTab? = null
+
     /**
      * Builds and starts Lustro for the debug variant, then returns the OkHttp
      * application interceptor the app must install on the client whose traffic
@@ -83,6 +86,12 @@ public object LustroBootstrap {
 
         val prefs = app.getSharedPreferences("lustro_sample_mocks", Context.MODE_PRIVATE)
         val flags = SampleFlagsTab(app)
+        // The app's own logcat, from :lustro-logs. The app's logger, SampleLog, also
+        // appends its lines in full, so the tab drops the cut copies of its tag that
+        // come from logcat. The release bootstrap registers the no-op half from
+        // :lustro-logs-noop.
+        val logs = LogsDebugTab.create(appendedTags = { it == SampleLog.TAG })
+        logsTab = logs
 
         val instance =
             Lustro.builder(app)
@@ -118,9 +127,7 @@ public object LustroBootstrap {
                         captureFilter = SampleCaptureFilter(),
                     ),
                 )
-                // The app's own logcat, from :lustro-logs; the release bootstrap
-                // registers the no-op half from :lustro-logs-noop.
-                .addTab(LogsDebugTab.create())
+                .addTab(logs)
                 // The app's SharedPreferences and DataStores, from :lustro-prefs: one file
                 // with every value visible, one with keys only and read-only, one
                 // DataStore with its sensitive values masked but for auth_method, which
@@ -193,6 +200,11 @@ public object LustroBootstrap {
      * interceptor: the console then links each socket to its handshake request.
      */
     public fun webSocketFactory(client: OkHttpClient): WebSocket.Factory = lustro?.webSocketFactory(client) ?: client
+
+    /** Gives a line of the app's logger to the Logs tab, in full. Safe to call from any thread. */
+    public fun appendLog(priority: Int, tag: String, message: String, throwable: Throwable?) {
+        logsTab?.append(priority, tag, message, throwable)
+    }
 
     /** Stops the debug runtime. Idempotent; safe to call from any variant. */
     public fun stop() {

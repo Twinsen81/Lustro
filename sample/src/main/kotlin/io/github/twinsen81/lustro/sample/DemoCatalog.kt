@@ -259,6 +259,15 @@ internal object DemoCatalog {
                 logs.exception()
                 it.ok("Logged an exception")
             },
+            DemoAction(
+                "Log a 12 KB message through the app's logger",
+                chip = "Log a long message",
+                detail = "logcat keeps about 4 KB of it; the app's logger gives the Logs tab all of it, once",
+                badge = "12K",
+            ) {
+                logs.longMessage()
+                it.ok("Logged a 12 KB message")
+            },
             DemoAction("Log a line with JSON", chip = "Log JSON", detail = "The row toolbar shows it indented", badge = "{ }") {
                 logs.json()
                 it.ok("Logged a line with JSON")

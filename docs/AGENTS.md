@@ -591,7 +591,10 @@ it, the routes are an enveloped `404 Unknown tab: logs`). The authoritative cont
 `lustro-logs/src/main/assets/lustro/logs.openapi.json`, version `1.1` (`1.1` added `from` and `to`). The tab runs
 `logcat -b main -b system -b crash -v threadtime -v UTC --pid=<the app's pid>` while Lustro is started, also in the background, from
 the start of the app's process, and holds the newest lines in a buffer of a fixed size (4 MiB by
-default). The CLI has no `logs` commands: use `lustro api`.
+default). The app's own logger can also append its lines in full (`LogsDebugTab.append`), and
+then the tab drops the logcat copies of those tags: such a line has the whole message, up to
+65,536 characters, where logcat keeps about 4 KB, and can hold line breaks. The CLI has no `logs`
+commands: use `lustro api`.
 
 | Operation | Route | Notes |
 | --- | --- | --- |
