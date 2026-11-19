@@ -30,6 +30,7 @@ EXPECTED_ERROR_ENUM = {
     "internal_error",
     "unavailable",
     "timeout",
+    "error",
 }
 
 

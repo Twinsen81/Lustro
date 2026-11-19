@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.test.core.app.ApplicationProvider
 import io.github.twinsen81.lustro.DebugRequest
 import io.github.twinsen81.lustro.MediaType
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -66,6 +67,24 @@ class SampleFlagsTabTest {
         assertEquals(200, toggle("""{"id":"${SampleFlags.DARK_THEME}"}""", "application/json"))
         assertFalse(SampleFlags.isOn(tab.flags.value, SampleFlags.DARK_THEME))
         assertEquals(404, toggle("id=no-such-flag", "application/x-www-form-urlencoded"))
+    }
+
+    @Test
+    fun `a form body without an id is a 400 for the id`() {
+        val response =
+            tab.handle(
+                DebugRequest(
+                    path = "toggle",
+                    method = "POST",
+                    body = "flag=${SampleFlags.DARK_THEME}".toByteArray(),
+                    contentType = MediaType.parse("application/x-www-form-urlencoded"),
+                ),
+            )!!
+
+        assertEquals(400, response.status)
+        val envelope = JSONObject(response.body.toString(Charsets.UTF_8))
+        assertEquals("id is required", envelope.getString("message"))
+        assertEquals("id", envelope.getString("field"))
     }
 
     @Test

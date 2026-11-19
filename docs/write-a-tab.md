@@ -67,6 +67,12 @@ class FlagsTab : DebugTab() {
 
 The server escapes the title and the icon before it puts them in the tab bar.
 
+A tab with only routes, for agents and scripts, sets `showInTabBar = false`. It is then headless:
+its routes work, but it has no link in the tab bar and no page, so `/tab/<id>` answers `404`, as
+for an unknown tab. It must still set `title` and `icon`. `GET /api/v1/_meta` lists the `title`
+when the tab has an OpenAPI document, and nothing shows the `icon`, so `""` is enough. See
+[Headless tabs](custom-tabs.md#headless-tabs).
+
 ## 3. Keep the state thread-safe
 
 The server calls the tab on its own worker threads, never on the main thread, and it can call it
@@ -181,19 +187,23 @@ The other error types follow from the status, such as `conflict` for `409`,
 lists them all.
 
 To also accept a form body, such as `curl -d id=offline-sync`, give `toggle` the request in place
-of the body, and read the id with `request.formParams()` first. It parses an
-`application/x-www-form-urlencoded` body with the rules of the query parameters, and it is empty
-for another content type, so a JSON body still goes to `JSONObject`:
+of the body, and choose the parser by the content type. `request.formParams()` parses an
+`application/x-www-form-urlencoded` body with the rules of the query parameters. A form body
+without an `id` then gets `id is required`, and not `Invalid JSON`:
 
 ```kotlin
     private fun toggle(request: DebugRequest): DebugResponse {
         val flagId =
-            request.formParams()["id"]?.firstOrNull()
-                ?: try {
+            if (request.contentType?.subtype == "x-www-form-urlencoded") {
+                request.formParams()["id"]?.firstOrNull().orEmpty()
+            } else {
+                try {
                     JSONObject(request.bodyAsString() ?: "{}").optString("id")
                 } catch (e: JSONException) {
                     return DebugResponse.error("Invalid JSON: ${e.message}")
                 }
+            }
+        if (flagId.isBlank()) return DebugResponse.error("id is required", field = "id")
         // The rest is as above.
     }
 ```

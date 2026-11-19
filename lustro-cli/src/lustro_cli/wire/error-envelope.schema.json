@@ -20,7 +20,8 @@
         "too_many_requests",
         "internal_error",
         "unavailable",
-        "timeout"
+        "timeout",
+        "error"
       ],
       "description": "Short, stable, machine-readable error identifier (e.g. \"not_found\")."
     },

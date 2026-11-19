@@ -480,7 +480,8 @@
               "too_many_requests",
               "internal_error",
               "unavailable",
-              "timeout"
+              "timeout",
+              "error"
             ],
             "description": "Machine error type, e.g. bad_request, not_found, timeout."
           },

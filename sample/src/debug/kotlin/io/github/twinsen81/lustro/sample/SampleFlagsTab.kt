@@ -135,12 +135,15 @@ public class SampleFlagsTab(
     // Takes {"id": ...} as JSON, or id=... as a form body, as `curl -d id=dark-mode-v2` sends it.
     private fun handleToggle(request: DebugRequest): DebugResponse {
         val flagId =
-            request.formParams()["id"]?.firstOrNull()
-                ?: try {
+            if (request.contentType?.subtype == "x-www-form-urlencoded") {
+                request.formParams()["id"]?.firstOrNull().orEmpty()
+            } else {
+                try {
                     JSONObject(request.bodyAsString() ?: "{}").optString("id")
                 } catch (e: Exception) {
                     return DebugResponse.error("Invalid JSON: ${e.message}")
                 }
+            }
         if (flagId.isBlank()) {
             return DebugResponse.error("id is required", field = "id")
         }

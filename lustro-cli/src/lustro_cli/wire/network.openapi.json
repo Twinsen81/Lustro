@@ -354,7 +354,7 @@
         "type": "object",
         "required": ["error", "message"],
         "properties": {
-          "error": { "type": "string", "enum": ["bad_request", "unauthorized", "forbidden", "not_found", "method_not_allowed", "conflict", "payload_too_large", "unprocessable_entity", "too_many_requests", "internal_error", "unavailable", "timeout"], "description": "Machine error type, e.g. bad_request, not_found, timeout." },
+          "error": { "type": "string", "enum": ["bad_request", "unauthorized", "forbidden", "not_found", "method_not_allowed", "conflict", "payload_too_large", "unprocessable_entity", "too_many_requests", "internal_error", "unavailable", "timeout", "error"], "description": "Machine error type, e.g. bad_request, not_found, timeout." },
           "message": { "type": "string" },
           "code": { "type": "string" },
           "field": { "type": "string" },

@@ -19,8 +19,9 @@ see [DECISIONS.md](DECISIONS.md).
   and long work (wire protocol 1.13).** A tab that had to react when the app
   went away, when a dialog closed, or when a request failed had to repeat the
   same code. In `shared.js`, `debugPoll` takes an options object as its fourth
-  argument, with `onConnectionChange(connected)`, which runs when the status
-  pill changes between connected and not connected; `onRejected` still works
+  argument, with `onConnectionChange(connected)`, which runs when the poll's
+  connection state changes: connected after an answer, and not connected
+  after three failed polls in a row. `onRejected` still works
   as the fourth argument or in the options. `debugModal(id, { onHide })` runs
   `onHide` each time the dialog is hidden, also by Escape and by a click on
   the scrim, so the tab can clear the state of the dialog.
