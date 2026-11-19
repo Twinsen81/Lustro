@@ -110,7 +110,7 @@ public class SampleFlagsTab(
         val path = request.path
         return when {
             path == "snapshot" && method == "GET" -> handleSnapshot(request)
-            path == "toggle" && method == "POST" -> handleToggle(request.bodyAsString())
+            path == "toggle" && method == "POST" -> handleToggle(request)
             path == "upload" && method == "POST" -> handleUpload(request.bodyAsString())
             else -> null
         }
@@ -132,14 +132,15 @@ public class SampleFlagsTab(
             }
         }
 
-    private fun handleToggle(body: String?): DebugResponse {
-        val json =
-            try {
-                JSONObject(body ?: "{}")
-            } catch (e: Exception) {
-                return DebugResponse.error("Invalid JSON: ${e.message}")
-            }
-        val flagId = json.optString("id")
+    // Takes {"id": ...} as JSON, or id=... as a form body, as `curl -d id=dark-mode-v2` sends it.
+    private fun handleToggle(request: DebugRequest): DebugResponse {
+        val flagId =
+            request.formParams()["id"]?.firstOrNull()
+                ?: try {
+                    JSONObject(request.bodyAsString() ?: "{}").optString("id")
+                } catch (e: Exception) {
+                    return DebugResponse.error("Invalid JSON: ${e.message}")
+                }
         if (flagId.isBlank()) {
             return DebugResponse.error("id is required", field = "id")
         }

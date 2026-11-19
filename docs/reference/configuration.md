@@ -32,11 +32,14 @@ Without `config(...)`, Lustro uses `DebugConfig.DEFAULT`. `lustro-noop` has the 
 ## Requests to the server
 
 These options limit the requests to `/api/v1/`, the routes of every tab. The page and its
-assets, such as `/tab/<id>` and `/shared.js`, are outside the limits.
+assets, such as `/tab/<id>` and `/shared.js`, are outside the limits. The options are global: a
+tab cannot set its own. A tab that needs a larger body or a longer timeout raises the value here,
+for every tab, and work that takes longer than the timeout goes in the background (see
+[Long work](../custom-tabs.md#long-work)).
 
 | Option | Type | Default | Effect |
 | --- | --- | --- | --- |
-| `maxRequestBodyBytes` | `Long` | 1 MiB (`1L * 1024 * 1024`) | The largest request body. A larger one gets a `413`, and the server does not read it. |
+| `maxRequestBodyBytes` | `Long` | 1 MiB (`1L * 1024 * 1024`) | The largest request body. A larger one gets a `413`, and the server does not read it. The server holds at most `maxConcurrentRequests` x `maxRequestBodyBytes` of bodies in memory at a time: a body that does not fit waits for room. |
 | `maxConcurrentRequests` | `Int` | `16` | How many requests the tabs handle at the same time. A request that timed out keeps its slot until its handler returns. |
 | `requestQueueCapacity` | `Int` | `64` | How many requests wait for a slot. A request that waits longer than `requestTimeoutMs`, or that finds the queue full, gets a `503`. The server keeps at most `maxConcurrentRequests + requestQueueCapacity + 16` connections open. |
 | `requestTimeoutMs` | `Long` | `30000` | How long a tab can take for one request. A request that runs longer gets a `504`, and the server cancels it: see [Custom tabs](../custom-tabs.md). The Network tab's Send form also stops a request that it sends after this time. |

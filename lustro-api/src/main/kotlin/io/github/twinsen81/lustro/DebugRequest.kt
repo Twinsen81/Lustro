@@ -1,5 +1,7 @@
 package io.github.twinsen81.lustro
 
+import java.net.URLDecoder
+
 /**
  * An incoming debug API request handed to [DebugTab.handle].
  *
@@ -98,4 +100,36 @@ public class DebugRequest @JvmOverloads constructor(
      * is no body.
      */
     public fun bodyAsString(): String? = body?.toString(Charsets.UTF_8)
+
+    /**
+     * Parses an `application/x-www-form-urlencoded` body, as `curl -d key=value`
+     * and an HTML form send it, into each name mapped to its ordered list of
+     * values. Returns an empty map when the body has another content type, or
+     * none.
+     *
+     * The rules are those of [queryParams]: `+` is a space, `%XX` escapes are
+     * UTF-8, a name is trimmed, and a pair without `=` has the value `""`. A
+     * pair with a malformed `%` escape is left out.
+     */
+    public fun formParams(): Map<String, List<String>> {
+        val bytes = body ?: return emptyMap()
+        val type = contentType ?: return emptyMap()
+        if (type.type != "application" || type.subtype != "x-www-form-urlencoded") return emptyMap()
+        val params = LinkedHashMap<String, MutableList<String>>()
+        for (pair in bytes.toString(Charsets.UTF_8).split('&')) {
+            if (pair.isEmpty()) continue
+            val eq = pair.indexOf('=')
+            val name = decodeFormComponent(if (eq >= 0) pair.substring(0, eq) else pair)?.trim() ?: continue
+            val value = if (eq >= 0) decodeFormComponent(pair.substring(eq + 1)) ?: continue else ""
+            params.getOrPut(name) { ArrayList(1) }.add(value)
+        }
+        return params
+    }
+
+    private fun decodeFormComponent(text: String): String? =
+        try {
+            URLDecoder.decode(text, "UTF-8")
+        } catch (e: IllegalArgumentException) {
+            null
+        }
 }

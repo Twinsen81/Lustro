@@ -159,7 +159,7 @@ flowchart LR
 
 - **The tab bar** lists the tabs by `order`, lower first, and then by id. The Network tab is
     `10`, the plugins are `20` to `60`, and the default is `100`. A tab with
-    `showInTabBar = false` has no link, but its routes work.
+    `showInTabBar = false` has no link and no page, but its routes work.
 - **The page** `/tab/<id>` needs no token, and it has only the tab bar and an empty content area.
     After the browser has the cookie, `shared.js` loads the tab's HTML from `_view`, then its CSS
     and JS from `_view.css` and `_view.js`. The tab's own content is never served before the token

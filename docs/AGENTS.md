@@ -343,8 +343,10 @@ reported as `_meta.protocolVersion`.
 
 - **Error** (any failing route): `{ error, message, code?, field?, hint? }`. `error` is a stable
   machine-readable type that follows from the status: `bad_request` (400), `unauthorized` (401), `forbidden`
-  (403), `not_found` (404), `method_not_allowed` (405), `payload_too_large` (413),
-  `internal_error` (500), `unavailable` (503), `timeout` (504).
+  (403), `not_found` (404), `method_not_allowed` (405), `conflict` (409), `payload_too_large` (413),
+  `unprocessable_entity` (422), `too_many_requests` (429), `internal_error` (500), `unavailable`
+  (503), `timeout` (504). Any other status has the type `error`. Lustro's own tabs do not answer
+  409, 422, or 429, but an app's tab can.
 - **Pagination** (collection routes): `{ items: [...], nextCursor: "<opaque>" | null }`.
 - **Cursor** (observable routes): `{ cursor, status, items?, state? }` where `status` is `delta`,
   `unchanged`, or `reset`. Echo `cursor` back on the next poll; **treat any unknown `status` as
