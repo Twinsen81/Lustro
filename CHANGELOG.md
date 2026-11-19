@@ -990,6 +990,20 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Fixed
 
+- **The debug server no longer compresses its responses, so it no longer leaks
+  a `Deflater` for each one.** When a client accepts gzip, as every browser
+  does, NanoHTTPD compressed each text and JSON response: every page, style
+  sheet, and API response of the console. It finished the gzip stream but did
+  not close it, so the `Deflater` kept its native memory until the garbage
+  collector freed it, and an app with StrictMode `detectLeakedClosableObjects()`
+  got a `LeakedClosableViolation` for each response. A tab that polls, such as
+  WorkManager, gave one every second, and an app with `penaltyDeath()` stopped
+  at the first one. The console reaches the server on localhost or the local
+  network, so compression saved little. Verified on an emulator (API 28) with
+  StrictMode on: before the fix, 65 requests with `Accept-Encoding: gzip` gave
+  43 violations; after it, the responses have no `Content-Encoding` and the
+  same requests, and the WorkManager tab open for 30 seconds in Chrome, give
+  none.
 - **The lint check `LustroDebugUsageInRelease` no longer reports a `DebugTab`
   in `src/debug` when a folder above the project is named `src`.** The check
   took the source set from the first `src` folder in the absolute path of the
