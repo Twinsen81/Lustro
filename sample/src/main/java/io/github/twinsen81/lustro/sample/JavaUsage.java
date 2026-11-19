@@ -64,7 +64,11 @@ public final class JavaUsage {
         OkHttpClient client = new OkHttpClient();
         NetworkDebugTab tabWithSenders = NetworkDebugTab.create(java.util.Arrays.asList(
                 OkHttpSender.create("API", "https://api.example.com", () -> client),
-                OkHttpSender.create("Any host", () -> client)));
+                OkHttpSender.create("Any host", () -> client),
+                // A base URL that the app reads at each send. Its own name, so that
+                // create("x", null, ...) still picks the factory with a fixed base URL.
+                OkHttpSender.createWithBaseUrlProvider("App server", () -> "https://api.example.com", () -> client),
+                OkHttpSender.create("No base", null, () -> client)));
 
         // The experimental @ExperimentalPlatformCapture overload (with the
         // required capturePlatformHttp flag) is exercised from Kotlin in

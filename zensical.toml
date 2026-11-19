@@ -33,6 +33,7 @@ nav = [
     { "Quick start" = "get-started/quick-start.md" },
     { "Accessing the UI" = "get-started/console.md" },
     { "Check the integration" = "get-started/check.md" },
+    { "From your app's code" = "get-started/app-code.md" },
     { "With a coding agent" = "get-started/coding-agent.md" },
   ] },
   { "Network tab" = [

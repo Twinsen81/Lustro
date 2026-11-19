@@ -28,6 +28,7 @@ Facts to get right when you add Lustro to an app:
 - [Quick start](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/get-started/quick-start.md): the bootstrap, and where your own tabs must be
 - [Accessing the UI](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/get-started/console.md): the port forward, the token, and the browser login
 - [Check the integration](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/get-started/check.md): six checks that capture works and that the release build has no runtime
+- [From your app's code](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/get-started/app-code.md): Hilt or Dagger wiring, a base URL that changes, `lustro.endpoint()`, and instrumentation tests with `since` and port 8080
 - [OkHttp capture setup](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/network/okhttp.md): the interceptor's place, request and compressed bodies, multipart, streams, and the capture filter
 - [Console controls](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/network/controls.md): the Network tab's Pause, Overwrite, throttle, Clear, search, filters, selection, and the buttons of a request
 - [WebSocket messages](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/network/websockets.md): `webSocketFactory`, the libraries that take a `WebSocket.Factory`, redaction, and limits

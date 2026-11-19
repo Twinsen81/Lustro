@@ -12,6 +12,17 @@ val lustro = Lustro.builder(application)
     .build()
 ```
 
+The `LustroToken` line then says `endpoint=http://0.0.0.0:<port>`, which the CLI reads as the
+device's loopback, and adds the URLs that a computer on the same network uses after the token:
+
+```
+Lustro ready endpoint=http://0.0.0.0:8080 token=<token> lan=http://192.168.1.42:8080
+```
+
+`lan=` lists the IPv4 addresses of the device's interfaces that are up, Wi-Fi first,
+comma-separated, or the IPv6 ones when the device has no IPv4 address. App code gets the same URLs from `lustro.endpoint()?.lanUrls`, for example for a
+developer screen (see [Use Lustro from your app's code](../get-started/app-code.md#show-how-to-connect)).
+
 > **Risk:** `bindAddress = "0.0.0.0"` exposes the debug server (and your app's captured traffic)
 > to everyone on the same network. Token auth still applies, but you lose the loopback boundary.
 > Use it only on trusted networks, and prefer `adb forward` whenever you can.

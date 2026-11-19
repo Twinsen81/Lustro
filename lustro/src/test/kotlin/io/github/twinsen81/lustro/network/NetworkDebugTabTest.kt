@@ -76,6 +76,47 @@ class NetworkDebugTabTest {
     }
 
     @Test
+    fun `since lists only the transactions that started at or after it`() {
+        val tab = tab()
+        tab.capture("https://example.com/before")
+        val before = tab.handle(get("transactions"))!!.json().getJSONArray("items").getJSONObject(0).getLong("startedAt")
+        while (System.currentTimeMillis() <= before) Thread.sleep(1)
+        tab.capture("https://example.com/after")
+
+        val after = tab.handle(get("transactions", "since" to "${before + 1}"))!!.json()
+        val all = tab.handle(get("transactions", "since" to "$before"))!!.json()
+
+        assertEquals(listOf("https://example.com/after"), after.getJSONArray("items").objects().map { it.getString("url") })
+        assertEquals(2, all.getJSONArray("items").length())
+        // The cursor is the one of the whole list, as with search.
+        assertEquals(tab.handle(get("transactions"))!!.json().getString("cursor"), after.getString("cursor"))
+    }
+
+    @Test
+    fun `since works with search`() {
+        val tab = tab()
+        tab.capture("https://example.com/old/match")
+        val before = tab.handle(get("transactions"))!!.json().getJSONArray("items").getJSONObject(0).getLong("startedAt")
+        while (System.currentTimeMillis() <= before) Thread.sleep(1)
+        tab.capture("https://example.com/new/match")
+        tab.capture("https://example.com/new/other")
+
+        val json = tab.handle(get("transactions", "since" to "${before + 1}", "search" to "match"))!!.json()
+
+        assertEquals(listOf("https://example.com/new/match"), json.getJSONArray("items").objects().map { it.getString("url") })
+    }
+
+    @Test
+    fun `since that is not an epoch time is a 400 on since`() {
+        val tab = tab()
+        for (value in listOf("yesterday", "-1", "1.5", "")) {
+            val res = tab.handle(get("transactions", "since" to value))!!
+            assertEquals(value, 400, res.status)
+            assertEquals(value, "since", res.json().getString("field"))
+        }
+    }
+
+    @Test
     fun `polling with the current cursor returns unchanged and omits items`() {
         val tab = tab()
         val first = tab.handle(get("transactions"))!!.json()

@@ -36,7 +36,8 @@ Lustro deliberately surfaces app internals, so its defaults are conservative. Se
     in-memory ring buffers and are lost when the process dies. The browser keeps no copy of them.
     Lustro writes to disk only in these cases:
     - The token, and the host and port that the server listens on, are in the app's private
-      `lustro_debug` SharedPreferences file.
+      `lustro_debug` SharedPreferences file. App code reads them with `lustro.endpoint()`, not
+      from the file.
     - Mock rules are saved when you give the Network tab a `MockRuleStorage` (see
       [Mock rules](../network/mocks.md)).
     - The [Preferences](../plugins/prefs.md) tab changes a file that is not read-only, and the

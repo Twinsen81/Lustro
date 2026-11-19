@@ -325,6 +325,13 @@ The server binds to `127.0.0.1:8080` by default and only listens while the app i
 - If you can't reach the default port, parse the `endpoint=` field from the `LustroToken` log
   line (see above) to learn the real host and port, and forward that port instead.
 - LAN exposure (`bindAddress = "0.0.0.0"`) is an opt-in the app developer sets; do not assume it.
+  With it, the `LustroToken` line adds ` lan=` and the device's network URLs after the token.
+- A client in the app's process, such as an instrumentation test, needs no forward and no log:
+  `lustro.endpoint()` gives the URL on `127.0.0.1`, the port, and the token, or `null` while the
+  server does not listen (the app is not in the foreground). Send `GET transactions?since=<ms>`
+  with the time before the step under test to get only the requests of that step. Lustro's default
+  port 8080 is also WireMock's: see
+  [Use Lustro from your app's code](get-started/app-code.md#instrumentation-tests).
 
 ## Wire protocol
 
@@ -364,7 +371,7 @@ below summarizes it. All routes are token-authenticated and use the shared error
 
 | Operation | Route | Notes |
 | --- | --- | --- |
-| Poll transactions | `GET transactions?cursor=&search=&regex=` | Cursor envelope. First poll (no/invalid cursor) → `reset` with the full list; cursor unchanged → `unchanged` (items omitted); after a change → `delta`. `search` filters case-insensitively over the URL, the method, the headers (each as the line `Name: value`), and the bodies; with `regex=true`, it is a Java regular expression, and one that doesn't compile gets a `400` with `field: search`. Carries a top-level `state` `{ paused, overwriteMode, throttleDelayMs, mockRules, captureFilter }`. |
+| Poll transactions | `GET transactions?cursor=&search=&regex=&since=` | Cursor envelope. First poll (no/invalid cursor) → `reset` with the full list; cursor unchanged → `unchanged` (items omitted); after a change → `delta`. `search` filters case-insensitively over the URL, the method, the headers (each as the line `Name: value`), and the bodies; with `regex=true`, it is a Java regular expression, and one that doesn't compile gets a `400` with `field: search`. `since` (milliseconds since the Unix epoch, device clock) keeps the transactions with `startedAt` at or after it. Carries a top-level `state` `{ paused, overwriteMode, throttleDelayMs, mockRules, captureFilter }`. |
 | Transaction detail | `GET transactions/{id}` | Full object (headers + bodies, with truncation flags). Enveloped `404` if missing. |
 | Transaction body | `GET transactions/{id}/body/{request\|response}` | One body as it is stored: the bytes of an image, or the redacted text as UTF-8. Not JSON. Enveloped `404` when no body was kept. See below. |
 | Export as HAR | `GET transactions/_/export?format=har&ids=` | A HAR 1.2 document of the transactions in `ids` (comma-separated), or of every one. See below. |
@@ -436,7 +443,9 @@ a name from `GET senders`; without it, the first sender sends, and an unknown na
 `field: "sender"`. Each sender is one of the app's OkHttp clients, so pick the one whose
 interceptors (auth, for one) and host fit the request. An absolute `url` is sent as given; a
 relative one is appended to the sender's `baseUrl`, path and all, and is a `400` with
-`field: "url"` when the sender has none. Blocks until the sender returns, within the per-request
+`field: "url"` when the sender has none. The app can give a `baseUrl` as a function that follows
+its server picker, so read `GET senders` again before you rely on it; a `400` with
+`field: "baseUrl"` means that the function failed or gave a URL that is not absolute. Blocks until the sender returns, within the per-request
 timeout. The response is `{ transactionId, sender, url, statusCode, ok, error? }`: `url` is where
 the request went, and `ok` is `true` whenever a response came back, a `401` included, so read
 `statusCode`. `transactionId` names the transaction the Lustro interceptor recorded for the

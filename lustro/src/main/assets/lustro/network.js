@@ -2129,6 +2129,28 @@
         showDetailActions(!!currentDetailTx);
     }
 
+    // An app can give a sender's base URL as a function, such as one that follows
+    // its server picker, so each opening of the form reads the list again and
+    // updates the open form in place, without the focus or what was typed.
+    function refreshSenders() {
+        debugFetch(netUrl('senders'))
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (!data || !Array.isArray(data.items)) return;
+                setSenders(data.items);
+                if (rightPane !== 'send' || !sendDraft) return;
+                var select = document.getElementById('sf-sender');
+                if (select) {
+                    Array.prototype.forEach.call(select.options, function(option) {
+                        var s = senders.find(function(x) { return x.name === option.value; });
+                        if (s) option.textContent = s.name + ' · ' + (s.baseUrl || 'absolute URLs only');
+                    });
+                }
+                renderResolvedUrl();
+            })
+            .catch(function() {});
+    }
+
     function senderByName(name) {
         return senders.find(function(s) { return s.name === name; }) || senders[0];
     }
@@ -2213,6 +2235,7 @@
         renderSendForm();
         var url = document.getElementById('sf-url');
         if (url && !draft.from) url.focus();
+        refreshSenders();
     }
 
     window.openNewRequest = function() {

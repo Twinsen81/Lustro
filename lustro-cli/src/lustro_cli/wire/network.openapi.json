@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Lustro Network debug tab",
-    "version": "1.13",
+    "version": "1.14",
     "description": "Capture, inspect, mock, throttle, and replay HTTP traffic, and inspect the messages of WebSocket connections. All routes are token-authenticated (Bearer header or HttpOnly cookie) and live under /api/v1/network. Errors use the shared error envelope."
   },
   "servers": [
@@ -17,7 +17,8 @@
         "parameters": [
           { "name": "cursor", "in": "query", "required": false, "schema": { "type": "string" }, "description": "Opaque cursor from the previous response. Omit on first poll." },
           { "name": "search", "in": "query", "required": false, "schema": { "type": "string" }, "description": "Only the transactions in which this text is found, ignoring case: in the URL, the final URL, the method, a request or response header as the line Name: value, or a text body. Headers and bodies are searched as stored, after redaction. 400 with field search when the search takes longer than 5 s." },
-          { "name": "regex", "in": "query", "required": false, "schema": { "type": "string", "enum": ["true", "false"], "default": "false" }, "description": "true makes each word of search, up to a space, a Java regular expression found ignoring case: every word must be found, each in any field, and a word that starts with - must be found in none. A space in a regex is \\s. 400 with field search when a word doesn't compile, and with field regex for a value other than true or false." }
+          { "name": "regex", "in": "query", "required": false, "schema": { "type": "string", "enum": ["true", "false"], "default": "false" }, "description": "true makes each word of search, up to a space, a Java regular expression found ignoring case: every word must be found, each in any field, and a word that starts with - must be found in none. A space in a regex is \\s. 400 with field search when a word doesn't compile, and with field regex for a value other than true or false." },
+          { "name": "since", "in": "query", "required": false, "schema": { "type": "integer", "format": "int64", "minimum": 0 }, "description": "Only the transactions with startedAt at or after this time, in milliseconds since the Unix epoch, such as the requests that started after a step of a test. The cursor is the one of the whole list, as with search: a change to a transaction that since leaves out also advances it, and the delta then has the same items. Send no cursor after a change to since. 400 with field since for a value that is not an integer of 0 or more. Since protocol 1.14." }
         ],
         "responses": {
           "200": {
@@ -285,7 +286,7 @@
                     "required": ["name", "baseUrl"],
                     "properties": {
                       "name": { "type": "string", "description": "The name to pass as sender to POST send." },
-                      "baseUrl": { "type": ["string", "null"], "description": "The URL a relative url is appended to; null when the sender takes absolute URLs only." }
+                      "baseUrl": { "type": ["string", "null"], "description": "The URL a relative url is appended to; null when the sender takes absolute URLs only. An app can give a sender's base URL as a function that the app calls for each list and each send, so the value can change between two calls; null also when that function failed." }
                     }
                   }
                 }
@@ -302,7 +303,7 @@
       "post": {
         "operationId": "sendRequest",
         "summary": "Send a request through one of the app's senders (synchronous).",
-        "description": "Blocks until the sender returns, within the per-request timeout. An absolute url is sent as given; a relative one is appended to the base URL of the sender. Self-requests to the debug server's own bind host:port are rejected. Only available when the app registered a sender (see GET senders).",
+        "description": "Blocks until the sender returns, within the per-request timeout. An absolute url is sent as given; a relative one is appended to the base URL of the sender, as the app gives it at the time of the send. 400 with field url for a relative url when the sender has no base URL, and, since protocol 1.14, with field baseUrl when the app's base URL function fails or returns a URL that is not an absolute http or https URL. Self-requests to the debug server's own bind host:port are rejected. Only available when the app registered a sender (see GET senders).",
         "requestBody": {
           "required": true,
           "content": { "application/json": { "schema": {

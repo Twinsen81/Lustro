@@ -65,6 +65,9 @@ internal class SampleViewModel(application: Application) : AndroidViewModel(appl
 
     val serverRunning: StateFlow<Boolean> = serverOn.asStateFlow()
 
+    /** Where the server listens, from Lustro.endpoint(): the URL on the device, then the LAN ones. Reads a file: call it off the main thread. */
+    fun serverUrls(): List<String> = LustroBootstrap.serverUrls()
+
     /** Null in the release build, which has no Feature Flags tab. */
     val flags: StateFlow<List<SampleFlag>>? = LustroBootstrap.flags()
 

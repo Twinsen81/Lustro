@@ -112,13 +112,15 @@ public object LustroBootstrap {
                     // substring; mock rules persist across restarts via prefs. The
                     // capture filter leaves analytics calls and marked requests out
                     // of the list, on both paths.
-                    // Two senders over the same client: one resolves a relative
-                    // URL such as `/get` against the fixture host, the other takes
-                    // absolute URLs only.
+                    // Three senders over the same client: one resolves a relative
+                    // URL such as `/get` against the fixture host, one against the
+                    // server that the settings file names now, as an app with a
+                    // server picker does, and one takes absolute URLs only.
                     NetworkDebugTab.create(
                         senders =
                             listOf(
                                 OkHttpSender.create("httpbingo.org", baseUrl = "https://httpbingo.org", client = appOkHttpClient),
+                                OkHttpSender.create("App server", baseUrlProvider = { DemoPrefs.apiBaseUrl(app) }, client = appOkHttpClient),
                                 OkHttpSender.create("Any host", client = appOkHttpClient),
                             ),
                         capturePlatformHttp = true,
@@ -214,6 +216,13 @@ public object LustroBootstrap {
     public fun appendLog(priority: Int, tag: String, message: String, throwable: Throwable?) {
         logsTab?.append(priority, tag, message, throwable)
     }
+
+    /**
+     * The URLs of the debug server: the one on the device, then the LAN ones, or
+     * an empty list when it does not listen. The first call can read the token
+     * file, so call it off the main thread.
+     */
+    internal fun serverUrls(): List<String> = lustro?.endpoint()?.let { listOf(it.url) + it.lanUrls }.orEmpty()
 
     /** Stops the debug runtime. Idempotent; safe to call from any variant. */
     public fun stop() {

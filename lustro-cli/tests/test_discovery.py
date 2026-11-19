@@ -45,6 +45,13 @@ def test_parse_ready_line_lan_host():
     assert ep.host == "192.168.1.50"
 
 
+def test_parse_ready_line_with_lan_urls_after_the_token():
+    # With LAN exposure the app adds the device's network URLs after the token.
+    line = "Lustro ready endpoint=http://0.0.0.0:8080 token=AbC-_1 lan=http://192.168.1.50:8080,http://10.0.0.2:8080"
+    ep = parse_ready_line(line)
+    assert (ep.host, ep.port, ep.token) == ("0.0.0.0", 8080, "AbC-_1")
+
+
 def test_parse_ready_line_none_when_absent():
     assert parse_ready_line("no lustro here") is None
 
