@@ -72,9 +72,11 @@ logs.append(Log.DEBUG, "MyApp", message, throwable)
 - **A cap.** An appended text keeps at most 65,536 characters (`MAX_APPENDED_CHARS`), and in a
     small buffer at most an eighth of `bufferBytes`, so that one line can't empty the buffer. A
     longer text ends with `… cut (N more characters)`.
-- **The order.** An appended line goes into the buffer at once, and a logcat line comes a few
-    milliseconds after it was written. So the list can show an appended line before a logcat line
-    that is a little older.
+- **The order.** An appended line goes into the list when `append` is called. A logcat line goes
+    in when the reader reads it: usually some milliseconds after it was written, but much later at
+    the app's start, when the reader first reads the lines of the process from its start, and
+    after `stop()` and `start()`, when it reads the lines it missed. So the list can show an
+    appended line before logcat lines that are older, and the time column is not always in order.
 - `append` is safe to call from any thread, also before `start()` and after `stop()`. In
     `lustro-logs-noop` it does nothing.
 

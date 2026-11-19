@@ -81,9 +81,12 @@ public class LogsDebugTab private constructor(private val buffer: LogBuffer, pri
      *
      * Safe to call from any thread, also before `Lustro.start()` and after
      * `Lustro.stop()`. It does not write to logcat: the logger does that itself,
-     * when it does. The line goes to the buffer at once, and a logcat line comes
-     * some milliseconds after it was written, so the buffer can hold an appended
-     * line before a logcat line that is a little older.
+     * when it does. The line goes to the buffer at once. A logcat line goes in
+     * when the reader reads it: usually some milliseconds after it was written,
+     * but much later at the app's start, when the reader first reads the lines of
+     * the process from its start, and after a stop and a start. So the buffer can
+     * hold an appended line before logcat lines that are older, and the times of
+     * the lines are not always in order.
      *
      * @param priority the level, as an `android.util.Log` priority, such as
      *   `Log.DEBUG`. `Log.ASSERT` shows as F, as in logcat.

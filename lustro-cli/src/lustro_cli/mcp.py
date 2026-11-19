@@ -252,7 +252,9 @@ def _read_logs(args: argparse.Namespace, a: Dict[str, Any]) -> str:
         "limit": a.get("limit", DEFAULT_LOG_LINES),
     }
     text = _client(args).request_raw("GET", "/api/v1/logs/text", params=params).data.decode("utf-8", "replace")
-    return text if text.strip() else "no log line matches"
+    if not text.strip():
+        return "no log line matches"
+    return _cut_head(text, a.get("max_bytes", DEFAULT_MAX_BYTES))
 
 
 def _call_api(args: argparse.Namespace, a: Dict[str, Any]) -> str:
@@ -320,6 +322,24 @@ def _cut_text(text: str, limit: int) -> str:
         cut -= 1
     return "{}\n[... {} more bytes: call again with a larger max_bytes]".format(
         data[:cut].decode("utf-8", "surrogatepass"), len(data) - cut
+    )
+
+
+def _cut_head(text: str, limit: int) -> str:
+    """Keeps the end of a log, its newest lines, in at most limit bytes: whole lines when one fits."""
+    data = text.encode("utf-8", "surrogatepass")
+    if len(data) <= limit:
+        return text
+    cut = len(data) - limit
+    line_start = data.find(b"\n", cut, len(data) - 1)
+    if line_start >= 0:
+        cut = line_start + 1
+    else:
+        # One line longer than limit: keep whole characters, from the first byte of one.
+        while cut < len(data) and (data[cut] & 0xC0) == 0x80:
+            cut += 1
+    return "[... {} earlier bytes: call again with a larger max_bytes or a smaller limit]\n{}".format(
+        cut, data[cut:].decode("utf-8", "surrogatepass")
     )
 
 
@@ -455,8 +475,9 @@ TOOLS: Tuple[Tool, ...] = (
     Tool(
         "read_logs",
         "Read the app's log",
-        "Read-only. The app's own log lines as logcat's threadtime text, oldest first: the newest limit lines "
-        "that pass the filters. Needs the Logs tab in the app.",
+        "Read-only. The app's own log lines as logcat's threadtime text, oldest first: the newest limit entries "
+        "that pass the filters. An entry that the app's logger appended can have many lines. The text keeps its "
+        "newest max_bytes. Needs the Logs tab in the app.",
         _schema(
             {
                 "level": {
@@ -473,6 +494,12 @@ TOOLS: Tuple[Tool, ...] = (
                 "from_ms": {"type": "integer", "description": "Only the lines at or after this epoch millisecond."},
                 "to_ms": {"type": "integer", "description": "Only the lines at or before this epoch millisecond."},
                 "limit": {"type": "integer", "minimum": 1, "maximum": 5000, "default": DEFAULT_LOG_LINES},
+                "max_bytes": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "default": DEFAULT_MAX_BYTES,
+                    "description": "Keep the newest this many bytes of the text, and say how many earlier bytes were cut.",
+                },
             }
         ),
         READ_ONLY,

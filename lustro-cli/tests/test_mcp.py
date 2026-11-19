@@ -32,6 +32,12 @@ MODERN_META = {
 }
 
 
+LOG_TEXT = (
+    "11-18 09:00:00.000  1234  1234 I Sync: started, with a café\n"
+    "11-18 09:00:00.001  1234  1234 W Sync: slow\n"
+)
+
+
 def _args(**overrides):
     values = dict(cli.GLOBAL_DEFAULTS)
     values.update(overrides)
@@ -345,7 +351,7 @@ class _Recorder(BaseHTTPRequestHandler):
         elif route == ("POST", "/api/v1/network/throttle"):
             self._send(200, {"status": "ok", "delayMs": body["delayMs"]})
         elif route == ("GET", "/api/v1/logs/text"):
-            self._send(200, b"11-18 09:00:00.000  1234  1234 W Sync: slow\n", "text/plain; charset=utf-8")
+            self._send(200, LOG_TEXT.encode("utf-8"), "text/plain; charset=utf-8")
         elif route == ("GET", "/api/v1/_meta"):
             self._send(200, wire.load_golden("meta.json"))
         elif route == ("GET", "/api/v1/network/_schema"):
@@ -492,6 +498,18 @@ def test_read_logs_reads_the_text_route_with_the_wire_names_of_the_filters(app):
         )
     ]
     assert text.endswith("W Sync: slow\n")
+
+
+def test_read_logs_keeps_the_newest_lines_within_max_bytes(app):
+    newest = "11-18 09:00:00.001  1234  1234 W Sync: slow\n"
+    assert _text(app("read_logs", max_bytes=len(newest) + 5)) == (
+        "[... {} earlier bytes: call again with a larger max_bytes or a smaller limit]\n{}".format(
+            len(LOG_TEXT.encode("utf-8")) - len(newest), newest
+        )
+    )
+    # One line longer than max_bytes: its end, from a whole character.
+    assert _text(app("read_logs", max_bytes=10)).endswith("smaller limit]\nync: slow\n")
+    assert _text(app("read_logs")) == LOG_TEXT
 
 
 def test_call_api_sends_any_request_and_returns_the_body(app):

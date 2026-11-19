@@ -230,7 +230,7 @@ tokens for all of them.
 | `add_mock_rule` | yes | `POST network/rules`: adds a rule on top of the list, or replaces the rule with the same `id`. `failure` fails the request with a connection error, as `lustro mock add --failure` |
 | `delete_mock_rule` | yes | `POST network/rules/delete` |
 | `set_throttle` | yes | `POST network/throttle` |
-| `read_logs` | no | `GET logs/text`: the newest 100 lines that pass the filters, as logcat's threadtime text |
+| `read_logs` | no | `GET logs/text`: the newest 100 entries that pass the filters, as logcat's threadtime text, cut to its newest 20 KB (`max_bytes`). An entry that the app's logger appended can have many lines |
 | `call_api` | when the route writes | any route, as `lustro api`, with the response cut at 20 KB |
 | `get_schema` | no | `GET _meta` without a tab, and `GET <tab>/_schema` with one, as `lustro schema` |
 
