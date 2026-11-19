@@ -49,8 +49,9 @@ The tab calls the function off the main thread, for each send of a relative URL 
 lists the senders, which the console does each time the Send form opens. A `null` means that the
 sender takes absolute URLs only until the function returns a URL again. The URL is checked at
 send time: when the function throws, or returns a URL that is not an absolute `http` or `https`
-URL, the send gets a `400` with `field: baseUrl`, and the sender is listed without a base URL. An
-absolute URL is sent without calling the function. From Java, this factory is
+URL, the send gets a `400` with `field: baseUrl`. The senders list shows the value that the
+function returned, also one that is not valid, so that you can see what is wrong; it shows no base
+URL only when the function throws. An absolute URL is sent without calling the function. From Java, this factory is
 `OkHttpSender.createWithBaseUrlProvider`.
 
 `senderClient = client` is the short form for one sender, named "Default", whose relative URLs

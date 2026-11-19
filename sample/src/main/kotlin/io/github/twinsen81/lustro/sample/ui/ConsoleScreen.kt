@@ -31,6 +31,7 @@ import io.github.twinsen81.lustro.sample.ActionEvent
 import io.github.twinsen81.lustro.sample.CONSOLE_PORT
 import io.github.twinsen81.lustro.sample.SampleViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 @Composable
@@ -70,10 +71,19 @@ internal fun ConsoleScreen(viewModel: SampleViewModel, latest: Map<String, Actio
     }
 }
 
+private const val SERVER_URLS_REFRESH_MS = 2_000L
+
 @Composable
 private fun ServerCard(viewModel: SampleViewModel, running: Boolean, latest: Map<String, ActionEvent>) {
-    // Lustro.endpoint() can read the token file, so off the main thread.
-    val urls by produceState(emptyList<String>(), running) { value = withContext(Dispatchers.IO) { viewModel.serverUrls() } }
+    // Read again while the screen shows: the server binds later than this screen opens when
+    // another app holds the port for a moment, and binds again after each return to the
+    // foreground. Lustro.endpoint() can read the token file, so off the main thread.
+    val urls by produceState(emptyList<String>(), running) {
+        while (true) {
+            value = withContext(Dispatchers.IO) { viewModel.serverUrls() }
+            delay(SERVER_URLS_REFRESH_MS)
+        }
+    }
     SampleCard(Modifier.padding(horizontal = ScreenPadding)) {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(

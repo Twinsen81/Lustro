@@ -111,23 +111,42 @@ fun refreshSendsOneFeedRequest() {
 
         onView(withId(R.id.refresh)).perform(click())
 
-        // A client without the Lustro interceptor, so that these calls are not captured.
-        val client = OkHttpClient()
-        val request =
-            Request.Builder()
-                .url("${endpoint.url}/api/v1/network/transactions?since=$since&search=/feed")
-                .header("Authorization", "Bearer ${endpoint.token}")
-                .build()
+        val feed = awaitRequests(endpoint, since, search = "/feed") { it.length() >= 1 }
+        assertEquals(1, feed.length())
+    }
+}
+
+// Espresso waits for the main thread only, not for OkHttp's threads, so the request can be
+// captured after the click returns. Poll until the list passes the check, or fail after a timeout.
+private fun awaitRequests(
+    endpoint: LustroEndpoint,
+    since: Long,
+    search: String,
+    timeoutMs: Long = 10_000,
+    done: (JSONArray) -> Boolean,
+): JSONArray {
+    // A client without the Lustro interceptor, so that these calls are not captured.
+    val client = OkHttpClient()
+    val url = "${endpoint.url}/api/v1/network/transactions?since=$since&search=${Uri.encode(search)}"
+    val deadline = SystemClock.uptimeMillis() + timeoutMs
+    while (true) {
+        val request = Request.Builder().url(url).header("Authorization", "Bearer ${endpoint.token}").build()
         val items = client.newCall(request).execute().use { JSONObject(it.body!!.string()).getJSONArray("items") }
-        assertEquals(1, items.length())
+        // Each item must be complete too, when the test checks a response.
+        val complete = (0 until items.length()).all { items.getJSONObject(it).getBoolean("responseComplete") }
+        if (complete && done(items)) return items
+        check(SystemClock.uptimeMillis() < deadline) { "No matching requests after $timeoutMs ms: $items" }
+        Thread.sleep(200)
     }
 }
 ```
 
 `since` compares with each transaction's `startedAt`, which the device's clock sets. A test in the
 app's process has the same clock. A client on a computer takes the time from the device, such as the
-`startedAt` of a transaction it already has. A request that is still in flight is listed with
-`responseComplete: false`; poll again until it is `true` when the test checks the response.
+`startedAt` of a transaction it already has. The poll above also waits until each request is
+complete (`responseComplete: true`), because a request that is still in flight is listed before
+its response comes. An `IdlingResource` on the OkHttp dispatcher can replace the poll for the
+request, but not for its capture, which ends when the app has read the response body.
 
 **Port 8080 and a mock server in the test.** Lustro's default port, 8080, is also the default port
 of WireMock, which UI tests often start in the app's process. An app that calls `start()` in
