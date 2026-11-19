@@ -88,6 +88,10 @@ internal class LustroServer(
     // The info.version of each tab's static schema, by tab id; empty for one without it.
     private val staticVersions = ConcurrentHashMap<String, String>()
 
+    // The query parameters that each tab's schema declares, by tab id, read once for a
+    // static schema, and again when a dynamic one changes.
+    private val declaredParameters = ConcurrentHashMap<String, ParsedSchema>()
+
     // Bounds concurrency, the wait queue, and the per-request timeout for the
     // debug API. Exposed counters drive the lifecycle drain in Lustro.
     private val limiter =
@@ -744,8 +748,42 @@ $tabsHtml
                 Log.w(TAG, "Tab ${tab.id} handle() threw for path '$subPath'", t)
                 DebugResponse.error("Internal error", status = 500)
             } ?: DebugResponse.notFound("Not found")
-        return toNanoResponse(response)
+        return toNanoResponse(response).also { warnAboutUndeclaredParameters(tab, request, it) }
     }
+
+    /**
+     * Names each query parameter that the tab's schema does not declare for the route in a
+     * [WARNING_HEADER], because the route ignores it. Not a 400: a client that sends an
+     * extra parameter keeps working. A tab without a schema gets no check.
+     */
+    private fun warnAboutUndeclaredParameters(tab: DebugTab, request: DebugRequest, response: Response) {
+        if (request.queryParams.isEmpty()) return
+        val declared = declaredParameters(tab) ?: return
+        val unknown = declared.undeclared(request.method, request.path, request.queryParams.keys.sorted())
+        if (unknown.isEmpty()) return
+        val warnings = unknown.joinToString(", ", transform = DeclaredQueryParameters::warning)
+        val earlier = response.getHeader(WARNING_HEADER)
+        response.addHeader(WARNING_HEADER, if (earlier == null) warnings else "$earlier, $warnings")
+    }
+
+    private fun declaredParameters(tab: DebugTab): DeclaredQueryParameters? {
+        val dynamic =
+            try {
+                tab.schema()
+            } catch (t: Throwable) {
+                Log.w(TAG, "Tab ${tab.id} schema() threw", t)
+                return null
+            }
+        val cached = declaredParameters[tab.id]
+        if (cached != null && cached.source == dynamic) return cached.declared
+        val document = dynamic ?: assetLoader.load("${tab.id}.openapi.json")
+        val parsed = ParsedSchema(dynamic, document?.let { DeclaredQueryParameters.parse(tab.id, it) })
+        declaredParameters[tab.id] = parsed
+        return parsed.declared
+    }
+
+    /** [source] is the dynamic schema it was read from, or null for the static one. */
+    private class ParsedSchema(val source: String?, val declared: DeclaredQueryParameters?)
 
     private fun cancelRequest(tab: DebugTab, request: DebugRequest) {
         try {
@@ -842,6 +880,7 @@ $tabsHtml
 
     private companion object {
         private const val TAG = "LustroServer"
+        private const val WARNING_HEADER = "Lustro-Warning"
         private const val ICON_ASSET = "lustro-icon-transparent.png"
         private const val DEFAULT_APP_NAME = "App"
 

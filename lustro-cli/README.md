@@ -57,6 +57,12 @@ The CLI resolves the endpoint+token in this order (first hit wins, per field):
    with `adb shell getprop log.tag` set to `E`, where the ready line never reaches logcat.
 
 If none of these determine the token, the CLI prints a clear, actionable error.
+When it knows the app, from `--package` or as the app in the foreground, it first
+checks the installed APK: `adb shell pm path <pkg>`, then `grep -c -F assets/lustro/`
+in its `base.apk` (not `unzip`, which API 28 emulator images do not have). A build
+with the `-noop` artifacts has no such entry, and no server. Then the error says that
+the installed build does not contain the Lustro runtime, and that a debug build must
+be installed, in place of telling you to start the app and read logcat.
 
 A token from the ready line can be stale: when the app was installed again and the device
 dropped the new line, the last line in the log is from the earlier install. When the server
@@ -112,12 +118,21 @@ discovery), `--json` (JSON output). They go before or after the command:
 | `lustro mock add --url-pattern … [--failure NAME]` | `POST network/rules` |
 | `lustro mock delete <id>` | `POST network/rules/delete` |
 | `lustro mock toggle <id>` | `POST network/rules/toggle` |
-| `lustro mock sync <file.json>` | `POST network/rules/_/sync` (atomic) |
+| `lustro mock sync <file.json>` | `POST network/rules/_/sync` (atomic): a JSON array of rules, or the output of `lustro mock list --json` |
 | `lustro senders` | `GET network/senders`: the clients that `send` can use, the default first |
 | `lustro send --url … [--sender NAME]` | `POST network/send` (synchronous), through the first sender or the one named |
 | `lustro screen tree [--unmerged] [--settle MS] [--all]` | `GET screen/tree`: each window of the app, and its nodes on the screen with a text, a tag, a role, an action, or a state, one line each (see [The screen](#the-screen)) |
 | `lustro api METHOD PATH [--param K=V] [--body JSON \| --input FILE]` | any route: prints the response body (see [Any route](#any-route)) |
 | `lustro mcp` | an MCP server on stdin and stdout, whose tools call the routes above (see [The MCP server](#the-mcp-server)) |
+
+A test that changes the mock rules can save them first and restore them after:
+
+```bash
+lustro mock list --json > rules.json   # {"items": [...]}
+lustro mock add --url-pattern /v1/orders --status 500
+# ... the test ...
+lustro mock sync rules.json            # the rules as they were
+```
 
 > **Live use of `lustro open`** requires a running app: the server only listens
 > while the app is foregrounded, and discovery reads the `LustroToken` log line
@@ -259,7 +274,11 @@ lustro api POST network/throttle --body '{"delayMs": 2000}'
 lustro api POST network/rules/_/sync --input rules.json     # --input - reads stdin
 ```
 
-`--param KEY=VALUE` adds a query parameter, and can repeat a key. An error
+`--param KEY=VALUE` adds a query parameter, and can repeat a key. A route ignores a
+query parameter that it does not know, so the app names each one that the tab's
+OpenAPI document does not declare for the route in a `Lustro-Warning` response
+header, and every command prints it on stderr, once, such as
+`warning: unknown query parameter "uniqueName"`. An error
 response prints the error from its envelope on stderr, such as
 `error: 404 not_found: ...`, and exits 1; nothing goes to stdout. A search
 that the app rejects (a `400` with `field: "search"`) exits 2, as a bad flag
@@ -302,7 +321,9 @@ each.
 Each tool call finds the app as a command does, so the global flags apply to every call:
 `lustro mcp --device SERIAL` selects the device. The server implements JSON-RPC 2.0 with the
 standard library, one message per line, and serves the protocol versions from `2024-11-05` to
-`2026-07-28`. Only protocol messages go to stdout; its own messages go to stderr.
+`2026-07-28`. Only protocol messages go to stdout; its own messages go to stderr. A warning from
+the app, such as `warning: unknown query parameter "uniqueName"` for a `call_api` with a parameter
+that the route does not declare, is a text block of its own after the output of the tool.
 
 ## Contract tests
 

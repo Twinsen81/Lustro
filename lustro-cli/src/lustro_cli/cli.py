@@ -535,7 +535,17 @@ def _build_client(args: argparse.Namespace) -> LustroClient:
     # the device dropped the new line. On a 401, the client tries the app's prefs.
     discovered = _token_was_discovered(args)
     refresh = (lambda: token_from_prefs(args.device, getattr(args, "package", None))) if discovered else None
-    return LustroClient(endpoint.base_url, endpoint.token, refresh_token=refresh)
+    return LustroClient(endpoint.base_url, endpoint.token, refresh_token=refresh, on_warning=_print_warning)
+
+
+_printed_warnings: Set[str] = set()
+
+
+def _print_warning(warning: str) -> None:
+    """Prints a warning from the app on stderr, once: a command that polls gets it each time."""
+    if warning not in _printed_warnings:
+        _printed_warnings.add(warning)
+        print("warning: {}".format(warning), file=sys.stderr)
 
 
 # ── adb helpers ────────────────────────────────────────────────────────────────
@@ -1457,8 +1467,16 @@ def cmd_mock_sync(args: argparse.Namespace) -> int:
     except (OSError, ValueError) as exc:
         print("could not read rules file {}: {}".format(args.file, exc), file=sys.stderr)
         return 2
+    # `mock list --json` prints the rules in the envelope {"items": [...]}, so that its
+    # output restores them. The app ignores the fields of a listed rule, such as hitCount.
+    if isinstance(rules, dict) and isinstance(rules.get("items"), list):
+        rules = rules["items"]
     if not isinstance(rules, list):
-        print("rules file must contain a JSON array of MockRuleInput objects", file=sys.stderr)
+        print(
+            "rules file must contain a JSON array of MockRuleInput objects, or the output of "
+            "`lustro mock list --json`",
+            file=sys.stderr,
+        )
         return 2
     _emit(client.post(NETWORK + "/rules/_/sync", json_body=rules), raw_json=args.json)
     return 0
@@ -1875,8 +1893,17 @@ def build_parser() -> argparse.ArgumentParser:
     m_toggle.add_argument("id")
     m_toggle.set_defaults(func=cmd_mock_toggle)
 
-    m_sync = mock_sub.add_parser("sync", parents=[common], help="POST rules/_/sync <file.json> (atomic replace)")
-    m_sync.add_argument("file", help="path to a JSON array of MockRuleInput objects")
+    m_sync = mock_sub.add_parser(
+        "sync",
+        parents=[common],
+        help="POST rules/_/sync <file.json> (atomic replace)",
+        description="Replace every mock rule with the rules in the file, in one step. The file has a JSON array of "
+        "MockRuleInput objects, or the output of `lustro mock list --json`, so a test can save the rules and restore "
+        "them after: `lustro mock list --json > rules.json`, change the rules, then `lustro mock sync rules.json`.",
+    )
+    m_sync.add_argument(
+        "file", help="path to a JSON array of MockRuleInput objects, or to the output of `lustro mock list --json`"
+    )
     m_sync.set_defaults(func=cmd_mock_sync)
 
     # screen ...

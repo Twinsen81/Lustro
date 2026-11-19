@@ -11,7 +11,7 @@ the protocol a stable public contract independent of the library's Kotlin API.
   A future incompatible revision becomes `/api/v2/`, and the old major stays
   alive for at least one major release.
 - The **minor** protocol version is reported at runtime in
-  `GET /api/v1/_meta` as `_meta.protocolVersion` (currently `1.14`).
+  `GET /api/v1/_meta` as `_meta.protocolVersion` (currently `1.15`).
 
 ## Contents
 
@@ -38,6 +38,26 @@ the protocol a stable public contract independent of the library's Kotlin API.
 Cursor tokens are opaque and advance when the route's list changes; clients
 treat unknown `status` values as `reset`. A cursor from before an app restart
 gets a `reset`.
+
+## The `Lustro-Warning` header
+
+A route ignores a query parameter that it does not know, so a misspelled filter
+returns the whole list. The server compares a request's query parameters with
+the `parameters` (`"in": "query"`) that the tab's OpenAPI document declares for
+the route, and names each one that it does not declare in a response header:
+
+```
+Lustro-Warning: unknown query parameter "uniqueName"
+```
+
+More than one is a comma-separated list in one header. A name is a quoted
+string, in which a backslash escapes `"` and `\`, and `\uXXXX` stands for a
+character outside printable ASCII. The status and the body do not change: a
+`400` would break a client that sends an extra parameter. It is a header, not a
+body field, because the envelope schemas are closed. A tab without an OpenAPI
+document gets no check, and neither does a route that its document does not
+describe. A path segment in braces in the document, such as `{id}`, matches
+any one segment.
 
 The two polling envelopes differ in what `delta` carries. In the cursor
 envelope it is the whole current list, which fits a list whose items change. In
@@ -194,6 +214,10 @@ gives its shape.
   `POST network/send` use the base URL that the app has at that time. A send
   of a relative `url` gets a `400` with `field: baseUrl` when that function
   fails or returns a URL that is not an absolute `http` or `https` URL.
+
+- **1.15** - A response names each query parameter that the route does not
+  declare in its tab's OpenAPI document in a `Lustro-Warning` header (see
+  "The `Lustro-Warning` header" above). The status and the body do not change.
 
 ## Plugin tabs
 

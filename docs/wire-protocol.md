@@ -18,7 +18,10 @@ unknown value as `reset`), and the cursor advances when the route's list changes
 `{ cursor, status, items?, dropped?, state? }` has the same statuses for a list that only grows at its
 end: its `delta` carries only the entries after the cursor. In both, `state` is an optional object
 that a tab adds with its own state, such as the Network tab's `paused` and `throttleDelayMs`, also
-to an `unchanged` response. Each tab's OpenAPI document gives its shape. The schemas and the SemVer
+to an `unchanged` response. Each tab's OpenAPI document gives its shape. A response names each query
+parameter that the route does not declare in the tab's OpenAPI document in a `Lustro-Warning` header,
+such as `Lustro-Warning: unknown query parameter "uniqueName"`, because the route ignores it; the
+status and the body do not change. The schemas and the SemVer
 policy live in [`wire-protocol/v1/`](https://github.com/Twinsen81/Lustro/tree/main/wire-protocol/v1); the Network tab's contract is
 [`lustro/src/main/assets/lustro/network.openapi.json`](https://github.com/Twinsen81/Lustro/blob/main/lustro/src/main/assets/lustro/network.openapi.json),
 the Logs tab's is

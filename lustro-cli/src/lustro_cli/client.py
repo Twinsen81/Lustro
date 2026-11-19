@@ -107,6 +107,34 @@ class RawBody(NamedTuple):
 Params = Union[Mapping[str, Any], Sequence[Tuple[str, Any]]]
 
 
+# The server names each query parameter that the route does not declare in this
+# header, as ``unknown query parameter "<name>"``, because the route ignores it.
+# More than one is a comma-separated list.
+WARNING_HEADER = "Lustro-Warning"
+
+
+def split_warnings(value: str) -> List[str]:
+    """The warnings in one ``Lustro-Warning`` value: split at the commas that are
+    not in a quoted string, in which a backslash escapes the next character."""
+    warnings: List[str] = []
+    current: List[str] = []
+    quoted = escaped = False
+    for char in value:
+        if escaped:
+            escaped = False
+        elif quoted and char == "\\":
+            escaped = True
+        elif char == '"':
+            quoted = not quoted
+        elif char == "," and not quoted:
+            warnings.append("".join(current).strip())
+            current = []
+            continue
+        current.append(char)
+    warnings.append("".join(current).strip())
+    return [warning for warning in warnings if warning]
+
+
 # urllib honours http_proxy, HTTPS_PROXY, and the system's proxy settings. The
 # server is an adb forward on this machine, which a proxy can't reach, and the
 # token must not leave it, so requests never go through one.
@@ -122,6 +150,9 @@ class LustroClient:
     :param refresh_token: called once when the server answers 401; a token it
         returns that differs from ``token`` replaces it, and the request is sent
         again. For a token that discovery found, which can be stale.
+    :param on_warning: called with each warning in a ``Lustro-Warning`` response
+        header, such as ``unknown query parameter "uniqueName"``, also for an
+        error response.
     """
 
     def __init__(
@@ -130,11 +161,13 @@ class LustroClient:
         token: Optional[str] = None,
         timeout: float = 30.0,
         refresh_token: Optional[Callable[[], Optional[str]]] = None,
+        on_warning: Optional[Callable[[str], None]] = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.token = token
         self.timeout = timeout
         self._refresh_token = refresh_token
+        self.on_warning = on_warning
 
     # ── request plumbing ──────────────────────────────────────────────────────
 
@@ -214,6 +247,7 @@ class LustroClient:
                     raise
                 return self._open(url, data, method, accept)
         except urllib.error.HTTPError as exc:  # non-2xx
+            self._warn(exc.headers)
             raise _error_from_http(exc) from None
         except urllib.error.URLError as exc:
             raise _connection_failed(url, getattr(exc, "reason", exc)) from None
@@ -229,7 +263,15 @@ class LustroClient:
             headers["Content-Type"] = "application/json"
         req = urllib.request.Request(url, data=data, headers=headers, method=method.upper())
         with _OPENER.open(req, timeout=self.timeout) as resp:
+            self._warn(resp.headers)
             return resp.read(), resp.headers.get("Content-Type")
+
+    def _warn(self, headers: Any) -> None:
+        if self.on_warning is None or headers is None:
+            return
+        for value in headers.get_all(WARNING_HEADER) or []:
+            for warning in split_warnings(value):
+                self.on_warning(warning)
 
     def _take_fresh_token(self) -> bool:
         """Asks ``refresh_token`` once for a token that differs from the one sent."""
