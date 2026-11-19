@@ -331,7 +331,8 @@ def _cut_head(text: str, limit: int) -> str:
     if len(data) <= limit:
         return text
     cut = len(data) - limit
-    line_start = data.find(b"\n", cut, len(data) - 1)
+    # From the byte before the cut, so that a line that starts at the cut stays. cut >= 1 here.
+    line_start = data.find(b"\n", cut - 1, len(data) - 1)
     if line_start >= 0:
         cut = line_start + 1
     else:

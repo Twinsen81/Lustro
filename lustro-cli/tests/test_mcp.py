@@ -512,6 +512,13 @@ def test_read_logs_keeps_the_newest_lines_within_max_bytes(app):
     assert _text(app("read_logs")) == LOG_TEXT
 
 
+def test_cut_head_keeps_a_line_that_starts_at_the_cut_and_whole_characters():
+    note = "[... {} earlier bytes: call again with a larger max_bytes or a smaller limit]\n"
+    assert mcp._cut_head("aaaa\nbbbb\ncccc\n", 10) == note.format(5) + "bbbb\ncccc\n"
+    # The cut falls on the second byte of "é": the text starts after it.
+    assert mcp._cut_head("abcé1234\n", 6) == note.format(5) + "1234\n"
+
+
 def test_call_api_sends_any_request_and_returns_the_body(app):
     _text(app("call_api", method="post", path="network/throttle", body='{"delayMs": 5}'))
     meta = json.loads(_text(app("call_api", method="GET", path="/api/v1/_meta", params={"a": ["1", 2], "b": True})))
