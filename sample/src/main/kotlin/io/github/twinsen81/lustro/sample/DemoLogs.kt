@@ -55,6 +55,16 @@ internal class DemoLogs {
         Log.e(TAG_SYNC, "sync crashed", IllegalStateException("journal 7 has no key"))
     }
 
+    /**
+     * Writes a dump of a screen's state of about 12 KB through the app's own logger,
+     * [SampleLog]. logcat keeps about 4 KB of a message; the logger gives the tab
+     * all of it.
+     */
+    fun longMessage() {
+        val items = (1..LONG_MESSAGE_ITEMS).joinToString(",") { "{\"id\":$it,\"title\":\"Journal entry $it\",\"selected\":${it % 7 == 0}}" }
+        SampleLog.d("screen state: {\"screen\":\"timeline\",\"items\":[$items],\"end\":\"the last item of the dump\"}")
+    }
+
     /** Writes a line with JSON in it, which the Logs tab's row toolbar shows indented. */
     fun json() {
         Log.d(TAG_SYNC, "sync response: {\"journals\":3,\"entries\":12,\"tags\":[\"work\",\"travel\"],\"next\":null}")
@@ -71,5 +81,6 @@ internal class DemoLogs {
         const val TAG_BURST = "SampleBurst"
         const val INTERVAL_MS = 2_000L
         const val SYNC_EVERY = 8
+        const val LONG_MESSAGE_ITEMS = 200
     }
 }

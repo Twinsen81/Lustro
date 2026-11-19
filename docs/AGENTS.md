@@ -230,7 +230,7 @@ tokens for all of them.
 | `add_mock_rule` | yes | `POST network/rules`: adds a rule on top of the list, or replaces the rule with the same `id`. `failure` fails the request with a connection error, as `lustro mock add --failure` |
 | `delete_mock_rule` | yes | `POST network/rules/delete` |
 | `set_throttle` | yes | `POST network/throttle` |
-| `read_logs` | no | `GET logs/text`: the newest 100 lines that pass the filters, as logcat's threadtime text |
+| `read_logs` | no | `GET logs/text`: the newest 100 entries that pass the filters, as logcat's threadtime text, cut to its newest 20 KB (`max_bytes`). An entry that the app's logger appended can have many lines |
 | `call_api` | when the route writes | any route, as `lustro api`, with the response cut at 20 KB |
 | `get_schema` | no | `GET _meta` without a tab, and `GET <tab>/_schema` with one, as `lustro schema` |
 
@@ -591,7 +591,10 @@ it, the routes are an enveloped `404 Unknown tab: logs`). The authoritative cont
 `lustro-logs/src/main/assets/lustro/logs.openapi.json`, version `1.1` (`1.1` added `from` and `to`). The tab runs
 `logcat -b main -b system -b crash -v threadtime -v UTC --pid=<the app's pid>` while Lustro is started, also in the background, from
 the start of the app's process, and holds the newest lines in a buffer of a fixed size (4 MiB by
-default). The CLI has no `logs` commands: use `lustro api`.
+default). The app's own logger can also append its lines in full (`LogsDebugTab.append`), and
+then the tab drops the logcat copies of those tags: such a line has the whole message, up to
+65,536 characters, where logcat keeps about 4 KB, and can hold line breaks. The CLI has no `logs`
+commands: use `lustro api`.
 
 | Operation | Route | Notes |
 | --- | --- | --- |

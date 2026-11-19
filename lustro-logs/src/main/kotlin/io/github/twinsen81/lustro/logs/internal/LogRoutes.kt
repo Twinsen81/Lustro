@@ -184,17 +184,35 @@ internal class LogRoutes(private val buffer: LogBuffer, private val reader: Logc
             "compact" to "POST",
         )
 
-        /** Appends [entry] as logcat's threadtime format prints it, with ` [×N]` for a repeated line. */
+        /**
+         * Appends [entry] as logcat's threadtime format prints it, with ` [×N]` for a
+         * repeated line. A message with line breaks, which only an appended line
+         * has, prints each of its lines with the prefix, as logcat does.
+         */
         fun StringBuilder.appendThreadtime(entry: LogEntry, format: ThreadtimeFormat): StringBuilder {
-            append(format.format(entry.at)).append(' ')
+            val time = format.format(entry.at)
+            val message = entry.message
+            var start = 0
+            while (true) {
+                appendPrefix(entry, time)
+                val end = message.indexOf('\n', start)
+                if (end < 0) break
+                append(message, start, end).append('\n')
+                start = end + 1
+            }
+            append(message, start, message.length)
+            if (entry.count > 1) append(" [×").append(entry.count).append(']')
+            return this
+        }
+
+        private fun StringBuilder.appendPrefix(entry: LogEntry, time: String) {
+            append(time).append(' ')
             appendPadded(entry.pid.toString(), PID_WIDTH).append(' ')
             appendPadded(entry.tid.toString(), PID_WIDTH).append(' ')
             append(entry.level).append(' ')
             append(entry.tag)
             repeat(TAG_WIDTH - entry.tag.length) { append(' ') }
-            append(": ").append(entry.message)
-            if (entry.count > 1) append(" [×").append(entry.count).append(']')
-            return this
+            append(": ")
         }
 
         private fun StringBuilder.appendPadded(value: String, width: Int): StringBuilder {

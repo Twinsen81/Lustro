@@ -59,6 +59,9 @@ public object LustroBootstrap {
     @Volatile
     private var workTab: WorkDebugTab? = null
 
+    @Volatile
+    private var logsTab: LogsDebugTab? = null
+
     /**
      * No-op equivalent of the debug bootstrap. Builds Lustro against the no-op
      * facade and returns its pass-through interceptor. Releasing apps add this
@@ -88,8 +91,8 @@ public object LustroBootstrap {
                     ),
                 )
                 // The no-op half of :lustro-logs, with the same create() as the
-                // debug bootstrap's: it reads no logs.
-                .addTab(LogsDebugTab.create())
+                // debug bootstrap's: it reads no logs, and its append() does nothing.
+                .addTab(LogsDebugTab.create(appendedTags = { it == SampleLog.TAG }).also { logsTab = it })
                 // The no-op half of :lustro-prefs, with the same files and store as
                 // the debug bootstrap's: it reads none of them.
                 .addTab(
@@ -156,6 +159,11 @@ public object LustroBootstrap {
      * returns [client] itself, so release sockets are plain OkHttp sockets.
      */
     public fun webSocketFactory(client: OkHttpClient): WebSocket.Factory = lustro?.webSocketFactory(client) ?: client
+
+    /** No-op equivalent: the no-op Logs tab holds no lines. */
+    public fun appendLog(priority: Int, tag: String, message: String, throwable: Throwable?) {
+        logsTab?.append(priority, tag, message, throwable)
+    }
 
     /** No-op stop; the no-op build never binds a socket. Idempotent. */
     public fun stop() {

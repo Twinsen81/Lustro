@@ -14,6 +14,14 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Added
 
+- **The Logs tab shows the app's own long log lines in full.** logcat keeps
+  about 4 KB of a message. An app's logger can now give each line to
+  `LogsDebugTab.append(priority, tag, message, throwable)`, which keeps up to
+  65,536 characters, and name its tags in `create(appendedTags = ...)`, so that
+  the tab drops the cut copies from logcat and shows each line once. The no-op
+  artifact has the same API. The sample's logger appends a 12 KB line, which
+  showed once and in full in the console and in `GET logs/entries` on an
+  emulator (API 29).
 - **An MCP server in the CLI, for agents that can only call MCP tools.**
   `lustro mcp` is a Model Context Protocol server on stdin and stdout. An
   agent client without a shell, such as Claude Desktop, starts it when a

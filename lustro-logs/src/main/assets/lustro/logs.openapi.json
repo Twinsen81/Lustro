@@ -139,7 +139,7 @@
       "get": {
         "operationId": "exportLogText",
         "summary": "The held lines as logcat's threadtime text, for a bug report or a file.",
-        "description": "Every held line that passes the filters, oldest first, one per line: MM-dd HH:mm:ss.SSS PID TID L TAG: message, in the device's time zone. A repeated line prints once, with [×N] at its end. With a cursor from entries, only the lines after it. The response gives no cursor.",
+        "description": "Every held line that passes the filters, oldest first, one per line: MM-dd HH:mm:ss.SSS PID TID L TAG: message, in the device's time zone. A repeated line prints once, with [×N] at its end. A message with line breaks, which only a line that the app appended has, prints each of its lines with the prefix. With a cursor from entries, only the lines after it. The response gives no cursor.",
         "parameters": [
           {
             "name": "cursor",
@@ -566,7 +566,7 @@
           },
           "message": {
             "type": "string",
-            "description": "One line of logcat's output. Android keeps at most about 4 KB of a log message, and logcat prints each line of a multi-line message, such as a stack trace, as a line of its own."
+            "description": "One line of logcat's output. Android keeps at most about 4 KB of a log message, and logcat prints each line of a multi-line message, such as a stack trace, as a line of its own. A line that the app's logger appended has the whole message, up to 65,536 characters, and can hold line breaks."
           },
           "count": {
             "type": "integer",

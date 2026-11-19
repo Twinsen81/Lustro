@@ -28,6 +28,10 @@ import java.io.IOException
  * without `-T` lost none. An app has no line in logd then when it writes none
  * before the tab starts, or when the device drops its lines during its launch.
  *
+ * A line whose tag [appendedTags] takes, from [appendedSince] on, does not go
+ * to the buffer: the app's logger appends those lines to the tab itself, in
+ * full. The reader still counts it as read.
+ *
  * When logcat ends, the reader starts it again after [restartDelayMs]. After
  * [MAX_RESTARTS] restarts in a row with no line, it gives up and its [status]
  * is [Status.FAILED]; the buffer keeps what it has.
@@ -41,6 +45,8 @@ internal class LogcatReader(
     private val launch: (List<String>) -> Process = { ProcessBuilder(it).redirectErrorStream(true).start() },
     private val restartDelayMs: Long = RESTART_DELAY_MS,
     private val parser: ThreadtimeParser = ThreadtimeParser(),
+    private val appendedTags: (String) -> Boolean = { false },
+    private val appendedSince: Long = Long.MAX_VALUE,
 ) {
     enum class Status(val wireName: String) {
         STOPPED("stopped"),
@@ -224,7 +230,7 @@ internal class LogcatReader(
                             readAny = true
                             report(Status.RUNNING, newError = null)
                         }
-                        buffer.append(line)
+                        if (!isAppended(line)) buffer.append(line)
                     }
                 }
             } catch (e: IOException) {
@@ -240,6 +246,15 @@ internal class LogcatReader(
             return readAny
         }
     }
+
+    // The app's code decides, and a failure there must not end the reader: the line then stays.
+    private fun isAppended(line: LogLine): Boolean =
+        line.at >= appendedSince &&
+            try {
+                appendedTags(line.tag)
+            } catch (_: RuntimeException) {
+                false
+            }
 
     companion object {
         const val MAX_RESTARTS: Int = 3

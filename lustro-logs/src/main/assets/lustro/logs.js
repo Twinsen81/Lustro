@@ -142,10 +142,11 @@
         return space >= 0 ? text.slice(space + 1) : text;
     }
 
-    // A message has no line breaks: logcat prints each line of a multi-line
-    // message, such as a stack trace, as a line of its own.
+    // logcat prints each line of a multi-line message, such as a stack trace, as
+    // a line of its own. A line that the app appends keeps its line breaks, and
+    // folds as a long one does.
     function isLongMessage(message) {
-        return message.length > COLLAPSE_AT;
+        return message.length > COLLAPSE_AT || message.indexOf('\n') >= 0;
     }
 
     function repeatTitle(entry) {
