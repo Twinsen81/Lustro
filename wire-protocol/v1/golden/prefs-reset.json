@@ -36,6 +36,13 @@
       "bytes": 10
     },
     {
+      "key": "profile",
+      "type": "string",
+      "value": "{\"name\":\"ann\",\"refresh_token\":\"[REDACTED]\"}",
+      "bytes": 36,
+      "redacted": true
+    },
+    {
       "key": "text_scale",
       "type": "float",
       "value": 1.25,

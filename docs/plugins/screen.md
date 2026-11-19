@@ -65,6 +65,14 @@ val lustro = Lustro.builder(application)
 - **Your app's context.** A `ScreenContextProvider` returns what only your app knows, such as
     its navigation back stack, as JSON. The tab calls it on the main thread after each read, and
     the tree carries it as `context`.
+- **Create the tab in `Application.onCreate`.** The tab registers activity lifecycle callbacks
+    when you create it, and Android has no public API to find the activities that started before.
+    Before API 29, when the tab can't read `WindowManagerGlobal`, it reads the windows of the
+    started activities, and `windowSource` is `activities`. A tab that your app creates later, for
+    example when the user turns the server on in a settings screen, then has no window of an
+    activity that was already started: `GET tree` returns no window until that activity stops and
+    starts again, for example after the user goes to the home screen and back. From API 29, and
+    when the reflection works, the time of the call changes nothing.
 
 ## Safety options
 

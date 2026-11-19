@@ -135,6 +135,11 @@ internal class DemoDataStore(context: Context, private val scope: CoroutineScope
                 it[stringPreferencesKey("auth_token")] = "at-${java.util.UUID.randomUUID().toString().take(8)}"
                 // "auth" in the name, but no secret: the registration lists it in unmasked.
                 it[stringPreferencesKey("auth_method")] = "password"
+                // JSON with a token inside: the tab replaces the token's value and shows the rest.
+                it[stringPreferencesKey("account_info")] =
+                    """{"user":"ada","plan":"pro","login":{"refresh_token":"rt-${java.util.UUID.randomUUID().toString().take(8)}","expires_in":3600}}"""
+                // No sensitive word in the name: the registration lists it in masked.
+                it[stringPreferencesKey("user_email")] = "ada@example.com"
             }
             sdkState.edit { it.writeSdkDefaults() }
         }

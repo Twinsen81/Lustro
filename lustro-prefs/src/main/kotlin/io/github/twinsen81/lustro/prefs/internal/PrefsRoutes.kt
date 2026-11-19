@@ -76,7 +76,7 @@ internal class PrefsRoutes(private val registry: PrefsRegistry) {
             val contents = source.read()
             contents.entries.keys.sorted().forEachIndexed { index, key ->
                 if (index > 0) append(',')
-                appendItem(key, contents.entries[key], contents.masked(key), PrefValues.MAX_VALUE_CHARS)
+                appendEntry(contents, key, PrefValues.MAX_VALUE_CHARS)
             }
         }
     }
@@ -88,7 +88,7 @@ internal class PrefsRoutes(private val registry: PrefsRegistry) {
         if (key !in contents.entries) throw RouteException("The file ${source.name} has no key \"$key\"", status = 404, field = "key")
         return DebugResponse.json {
             append("{\"item\":")
-            appendItem(key, contents.entries[key], contents.masked(key))
+            appendEntry(contents, key)
             append('}')
         }
     }
@@ -96,6 +96,9 @@ internal class PrefsRoutes(private val registry: PrefsRegistry) {
     private fun edit(body: JSONObject): DebugResponse {
         val source = writableSource(body)
         val key = key(body)
+        // Often a client's mistake, such as a shell variable that did not expand. Delete still takes it,
+        // so that a client can remove such a key.
+        if (key.isEmpty()) throw RouteException("key must not be empty", field = "key")
         val type = type(body, source.store)
         val value = value(body, type)
         val before = source.read().entries[key]
@@ -103,7 +106,7 @@ internal class PrefsRoutes(private val registry: PrefsRegistry) {
         val after = source.read()
         return DebugResponse.json {
             append("{\"status\":\"ok\",\"item\":")
-            appendItem(key, after.entries[key], after.masked(key), PrefValues.MAX_VALUE_CHARS)
+            appendEntry(after, key, PrefValues.MAX_VALUE_CHARS)
             append('}')
         }
     }
@@ -124,6 +127,10 @@ internal class PrefsRoutes(private val registry: PrefsRegistry) {
         val removed = source.read().entries.size
         write(source, changed = removed > 0, PrefChange.Clear)
         return DebugResponse.json { append("{\"status\":\"ok\",\"removed\":").append(removed).append('}') }
+    }
+
+    private fun StringBuilder.appendEntry(contents: Contents, key: String, maxChars: Int = Int.MAX_VALUE) {
+        appendItem(key, contents.entries[key], contents.masked(key), maxChars, contents.redacted(key))
     }
 
     // The write returns when the file on disk has the change, so that the response shows what the file holds.

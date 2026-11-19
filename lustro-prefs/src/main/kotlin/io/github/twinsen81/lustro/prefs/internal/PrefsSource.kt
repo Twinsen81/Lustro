@@ -36,9 +36,13 @@ internal abstract class PrefsSource(
     val readOnly: Boolean,
     val registered: Boolean,
     unmasked: Set<String> = emptySet(),
+    masked: Set<String> = emptySet(),
 ) {
     /** The keys that [ValuePolicy.MASK_SENSITIVE] shows, in lowercase. A discovered file has none. */
     val unmasked: Set<String> = unmasked.mapTo(HashSet()) { it.lowercase(Locale.ROOT) }
+
+    /** The keys that every policy masks, in lowercase. A discovered file has none. */
+    val masked: Set<String> = masked.mapTo(HashSet()) { it.lowercase(Locale.ROOT) }
 
     private val sequence = AtomicLong()
 
@@ -96,14 +100,32 @@ internal class Contents(
     val readOnly: Boolean,
     /** The keys, in lowercase, that [ValuePolicy.MASK_SENSITIVE] shows. The other policies ignore them. */
     private val unmasked: Set<String> = emptySet(),
+    /** The keys, in lowercase, that every policy masks. */
+    private val alwaysMasked: Set<String> = emptySet(),
 ) {
-    fun masked(key: String): Boolean =
-        when (policy) {
+    fun masked(key: String): Boolean {
+        if (alwaysMasked.isNotEmpty() && key.lowercase(Locale.ROOT) in alwaysMasked) return true
+        return when (policy) {
             ValuePolicy.VISIBLE -> false
             ValuePolicy.MASK_SENSITIVE ->
                 !holdsNoSecret(entries[key]) && SensitiveKeys.isSensitive(key) && key.lowercase(Locale.ROOT) !in unmasked
             ValuePolicy.KEYS_ONLY -> true
         }
+    }
+
+    /**
+     * The value of [key] with the values of its sensitive JSON fields replaced, or
+     * `null` when the tab shows the value as it is: a value that is masked, not a
+     * string, not a JSON object or array, or one with no sensitive field. Only
+     * [ValuePolicy.MASK_SENSITIVE] replaces fields, and not in the value of an
+     * [unmasked] key.
+     */
+    fun redacted(key: String): String? {
+        if (policy != ValuePolicy.MASK_SENSITIVE || masked(key)) return null
+        val value = entries[key] as? String ?: return null
+        if (unmasked.isNotEmpty() && key.lowercase(Locale.ROOT) in unmasked) return null
+        return JsonRedaction.redact(value)
+    }
 
     // An app keeps no secret in a flag or a fraction, whatever its key is named.
     // Apps that name each setting's key after its string resource, such as

@@ -23,12 +23,14 @@ internal class PrefsRegistry(
 ) {
     private val registered: Map<String, PrefsSource> =
         files.associateTo(LinkedHashMap()) { file ->
-            file.name to SharedPrefsSource(file.name, file.prefs, file.policy, file.readOnly, registered = true, file.unmasked) { open(file.name) }
+            file.name to SharedPrefsSource(file.name, file.prefs, file.policy, file.readOnly, registered = true, file.unmasked, file.masked) {
+                open(file.name)
+            }
         }
 
     private val registeredDataStores: Map<String, PrefsSource> =
         dataStores.associateTo(LinkedHashMap()) { store ->
-            store.name to DataStoreSource(store.name, store.dataStore, store.policy, store.readOnly, store.unmasked)
+            store.name to DataStoreSource(store.name, store.dataStore, store.policy, store.readOnly, store.unmasked, store.masked)
         }
 
     private val lock = Any()

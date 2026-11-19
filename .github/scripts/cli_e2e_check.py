@@ -178,8 +178,14 @@ def check_prefs_delta(text: str, reset: Any) -> None:
 
 
 def check_prefs_app_state(text: str, rules: List[dict]) -> None:
-    """The sample's DataStore masks auth_token, and shows auth_method, which it lists in unmasked."""
+    """The sample's DataStore masks auth_token and user_email, which it lists in masked, shows auth_method,
+    which it lists in unmasked, and the JSON of account_info with its token replaced."""
     items = _prefs_envelope(text, "reset")
+    expect(items["user_email"].get("masked") is True and "value" not in items["user_email"], "user_email {}".format(items["user_email"]))
+    account = items["account_info"]
+    expect(account.get("redacted") is True, "account_info {}".format(account))
+    expect(json.loads(account["value"])["login"]["refresh_token"] == "[REDACTED]", "account_info {}".format(account))
+    expect(json.loads(account["value"])["user"] == "ada", "account_info {}".format(account))
     expect(items["auth_token"].get("masked") is True and "value" not in items["auth_token"], "auth_token {}".format(items["auth_token"]))
     expect(items["auth_method"].get("value") == "password" and "masked" not in items["auth_method"], "auth_method {}".format(items["auth_method"]))
 

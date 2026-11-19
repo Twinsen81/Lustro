@@ -296,6 +296,91 @@ class PrefsRoutesTest {
     }
 
     @Test
+    fun `masked keys are masked under every policy, in any case, also a boolean, and win over unmasked`() {
+        val names = mutableSetOf("Username", "notifications")
+        settings.edit().putBoolean("notifications", true).putString("account_info", "{}").commit()
+        val visible = PrefsFile("settings", settings, ValuePolicy.VISIBLE, masked = names)
+        names.clear()
+        assertEquals(setOf("Username", "notifications"), visible.masked)
+        assertEquals(emptySet<String>(), PrefsFile("other", settings).masked)
+        var routes = routes(visible)
+
+        var entries = get(routes, "entries", "file" to "settings")
+        for (key in listOf("username", "notifications")) {
+            assertTrue(key, item(entries, key).getBoolean("masked"))
+            assertFalse(key, item(entries, key).has("value"))
+        }
+        assertEquals("t0k3n", item(entries, "auth_token").getString("value"))
+        assertTrue(get(routes, "entry", "file" to "settings", "key" to "username").getJSONObject("item").getBoolean("masked"))
+        val edit = post(routes, "edit", """{"file":"settings","key":"username","type":"string","value":"bob"}""")
+        assertEquals(200, edit.status)
+        assertTrue(JSONObject(edit.text()).getJSONObject("item").getBoolean("masked"))
+        assertEquals("bob", settings.getString("username", null))
+
+        routes = routes(PrefsFile("settings", settings, unmasked = setOf("account_info", "auth_token"), masked = setOf("ACCOUNT_INFO")))
+        entries = get(routes, "entries", "file" to "settings")
+        assertTrue(item(entries, "account_info").getBoolean("masked"))
+        assertEquals("t0k3n", item(entries, "auth_token").getString("value"))
+        assertEquals("bob", item(entries, "username").getString("value"))
+    }
+
+    @Test
+    fun `MASK_SENSITIVE replaces the sensitive fields of a JSON value at any depth, and says it`() {
+        val account = """{"name":"ann","auth":{"access_token":"t-1","expires_in":3600},"devices":[{"id":1,"push_token":"p-1"}],"token_valid":true}"""
+        settings.edit()
+            .putString("account_info", account)
+            .putString("tags", """["a","b"]""")
+            .putString("note", "{not json")
+            .putString("pair", """{"api_key":"k"} {"api_key":"k"}""")
+            .commit()
+        val routes = routes(PrefsFile("settings", settings))
+
+        val entries = get(routes, "entries", "file" to "settings")
+        val item = item(entries, "account_info")
+        assertTrue(item.getBoolean("redacted"))
+        assertFalse(item.has("masked"))
+        assertEquals(account.length, item.getInt("bytes"))
+        val shown = JSONObject(item.getString("value"))
+        assertEquals("ann", shown.getString("name"))
+        assertEquals("[REDACTED]", shown.getString("auth"))
+        assertEquals("[REDACTED]", shown.getJSONArray("devices").getJSONObject(0).getString("push_token"))
+        assertEquals(1, shown.getJSONArray("devices").getJSONObject(0).getInt("id"))
+        assertTrue("a boolean holds no secret", shown.getBoolean("token_valid"))
+        assertFalse(item.getString("value").contains("t-1"))
+        // A JSON value without a sensitive field, or a value that is not one JSON object or array, stays as it is.
+        for ((key, value) in listOf("tags" to """["a","b"]""", "note" to "{not json", "pair" to """{"api_key":"k"} {"api_key":"k"}""")) {
+            assertEquals(key, value, item(entries, key).getString("value"))
+            assertFalse(key, item(entries, key).has("redacted"))
+        }
+        val whole = get(routes, "entry", "file" to "settings", "key" to "account_info").getJSONObject("item")
+        assertEquals(item.getString("value"), whole.getString("value"))
+        assertTrue(whole.getBoolean("redacted"))
+        val edit = post(routes, "edit", """{"file":"settings","key":"account_info","type":"string","value":"{\"refresh_token\":\"r-2\"}"}""")
+        assertEquals("""{"refresh_token":"[REDACTED]"}""", JSONObject(edit.text()).getJSONObject("item").getString("value"))
+        assertEquals("""{"refresh_token":"r-2"}""", settings.getString("account_info", null))
+    }
+
+    @Test
+    fun `a JSON value shows whole under VISIBLE and for an unmasked key, and a long one is cut after the redaction`() {
+        val account = """{"access_token":"t-1","name":"ann"}"""
+        settings.edit().putString("account_info", account).commit()
+
+        val visible = item(get(routes(PrefsFile("settings", settings, ValuePolicy.VISIBLE)), "entries", "file" to "settings"), "account_info")
+        assertEquals(account, visible.getString("value"))
+        assertFalse(visible.has("redacted"))
+        val unmasked = routes(PrefsFile("settings", settings, unmasked = setOf("Account_Info")))
+        assertEquals(account, item(get(unmasked, "entries", "file" to "settings"), "account_info").getString("value"))
+
+        val secret = "s".repeat(PrefValues.MAX_VALUE_CHARS)
+        settings.edit().putString("account_info", """{"padding":"${"p".repeat(PrefValues.MAX_VALUE_CHARS - 40)}","client_secret":"$secret"}""").commit()
+        val cut = item(get(routes(PrefsFile("settings", settings)), "entries", "file" to "settings"), "account_info")
+        assertTrue(cut.getBoolean("redacted"))
+        assertTrue(cut.getBoolean("truncated"))
+        assertEquals(PrefValues.MAX_VALUE_CHARS, cut.getString("value").length)
+        assertFalse(cut.getString("value").contains("sss"))
+    }
+
+    @Test
     fun `a masked value can still be written, and the response masks it too`() {
         val routes = routes(PrefsFile("settings", settings))
         val edit = post(routes, "edit", """{"file":"settings","key":"auth_token","type":"string","value":"expired"}""")
@@ -457,6 +542,22 @@ class PrefsRoutesTest {
         assertFalse(settings.contains("username"))
         assertFalse(JSONObject(post(routes, "delete", """{"file":"settings","key":"username"}""").text()).getBoolean("deleted"))
         assertEquals("key", JSONObject(post(routes, "delete", """{"file":"settings"}""").text()).getString("field"))
+    }
+
+    @Test
+    fun `edit refuses an empty key, and delete still removes one`() {
+        settings.edit().putString("", "stray").commit()
+        val routes = routes(PrefsFile("settings", settings))
+
+        val edit = post(routes, "edit", """{"file":"settings","key":"","type":"string","value":"x"}""")
+        assertEquals(400, edit.status)
+        assertEquals("key", JSONObject(edit.text()).getString("field"))
+        assertEquals("stray", settings.getString("", null))
+
+        val delete = post(routes, "delete", """{"file":"settings","key":""}""")
+        assertEquals(200, delete.status)
+        assertTrue(JSONObject(delete.text()).getBoolean("deleted"))
+        assertFalse(settings.contains(""))
     }
 
     @Test

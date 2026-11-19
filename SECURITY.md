@@ -181,7 +181,10 @@ build, and that even in debug builds it stays bound to the local device.
   masks a boolean, a float, or a double, which an app does not use for a
   secret. So a secret under a key such as `cache` or `blob` shows, and so does
   the value of a key that the app lists in `unmasked`: list only keys that hold
-  no secret. A registered `EncryptedSharedPreferences` that decrypts shows its
+  no secret. A key that the app lists in `masked` is masked under every policy.
+  Under `MASK_SENSITIVE`, a string that is a JSON object or array shows with
+  the values of its sensitive fields replaced, by the same check, so a secret
+  under a field such as `data` shows. A registered `EncryptedSharedPreferences` that decrypts shows its
   plain values to every client with the token: register it with `KEYS_ONLY`
   when its values must stay hidden. The files that the tab discovers on disk
   are masked by key and read-only by default, and a file that has the keysets
@@ -211,7 +214,8 @@ build, and that even in debug builds it stays bound to the local device.
 
 The SQLite plugin (`:lustro-sqlite`) serves the tables, schemas, and rows of the
 databases that the app registers, and with `discoverFrom` of every other
-database file in the app's `databases` directory, under `/api/v1/sqlite/`.
+database file in the app's `databases` and `noBackupFilesDir` directories, under
+`/api/v1/sqlite/`.
 
 - **Every client with the token reads every registered database, whole.** The
   value policy, `MASK_SENSITIVE` by default and for every discovered file,

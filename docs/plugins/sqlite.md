@@ -87,15 +87,16 @@ val lustro = Lustro.builder(application)
     Android, closing any descriptor of a file drops the process's POSIX locks on it, and only the
     SQLite that holds them works around that. See [How To Corrupt An SQLite Database File](https://www.sqlite.org/howtocorrupt.html#_posix_advisory_locks_canceled_by_a_separate_thread_doing_close_).
 - **Discovery.** With `discoverFrom = context`, the tab also lists the other database files in the
-    app's `databases` directory, such as those of your libraries, by file name. It looks in no
-    other directory: WorkManager, for one, keeps `androidx.work.workdb` in `noBackupFilesDir`, so
-    register that file with `SqliteDb.file`, as the [WorkManager](work.md#limits) page shows.
-    It lists the directory on each request, so it finds a file that the app creates later, and
-    leaves out a file that a registration stands for, SQLite's journal, WAL, and lock files, and a
-    file that is not a SQLite database. It asks the platform's SQLite about a file, and never
-    reads one itself, and it asks only about the files that no registration stands for. A
-    discovered file is read as a `SqliteDb.file`, so leave discovery off when the directory has a
-    database that the app opens with another copy of SQLite. Discovery is off by default.
+    app's `databases` directory, such as those of your libraries, by file name, and then those in
+    `noBackupFilesDir`, such as WorkManager's `androidx.work.workdb`. A file in `noBackupFilesDir`
+    whose name a registration or a file in `databases` already has is listed as
+    `no_backup/<file name>`. It looks in no other directory. It lists the directories on each
+    request, so it finds a file that the app creates later, and leaves out a file that a
+    registration stands for, SQLite's journal, WAL, and lock files, and a file that is not a SQLite
+    database. It asks the platform's SQLite about a file, and never reads one itself, and it asks
+    only about the files that no registration stands for. A discovered file is read as a
+    `SqliteDb.file`, so leave discovery off when a directory has a database that the app opens
+    with another copy of SQLite. Discovery is off by default.
 - **Hints.** `tableHints` gives a table the name of the class that maps it and one line on what a
     row is, for an agent that reads the database without your code.
 - **The app's observers.** Room's `InvalidationTracker` looks for changes after Room's own

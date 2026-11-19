@@ -73,18 +73,21 @@ internal object PrefValues {
 
     /**
      * Writes the item of [key]: its type, its value unless [masked], and its size.
+     * A [redacted] string comes instead of the value, with `redacted`, and is cut,
+     * not the value, so that a cut value never shows what the redaction replaced.
      * A longer value than [maxChars] is cut, and the item says `truncated`.
      */
-    fun StringBuilder.appendItem(key: String, value: Any?, masked: Boolean, maxChars: Int = Int.MAX_VALUE) {
+    fun StringBuilder.appendItem(key: String, value: Any?, masked: Boolean, maxChars: Int = Int.MAX_VALUE, redacted: String? = null) {
         val type = PrefType.of(value)
         append("{\"key\":\"").append(key.escapeForJson()).append("\",\"type\":\"").append(type.wireName).append('"')
         var truncated = false
         if (!masked && value != null) {
             append(",\"value\":")
-            truncated = appendValue(type, value, maxChars)
+            truncated = appendValue(type, redacted ?: value, maxChars)
         }
         append(",\"bytes\":").append(bytes(value))
         if (masked) append(",\"masked\":true")
+        if (redacted != null && !masked) append(",\"redacted\":true")
         if (truncated) append(",\"truncated\":true")
         append('}')
     }
