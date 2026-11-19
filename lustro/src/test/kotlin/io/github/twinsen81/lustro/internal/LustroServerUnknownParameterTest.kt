@@ -26,7 +26,7 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class LustroServerUnknownParameterTest {
-    private class PlainTab(override val id: String, private val schema: String?) : DebugTab() {
+    private class PlainTab(override val id: String, @Volatile var schema: String?) : DebugTab() {
         override val title: String = id
         override val icon: String = "P"
 
@@ -36,6 +36,7 @@ class LustroServerUnknownParameterTest {
     }
 
     private val client = OkHttpClient()
+    private val changing = PlainTab("changing", schemaDeclaring("before"))
     private lateinit var server: LustroServer
     private lateinit var token: String
 
@@ -54,11 +55,15 @@ class LustroServerUnknownParameterTest {
                           "/api/v1/dynamic/items/{id}":{
                             "parameters":[{"name":"shared","in":"query"}],
                             "get":{"parameters":[{"${'$'}ref":"#/components/parameters/Fields"},{"name":"id","in":"path"}]}
+                          },
+                          "/api/v1/dynamic/items/special":{
+                            "get":{"parameters":[{"name":"x","in":"query"}]}
                           }},
                          "components":{"parameters":{"Fields":{"name":"fields","in":"query"}}}}
                         """.trimIndent(),
                     ),
                 )
+                addTab(changing)
                 start()
             }
         val tokenStore = LustroTokenStore(context)
@@ -135,4 +140,22 @@ class LustroServerUnknownParameterTest {
             warning("network/transactions?a%22b%0D%0Ac%C3%A9=1"),
         )
     }
+
+    @Test
+    fun `a literal segment wins over a template of the same length`() {
+        // The templated route comes first in the document, so the first match would be wrong.
+        assertNull(warning("dynamic/items/special?x=1"))
+        assertEquals("unknown query parameter \"shared\"", warning("dynamic/items/special?shared=1"))
+        assertEquals("unknown query parameter \"x\"", warning("dynamic/items/7?x=1"))
+    }
+
+    @Test
+    fun `a dynamic schema that changes is read again`() {
+        assertEquals("unknown query parameter \"after\"", warning("changing/list?before=1&after=1"))
+        changing.schema = schemaDeclaring("after")
+        assertEquals("unknown query parameter \"before\"", warning("changing/list?before=1&after=1"))
+    }
+
+    private fun schemaDeclaring(name: String): String =
+        """{"openapi":"3.1.0","paths":{"/api/v1/changing/list":{"get":{"parameters":[{"name":"$name","in":"query"}]}}}}"""
 }
