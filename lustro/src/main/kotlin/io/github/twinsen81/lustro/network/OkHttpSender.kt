@@ -30,6 +30,14 @@ import okhttp3.ResponseBody
  * )
  * ```
  *
+ * When the app can change its server at runtime, such as with a server picker
+ * in a debug menu, give the base URL as a function, which the tab calls for
+ * each send and each time it lists the senders:
+ *
+ * ```kotlin
+ * OkHttpSender.create("API", baseUrlProvider = { serverSettings.currentBaseUrl }) { apiClient }
+ * ```
+ *
  * The runtime invokes [send] off the main thread and blocks for the result; this
  * implementation issues a synchronous OkHttp call. A sent request appears as its
  * own row in the traffic list only when the client carries the Lustro
@@ -43,11 +51,7 @@ import okhttp3.ResponseBody
 public class OkHttpSender internal constructor(
     /** The name that the Send form lists this sender under. Unique within a tab. */
     public val name: String,
-    /**
-     * The URL that a relative URL in the Send form resolves against, or `null`
-     * when this sender takes absolute URLs only.
-     */
-    public val baseUrl: String?,
+    private val baseUrlProvider: () -> String?,
     clientProvider: () -> OkHttpClient,
 ) : NetworkSender {
     /**
@@ -55,7 +59,16 @@ public class OkHttpSender internal constructor(
      * Its relative URLs resolve against `DebugConfig.appServerBaseUrl` when the
      * tab gets it as `senderClient`.
      */
-    public constructor(client: OkHttpClient) : this(DEFAULT_NAME, null, { client })
+    public constructor(client: OkHttpClient) : this(DEFAULT_NAME, { null }, { client })
+
+    /**
+     * The URL that a relative URL in the Send form resolves against, or `null`
+     * when this sender takes absolute URLs only. For a sender created with a
+     * `baseUrlProvider`, each read calls the provider, so the value can change
+     * and the provider can throw.
+     */
+    public val baseUrl: String?
+        get() = baseUrlProvider()
 
     // Kept after the first call that succeeds, so a provider that builds a new
     // client doesn't get a connection pool for each send. A provider that throws
@@ -170,7 +183,45 @@ public class OkHttpSender internal constructor(
             require(baseUrl == null || baseUrl.toHttpUrlOrNull() != null) {
                 "baseUrl must be an absolute http or https URL: $baseUrl"
             }
-            return OkHttpSender(name, baseUrl, client)
+            return OkHttpSender(name, { baseUrl }, client)
+        }
+
+        /**
+         * Creates a sender that the Send form lists as [name], with a base URL
+         * that can change while the app runs, such as after a switch in the
+         * app's server picker.
+         *
+         * The tab calls [baseUrlProvider] for each send of a relative URL and
+         * each time it lists the senders, off the main thread. When it returns
+         * `null`, the sender takes absolute URLs only until it returns a URL
+         * again. A send of a relative URL fails with a `400` and
+         * `field: "baseUrl"` when the provider throws, or returns a URL that is
+         * not an absolute `http` or `https` URL. An absolute URL is sent
+         * without calling it.
+         *
+         * Lustro calls [client] only when a request is sent through this
+         * sender, and keeps the client it returns, as with the other [create].
+         *
+         * Java callers find this factory as `createWithBaseUrlProvider`, as
+         * `create(name, null, client)` would otherwise match both factories.
+         *
+         * @param name the name the Send form lists the sender under; must not be
+         *   blank, and must be unique among the senders of one tab.
+         * @param baseUrlProvider returns the absolute `http` or `https` URL that
+         *   a relative URL resolves against now, or `null`.
+         * @param client returns the client to send through. Called off the main
+         *   thread, at the first send.
+         * @throws IllegalArgumentException when [name] is blank.
+         */
+        @JvmStatic
+        @JvmName("createWithBaseUrlProvider")
+        public fun create(
+            name: String,
+            baseUrlProvider: () -> String?,
+            client: () -> OkHttpClient,
+        ): OkHttpSender {
+            require(name.isNotBlank()) { "A sender's name must not be blank" }
+            return OkHttpSender(name, baseUrlProvider, client)
         }
     }
 }

@@ -32,6 +32,7 @@ import io.github.twinsen81.lustro.internal.network.WebSocketTrafficStore
 import io.github.twinsen81.lustro.internal.network.appendTransactionJson
 import io.github.twinsen81.lustro.internal.network.respondWithSearch
 import io.github.twinsen81.lustro.DebugTab
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.WebSocket
@@ -350,8 +351,19 @@ public class NetworkDebugTab private constructor(
         }
     }
 
-    private fun handleTransactions(request: DebugRequest): DebugResponse =
-        respondWithSearch(request) { search ->
+    private fun handleTransactions(request: DebugRequest): DebugResponse {
+        val sinceParam = request.queryParam("since")
+        val since =
+            if (sinceParam == null) {
+                null
+            } else {
+                sinceParam.toLongOrNull()?.takeIf { it >= 0 }
+                    ?: return DebugResponse.error(
+                        "since must be a time in milliseconds since the Unix epoch, 0 or more: $sinceParam",
+                        field = "since",
+                    )
+            }
+        return respondWithSearch(request) { search ->
             DebugResponse.cursorEnvelope(
                 // A handshake's webSocketId depends on which connections are listed, and
                 // each transaction's activeMockRuleId on the rules, so a change to either
@@ -361,7 +373,7 @@ public class NetworkDebugTab private constructor(
                 state = stateJson(),
                 epoch = store.epoch,
             ) {
-                val transactions = store.getTransactions(search = search, budget = SearchBudget(searchTimeoutMs))
+                val transactions = store.getTransactions(search = search, budget = SearchBudget(searchTimeoutMs), since = since)
                 val webSockets = webSocketStore.transactionLinks()
                 // One snapshot, so every row is matched against the same rules.
                 val rules = store.getMockRules()
@@ -371,6 +383,7 @@ public class NetworkDebugTab private constructor(
                 }
             }
         }
+    }
 
     private fun stateJson(): String =
         buildString {
@@ -606,6 +619,7 @@ public class NetworkDebugTab private constructor(
             DebugResponse.error("Invalid JSON: ${e.message}")
         }
 
+    // Throws what a sender's base URL provider throws.
     private fun baseUrlOf(sender: OkHttpSender): String? =
         sender.baseUrl ?: appServerBaseUrl.takeIf { sendersUseConfigBaseUrl }
 
@@ -615,7 +629,13 @@ public class NetworkDebugTab private constructor(
             senders.forEachIndexed { index, sender ->
                 if (index > 0) append(",")
                 append("{\"name\":\"").append(sender.name.escapeForJson()).append("\",\"baseUrl\":")
-                val base = baseUrlOf(sender)
+                // A provider that throws lists no base URL; a send of a relative URL reports why.
+                val base =
+                    try {
+                        baseUrlOf(sender)
+                    } catch (_: Exception) {
+                        null
+                    }
                 if (base == null) append("null") else append("\"").append(base.escapeForJson()).append("\"")
                 append("}")
             }
@@ -647,11 +667,24 @@ public class NetworkDebugTab private constructor(
                 if (ABSOLUTE_URL.containsMatchIn(rawUrl)) {
                     rawUrl
                 } else {
-                    val base = baseUrlOf(sender)
-                        ?: return DebugResponse.error(
+                    val base =
+                        try {
+                            baseUrlOf(sender)
+                        } catch (e: Exception) {
+                            return DebugResponse.error(
+                                "The base URL provider of the sender \"${sender.name}\" threw: ${e.message ?: e.javaClass.simpleName}",
+                                field = "baseUrl",
+                            )
+                        } ?: return DebugResponse.error(
                             "url must be absolute: the sender \"${sender.name}\" has no base URL",
                             field = "url",
                         )
+                    if (base.toHttpUrlOrNull() == null) {
+                        return DebugResponse.error(
+                            "The base URL of the sender \"${sender.name}\" is not an absolute http or https URL: $base",
+                            field = "baseUrl",
+                        )
+                    }
                     // Appended, not resolved as RFC 3986 does: a base with a path,
                     // such as https://api.example.com/v1, keeps it.
                     base.trimEnd('/') + "/" + rawUrl.trimStart('/')

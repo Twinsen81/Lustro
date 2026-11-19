@@ -11,6 +11,8 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import io.github.twinsen81.lustro.internal.DebugAssetLoader
 import io.github.twinsen81.lustro.internal.DebugTabRegistry
+import io.github.twinsen81.lustro.internal.InterfaceAddress
+import io.github.twinsen81.lustro.internal.LanAddresses
 import io.github.twinsen81.lustro.internal.LustroServer
 import io.github.twinsen81.lustro.internal.LustroTokenStore
 import io.github.twinsen81.lustro.internal.network.NetworkCaptureProvider
@@ -61,6 +63,8 @@ public class Lustro internal constructor(
     // Injectable so tests can drive binding without the real ProcessLifecycleOwner.
     // Production passes the process lifecycle.
     private val lifecycle: Lifecycle = ProcessLifecycleOwner.get().lifecycle,
+    // Injectable so tests can give the addresses of a device on a network.
+    private val deviceAddresses: () -> List<InterfaceAddress> = LanAddresses::deviceAddresses,
 ) {
     private val assetLoader = DebugAssetLoader(application.applicationContext)
     private val appName: String =
@@ -280,6 +284,31 @@ public class Lustro internal constructor(
         }
     }
 
+    /**
+     * Returns where the debug server listens and the token that a client
+     * sends, or `null` when the server does not listen: before [start], after
+     * [stop], while the app is in the background, and when the bind failed.
+     *
+     * Use it for a client in the app's process, such as an instrumentation
+     * test that calls the HTTP API at [LustroEndpoint.url], or to show a
+     * developer how to connect: the `adb forward` command for
+     * [LustroEndpoint.port], or a [LustroEndpoint.lanUrls] entry when
+     * [DebugConfig.bindAddress] opts into LAN exposure.
+     *
+     * The token gives full access to the app's data through the server, so
+     * show it only in a debug build. The first call can read the token from a
+     * private file; StrictMode can report that read on the main thread.
+     */
+    public fun endpoint(): LustroEndpoint? {
+        val srv = server?.takeIf { it.isAlive } ?: return null
+        return LustroEndpoint(
+            host = LanAddresses.clientHost(config.bindAddress),
+            port = srv.listeningPort,
+            token = tokenStore.token(),
+            lanHosts = LanAddresses.lanHosts(config.bindAddress, deviceAddresses),
+        )
+    }
+
     /** True once the socket is bound and listening. Exposed for tests. */
     internal fun isBound(): Boolean = server?.isAlive == true
 
@@ -420,6 +449,8 @@ public class Lustro internal constructor(
      * level INFO. The CLI/agent parses host, port, and
      * token from this line. A device can drop Info logs, so the endpoint also
      * goes into the token's prefs file, where the CLI reads it through `run-as`.
+     * When the server listens on the network, ` lan=` and the URLs that a
+     * computer on the same network uses, comma-separated, follow the token.
      *
      * Logged from [workExecutor]: binds usually run on the main thread, and the
      * first token read opens the prefs file.
@@ -431,9 +462,11 @@ public class Lustro internal constructor(
             Runnable {
                 try {
                     tokenStore.recordEndpoint(config.bindAddress, port)
+                    val lanUrls = LanAddresses.lanHosts(config.bindAddress, deviceAddresses).map { LanAddresses.url(it, port) }
+                    val lan = if (lanUrls.isEmpty()) "" else " lan=" + lanUrls.joinToString(",")
                     Log.i(
                         ENDPOINT_LOG_TAG,
-                        "Lustro ready endpoint=http://${config.bindAddress}:$port token=${tokenStore.token()}",
+                        "Lustro ready endpoint=http://${config.bindAddress}:$port token=${tokenStore.token()}$lan",
                     )
                 } catch (e: Throwable) {
                     Log.w(TAG, "Failed to log the debug server endpoint", e)

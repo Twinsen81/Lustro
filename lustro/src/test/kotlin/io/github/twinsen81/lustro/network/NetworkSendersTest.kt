@@ -99,6 +99,82 @@ class NetworkSendersTest {
     }
 
     @Test
+    fun `a base url provider is read at each send and each list`() {
+        var base: String? = api.url("/").toString()
+        val tab = configured(NetworkDebugTab.create(senders = listOf(OkHttpSender.create("App server", baseUrlProvider = { base }) { OkHttpClient() })))
+        api.enqueue(MockResponse())
+        cdn.enqueue(MockResponse())
+
+        val first = tab.handle(post("send", """{"url":"/me"}"""))!!.json()
+        base = cdn.url("/v2").toString()
+        val listed = tab.handle(get("senders"))!!.json().getJSONArray("items").getJSONObject(0).getString("baseUrl")
+        val second = tab.handle(post("send", """{"url":"/me"}"""))!!.json()
+
+        assertEquals(api.url("/me").toString(), first.getString("url"))
+        assertEquals(cdn.url("/v2").toString(), listed)
+        assertEquals(cdn.url("/v2/me").toString(), second.getString("url"))
+        assertEquals("/v2/me", cdn.takeRequest().path)
+    }
+
+    @Test
+    fun `a base url provider that returns null takes absolute urls only`() {
+        val tab = configured(NetworkDebugTab.create(senders = listOf(OkHttpSender.create("App server", baseUrlProvider = { null }) { OkHttpClient() })))
+
+        val res = tab.handle(post("send", """{"url":"/me"}"""))!!
+
+        assertEquals(400, res.status)
+        assertEquals("url", res.json().getString("field"))
+        assertTrue(tab.handle(get("senders"))!!.json().getJSONArray("items").getJSONObject(0).isNull("baseUrl"))
+    }
+
+    @Test
+    fun `a base url provider that returns a url that is not absolute http is a 400 on baseUrl at send time`() {
+        for (bad in listOf("api.example.com", "ftp://example.com", "/v1")) {
+            val tab = configured(NetworkDebugTab.create(senders = listOf(OkHttpSender.create("App server", baseUrlProvider = { bad }) { OkHttpClient() })))
+
+            val res = tab.handle(post("send", """{"url":"/me"}"""))!!
+
+            assertEquals(bad, 400, res.status)
+            assertEquals(bad, "baseUrl", res.json().getString("field"))
+            assertTrue(res.json().getString("message"), "App server" in res.json().getString("message"))
+        }
+    }
+
+    @Test
+    fun `a base url provider that throws is a 400 on baseUrl and lists no base url`() {
+        val tab =
+            configured(
+                NetworkDebugTab.create(
+                    senders = listOf(OkHttpSender.create("App server", baseUrlProvider = { error("no server picked") }) { OkHttpClient() }),
+                ),
+            )
+
+        val res = tab.handle(post("send", """{"url":"/me"}"""))!!
+
+        assertEquals(400, res.status)
+        assertEquals("baseUrl", res.json().getString("field"))
+        assertTrue(res.json().getString("message"), "no server picked" in res.json().getString("message"))
+        assertTrue(tab.handle(get("senders"))!!.json().getJSONArray("items").getJSONObject(0).isNull("baseUrl"))
+    }
+
+    @Test
+    fun `an absolute url does not call the base url provider`() {
+        val calls = AtomicInteger()
+        val tab =
+            configured(
+                NetworkDebugTab.create(
+                    senders = listOf(OkHttpSender.create("App server", baseUrlProvider = { calls.incrementAndGet(); "bad" }) { OkHttpClient() }),
+                ),
+            )
+        cdn.enqueue(MockResponse())
+
+        val json = tab.handle(post("send", """{"url":"${cdn.url("/abs")}"}"""))!!.json()
+
+        assertTrue(json.getBoolean("ok"))
+        assertEquals(0, calls.get())
+    }
+
+    @Test
     fun `send resolves a relative url against the base url of the chosen sender`() {
         cdn.enqueue(MockResponse().setResponseCode(204))
 
@@ -254,5 +330,15 @@ class NetworkSendersTest {
         assertThrows(IllegalArgumentException::class.java) { OkHttpSender.create(" ") { OkHttpClient() } }
         assertThrows(IllegalArgumentException::class.java) { OkHttpSender.create("API", baseUrl = "api.example.com") { OkHttpClient() } }
         assertThrows(IllegalArgumentException::class.java) { OkHttpSender.create("API", baseUrl = "ftp://example.com") { OkHttpClient() } }
+        assertThrows(IllegalArgumentException::class.java) { OkHttpSender.create(" ", baseUrlProvider = { null }) { OkHttpClient() } }
+    }
+
+    @Test
+    fun `the factories with a fixed base url and with a provider both compile with a null or no base url`() {
+        // A second create with a provider must not make these calls ambiguous.
+        assertEquals(null, OkHttpSender.create("A") { OkHttpClient() }.baseUrl)
+        assertEquals(null, OkHttpSender.create("B", null) { OkHttpClient() }.baseUrl)
+        assertEquals(null, OkHttpSender.create("C", baseUrl = null) { OkHttpClient() }.baseUrl)
+        assertEquals("https://example.com", OkHttpSender.create("D", { "https://example.com" }) { OkHttpClient() }.baseUrl)
     }
 }

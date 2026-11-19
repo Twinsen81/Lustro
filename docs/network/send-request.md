@@ -36,6 +36,24 @@ Lustro, and the requests you send are then captured like the app's own. The form
 **Show the response** link to the new row; through a client without the interceptor, you get the
 status only.
 
+### A base URL that changes
+
+`OkHttpSender.create` keeps a `baseUrl` string as it is. When the app can switch its server while
+it runs, such as with a server picker in a debug menu, give the base URL as a function instead:
+
+```kotlin
+OkHttpSender.create("API", baseUrlProvider = { serverSettings.currentBaseUrl }) { apiClient }
+```
+
+The tab calls the function off the main thread, for each send of a relative URL and each time it
+lists the senders, which the console does each time the Send form opens. A `null` means that the
+sender takes absolute URLs only until the function returns a URL again. The URL is checked at
+send time: when the function throws, or returns a URL that is not an absolute `http` or `https`
+URL, the send gets a `400` with `field: baseUrl`. The senders list shows the value that the
+function returned, also one that is not valid, so that you can see what is wrong; it shows no base
+URL only when the function throws. An absolute URL is sent without calling the function. From Java, this factory is
+`OkHttpSender.createWithBaseUrlProvider`.
+
 `senderClient = client` is the short form for one sender, named "Default", whose relative URLs
 resolve against `DebugConfig.appServerBaseUrl`. With neither, the Send form and its route are
 hidden. Requests aimed at the debug server's own bind host:port are rejected.

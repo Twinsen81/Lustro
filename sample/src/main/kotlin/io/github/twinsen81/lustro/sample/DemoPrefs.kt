@@ -82,8 +82,16 @@ internal class DemoPrefs(context: Context) {
         const val SESSION: String = "sample_session"
         const val SDK_CACHE: String = "sample_sdk_cache"
         const val LAUNCH_COUNT: String = "launch_count"
+
+        /** The server that the "App server" sender of the console resolves a relative URL against. */
+        const val API_BASE_URL: String = "api_base_url"
+        private const val DEFAULT_API_BASE_URL = "https://httpbingo.org"
         private const val LAST_OPENED_AT = "last_opened_at"
         private const val HOUR_MS = 3_600_000L
+
+        /** The [API_BASE_URL] setting now, as a server picker in a debug menu would set it. */
+        fun apiBaseUrl(context: Context): String =
+            context.getSharedPreferences(SETTINGS, Context.MODE_PRIVATE).getString(API_BASE_URL, null) ?: DEFAULT_API_BASE_URL
 
         /**
          * Writes the demo values on the first start, so that the three files are

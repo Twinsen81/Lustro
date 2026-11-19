@@ -186,6 +186,9 @@ public object LustroBootstrap {
     /** False in this variant: there is no server, so the app hides its controls. */
     internal const val CONSOLE_AVAILABLE: Boolean = false
 
+    /** Empty: the no-op build has no server. */
+    internal fun serverUrls(): List<String> = emptyList()
+
     /** Always false: the no-op build never binds a socket. */
     internal fun isRunning(): Boolean = false
 

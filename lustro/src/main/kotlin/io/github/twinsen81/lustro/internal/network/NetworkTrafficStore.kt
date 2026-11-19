@@ -474,14 +474,18 @@ internal class NetworkTrafficStore(
         }
 
     /**
-     * The transactions, newest first, or the ones [search] matches. Throws
+     * The transactions, newest first, or the ones [search] matches, of those
+     * that started at or after [since], in epoch milliseconds. Throws
      * [SearchTimeoutException] when the search passes [budget].
      */
     fun getTransactions(
         search: SearchQuery? = null,
         budget: SearchBudget = SearchBudget(SearchBudget.DEFAULT_TIMEOUT_MS),
+        since: Long? = null,
     ): List<NetworkTransaction> {
-        val transactions = insertionOrder.mapNotNull { transactionMap[it] }
+        // The time filter goes first, so the search looks at fewer bodies.
+        val transactions =
+            insertionOrder.mapNotNull { id -> transactionMap[id]?.takeIf { since == null || it.startedAt >= since } }
         if (search == null) return transactions
         return transactions.filter { it.matchesSearch(search, budget) }
     }

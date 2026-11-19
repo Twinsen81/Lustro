@@ -13,8 +13,8 @@ import okhttp3.WebSocket
  * facade. It exposes byte-identical public signatures so consumer code compiles
  * unchanged, but every runtime body is a no-op: no socket is bound, no traffic
  * is captured, [networkInterceptor] returns a pass-through interceptor,
- * [webSocketFactory] returns the factory it is given, and [networkCaptureSink]
- * returns a sink that records nothing.
+ * [webSocketFactory] returns the factory it is given, [networkCaptureSink]
+ * returns a sink that records nothing, and [endpoint] returns `null`.
  *
  * Build one with [builder], register [DebugTab]s, and [start] it. In this build
  * [start] returns [LustroStatus.DISABLED] and [stop] does nothing; both are
@@ -45,6 +45,13 @@ public class Lustro internal constructor() {
      * returns [LustroStatus.DISABLED]. Idempotent.
      */
     public fun start(): LustroStatus = LustroStatus.DISABLED
+
+    /**
+     * Returns where the debug server listens and its token. The no-op build has
+     * no server, so this always returns `null`.
+     */
+    @Suppress("FunctionOnlyReturningConstant") // A function, to match the :lustro facade.
+    public fun endpoint(): LustroEndpoint? = null
 
     /** Stops the debug server. No-op in this build. Idempotent. */
     public fun stop() {

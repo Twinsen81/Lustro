@@ -75,6 +75,45 @@ see [DECISIONS.md](DECISIONS.md).
   `[REDACTED]` with the rest of the JSON, opens empty in the console's editor,
   `user_email` is masked through `masked`, an edit with an empty key is a
   `400`, and `GET sqlite/databases` lists `androidx.work.workdb`.
+- **App code that works together with Lustro: a base URL that changes, the
+  server's endpoint, a `since` filter, and docs for dependency injection and
+  UI tests (wire protocol 1.14).** A sender's base URL was
+  a string fixed when the app built Lustro, so after a switch in the app's
+  server picker the Send form still sent to the old server.
+  `OkHttpSender.create(name, baseUrlProvider = { ... }) { client }` takes the
+  base URL as a function, which the tab calls for each send and each list of
+  the senders; the console reads the list again each time the Send form
+  opens. The URL is checked at send time: a function that throws, or returns
+  a URL that is not an absolute `http` or `https` URL, gets a `400` with
+  `field: baseUrl`. From Java, the factory is `createWithBaseUrlProvider`,
+  so `create(name, null, client)` still compiles. App code could get the
+  server's port and token only from the log or Lustro's private prefs file.
+  `Lustro.endpoint()` returns a `LustroEndpoint` with the host, the port, the
+  token, and the URL for a client on the device or through `adb forward`, or
+  `null` while the server does not listen; `lustro-noop` returns `null`. With
+  `bindAddress("0.0.0.0")`, its `lanHosts` and `lanUrls` give the device's
+  network addresses, and the `LustroToken` line adds ` lan=` and those URLs
+  after the token, so the line keeps the format that the CLI reads.
+  `GET network/transactions` takes `since`, in epoch milliseconds, and lists
+  only the transactions that started at or after it. A new page, "From your
+  app's code", shows a Hilt module that builds Lustro in
+  `Application.onCreate()` without a dependency cycle, a developer screen
+  that shows how to connect, and an instrumentation test that reads the
+  requests of one step with `since`, and says what to do when the test's
+  WireMock server also wants port 8080. The sample has an "App server" sender
+  whose base URL is a value in its settings file, and its Console screen
+  shows the server's URL from `endpoint()`. Verified on an API 28 emulator
+  with the debug sample: after the Preferences tab changed that value to
+  `https://httpbin.org`, `GET senders` listed it, and a send of `/get`
+  through "App server" went there; a value without a scheme got the `400`
+  on `baseUrl`, and an absolute URL was still sent. In the console, the Send
+  form showed the new base URL when it opened again. `since` with the
+  `startedAt` of one request listed only that request, and with `search`
+  too; `since=-5` got the `400` on `since`. The Console screen showed
+  `http://127.0.0.1:8080`, and its fallback text after Stop server. A build
+  with `bindAddress("0.0.0.0")` logged
+  `lan=http://192.168.232.2:8080,http://192.168.200.2:8080` after the token,
+  the CLI still read the line, and the Console screen showed the same URLs.
 - **An MCP server in the CLI, for agents that can only call MCP tools.**
   `lustro mcp` is a Model Context Protocol server on stdin and stdout. An
   agent client without a shell, such as Claude Desktop, starts it when a

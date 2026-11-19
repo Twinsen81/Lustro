@@ -20,14 +20,19 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.github.twinsen81.lustro.sample.ActionEvent
 import io.github.twinsen81.lustro.sample.CONSOLE_PORT
 import io.github.twinsen81.lustro.sample.SampleViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 @Composable
 internal fun ConsoleScreen(viewModel: SampleViewModel, latest: Map<String, ActionEvent>, onBack: () -> Unit) {
@@ -66,8 +71,19 @@ internal fun ConsoleScreen(viewModel: SampleViewModel, latest: Map<String, Actio
     }
 }
 
+private const val SERVER_URLS_REFRESH_MS = 2_000L
+
 @Composable
 private fun ServerCard(viewModel: SampleViewModel, running: Boolean, latest: Map<String, ActionEvent>) {
+    // Read again while the screen shows: the server binds later than this screen opens when
+    // another app holds the port for a moment, and binds again after each return to the
+    // foreground. Lustro.endpoint() can read the token file, so off the main thread.
+    val urls by produceState(emptyList<String>(), running) {
+        while (true) {
+            value = withContext(Dispatchers.IO) { viewModel.serverUrls() }
+            delay(SERVER_URLS_REFRESH_MS)
+        }
+    }
     SampleCard(Modifier.padding(horizontal = ScreenPadding)) {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(
@@ -79,7 +95,12 @@ private fun ServerCard(viewModel: SampleViewModel, running: Boolean, latest: Map
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
                 Text(if (running) "Running" else "Stopped", style = SampleText.cardTitle)
-                Text("127.0.0.1:$CONSOLE_PORT on the device", style = SampleText.small, color = palette.textMuted)
+                Text(
+                    urls.joinToString("\n").ifEmpty { "127.0.0.1:$CONSOLE_PORT on the device" },
+                    style = SampleText.small,
+                    color = palette.textMuted,
+                    modifier = Modifier.testTag("server-urls"),
+                )
             }
             val action = if (running) viewModel.stopServer else viewModel.startServer
             ActionControl(

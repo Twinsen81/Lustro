@@ -11,7 +11,7 @@ the protocol a stable public contract independent of the library's Kotlin API.
   A future incompatible revision becomes `/api/v2/`, and the old major stays
   alive for at least one major release.
 - The **minor** protocol version is reported at runtime in
-  `GET /api/v1/_meta` as `_meta.protocolVersion` (currently `1.13`).
+  `GET /api/v1/_meta` as `_meta.protocolVersion` (currently `1.14`).
 
 ## Contents
 
@@ -184,6 +184,16 @@ gives its shape.
   (`showInTabBar = false`) has no page: `GET /tab/<id>` answers `404`, as for
   an unknown tab, where it answered `200` with an empty content area. Its
   routes do not change.
+
+- **1.14** - `GET network/transactions` takes `since`, a time in milliseconds
+  since the Unix epoch, and then lists only the transactions with `startedAt`
+  at or after it, such as the requests that started after a step of a test.
+  The cursor is the one of the whole list, as with `search`. A value that is
+  not an integer of 0 or more gets a `400` with `field: since`. An app can give
+  a sender's base URL as a function, so `GET network/senders` and
+  `POST network/send` use the base URL that the app has at that time. A send
+  of a relative `url` gets a `400` with `field: baseUrl` when that function
+  fails or returns a URL that is not an absolute `http` or `https` URL.
 
 ## Plugin tabs
 
