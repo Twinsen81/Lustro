@@ -133,6 +133,13 @@ internal class LustroServer(
         return super.createClientHandler(finalAccept, ShutdownOnEofInputStream(inputStream))
     }
 
+    // NanoHTTPD gzips a text or JSON response when the client accepts gzip, which
+    // a browser always does. It calls finish() on the GZIPOutputStream but never
+    // close(), so each response leaks a Deflater's native memory until GC, and
+    // CloseGuard reports a StrictMode LeakedClosableViolation for each one. The
+    // clients are on localhost or the local network, so compression gains little.
+    override fun useGzipWhenAccepted(r: Response): Boolean = false
+
     /**
      * In-flight `/api/v1/` request count, including handlers still running after
      * their request timed out. Used by the lifecycle drain.
