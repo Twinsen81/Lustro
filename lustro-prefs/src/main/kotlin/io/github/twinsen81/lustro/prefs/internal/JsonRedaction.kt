@@ -17,7 +17,9 @@ internal object JsonRedaction {
     /**
      * [text] with the values of its sensitive fields replaced, or `null` when it is
      * not one JSON object or array, or has no sensitive field with a value to hide.
-     * The result is built again from the parse, so it is compact.
+     * The result is built again from the parse, so it is compact, and a number
+     * comes as the parser read it: `1.0` as `1`, and an integer past a long's
+     * range as a double, with fewer digits.
      */
     fun redact(text: String): String? {
         val start = text.indexOfFirst { !it.isWhitespace() }
@@ -33,7 +35,7 @@ internal object JsonRedaction {
                     is JSONArray -> redactArray(value)
                     else -> return null
                 }
-            if (changed) value.toString() else null
+            if (changed) unescapeSlashes(value.toString()) else null
         } catch (_: JSONException) {
             null
         } catch (_: StackOverflowError) {
@@ -41,6 +43,13 @@ internal object JsonRedaction {
             null
         }
     }
+
+    /**
+     * [json] with each `\/` written as `/`. Android's serializer escapes every `/`,
+     * so each `\/` in its output is an escaped slash, also after an escaped
+     * backslash (`\\\/`), and the URLs of the value show as they are in the file.
+     */
+    fun unescapeSlashes(json: String): String = json.replace("\\/", "/")
 
     // Returns whether it replaced a value.
     private fun redactObject(obj: JSONObject): Boolean {

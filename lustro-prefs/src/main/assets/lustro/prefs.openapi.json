@@ -681,7 +681,7 @@
           },
           "redacted": {
             "const": true,
-            "description": "Only under mask_sensitive, for a string value that is a JSON object or array with a sensitive field: value has the values of those fields, at any depth, replaced by [REDACTED], except a boolean or a null, and is rebuilt from the parse, so it is compact. bytes is the size of the value in the file. Never with masked. A client must not write the value back: it would replace the secrets with the placeholder."
+            "description": "Only under mask_sensitive, for a string value that is a JSON object or array with a sensitive field: value has the values of those fields, at any depth, replaced by [REDACTED], except a boolean or a null, and is rebuilt from the parse, so it is compact, and a number in it comes as the parser read it: 1.0 as 1, and an integer outside the range of a 64-bit long as a double, with fewer digits. bytes is the size of the value in the file. Never with masked. A client must not write the value back: it would replace the secrets with the placeholder."
           },
           "truncated": {
             "const": true,

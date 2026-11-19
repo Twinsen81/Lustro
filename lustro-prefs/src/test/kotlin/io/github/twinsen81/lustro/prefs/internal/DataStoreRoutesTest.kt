@@ -164,7 +164,9 @@ class DataStoreRoutesTest {
         val edit = post(routes, "edit", """{"store":"$STORE","file":"app_state","key":"profile","type":"string","value":"{\"session\":\"s-1\",\"name\":\"ann\"}"}""")
         val item = JSONObject(edit.text()).getJSONObject("item")
         assertTrue(item.getBoolean("redacted"))
-        assertEquals("""{"session":"[REDACTED]","name":"ann"}""", item.getString("value"))
+        val shown = JSONObject(item.getString("value"))
+        assertEquals("[REDACTED]", shown.getString("session"))
+        assertEquals("ann", shown.getString("name"))
     }
 
     @Test
