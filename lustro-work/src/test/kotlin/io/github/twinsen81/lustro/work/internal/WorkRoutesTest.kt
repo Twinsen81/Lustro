@@ -415,9 +415,10 @@ class WorkRoutesTest {
         assertMethodNotAllowed(routes, "prune", "GET", "POST")
         assertMethodNotAllowed(routes, "items/x", "POST", "GET")
         assertNull(routes.handle(io.github.twinsen81.lustro.DebugRequest("jobs", "GET")))
-        // A path with more segments, or an empty id, is no route.
+        // A path with more segments, or an empty id, is no route. One slash at the end does not count.
         assertNull(routes.handle(io.github.twinsen81.lustro.DebugRequest("items/a/b", "GET")))
-        assertNull(routes.handle(io.github.twinsen81.lustro.DebugRequest("items/", "GET")))
+        assertNull(routes.handle(io.github.twinsen81.lustro.DebugRequest("items//", "GET")))
+        assertEquals(200, routes.handle(io.github.twinsen81.lustro.DebugRequest("items/", "GET"))?.status)
         val off = WorkFixtures.get(routes, "metrics")
         assertEquals(404, off.status)
         assertEquals("metrics_off", off.json().getString("code"))

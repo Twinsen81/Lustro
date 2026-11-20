@@ -788,7 +788,9 @@ $tabsHtml
         if (allowed.isEmpty() || method in allowed) {
             return toNanoResponse(DebugResponse.notFound("Not found")).also { warnAboutUndeclaredParameters(tab, request, it) }
         }
-        val message = "${tab.id}/${request.path} takes ${allowed.joinToString(" or ")}, not $method"
+        // As the declared routes write it: no slash at the end, and the tab alone for its root.
+        val path = request.path.let { if (it.length > 1 && it.endsWith('/')) it.dropLast(1) else it }
+        val message = "${if (path.isEmpty()) tab.id else "${tab.id}/$path"} takes ${allowed.joinToString(" or ")}, not $method"
         return toNanoResponse(DebugResponse.error(message, status = 405)).also { it.addHeader(ALLOW_HEADER, allowed.joinToString(", ")) }
     }
 

@@ -85,7 +85,9 @@ class SqliteOpenApiDocumentTest {
                 assertEquals("$method $path", allowed, response!!.headers.get("Allow"))
             }
         }
-        for (path in listOf("nope", "rows/x", "databases/", "")) assertNull(path, tab.handle(DebugRequest(path, "GET")))
+        // One slash at the end does not count, so databases/ is databases, and databases// is no route.
+        for (path in listOf("nope", "rows/x", "databases//", "")) assertNull(path, tab.handle(DebugRequest(path, "GET")))
+        assertEquals("databases/", 200, tab.handle(DebugRequest("databases/", "GET"))?.status)
     }
 
     private data class Parameter(val location: String, val name: String, val required: Boolean, val type: String)

@@ -24,7 +24,9 @@ package io.github.twinsen81.lustro
  * segment in braces is a path parameter, which the route declares with [DebugRoute.path]. A
  * literal segment wins over a parameter, so `items/new` and `items/{id}` can both exist. A
  * segment that its parameter does not take, such as `items/x` for an int `{id}`, matches no
- * route, so the client gets `404`.
+ * route, so the client gets `404`. The path `""` declares the route at the tab root,
+ * `/api/v1/<tab id>`, such as the list and the create of a collection. The router ignores one
+ * slash at the end of a request's path, so `seed/` reaches the route `seed`.
  *
  * A mistake in the declarations, such as two routes with the same method and path, a path
  * parameter that the route does not declare, a JSON fragment that is not valid JSON, or a
@@ -134,7 +136,10 @@ public class DebugRoute internal constructor(
     internal var handler: DebugHandler? = null
     internal var open = true
 
-    /** The OpenAPI `operationId`. Without it, one made from the method and the path, such as `getSnapshot`. */
+    /**
+     * The OpenAPI `operationId`. Without it, one made from the method and the path, such as
+     * `getSnapshot`, or `getRoot` for the route at the tab root.
+     */
     public var operationId: String? = null
 
     /** A short summary of what the route does, for the OpenAPI document. */
@@ -180,8 +185,8 @@ public class DebugRoute internal constructor(
     }
 
     /**
-     * Describes the route's `200` response for the OpenAPI document: its [description], and the
-     * JSON Schema [schema] of its `application/json` body, or none. [declare] adds a body of
+     * Describes the route's success response for the OpenAPI document: its [description], and
+     * the JSON Schema [schema] of its `application/json` body, or none. [declare] adds a body of
      * another content type, such as the bytes of [DebugResponse.bytes], and the response's
      * headers:
      *
@@ -192,8 +197,9 @@ public class DebugRoute internal constructor(
      * }
      * ```
      *
-     * A route that answers another success status, such as `204`, has no way to say so here:
-     * the tab can change the generated document in its [DebugTab.schema].
+     * The response is `200` unless [DebugResponseSpec.status] names another success status,
+     * such as `response("The new item.", schema) { status = 201 }`. The handler still answers
+     * it, such as with `DebugResponse.ok(json, status = 201)`.
      */
     public fun response(description: String, schema: String? = null, declare: DebugResponseSpec.() -> Unit = {}) {
         checkOpen()
@@ -234,11 +240,14 @@ public class DebugRoute internal constructor(
         check(open) { "${describe()}: declare the route in its block" }
     }
 
-    internal fun describe(): String = "Tab ${routes.tab.id}, $method $template"
+    internal fun describe(): String = "Tab ${routes.tab.id}, $method $shownTemplate"
+
+    /** The path as the tab wrote it, with `""` for the tab root, which a message can't show as nothing. */
+    internal val shownTemplate: String get() = template.ifEmpty { "\"\"" }
 }
 
 /**
- * The `200` response of a route, for the OpenAPI document: [DebugRoute.response] declares it.
+ * The success response of a route, for the OpenAPI document: [DebugRoute.response] declares it.
  * Its bodies, one for each content type, and its headers are in the order of the declarations.
  */
 @ExperimentalDebugRoutes
@@ -250,6 +259,17 @@ public class DebugResponseSpec internal constructor(
     internal val contents = LinkedHashMap<String, String>()
     internal val headers = LinkedHashMap<String, Header>()
     internal var open = true
+
+    /**
+     * The status of the response, `200` by default: a success status from `200` to `299`, such
+     * as `201` for a route that creates an item. The document lists the response under it.
+     */
+    public var status: Int = 200
+        set(value) {
+            checkOpen()
+            check(value in 200..299) { "${route.describe()}: $value is not a success status" }
+            field = value
+        }
 
     /**
      * Adds a body of [contentType] that the JSON Schema [schema] describes. [contentType] is a

@@ -81,7 +81,9 @@ override fun routes(routes: DebugRoutes) {
     uses it, so it is marked `@ExperimentalDebugRoutes`, and the compiler stops a tab without
     `@OptIn(ExperimentalDebugRoutes::class)`. It is a Kotlin API: Java is not a target.
 - **Parameters.** `path`, `query`, and `body` declare them, as a `string`, `int`, `long`, or
-    `boolean`, and in a body also as `json`, which gives the handler the value's JSON text: use
+    `boolean`. The query and the body also take `double`, a decimal such as `0.35`, for a
+    threshold or a ratio: the router refuses `NaN`, the infinities, and text that is not a JSON
+    number, such as `0x1p3`. A body also takes `json`, which gives the handler the value's JSON text: use
     it for an object, or for a field that takes more than one JSON type, such as the SQLite
     tab's `rowid`, a whole number or a string of one, and describe it with `schema`. In
     the query and the body, `strings` declares a parameter that the request can repeat, such as
@@ -89,11 +91,19 @@ override fun routes(routes: DebugRoutes) {
     strings. Each returns a handle, and the handler reads the value with it: `call[id]`. A
     parameter is optional (`null` when absent) until `.required()` or `.withDefault(value)`.
     Options: `description`, `minLength`, `maxLength`, and `values` for a string, `min` and `max`
-    for a number, and `schema`, a JSON Schema that describes it in the document in place of the
-    one made from its type, such as `DebugRoutes.ref("Store")`.
-- **Empty values.** In the query or a form, an empty int, long, or boolean takes its default,
+    for a number (a `Long` for an int or a long, a `Double` for a double), and `schema`, a JSON
+    Schema that describes it in the document in place of the one made from its type, such as
+    `DebugRoutes.ref("Store")`.
+- **Empty values.** In the query or a form, an empty int, long, double, or boolean takes its default,
     and without a default gets a `400`: `?since=` usually comes from a variable with no value. An
     empty string is a string, which `minLength = 1` and `values` refuse.
+- **Paths.** A path is relative to the tab, such as `items/{id}`. The path `""` declares a route
+    at the tab root, `/api/v1/<tab id>`, such as `routes.get("")` to list a collection and
+    `routes.post("")` to add to it. Its path in the document is `/api/v1/<tab id>`, and its `405`
+    names the tab alone, such as `journals takes GET or POST, not PUT`. Its default `operationId`
+    is the method and `Root`, such as `getRoot`. The router ignores one
+    slash at the end of a request's path, so `POST /api/v1/<tab id>/seed/` reaches the route
+    `seed`. A path with two slashes at the end, such as `seed//`, gets `404`.
 - **Path parameters.** A segment that its parameter does not take, such as `items/x` for a
     `path.long("id")` or a value outside `values`, matches no route, so the client gets `404`, as
     for an id that names nothing.
@@ -114,7 +124,9 @@ override fun routes(routes: DebugRoutes) {
     parameters' `description`. `response(description, schema)` adds the success response's
     JSON Schema, and a block after it describes a body that is not JSON, such as
     `response("The file.") { content("image/png"); header("Content-Disposition", "attachment.") }`.
-    `component(name, schema)` adds a schema under `components/schemas`, and
+    The success response is `200`; `status` in the block names another success status, from
+    `200` to `299`, such as `response("The new item.", schema) { status = 201 }`, and the handler
+    answers it with `DebugResponse.ok(json, status = 201)`. `component(name, schema)` adds a schema under `components/schemas`, and
     `DebugRoutes.ref(name)` refers to it; a `$ref` can also point into one, such as
     `#/components/schemas/Envelope/properties/state`. `errors(404, 409)` lists the error statuses
     that the handler answers; the document already lists `400` when the router can refuse a
@@ -155,7 +167,10 @@ override fun routes(routes: DebugRoutes) {
 - A tab that routes by hand in `handle(request)` returns `null` for a method that a route does
     not take, as for a route that the tab does not have. When the tab's OpenAPI document declares
     the path with other methods, the client gets a `405` with an `Allow` header that lists them,
-    and otherwise a `404`.
+    and otherwise a `404`. The server reads the document's paths as the declared routes do: the
+    path `/api/v1/<tab id>` is the tab root, which the tab gets as the path `""`, and one slash
+    at the end of a path does not count. The tab itself gets the path as the request gave it,
+    such as `seed/`.
 - Make the responses with the `DebugResponse`
     factories (`ok`, `json { ... }`, `text`, `bytes`, `notFound`, `error`). `error(message,
     status)` gives the error envelope, and its `error` type follows from the status:

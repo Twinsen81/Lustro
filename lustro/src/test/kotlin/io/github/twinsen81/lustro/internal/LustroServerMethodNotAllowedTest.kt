@@ -54,8 +54,10 @@ class LustroServerMethodNotAllowedTest {
                         "dynamic",
                         """
                         {"openapi":"3.1.0","paths":{
+                          "/api/v1/dynamic":{"get":{},"post":{}},
                           "/api/v1/dynamic/items/{id}":{"get":{},"delete":{}},
                           "/api/v1/dynamic/items/special":{"post":{}},
+                          "/api/v1/dynamics":{"put":{}},
                           "/api/v1/elsewhere/items":{"post":{}}
                         }}
                         """.trimIndent(),
@@ -136,6 +138,29 @@ class LustroServerMethodNotAllowedTest {
         // The tab returns null for a declared method too: then the route is a 404.
         assertEquals(404, call("GET", "dynamic/items/7").use { it.code })
         assertEquals(404, call("GET", "dynamic/elsewhere/items").use { it.code })
+    }
+
+    @Test
+    fun `the root path of a document gets a 405 that names the tab alone`() {
+        for (path in listOf("dynamic", "dynamic/")) {
+            call("PUT", path).use {
+                assertEquals(path, 405, it.code)
+                assertEquals("GET, POST", it.header("Allow"))
+                assertEquals("dynamic takes GET or POST, not PUT", JSONObject(it.body!!.string()).getString("message"))
+            }
+        }
+        assertEquals(404, call("GET", "dynamic").use { it.code })
+    }
+
+    @Test
+    fun `one slash at the end of the path does not count`() {
+        call("POST", "dynamic/items/7/").use {
+            assertEquals(405, it.code)
+            assertEquals("GET, DELETE", it.header("Allow"))
+            assertEquals("dynamic/items/7 takes GET or DELETE, not POST", JSONObject(it.body!!.string()).getString("message"))
+        }
+        assertEquals("POST", call("GET", "dynamic/items/special/").use { it.header("Allow") })
+        assertEquals(404, call("GET", "dynamic/items/special//").use { it.code })
     }
 
     private fun call(method: String, path: String): Response {

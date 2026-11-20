@@ -61,7 +61,10 @@ character outside printable ASCII. The status and the body do not change: a
 body field, because the envelope schemas are closed. A tab without an OpenAPI
 document gets no check, and neither does a route that its document does not
 describe. A path segment in braces in the document, such as `{id}`, matches
-any one segment.
+any one segment. The document's path `/api/v1/<tab>` is the tab root, which
+the server reaches for both `/api/v1/<tab>` and `/api/v1/<tab>/`. One slash at
+the end of a path does not count, in the document or in the request, so
+`items/` is `items`.
 
 ## A method that a route does not take
 
@@ -85,7 +88,10 @@ a template, whatever the method: when the document declares `GET items/{id}`
 and `POST items/special`, a `GET items/special` that the tab does not handle
 gets `405` with `Allow: POST`. The `Lustro-Warning` check differs: it looks
 only at the operations with the request's method, so for a `GET items/special`
-that the tab handles, it reads the parameters of `GET items/{id}`.
+that the tab handles, it reads the parameters of `GET items/{id}`. The paths
+match as for the `Lustro-Warning` check: the tab root counts, and its message
+names the tab alone, such as `journals takes GET or POST, not PUT`, and one
+slash at the end of the path does not count, also in the message.
 
 The two polling envelopes differ in what `delta` carries. In the cursor
 envelope it is the whole current list, which fits a list whose items change. In

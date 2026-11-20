@@ -14,6 +14,47 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Added
 
+- **Declared routes take a route at the tab root, a decimal parameter, a
+  success status other than `200`, and a slash at the end of the path
+  (experimental).** A large app that moved its tabs to declared routes kept a
+  workaround in its own tab code for each of four gaps. The path `""` now
+  declares a route at the tab root, such as `routes.get("")` and
+  `routes.post("")` for a collection at `/api/v1/journals`: its path in the
+  document is `/api/v1/journals`, its default `operationId` is `getRoot`, and
+  its `405` names the tab alone, `journals takes GET or POST, not PUT`. Before,
+  `routes.get("")` threw `IllegalStateException`. `double(name) { min; max }`
+  declares a decimal parameter, such as `0.35`, in the query, a form, and a
+  JSON body: the router checks the type and the range, refuses `NaN`, the
+  infinities, a number too large for a `Double`, and text that is not a JSON
+  number, such as `0x1p3`, and the document shows `"type": "number"` with
+  `minimum` and `maximum`. `status` in the `response { }` block, such as
+  `response("The new item.", schema) { status = 201 }`, puts that status in the
+  document in place of `200`; a status outside `200` to `299` throws
+  `IllegalStateException`. The router ignores one slash at the end of a
+  request's path, so `POST seed/` reaches the route `seed`, where it got `404`.
+  The server reads a tab's OpenAPI document in the same way, generated or
+  static: the root path `/api/v1/<tab>`, which it left out, now gets the
+  `Lustro-Warning` for an unknown query parameter and the server's own `405`,
+  and a path with a slash at the end matches the path without it. The built-in
+  tabs and their documents do not change, so the wire protocol stays at 1.16;
+  their routes now also answer a path with one slash at the end, such as
+  `GET network/transactions/`. Verified on an emulator (API 34) with a
+  temporary headless tab in the sample, through the debug server: `GET
+  journals` and `GET journals/?minScore=0.8` answered `200` with the default
+  `0.35` and with `0.8`; `?minScore=1.5`, `NaN`, and `1e999` answered `400`
+  with `field: minScore` and the messages `must be from 0.0 to 1.0`, `must be a
+  number`, and `must be a finite number`; `?minScor=0.5` got
+  `Lustro-Warning: unknown query parameter "minScor"`; `POST journals` with
+  `{"name":"Travel","weight":0.25}` and with the form `name=Work&weight=2.5`
+  answered `201`, and with `"weight":"0.5"` and `-1` answered `400` with
+  `field: weight`; `PUT journals` and `DELETE journals/` answered `405` with
+  `Allow: GET, POST` and `journals takes GET or POST, not PUT`; `POST
+  journals/seed/` answered `200`, `GET journals/seed/` `405` with `journals/seed
+  takes POST, not GET`, and `POST journals/seed//` `404`; `GET
+  network/transactions/?limt=1` answered `200` with the warning; and
+  `GET journals/_schema` had the path `/api/v1/journals` with `getRoot` and
+  `postRoot`, `minScore` as `{"type": "number", "format": "double", "minimum":
+  0.0, "maximum": 1.0, "default": 0.35}`, and `201` for `POST`.
 - **The CLI refuses an option that the app's wire protocol is too old for,
   instead of a wrong result.** An app on an older protocol ignores a request
   field or a query parameter that its protocol does not have, and answers

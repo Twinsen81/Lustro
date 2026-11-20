@@ -12,8 +12,10 @@ import org.json.JSONObject
  * of the mistake. When the tab has no route for a request, the server answers `405` instead
  * of `404` if the document declares the path with other [methods].
  *
- * Only the paths under `/api/v1/<tabId>/` count. A path segment in braces, such as `{id}`,
- * matches any one segment, and a literal segment wins over a template.
+ * Only the paths of the tab count: `/api/v1/<tabId>`, its root, and the paths under it. A path
+ * segment in braces, such as `{id}`, matches any one segment, and a literal segment wins over
+ * a template. One slash at the end of a path does not count, in the document and in a
+ * request, as the declared routes ignore it: `seed/` is `seed`.
  */
 internal class DeclaredQueryParameters private constructor(private val operations: List<Operation>) {
 
@@ -28,7 +30,7 @@ internal class DeclaredQueryParameters private constructor(private val operation
      */
     fun undeclared(method: String, subPath: String, given: Collection<String>): List<String> {
         val requested = method.lowercase()
-        val segments = subPath.split('/')
+        val segments = segmentsOf(subPath)
         val operation =
             operations
                 .filter { it.method == requested && matches(it.segments, segments) }
@@ -44,7 +46,7 @@ internal class DeclaredQueryParameters private constructor(private val operation
      * literal path wins whatever its methods, as in OpenAPI.
      */
     fun methods(subPath: String): List<String> {
-        val segments = subPath.split('/')
+        val segments = segmentsOf(subPath)
         val matching = operations.filter { matches(it.segments, segments) }
         val literals = matching.maxOfOrNull { it.literals } ?: return emptyList()
         val declared = matching.filter { it.literals == literals }.mapTo(HashSet()) { it.method }
@@ -58,6 +60,16 @@ internal class DeclaredQueryParameters private constructor(private val operation
     companion object {
         private val METHODS = setOf("get", "put", "post", "delete", "options", "head", "patch", "trace")
         private val TEMPLATE = Regex("\\{[^/{}]+\\}")
+
+        /**
+         * The segments of a sub-path, without one slash at its end: none for the tab root, `""`.
+         * `"/"` keeps its slash, because the server gives `""` for both `/api/v1/<tab>` and
+         * `/api/v1/<tab>/`, so `"/"` came from a second slash.
+         */
+        private fun segmentsOf(subPath: String): List<String> {
+            val path = if (subPath.length > 1 && subPath.endsWith('/')) subPath.dropLast(1) else subPath
+            return if (path.isEmpty()) emptyList() else path.split('/')
+        }
 
         /**
          * The warning for an undeclared [name]. The name is a quoted string: a backslash
@@ -86,12 +98,17 @@ internal class DeclaredQueryParameters private constructor(private val operation
                     return null
                 }
             val paths = root.optJSONObject("paths") ?: return null
-            val prefix = "/api/v1/$tabId/"
+            val tabPath = "/api/v1/$tabId"
             val operations = ArrayList<Operation>()
             for (path in paths.keys()) {
-                if (!path.startsWith(prefix)) continue
+                val subPath =
+                    when {
+                        path == tabPath -> ""
+                        path.startsWith("$tabPath/") -> path.substring(tabPath.length + 1)
+                        else -> continue
+                    }
                 val item = paths.optJSONObject(path) ?: continue
-                val segments = path.removePrefix(prefix).split('/').map { if (TEMPLATE.matches(it)) null else it }
+                val segments = segmentsOf(subPath).map { if (TEMPLATE.matches(it)) null else it }
                 val shared = queryNames(root, item.optJSONArray("parameters"))
                 for (method in item.keys()) {
                     if (method !in METHODS) continue
