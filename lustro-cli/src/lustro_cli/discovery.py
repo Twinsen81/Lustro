@@ -259,7 +259,7 @@ def zip_entry_names(read_tail: Callable[[int], Optional[bytes]]) -> Optional[Lis
     ZIP64 file, which an APK can't be, gets ``None``.
     """
     tail = read_tail(_EOCD_SEARCH)
-    if tail is None:
+    if tail is None or len(tail) < _EOCD_SIZE:
         return None
     # The comment can contain the signature, so the EOCD is the one whose comment ends the file.
     eocd = tail.rfind(_EOCD_SIGNATURE, 0, len(tail) - _EOCD_SIZE + len(_EOCD_SIGNATURE))

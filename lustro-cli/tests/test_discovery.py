@@ -404,6 +404,8 @@ def test_a_file_smaller_than_the_first_read_is_read_whole():
         b"",
         b"tail: base.apk: Permission denied\n",
         apk_bytes(APP_ENTRIES)[:-1],  # the EOCD is not at the end
+        b"PK\x05\x06" + b"x" * 13,  # shorter than an EOCD
+        b"xPK\x05\x06" + b"\0" * 10,
     ],
 )
 def test_what_is_not_a_zip_gives_no_names(data):

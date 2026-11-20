@@ -124,7 +124,7 @@ answers, and prints the endpoint that the CLI reaches it at. A ready line from a
 the app names a token and a port that may not answer, so the CLI does not trust the first line
 that it finds. When the time is over, it prints the cause and exits with its code (see [Exit
 codes](#exit-codes)). A `401` or another `4xx` other than `429` ends the wait at once with exit 1. Pass `--package`: without it, the CLI checks only the app in the
-foreground, which can be the launcher. A `404` for `_meta` is not an exception: Lustro always has
+foreground, which can be the launcher. A `404` for `_meta` does not end the wait: Lustro always has
 that route, so the `404` is from another server on the port, such as the debug server of another
 app on the port that a stopped app's prefs keep. `ready` waits, and at the timeout prints the cause
 and says that another server answers on the port.

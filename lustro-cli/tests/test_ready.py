@@ -307,36 +307,39 @@ def _prefs(port):
     )
 
 
-def _other_server_text(port):
-    return "nother server answers on http://127.0.0.1:{}: it answered 404 to GET /api/v1/_meta, a route that " \
-        "every Lustro server has.\n".format(port)
+def _other_server_text(where):
+    return "nother server answers on {}: it answered 404 to GET /api/v1/_meta, a route that every Lustro " \
+        "server has.\n".format(where)
 
 
 def test_ready_waits_while_another_server_answers_on_the_port_and_prints_the_cause(other_server, monkeypatch, capsys):
-    # The app is stopped, and another app's server listens on the port that its prefs keep.
+    # The app is stopped, and another app's server listens on the port that its prefs keep. The
+    # forward to that port has another local port, as when another device's forward holds 8080.
     port = other_server.server_address[1]
-    FakeAdb(monkeypatch, dict(HEALTHY, **{PIDOF: "", RUN_AS: _prefs(port)}))
+    FakeAdb(monkeypatch, dict(HEALTHY, **{PIDOF: "", RUN_AS: _prefs(8080)}))
+    monkeypatch.setattr(cli, "forwarded_ports", lambda device_port, device: [port] if device_port == 8080 else [])
     started = time.monotonic()
     assert _ready("--package", PACKAGE) == exitcodes.NOT_REACHABLE
     assert time.monotonic() - started >= 0.2
     assert other_server.requests > 1
     cause = _cause(capsys)
     assert cause.startswith(PACKAGE + " is not running: start it.")
-    assert cause.endswith(" A" + _other_server_text(port))
+    assert cause.endswith(" A" + _other_server_text("port 8080 of the device (through http://127.0.0.1:{})".format(port)))
 
 
 def test_ready_says_that_another_server_answers_when_adb_finds_no_cause(other_server, monkeypatch, capsys):
+    # Without adb's forward, a command connects to the app's port on this computer.
     port = other_server.server_address[1]
     FakeAdb(monkeypatch, dict(HEALTHY, **{RUN_AS: _prefs(port)}))
     assert _ready("--package", PACKAGE) == exitcodes.NOT_REACHABLE
-    assert _cause(capsys) == "a" + _other_server_text(port)
+    assert _cause(capsys) == "a" + _other_server_text("http://127.0.0.1:{}".format(port))
 
 
 def test_ready_with_a_port_where_another_server_answers_and_no_adb_checks(other_server, monkeypatch, capsys):
     adb = FakeAdb(monkeypatch, HEALTHY)
     port = other_server.server_address[1]
     assert _ready("--port", str(port), "--token", TOKEN) == exitcodes.NOT_REACHABLE
-    assert _cause(capsys) == "a" + _other_server_text(port)
+    assert _cause(capsys) == "a" + _other_server_text("http://127.0.0.1:{}".format(port))
     assert not any(call.endswith("get-state") or call in (PM_PATH, TAIL, PIDOF) for call in adb.calls)
 
 

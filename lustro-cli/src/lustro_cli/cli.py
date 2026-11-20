@@ -541,17 +541,30 @@ def _with_current_token(args: argparse.Namespace, endpoint: Endpoint) -> Endpoin
 
 
 def _build_client(args: argparse.Namespace, *, check_app: bool = True) -> LustroClient:
+    return _client_through_forward(args, check_app=check_app)[0]
+
+
+def _client_through_forward(
+    args: argparse.Namespace, *, check_app: bool = True
+) -> Tuple[LustroClient, Optional[int]]:
+    """The client of :func:`_build_client`, and the app's port on the device when the
+    client connects to it through an adb forward, else ``None``."""
     endpoint = _build_endpoint(args, check_app=check_app)
+    device_port = None
     # The app's port is on the device. Without --port, connect through an adb
     # forward to it on the selected device, and make one when there is none: the
     # same port number on the computer can be another device's forward.
     if args.port is None and endpoint.host in LOOPBACK_HOSTS:
-        endpoint = endpoint._replace(host=DEFAULT_HOST, port=_client_local_port(endpoint.port, args.device))
+        local_port = _client_local_port(endpoint.port, args.device)
+        if local_port is not None:
+            device_port = endpoint.port
+        endpoint = endpoint._replace(host=DEFAULT_HOST, port=endpoint.port if local_port is None else local_port)
     # A token from the ready line is stale when the app was installed again and
     # the device dropped the new line. On a 401, the client tries the app's prefs.
     discovered = _token_was_discovered(args)
     refresh = (lambda: token_from_prefs(args.device, getattr(args, "package", None))) if discovered else None
-    return LustroClient(endpoint.base_url, endpoint.token, refresh_token=refresh, on_warning=_print_warning)
+    client = LustroClient(endpoint.base_url, endpoint.token, refresh_token=refresh, on_warning=_print_warning)
+    return client, device_port
 
 
 def _cause_from_adb(args: argparse.Namespace) -> Optional[DiscoveryError]:
@@ -797,13 +810,14 @@ def _no_forward_error(device_port: int, err: str) -> str:
 _DEVICE_HINT = "Pass --device SERIAL when more than one device is connected."
 
 
-def _client_local_port(device_port: int, device: Optional[str]) -> int:
-    """The local port that a command connects to, for the app's ``device_port``."""
+def _client_local_port(device_port: int, device: Optional[str]) -> Optional[int]:
+    """The local port of the adb forward that a command connects through, for the
+    app's ``device_port``, or ``None`` without adb: there is then no device to forward
+    to, and the server is on this computer."""
     try:
         local_port, err = _forward_to_app(device_port, device)
     except FileNotFoundError:
-        # Without adb there is no device to forward to: the server is local.
-        return device_port
+        return None
     if err:
         raise ForwardFailed(
             "connection_failed",
@@ -916,7 +930,7 @@ def cmd_ready(args: argparse.Namespace) -> int:
     deadline = time.monotonic() + args.timeout
     while True:
         try:
-            client = _build_client(args, check_app=False)
+            client, device_port = _client_through_forward(args, check_app=False)
             # A server that does not answer, such as an app stopped at a breakpoint,
             # would otherwise hold the request for the client's own timeout.
             client.timeout = max(deadline - time.monotonic(), READY_INTERVAL)
@@ -926,7 +940,11 @@ def cmd_ready(args: argparse.Namespace) -> int:
             # Every Lustro server routes _meta, so a 404 there is from another server,
             # such as the one of another app on the port that the app's prefs keep from
             # its last start. The app gets that port, or another one, when it starts.
-            other_server = client.base_url if isinstance(exc, LustroError) and exc.status == 404 else None
+            other_server = None
+            if isinstance(exc, LustroError) and exc.status == 404:
+                other_server = client.base_url
+                if device_port is not None:
+                    other_server = "port {} of the device (through {})".format(device_port, client.base_url)
             # An error response other than a busy or failing server, such as a 401 for a
             # --token that is not the app's, does not change when ready tries again.
             if (
