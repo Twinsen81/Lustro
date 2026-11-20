@@ -135,7 +135,9 @@ class SqliteDebugTabServerTest {
         val titles = db.rawQuery("SELECT title FROM notes ORDER BY id", null).use { c -> buildList { while (c.moveToNext()) add(c.getString(0)) } }
         assertEquals(listOf("exec", "edit", "from the app"), titles)
         // A GET can't write: the routes that write take POST only.
-        assertEquals(405, get("exec?db=app&sql=DELETE%20FROM%20notes").code)
+        val wrongMethod = get("exec?db=app&sql=DELETE%20FROM%20notes")
+        assertEquals(405, wrongMethod.code)
+        assertEquals("POST", wrongMethod.header("Allow"))
     }
 
     @Test

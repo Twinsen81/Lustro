@@ -5,14 +5,11 @@ import io.github.twinsen81.lustro.DebugResponse
 
 /** The routes of the Screen tab, under `/api/v1/screen/`. */
 internal class ScreenRoutes(private val source: ScreenSource) {
-    fun handle(request: DebugRequest): DebugResponse? {
-        val expected = METHODS[request.path] ?: return null
-        if (request.method.uppercase() != expected) {
-            return DebugResponse.error("${request.path} takes $expected", status = 405)
-        }
-        return try {
-            when (request.path) {
-                "tree" -> tree(request)
+    // A wrong method is null too: the server answers 405 from screen.openapi.json.
+    fun handle(request: DebugRequest): DebugResponse? =
+        try {
+            when ("${request.method.uppercase()} ${request.path}") {
+                "GET tree" -> tree(request)
                 else -> null
             }
         } catch (e: RouteException) {
@@ -31,7 +28,6 @@ internal class ScreenRoutes(private val source: ScreenSource) {
             Thread.currentThread().interrupt()
             DebugResponse.error("The request timed out or the server stopped", status = 504)
         }
-    }
 
     private fun tree(request: DebugRequest): DebugResponse {
         val merged = boolean(request, "merged", default = true)
@@ -65,8 +61,4 @@ internal class ScreenRoutes(private val source: ScreenSource) {
         val field: String? = null,
         val hint: String? = null,
     ) : Exception(message)
-
-    private companion object {
-        val METHODS: Map<String, String> = mapOf("tree" to "GET")
-    }
 }

@@ -747,8 +747,23 @@ $tabsHtml
                 // Thrown (Errors such as TODO() included) -> enveloped 500, logged WARN.
                 Log.w(TAG, "Tab ${tab.id} handle() threw for path '$subPath'", t)
                 DebugResponse.error("Internal error", status = 500)
-            } ?: DebugResponse.notFound("Not found")
+            } ?: return noRoute(tab, request)
         return toNanoResponse(response).also { warnAboutUndeclaredParameters(tab, request, it) }
+    }
+
+    /**
+     * The answer when [tab] has no route for [request]: a `405` with an `Allow` header when
+     * the tab's schema declares the path with other methods, because a `404` tells a client
+     * that the path does not exist. Else a `404`.
+     */
+    private fun noRoute(tab: DebugTab, request: DebugRequest): Response {
+        val method = request.method.uppercase()
+        val allowed = declaredParameters(tab)?.methods(request.path).orEmpty()
+        if (allowed.isEmpty() || method in allowed) {
+            return toNanoResponse(DebugResponse.notFound("Not found")).also { warnAboutUndeclaredParameters(tab, request, it) }
+        }
+        val message = "${tab.id}/${request.path} takes ${allowed.joinToString(" or ")}, not $method"
+        return toNanoResponse(DebugResponse.error(message, status = 405)).also { it.addHeader(ALLOW_HEADER, allowed.joinToString(", ")) }
     }
 
     /**
@@ -881,6 +896,7 @@ $tabsHtml
     private companion object {
         private const val TAG = "LustroServer"
         private const val WARNING_HEADER = "Lustro-Warning"
+        private const val ALLOW_HEADER = "Allow"
         private const val ICON_ASSET = "lustro-icon-transparent.png"
         private const val DEFAULT_APP_NAME = "App"
 

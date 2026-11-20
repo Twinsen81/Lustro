@@ -10,19 +10,16 @@ import org.json.JSONObject
 
 /** The routes of the Preferences tab, under `/api/v1/prefs/`. */
 internal class PrefsRoutes(private val registry: PrefsRegistry) {
-    fun handle(request: DebugRequest): DebugResponse? {
-        val expected = METHODS[request.path] ?: return null
-        if (request.method.uppercase() != expected) {
-            return DebugResponse.error("${request.path} takes $expected", status = 405)
-        }
-        return try {
-            when (request.path) {
-                "files" -> files()
-                "entries" -> entries(request)
-                "entry" -> entry(request)
-                "edit" -> edit(body(request))
-                "delete" -> delete(body(request))
-                "clear" -> clear(body(request))
+    // A wrong method is null too: the server answers 405 from prefs.openapi.json.
+    fun handle(request: DebugRequest): DebugResponse? =
+        try {
+            when ("${request.method.uppercase()} ${request.path}") {
+                "GET files" -> files()
+                "GET entries" -> entries(request)
+                "GET entry" -> entry(request)
+                "POST edit" -> edit(body(request))
+                "POST delete" -> delete(body(request))
+                "POST clear" -> clear(body(request))
                 else -> null
             }
         } catch (e: RouteException) {
@@ -32,7 +29,6 @@ internal class PrefsRoutes(private val registry: PrefsRegistry) {
         } catch (e: WriteFailedException) {
             DebugResponse.error(e.message.orEmpty(), status = 500)
         }
-    }
 
     private fun files(): DebugResponse {
         val files = registry.files()
@@ -204,16 +200,6 @@ internal class PrefsRoutes(private val registry: PrefsRegistry) {
     ) : Exception(message)
 
     companion object {
-        private val METHODS =
-            mapOf(
-                "files" to "GET",
-                "entries" to "GET",
-                "entry" to "GET",
-                "edit" to "POST",
-                "delete" to "POST",
-                "clear" to "POST",
-            )
-
         val ValuePolicy.wireName: String
             get() =
                 when (this) {

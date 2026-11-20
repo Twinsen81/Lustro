@@ -637,10 +637,16 @@ class NetworkTrafficStoreTest {
         assertEquals(listOf("r1"), store.getMockRules().map { it.id })
         assertTrue(store.getMockRules().single().enabled)
 
-        store.toggleMockRule("r1")
+        assertTrue(store.toggleMockRule("r1"))
         assertFalse(store.getMockRules().single().enabled)
 
-        store.removeMockRule("r1")
+        // An id that no rule has changes nothing, so the rules revision stays as it is.
+        val revision = store.getRulesRevision()
+        assertFalse(store.toggleMockRule("r2"))
+        assertFalse(store.removeMockRule("r2"))
+        assertEquals(revision, store.getRulesRevision())
+
+        assertTrue(store.removeMockRule("r1"))
         assertTrue(store.getMockRules().isEmpty())
     }
 

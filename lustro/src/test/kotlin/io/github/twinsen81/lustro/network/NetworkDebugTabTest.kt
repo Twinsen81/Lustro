@@ -773,6 +773,47 @@ class NetworkDebugTabTest {
     }
 
     @Test
+    fun `toggle and delete of an id that no rule has are a 404 that names the field, and change nothing`() {
+        val tab = tab()
+        tab.handle(post("rules", """{"id":"kept","urlPattern":"/x"}"""))
+        val revision = tab.handle(get("transactions"))!!.json().getJSONObject("state").getJSONObject("mockRules").getLong("revision")
+
+        for (path in listOf("rules/toggle", "rules/delete")) {
+            val missing = tab.handle(post(path, """{"id":"kept-typo"}"""))!!
+            assertEquals(path, 404, missing.status)
+            assertEquals("not_found", missing.json().getString("error"))
+            assertEquals("id", missing.json().getString("field"))
+            assertTrue(missing.json().getString("message").contains("kept-typo"))
+        }
+
+        val state = tab.handle(get("transactions"))!!.json().getJSONObject("state")
+        assertEquals(revision, state.getJSONObject("mockRules").getLong("revision"))
+        val rule = tab.handle(get("rules"))!!.json().getJSONArray("items").getJSONObject(0)
+        assertEquals("kept", rule.getString("id"))
+        assertTrue(rule.getBoolean("enabled"))
+    }
+
+    @Test
+    fun `throttle answers 400 for a missing, wrong, negative, or too long delay, and keeps the one it has`() {
+        val tab = tab()
+        tab.handle(post("throttle", """{"delayMs":250}"""))
+        val bad = listOf("{}", """{"delayMs":-5}""", """{"delayMs":"x"}""", """{"delayMs":"2000"}""", """{"delayMs":1.5}""", """{"delayMs":null}""", """{"delayMs":true}""", """{"delayMs":600001}""", """{"delayMs":99999999}""")
+        for (body in bad) {
+            val response = tab.handle(post("throttle", body))!!
+            assertEquals(body, 400, response.status)
+            assertEquals(body, "delayMs", response.json().getString("field"))
+        }
+        assertEquals("delayMs is required", tab.handle(post("throttle", "{}"))!!.json().getString("message"))
+        assertTrue(tab.handle(post("throttle", """{"delayMs":"x"}"""))!!.json().getString("message").endsWith("was \"x\""))
+        assertEquals(400, tab.handle(post("throttle", "not json"))!!.status)
+        assertEquals(250, tab.handle(get("transactions"))!!.json().getJSONObject("state").getInt("throttleDelayMs"))
+
+        assertEquals(600000, tab.handle(post("throttle", """{"delayMs":600000}"""))!!.json().getInt("delayMs"))
+        assertEquals(2000, tab.handle(post("throttle", """{"delayMs":2000.0}"""))!!.json().getInt("delayMs"))
+        assertEquals(0, tab.handle(post("throttle", """{"delayMs":0}"""))!!.json().getInt("delayMs"))
+    }
+
+    @Test
     fun `overwrite-mode and throttle routes update state`() {
         val tab = tab()
         val ow = tab.handle(post("overwrite-mode", "{}"))!!.json()

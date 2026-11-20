@@ -61,9 +61,11 @@ public abstract class DebugTab {
     public open fun schema(): String? = null
 
     /**
-     * Handles a debug API [request]. Return `null` to produce an enveloped
-     * `404`; throwing anything, including an [Error] such as `TODO()`, produces an
-     * enveloped `500`.
+     * Handles a debug API [request]. Return `null` for a route that the tab does
+     * not have, also for a method that a route does not take: the client gets an
+     * enveloped `404`, or a `405` with an `Allow` header when the tab's OpenAPI
+     * document declares the path with other methods. Throwing anything, including
+     * an [Error] such as `TODO()`, produces an enveloped `500`.
      *
      * Invoked OFF the main thread, and calls may be concurrent (the runtime
      * dispatches multiple requests in flight), so a tab holding mutable state

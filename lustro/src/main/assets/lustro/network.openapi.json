@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Lustro Network debug tab",
-    "version": "1.15",
-    "description": "Capture, inspect, mock, throttle, and replay HTTP traffic, and inspect the messages of WebSocket connections. All routes are token-authenticated (Bearer header or HttpOnly cookie) and live under /api/v1/network. Errors use the shared error envelope."
+    "version": "1.16",
+    "description": "Capture, inspect, mock, throttle, and replay HTTP traffic, and inspect the messages of WebSocket connections. All routes are token-authenticated (Bearer header or HttpOnly cookie) and live under /api/v1/network. Errors use the shared error envelope. A method that a path below does not take gets a 405 with an Allow header that lists the methods it takes."
   },
   "servers": [
     { "url": "/", "description": "The Lustro debug server (loopback by default)." }
@@ -234,7 +234,7 @@
         "operationId": "deleteMockRule",
         "summary": "Delete a mock rule by id.",
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["id"], "properties": { "id": { "type": "string" } } } } } },
-        "responses": { "200": { "$ref": "#/components/responses/Ok" }, "400": { "$ref": "#/components/responses/Error" }, "401": { "$ref": "#/components/responses/Error" }, "403": { "$ref": "#/components/responses/Error" }, "413": { "$ref": "#/components/responses/Error" }, "503": { "$ref": "#/components/responses/Error" } }
+        "responses": { "200": { "$ref": "#/components/responses/Ok" }, "400": { "$ref": "#/components/responses/Error" }, "401": { "$ref": "#/components/responses/Error" }, "403": { "$ref": "#/components/responses/Error" }, "404": { "description": "No rule has the id, with field id. Nothing changed.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } } }, "413": { "$ref": "#/components/responses/Error" }, "503": { "$ref": "#/components/responses/Error" } }
       }
     },
     "/api/v1/network/rules/toggle": {
@@ -242,7 +242,7 @@
         "operationId": "toggleMockRule",
         "summary": "Toggle a mock rule's enabled flag.",
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["id"], "properties": { "id": { "type": "string" } } } } } },
-        "responses": { "200": { "$ref": "#/components/responses/Ok" }, "400": { "$ref": "#/components/responses/Error" }, "401": { "$ref": "#/components/responses/Error" }, "403": { "$ref": "#/components/responses/Error" }, "413": { "$ref": "#/components/responses/Error" }, "503": { "$ref": "#/components/responses/Error" } }
+        "responses": { "200": { "$ref": "#/components/responses/Ok" }, "400": { "$ref": "#/components/responses/Error" }, "401": { "$ref": "#/components/responses/Error" }, "403": { "$ref": "#/components/responses/Error" }, "404": { "description": "No rule has the id, with field id. Nothing changed.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } } }, "413": { "$ref": "#/components/responses/Error" }, "503": { "$ref": "#/components/responses/Error" } }
       }
     },
     "/api/v1/network/pause": {
@@ -263,8 +263,9 @@
       "post": {
         "operationId": "setThrottle",
         "summary": "Set a global pre-request throttle delay (ms).",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "delayMs": { "type": "integer", "minimum": 0 } } } } } },
-        "responses": { "200": { "description": "New delay.", "content": { "application/json": { "schema": { "type": "object", "required": ["status", "delayMs"], "properties": { "status": { "const": "ok" }, "delayMs": { "type": "integer" } } } } } }, "401": { "$ref": "#/components/responses/Error" }, "403": { "$ref": "#/components/responses/Error" }, "413": { "$ref": "#/components/responses/Error" }, "503": { "$ref": "#/components/responses/Error" } }
+        "description": "Holds each OkHttp request of the app for delayMs before it is sent; 0 turns the throttle off. A missing delayMs, or one that is not a whole number from 0 to 600000 (10 minutes), gets a 400 with field delayMs, and the throttle stays as it was.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["delayMs"], "properties": { "delayMs": { "type": "integer", "minimum": 0, "maximum": 600000 } } } } } },
+        "responses": { "200": { "description": "New delay.", "content": { "application/json": { "schema": { "type": "object", "required": ["status", "delayMs"], "properties": { "status": { "const": "ok" }, "delayMs": { "type": "integer" } } } } } }, "400": { "$ref": "#/components/responses/Error" }, "401": { "$ref": "#/components/responses/Error" }, "403": { "$ref": "#/components/responses/Error" }, "413": { "$ref": "#/components/responses/Error" }, "503": { "$ref": "#/components/responses/Error" } }
       }
     },
     "/api/v1/network/senders": {

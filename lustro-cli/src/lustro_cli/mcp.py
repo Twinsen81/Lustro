@@ -481,7 +481,7 @@ TOOLS: Tuple[Tool, ...] = (
         "Set the throttle",
         "Changes the app. Holds each OkHttp request for delay_ms milliseconds before it is sent; 0 turns the "
         "throttle off. The first line of list_requests shows the delay.",
-        _schema({"delay_ms": {"type": "integer", "minimum": 0}}, ("delay_ms",)),
+        _schema({"delay_ms": {"type": "integer", "minimum": 0, "maximum": 600000}}, ("delay_ms",)),
         _changes(destructive=False, idempotent=True),
         _set_throttle,
     ),

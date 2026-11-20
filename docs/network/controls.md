@@ -16,7 +16,7 @@ its process ends.
 | **⚠** | Shows when the app's capture filter left out a request: see [OkHttp capture setup](okhttp.md). | `lustro net state` |
 | **⏸ Pause** | Stops the recording of new requests and WebSocket messages, and changes to **▶ Resume**. The interceptor still runs: mock rules and the throttle still apply. | `lustro net pause` |
 | **Overwrite** | When on, a new request removes the earlier finished requests with the same method and URL path, so the list keeps one row for each endpoint. A request that is still in flight stays. The new row says how many rows it replaced. | `lustro net overwrite` |
-| Throttle | Holds each OkHttp request for the time that you select, from 500 ms to 1 min, before it goes out or before a mock rule answers or fails it. | `lustro net throttle <ms>` |
+| Throttle | Holds each OkHttp request for the time that you select, from 500 ms to 1 min, before it goes out or before a mock rule answers or fails it. | `lustro net throttle <ms>`, at most 600000 (10 min) |
 | **Clear** | Removes the captured requests and WebSocket connections, and starts the capture filter's counts again. The mock rules and the settings stay. Shortcut: **C**. | `lustro net clear` |
 
 **Use the throttle** to see a loading state, to test a timeout, or to find a race between two

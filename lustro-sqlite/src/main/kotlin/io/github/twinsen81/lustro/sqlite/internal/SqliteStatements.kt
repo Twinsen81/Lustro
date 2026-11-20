@@ -31,7 +31,7 @@ internal object SqliteStatements {
             exec ->
                 "PRAGMA is refused in exec: a pragma can change a setting of the app's connection, such as foreign_keys or query_only. " +
                     "Read a pragma with POST query"
-            else -> processPragma(sql, word.end)
+            else -> queryPragma(sql, word.end)
         }
     }
 
@@ -47,8 +47,11 @@ internal object SqliteStatements {
     }
 
     // A few pragmas set a value for every connection of the process, the app's too, and SQLite
-    // applies them while it compiles the statement. The name can be quoted, and have a schema.
-    private fun processPragma(sql: String, from: Int): String? {
+    // applies them while it compiles the statement. A pragma with a value, `= value` or `(value)`,
+    // sets it, but for the few whose value names what to read. On the read-only connection a set
+    // can fail with a lock error that looks like the server's fault, such as journal_mode's. The
+    // name can be quoted, and have a schema.
+    private fun queryPragma(sql: String, from: Int): String? {
         var start = skip(sql, from, semicolons = false)
         var end = nameEnd(sql, start) ?: return UNREADABLE_PRAGMA
         val dot = skip(sql, end, semicolons = false)
@@ -57,7 +60,10 @@ internal object SqliteStatements {
             end = nameEnd(sql, start) ?: return UNREADABLE_PRAGMA
         }
         val name = sql.substring(start, end).let { if (it.first() in QUOTES) it.substring(1, it.length - 1) else it }.lowercase(Locale.ROOT)
-        return if (name in PROCESS_PRAGMAS) "PRAGMA $name is refused: it changes a setting of every SQLite connection of the app" else null
+        if (name in PROCESS_PRAGMAS) return "PRAGMA $name is refused: it changes a setting of every SQLite connection of the app"
+        val value = skip(sql, end, semicolons = false)
+        val sets = value < sql.length && (sql[value] == '=' || sql[value] == '(') && name !in READ_ARGUMENT_PRAGMAS
+        return if (sets) "PRAGMA $name with a value is refused: it sets the pragma, and query only reads. Read the value with PRAGMA $name" else null
     }
 
     // The end of a name at [from]: a word, or a quoted name, or null when there is none.
@@ -151,4 +157,19 @@ internal object SqliteStatements {
 
     // The pragmas whose value is the process's: SQLite's heap limits and its directory for temporary files.
     private val PROCESS_PRAGMAS = setOf("hard_heap_limit", "soft_heap_limit", "temp_store_directory", "data_store_directory")
+
+    // The pragmas whose value is an argument of the read, such as the table of table_info(notes).
+    private val READ_ARGUMENT_PRAGMAS =
+        setOf(
+            "foreign_key_check",
+            "foreign_key_list",
+            "index_info",
+            "index_list",
+            "index_xinfo",
+            "integrity_check",
+            "quick_check",
+            "table_info",
+            "table_list",
+            "table_xinfo",
+        )
 }

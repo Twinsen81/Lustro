@@ -101,8 +101,11 @@ When the app also reads the flags, give it a thread-safe view of them. The sampl
 ## 4. Route the requests
 
 `handle(request)` gets every request to `/api/v1/flags/...`, with `request.path` set to the part
-after `flags/`. Return `null` for a route that the tab does not have: the client gets a `404` in the
-error envelope.
+after `flags/`. Return `null` for a route that the tab does not have, and for a method that a route
+does not take. The client gets a `404` in the error envelope, or, when `flags.openapi.json`
+([step 10](#10-describe-the-routes-in-openapi)) declares the path with another method, a `405` with
+an `Allow` header that lists the methods of the path. So `GET flags/toggle` gets `405` and
+`Allow: POST`, and the tab needs no table of methods of its own.
 
 ```kotlin
     override fun handle(request: DebugRequest): DebugResponse? {
@@ -153,6 +156,15 @@ Advance the sequence only when the list changes, because each advance sends the 
 every poller again. A value that is not part of the list goes in the envelope's `state`. For a list
 that only grows at its end, such as a log, use `DebugResponse.streamEnvelope`: a poll then gets
 only the new entries.
+
+Make every cursor that a client sends back with these two helpers, not with a number of the tab's
+own. The page keeps its cursor when the app restarts, and sends it with the next poll. A cursor of
+the helpers carries the epoch of the process, so the new process sees a cursor from before the
+restart as foreign and answers `reset` with the whole list. A tab that sends its own sequence
+number, such as `?since=42`, gets the old 42 from the page, while the new process counts from 1
+again: the page shows none of the new process's first 42 items. The helpers pick the epoch once for
+each process. A store that the app can make again within one process passes its own `epoch`, made
+when it is created, for example with `Random.nextLong()`.
 
 ## 6. Change state on `POST`
 

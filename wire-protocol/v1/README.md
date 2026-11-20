@@ -11,7 +11,7 @@ the protocol a stable public contract independent of the library's Kotlin API.
   A future incompatible revision becomes `/api/v2/`, and the old major stays
   alive for at least one major release.
 - The **minor** protocol version is reported at runtime in
-  `GET /api/v1/_meta` as `_meta.protocolVersion` (currently `1.15`).
+  `GET /api/v1/_meta` as `_meta.protocolVersion` (currently `1.16`).
 
 ## Contents
 
@@ -58,6 +58,27 @@ body field, because the envelope schemas are closed. A tab without an OpenAPI
 document gets no check, and neither does a route that its document does not
 describe. A path segment in braces in the document, such as `{id}`, matches
 any one segment.
+
+## A method that a route does not take
+
+When a tab has no route for a request, and its OpenAPI document declares the
+path with other methods, the server answers `405` with the error type
+`method_not_allowed` and an `Allow` header that lists the methods of the path,
+in the order `GET`, `PUT`, `POST`, `DELETE`, `OPTIONS`, `HEAD`, `PATCH`,
+`TRACE`:
+
+```
+HTTP/1.1 405 Method Not Allowed
+Allow: GET, POST
+
+{"error":"method_not_allowed","message":"network/rules takes GET or POST, not DELETE"}
+```
+
+A path that the document does not declare, a path that it declares with the
+request's method, and every path of a tab without a document are a `404`. The
+path is matched as for the `Lustro-Warning` header, and a literal segment wins
+over a template: when the document has `items/{id}` and `items/special`, the
+methods of `items/special` are its own.
 
 The two polling envelopes differ in what `delta` carries. In the cursor
 envelope it is the whole current list, which fits a list whose items change. In
@@ -219,6 +240,21 @@ gives its shape.
   declare in its tab's OpenAPI document in a `Lustro-Warning` header (see
   "The `Lustro-Warning` header" above). The status and the body do not change.
 
+- **1.16** - A request with a method that a route does not take gets `405`
+  with an `Allow` header when the tab's OpenAPI document declares the path
+  (see "A method that a route does not take" above), from every tab with a
+  document. The Network tab answered `404`, such as for `GET network/pause`
+  and `POST network/transactions`, and so did each app tab that returns `null`
+  for a method that it does not take. The Logs, Preferences, SQLite,
+  WorkManager, and Screen tabs answered `405` before, without `Allow`.
+  `POST network/throttle` answers `400`
+  with `field: delayMs` for a missing `delayMs`, and for one that is not a
+  whole number from 0 to 600000 (10 minutes), and keeps the delay that it
+  has; it set `0` for a missing or wrong value, and took any larger one.
+  `POST network/rules/toggle` and `POST network/rules/delete` answer `404`
+  with `field: id` for an id that no rule has, and change nothing; they
+  answered `200`.
+
 ## Plugin tabs
 
 A plugin tab ships in its own artifact pair and versions its routes in its own
@@ -247,7 +283,7 @@ with the core wire.
   `POST edit`, `POST delete`, and `POST clear` change a file and answer `403`
   with the code `read_only` for a read-only one; from `1.2`, `POST edit` answers
   `400` with the field `key` for an empty key.
-- **SQLite `1.0`** (`:lustro-sqlite`) - the app's SQLite and Room databases
+- **SQLite `1.2`** (`:lustro-sqlite`) - the app's SQLite and Room databases
   under `/api/v1/sqlite/`. `GET databases` lists them with their
   source, file, size, and `schemaVersion`; `GET tables?db=` lists the tables
   and views, and flags the internal ones; `GET schema?db=&table=` gives the
@@ -260,7 +296,12 @@ with the core wire.
   `POST delete` write through the app's handle, only to a `writable` database,
   and answer `403` with the code `read_only` for any other. Both `query` and
   `exec` refuse transaction statements, `ATTACH`, `DETACH`, and `VACUUM` with
-  the code `statement_refused`, and `exec` also every `PRAGMA`.
+  the code `statement_refused`, and `exec` also every `PRAGMA`. From `1.2`,
+  `query` also refuses a pragma with a value, such as
+  `PRAGMA journal_mode=DELETE`, which sets it: a `400` with the code
+  `statement_refused`, where SQLite answered `403` with `read_only`, or a
+  `500` for the journal mode. A pragma whose value names what to read, such
+  as `PRAGMA table_info(notes)`, still runs.
 - **WorkManager `1.1`** (`:lustro-work`) - the app's WorkManager work under
   `/api/v1/work/`. `GET items` polls every work request in the cursor envelope,
   whose cursor stands for the list's content, with `state`, `tag`, `class`, and

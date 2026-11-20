@@ -347,7 +347,8 @@ class SqliteRoutesTest {
         assertError(400, "table", Fixtures.get(routes, "schema", "db" to "app"))
         assertError(404, "table", Fixtures.get(routes, "schema", "db" to "app", "table" to "nope"))
         assertError(404, "table", Fixtures.get(routes, "rows", "db" to "app", "table" to "nope"))
-        assertEquals(405, routes.handle(DebugRequest("rows", "POST"))!!.status)
+        // The server answers a wrong method with 405, from sqlite.openapi.json.
+        assertNull(routes.handle(DebugRequest("rows", "POST")))
         assertNull(routes.handle(DebugRequest("import", "POST")))
     }
 

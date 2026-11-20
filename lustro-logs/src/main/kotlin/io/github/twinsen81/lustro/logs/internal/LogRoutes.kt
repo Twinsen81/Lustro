@@ -8,21 +8,16 @@ import org.json.JSONObject
 
 /** The routes of the Logs tab, under `/api/v1/logs/`. */
 internal class LogRoutes(private val buffer: LogBuffer, private val reader: LogcatReader) {
-    fun handle(request: DebugRequest): DebugResponse? {
-        val method = request.method.uppercase()
-        val expected = METHODS[request.path] ?: return null
-        if (method != expected) {
-            return DebugResponse.error("${request.path} takes $expected", status = 405)
-        }
-        return when (request.path) {
-            "entries" -> entries(request)
-            "text" -> text(request)
-            "clear" -> clear()
-            "pause" -> setFlag(request, "paused", { buffer.paused }) { buffer.paused = it }
-            "compact" -> setFlag(request, "compact", { buffer.compact }) { buffer.compact = it }
+    // A wrong method is null too: the server answers 405 from logs.openapi.json.
+    fun handle(request: DebugRequest): DebugResponse? =
+        when ("${request.method.uppercase()} ${request.path}") {
+            "GET entries" -> entries(request)
+            "GET text" -> text(request)
+            "POST clear" -> clear()
+            "POST pause" -> setFlag(request, "paused", { buffer.paused }) { buffer.paused = it }
+            "POST compact" -> setFlag(request, "compact", { buffer.compact }) { buffer.compact = it }
             else -> null
         }
-    }
 
     private fun entries(request: DebugRequest): DebugResponse {
         val limit =
@@ -175,14 +170,6 @@ internal class LogRoutes(private val buffer: LogBuffer, private val reader: Logc
     companion object {
         const val DEFAULT_LIMIT: Int = 500
         const val MAX_LIMIT: Int = 5_000
-
-        private val METHODS = mapOf(
-            "entries" to "GET",
-            "text" to "GET",
-            "clear" to "POST",
-            "pause" to "POST",
-            "compact" to "POST",
-        )
 
         /**
          * Appends [entry] as logcat's threadtime format prints it, with ` [×N]` for a

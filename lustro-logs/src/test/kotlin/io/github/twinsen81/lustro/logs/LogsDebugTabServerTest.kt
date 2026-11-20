@@ -175,6 +175,12 @@ class LogsDebugTabServerTest {
         assertEquals(400, bad.code)
         assertEquals("level", JSONObject(bad.body!!.string()).getString("field"))
         assertEquals(404, get("nothing").code)
+        // The method comes from logs.openapi.json: the routes have no table of their own.
+        val wrongMethod = get("clear")
+        assertEquals(405, wrongMethod.code)
+        assertEquals("POST", wrongMethod.header("Allow"))
+        assertEquals("method_not_allowed", JSONObject(wrongMethod.body!!.string()).getString("error"))
+        assertEquals("GET", post("entries", "").header("Allow"))
 
         val schema = get("_schema")
         assertEquals(200, schema.code)

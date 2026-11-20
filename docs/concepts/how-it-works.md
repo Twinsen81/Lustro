@@ -76,7 +76,8 @@ answers with the [error envelope](../wire-protocol.md):
     than `requestTimeoutMs`, it gets a `503`.
 8. The server routes the request. It answers the framework routes `_meta` and `_schema` itself.
     For `/api/v1/<id>/<path>`, it finds the tab with that id and calls its `handle(request)`.
-9. When `handle` returns `null`, the client gets a `404`. When it throws anything, the client gets
+9. When `handle` returns `null`, the client gets a `404`, or a `405` with an `Allow` header when
+    the tab's OpenAPI document declares the path with other methods. When it throws anything, the client gets
     a `500`, and the app does not crash. When it runs longer than
     [`requestTimeoutMs`](../reference/configuration.md), the client gets a `504`, and the server
     cancels the request.

@@ -74,7 +74,9 @@ class ScreenDebugTabServerTest {
         assertEquals("profile", tree.getJSONObject("context").getString("route"))
         assertTrue(tree.toString().contains("\"testTag\":\"confirm\""))
 
-        assertEquals(405, onMain { call(Request.Builder().url("$base/tree").post(ByteArray(0).toRequestBody())) }.code)
+        val wrongMethod = onMain { call(Request.Builder().url("$base/tree").post(ByteArray(0).toRequestBody())) }
+        assertEquals(405, wrongMethod.code)
+        assertEquals("GET", wrongMethod.header("Allow"))
         val error = JSONObject(onMain { get("tree?settle=-1") }.body!!.string())
         assertEquals("settle", error.getString("field"))
     }

@@ -25,25 +25,22 @@ import org.json.JSONObject
 internal class SqliteRoutes(private val registry: SqliteRegistry, private val limit: ReadLimit = ReadLimit()) {
     private val console = SqliteQuery(limit)
 
+    // A wrong method is null too: the server answers 405 from sqlite.openapi.json.
     fun handle(request: DebugRequest): DebugResponse? {
-        val expected = METHODS[request.path] ?: return null
-        if (request.method.uppercase() != expected) {
-            return DebugResponse.error("${request.path} takes $expected", status = 405)
-        }
         // A read stops when the runtime gives up on the request, at its timeout, so that a
         // long one does not keep a SQLite lock or a request slot.
         val signal = CancellationSignal()
         request.onCancel { signal.cancel() }
         return try {
-            when (request.path) {
-                "databases" -> databases(signal)
-                "tables" -> tables(request, signal)
-                "schema" -> schema(request, signal)
-                "rows" -> rows(request, signal)
-                "query" -> query(body(request), signal)
-                "exec" -> exec(body(request), request)
-                "edit" -> edit(body(request), request, signal, delete = false)
-                "delete" -> edit(body(request), request, signal, delete = true)
+            when ("${request.method.uppercase()} ${request.path}") {
+                "GET databases" -> databases(signal)
+                "GET tables" -> tables(request, signal)
+                "GET schema" -> schema(request, signal)
+                "GET rows" -> rows(request, signal)
+                "POST query" -> query(body(request), signal)
+                "POST exec" -> exec(body(request), request)
+                "POST edit" -> edit(body(request), request, signal, delete = false)
+                "POST delete" -> edit(body(request), request, signal, delete = true)
                 else -> null
             }
         } catch (e: RouteException) {
@@ -434,18 +431,6 @@ internal class SqliteRoutes(private val registry: SqliteRegistry, private val li
         const val TAG = "LustroSqlite"
         const val DEFAULT_LIMIT = 50
         const val MAX_LIMIT = 500
-
-        val METHODS =
-            mapOf(
-                "databases" to "GET",
-                "tables" to "GET",
-                "schema" to "GET",
-                "rows" to "GET",
-                "query" to "POST",
-                "exec" to "POST",
-                "edit" to "POST",
-                "delete" to "POST",
-            )
     }
 }
 

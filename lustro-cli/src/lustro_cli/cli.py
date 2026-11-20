@@ -1856,7 +1856,7 @@ def build_parser() -> argparse.ArgumentParser:
     n_overwrite.set_defaults(func=cmd_net_overwrite)
 
     n_throttle = net_sub.add_parser("throttle", parents=[common], help="POST throttle <ms>")
-    n_throttle.add_argument("ms", type=int, help="delay in ms (>= 0)")
+    n_throttle.add_argument("ms", type=int, help="delay in ms, from 0 (off) to 600000 (10 minutes)")
     n_throttle.set_defaults(func=cmd_net_throttle)
 
     # mock ...

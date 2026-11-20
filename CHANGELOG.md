@@ -1160,6 +1160,57 @@ see [DECISIONS.md](DECISIONS.md).
   logcat had the line and `GET logs/entries?tag=^SampleState$` returned no
   row; after it, the line was there, and the 12 KB message showed once, in
   full, also the first time.
+- **A wrong method gets `405` with `Allow` from every tab with an OpenAPI
+  document, and three built-in routes answer a client's mistake with a `4xx`
+  (wire protocol 1.16, SQLite schema 1.2).** The Network tab answered `404`
+  to a wrong method, such as `GET network/pause` or `POST
+  network/transactions`, and so did an app's tab that routes as
+  `write-a-tab.md` shows, so an agent concluded that the route does not
+  exist. When `handle()` returns `null` and the tab's OpenAPI document
+  declares the path with other methods, the server now answers `405
+  method_not_allowed` with an `Allow` header that lists them, such as `Allow:
+  GET, POST` for `DELETE network/rules`. A path that the document does not
+  declare, and every path of a tab without a document, is still a `404`. The
+  Logs, Preferences, SQLite, WorkManager, and Screen tabs no longer keep a
+  table of methods of their own: the server answers their wrong methods from
+  their documents, now with `Allow`. `POST network/throttle` answered `200`
+  with `delayMs` 0 for `{"delayMs":-5}`, `{"delayMs":"x"}`, and `{}`, and
+  took `99999999`, which holds every OkHttp request of the app for 27 hours.
+  It now answers `400` with `field: delayMs` for a missing value and for one
+  that is not a whole number from 0 to 600000 (10 minutes), and keeps the
+  delay that it has; the document declares the field as required, with the
+  limit, and so does the MCP tool `set_throttle`. `POST network/rules/toggle`
+  and `POST network/rules/delete` answered `{"status":"ok"}` for an id that
+  no rule has, so an agent that mistyped the id thought that it changed a
+  rule. They now answer `404` with `field: id` and change nothing, and the
+  console shows the message and loads the rules again. `POST sqlite/query`
+  answered `500 internal_error` with a lock error (`SQLITE_BUSY` or
+  `SQLITE_IOERR_LOCK`) for `PRAGMA journal_mode=DELETE`, because the
+  read-only connection can't take the lock that a change of the journal mode
+  needs, and `403 read_only` for
+  `PRAGMA user_version = 9`. `query` only reads, so it now refuses a pragma
+  with a value, `= value` or `(value)`, with `400 statement_refused` before it
+  runs, except the pragmas whose value names what to read, such as
+  `PRAGMA table_info(notes)`. `custom-tabs.md` and `write-a-tab.md` now say
+  that a tab must make every cursor with `cursorEnvelope` or
+  `streamEnvelope`: their cursors carry the process's epoch, so a cursor from
+  before an app restart gets a `reset`, while a tab's own sequence number,
+  such as `?since=42`, makes the page skip the first items of the new
+  process. Verified on a physical device (API 37) with the sample, first with
+  the build of the previous change: `GET network/pause`, `POST
+  network/transactions`, and `GET flags/toggle` answered `404`; throttle
+  bodies with `-5`, `"x"`, and no value set `0`, and `99999999` was taken;
+  toggle and delete of an unknown id answered `ok`; `PRAGMA
+  journal_mode=DELETE` in `query` answered `500` with `SQLITE_BUSY`. With
+  this change, each wrong method of the Network tab, the sample's flags tab,
+  and the five plugin tabs answered `405` with the right `Allow`, such as
+  `Allow: GET, POST` for `DELETE network/rules`, and an undeclared path
+  `404`; each bad throttle body answered `400` with `field: delayMs`, and
+  `lustro net state` still showed the delay set before, 250 ms; `lustro
+  mock toggle` and `mock delete` of a mistyped id exited 1 with the `404`
+  message, and the rule stayed as it was; the pragma sets answered `400
+  statement_refused`, the journal mode stayed `wal`, and `PRAGMA
+  table_info(...)` and `PRAGMA user_version` still read.
 - **The debug server no longer compresses its responses, so it no longer leaks
   a `Deflater` for each one.** When a client accepts gzip, as every browser
   does, NanoHTTPD compressed each text and JSON response: every page, style

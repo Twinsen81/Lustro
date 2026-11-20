@@ -20,6 +20,7 @@ import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -163,8 +164,6 @@ class SqliteConsoleTest {
                 "INSERT INTO notes (id, title) VALUES (99, 'no')",
                 "DROP TABLE notes",
                 "CREATE TABLE created (a)",
-                "PRAGMA user_version(9)",
-                "PRAGMA user_version = 9",
             )
         for (sql in writes) {
             val response = query(sql)
@@ -199,9 +198,16 @@ class SqliteConsoleTest {
     }
 
     @Test
-    fun `PRAGMA query_only off in a query turns no write on, there or on the app's connection`() {
-        assertEquals(200, query("PRAGMA query_only = OFF").status)
-        assertEquals(200, query("PRAGMA query_only(1)").status)
+    fun `a pragma with a value in a query is refused before it runs, and turns no write on`() {
+        // A set of the journal mode failed on the read-only connection with a lock error, a 500.
+        for (sql in listOf("PRAGMA journal_mode=DELETE", "PRAGMA query_only = OFF", "PRAGMA query_only(1)", "PRAGMA user_version(9)", "PRAGMA user_version = 9")) {
+            val response = query(sql)
+            assertError(400, "statement_refused", response)
+            assertEquals(sql, "sql", response.json().getString("field"))
+        }
+        assertEquals(7, live.version)
+        assertEquals(200, query("PRAGMA journal_mode").status)
+        assertEquals(200, query("PRAGMA table_info(notes)").status)
 
         assertError(403, "read_only", query("DELETE FROM notes"))
         assertEquals(3, count("notes"))
@@ -349,7 +355,8 @@ class SqliteConsoleTest {
         assertField(400, "db", Fixtures.post(routes, "query", JSONObject().put("sql", "SELECT 1")))
         assertField(404, "db", Fixtures.post(routes, "query", body("missing", "SELECT 1")))
         assertField(400, "body", routes.handle(io.github.twinsen81.lustro.DebugRequest("query", "POST", body = "not json".toByteArray()))!!)
-        assertEquals(405, Fixtures.get(routes, "query", "db" to "app").status)
+        // The server answers a wrong method with 405, from sqlite.openapi.json.
+        assertNull(routes.handle(io.github.twinsen81.lustro.DebugRequest("query", "GET", mapOf("db" to listOf("app")))))
     }
 
     @Test
