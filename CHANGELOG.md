@@ -2256,6 +2256,40 @@ see [DECISIONS.md](DECISIONS.md).
   `field: "body"`; `body/both` and `events/abc/payload` answered `404`; and
   `?cursr=x` got its `Lustro-Warning`. The CLI end to end passed on the same
   emulator.
+- **The WorkManager tab declares its routes once (experimental API).** The
+  WorkManager tab routed its 6 routes by hand in `handle()` and read each
+  parameter and body itself, and `work.openapi.json` described them again by
+  hand. The tab now declares them in `routes()`, so the routing, the checks of
+  the parameters and the bodies, the `405` with `Allow`, and the document of
+  `GET work/_schema` come from one declaration. The document is committed at
+  `lustro-work/openapi/work.openapi.json`, which the wire-schema artifact and
+  the CLI copy, and a test keeps the copy equal to the declarations. It has
+  the paths, methods, parameters, and bodies of the hand-written one, with
+  `limit` as an `int32` and `from` and `to` as `int64`. `POST cancel` declares
+  its whole body with the hand-written schema, because fields can't say that
+  it takes exactly one of `id`, `name`, and `tag`; the handler checks that,
+  and reads the body as before. The routes keep their statuses, `error`
+  types, `field` values, and codes, and the version stays `1.3`, with these
+  differences. An empty body of `POST cancel` gets `400` with
+  `field: "body"`, and so does a body that is not a JSON object, where neither
+  had a `field`. The declarations check the parameters, and refuse an empty
+  body, before the handler, which answers `503` while WorkManager is too old
+  or not initialized, and `404` with code `metrics_off`: so
+  `GET events?limit=0` or a `POST cancel` with no body with WorkManager 2.11
+  now gets `400`, where it got `503`, and `GET metrics?from=-1` without
+  work-analytics `400` for `from`, where it got `404`. `GET items/a/b` and
+  `GET items/` get `404`, where they got `400` with `field: "id"`. An empty
+  `from` or `to` of `GET metrics` gets `400`, as an empty number without a
+  default does on every tab, where it was no limit. Some messages change,
+  such as `from must be at least 0, was -1` and `limit must be from 1 to 5000,
+  was 0`. Verified on a physical device (API 37) with the sample:
+  `GET work/_schema` was byte-equal to the committed file, and `_meta` listed
+  `work` 1.3; `POST items` and `POST items/x` answered `405` with
+  `Allow: GET`, and `GET prune` with `Allow: POST`; `state=DONE`, `items/x`,
+  `events?limit=0`, and `metrics?from=-1` answered `400` with that field;
+  `POST cancel` with a misspelled member answered `400` with that member as
+  `field`, and with no body `400` with `field: "body"`; and `items/a/b`
+  answered `404`. The CLI end to end passed on the same device.
 - **The Logs tab declares its routes once (experimental API).** The Logs tab
   routed its 5 routes by hand in `handle()` and read each parameter and body
   itself, and `logs.openapi.json` described them again by hand. The tab now

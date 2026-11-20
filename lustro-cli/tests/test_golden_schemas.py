@@ -598,7 +598,7 @@ def test_the_work_routes_are_declared_and_only_cancel_and_prune_change_anything(
         assert set(paths["/api/v1/work/" + route]) == expected, route
     events = {p["name"]: p for p in paths["/api/v1/work/events"]["get"]["parameters"]}
     assert set(events) == {"cursor", "id", "class", "type", "limit"}
-    assert events["limit"]["schema"] == {"type": "integer", "minimum": 1, "maximum": 5000, "default": 500}
+    assert events["limit"]["schema"] == {"type": "integer", "format": "int32", "minimum": 1, "maximum": 5000, "default": 500}
     items = {p["name"] for p in paths["/api/v1/work/items"]["get"]["parameters"]}
     assert items == {"cursor", "state", "tag", "class", "name"}
 

@@ -33,7 +33,7 @@ the Preferences tab's is
 the SQLite tab's is
 [`lustro-sqlite/openapi/sqlite.openapi.json`](https://github.com/Twinsen81/Lustro/blob/main/lustro-sqlite/openapi/sqlite.openapi.json),
 the WorkManager tab's is
-[`lustro-work/src/main/assets/lustro/work.openapi.json`](https://github.com/Twinsen81/Lustro/blob/main/lustro-work/src/main/assets/lustro/work.openapi.json),
+[`lustro-work/openapi/work.openapi.json`](https://github.com/Twinsen81/Lustro/blob/main/lustro-work/openapi/work.openapi.json),
 and the Screen tab's is
 [`lustro-screen/openapi/screen.openapi.json`](https://github.com/Twinsen81/Lustro/blob/main/lustro-screen/openapi/screen.openapi.json),
 each with a version of its own.

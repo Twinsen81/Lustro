@@ -12,6 +12,6 @@
 | `logs.openapi.json` (generated from the `lustro-logs` route declarations; served at `GET /api/v1/logs/_schema`) | Logs tab routes, version `1.1` | present |
 | `prefs.openapi.json` (generated from the `lustro-prefs` route declarations; served at `GET /api/v1/prefs/_schema`) | Preferences tab routes, version `1.2` | present |
 | `sqlite.openapi.json` (generated from the `lustro-sqlite` route declarations; served at `GET /api/v1/sqlite/_schema`) | SQLite tab routes, version `1.2` | present |
-| `work.openapi.json` (in the `lustro-work` AAR assets) | WorkManager tab routes, version `1.3` | present |
+| `work.openapi.json` (generated from the `lustro-work` route declarations; served at `GET /api/v1/work/_schema`) | WorkManager tab routes, version `1.3` | present |
 | `screen.openapi.json` (generated from the `lustro-screen` route declarations; served at `GET /api/v1/screen/_schema`) | Screen tab routes, version `1.0` | present |
 | `golden/` fixtures | recorded responses for CLI contract tests | present |

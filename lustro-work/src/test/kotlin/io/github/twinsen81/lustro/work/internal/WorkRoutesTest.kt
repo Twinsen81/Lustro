@@ -386,7 +386,8 @@ class WorkRoutesTest {
         assertEquals(400, misspelled.status)
         assertEquals("nmae", misspelled.json().getString("field"))
         assertEquals("name", WorkFixtures.post(routes, "cancel", JSONObject().put("name", 3)).json().getString("field"))
-        assertEquals(400, WorkFixtures.post(routes, "cancel", null).status)
+        assertEquals("body", WorkFixtures.post(routes, "cancel", null).json().getString("field"))
+        assertEquals("body", WorkFixtures.postText(routes, "cancel", "[]").json().getString("field"))
         assertEquals("id", WorkFixtures.post(routes, "cancel", JSONObject().put("id", "nope")).json().getString("field"))
     }
 
@@ -403,20 +404,25 @@ class WorkRoutesTest {
     }
 
     @Test
-    fun `a parameter the routes can't take is a 400 that names it, and a wrong method is not handled`() {
+    fun `a parameter the routes can't take is a 400 that names it, and a wrong method is a 405`() {
         assertEquals("state", WorkFixtures.get(routes, "items", "state" to "DONE").json().getString("field"))
         assertEquals("limit", WorkFixtures.get(routes, "events", "limit" to "0").json().getString("field"))
         assertEquals("limit", WorkFixtures.get(routes, "events", "limit" to "5001").json().getString("field"))
         assertEquals("type", WorkFixtures.get(routes, "events", "type" to "ran").json().getString("field"))
         assertEquals("id", WorkFixtures.get(routes, "events", "id" to "x").json().getString("field"))
-        // The server answers a wrong method with 405, from work.openapi.json.
-        assertNull(routes.handle(io.github.twinsen81.lustro.DebugRequest("items", "POST")))
-        assertNull(routes.handle(io.github.twinsen81.lustro.DebugRequest("prune", "GET")))
-        assertNull(routes.handle(io.github.twinsen81.lustro.DebugRequest("items/x", "POST")))
+        assertEquals("from", WorkFixtures.get(routes, "metrics", "from" to "-1").json().getString("field"))
+        assertMethodNotAllowed(routes, "items", "POST", "GET")
+        assertMethodNotAllowed(routes, "prune", "GET", "POST")
+        assertMethodNotAllowed(routes, "items/x", "POST", "GET")
         assertNull(routes.handle(io.github.twinsen81.lustro.DebugRequest("jobs", "GET")))
+        // A path with more segments, or an empty id, is no route.
+        assertNull(routes.handle(io.github.twinsen81.lustro.DebugRequest("items/a/b", "GET")))
+        assertNull(routes.handle(io.github.twinsen81.lustro.DebugRequest("items/", "GET")))
         val off = WorkFixtures.get(routes, "metrics")
         assertEquals(404, off.status)
         assertEquals("metrics_off", off.json().getString("code"))
+        // The declarations check from before the handler finds that the tab has no history.
+        assertEquals(400, WorkFixtures.get(routes, "metrics", "from" to "").status)
     }
 
     @Test
@@ -435,14 +441,17 @@ class WorkRoutesTest {
     fun `without WorkManager 2_12, every route is a 503 and configure leaves the builder as it is`() {
         val old = WorkFixtures.source(app, unsupported = "The tab needs WorkManager 2.12.0 or newer; the app has an older one")
         val routes = WorkRoutes(old)
-        for (response in listOf(WorkFixtures.get(routes, "items"), WorkFixtures.get(routes, "events"), WorkFixtures.post(routes, "cancel", null))) {
+        for (response in listOf(WorkFixtures.get(routes, "items"), WorkFixtures.get(routes, "events"), WorkFixtures.post(routes, "cancel", JSONObject().put("tag", "a")))) {
             assertEquals(503, response.status)
             assertEquals("work_unsupported", response.json().getString("code"))
             assertTrue(response.json().getString("hint").contains("2.12.0"))
         }
-        // An unknown route stays a 404, and a wrong method a 405, which the server answers.
+        // The declarations check the parameters and refuse an empty body before the handler answers 503.
+        assertEquals("limit", WorkFixtures.get(routes, "events", "limit" to "0").json().getString("field"))
+        assertEquals("body", WorkFixtures.post(routes, "cancel", null).json().getString("field"))
+        // An unknown route stays a 404, and a wrong method a 405.
         assertNull(routes.handle(io.github.twinsen81.lustro.DebugRequest("jobs", "GET")))
-        assertNull(routes.handle(io.github.twinsen81.lustro.DebugRequest("items", "POST")))
+        assertMethodNotAllowed(routes, "items", "POST", "GET")
         val builder = androidx.work.Configuration.Builder()
         old.configure(builder)
         assertNull(builder.build().getExecutionEventListener())
@@ -487,4 +496,10 @@ class WorkRoutesTest {
     private fun lastOf(array: JSONArray): JSONObject = array.getJSONObject(array.length() - 1)
 
     private fun JSONArray.toList(): List<Any> = (0 until length()).map { get(it) }
+
+    private fun assertMethodNotAllowed(routes: WorkRoutes, path: String, method: String, allowed: String) {
+        val response = routes.handle(io.github.twinsen81.lustro.DebugRequest(path, method))!!
+        assertEquals(405, response.status)
+        assertEquals(allowed, response.headers.get("Allow"))
+    }
 }

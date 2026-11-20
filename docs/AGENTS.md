@@ -963,7 +963,7 @@ count.
 Base path `/api/v1/work`, when the app registers the WorkManager plugin
 (`WorkDebugTab.create(context, uniqueNames)`, or `createWithMetrics(context, metrics, uniqueNames)` with a
 work-analytics repository; without it, the routes are an enveloped `404 Unknown tab: work`). The
-authoritative contract is `lustro-work/src/main/assets/lustro/work.openapi.json`, version `1.3` (`1.1` names the unique work of every work request, `1.2` adds the `networkRequest` of a work's constraints, and `1.3` the `prerequisites` of a work).
+authoritative contract is `lustro-work/openapi/work.openapi.json`, version `1.3` (`1.1` names the unique work of every work request, `1.2` adds the `networkRequest` of a work's constraints, and `1.3` the `prerequisites` of a work).
 The CLI has no `work` commands: use `lustro api`. Only `POST cancel` and `POST prune` change
 anything. The app needs WorkManager 2.12.0 or newer: with an older one, every route is a `503`
 with `code: "work_unsupported"`.

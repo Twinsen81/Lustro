@@ -26,7 +26,8 @@ java {
 //                                     the tab's route declarations; a test keeps it current)
 //   - SQLite OpenAPI document:        lustro-sqlite/openapi/sqlite.openapi.json (generated from
 //                                     the tab's route declarations; a test keeps it current)
-//   - WorkManager OpenAPI document:   lustro-work/src/main/assets/lustro/work.openapi.json
+//   - WorkManager OpenAPI document:   lustro-work/openapi/work.openapi.json (generated from the
+//                                     tab's route declarations; a test keeps it current)
 //   - Screen OpenAPI document:        lustro-screen/openapi/screen.openapi.json (generated from
 //                                     the tab's route declarations; a test keeps it current)
 // We copy them into build/generated/wire-resources/lustro/wire/v1/ at build time
@@ -48,7 +49,7 @@ val sqliteOpenApiFile =
         .file("lustro-sqlite/openapi/sqlite.openapi.json")
 val workOpenApiFile =
     rootProject.layout.projectDirectory
-        .file("lustro-work/src/main/assets/lustro/work.openapi.json")
+        .file("lustro-work/openapi/work.openapi.json")
 val screenOpenApiFile =
     rootProject.layout.projectDirectory
         .file("lustro-screen/openapi/screen.openapi.json")
@@ -65,7 +66,7 @@ val syncWireResources =
             include("*.schema.json")
             include("golden/*.json")
         }
-        // The tabs' OpenAPI documents (they live under the runtime assets).
+        // The tabs' OpenAPI documents, which each module generates and commits under openapi/.
         from(openApiFile)
         from(logsOpenApiFile)
         from(prefsOpenApiFile)

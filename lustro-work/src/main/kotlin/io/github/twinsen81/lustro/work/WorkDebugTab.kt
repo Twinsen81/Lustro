@@ -3,9 +3,9 @@ package io.github.twinsen81.lustro.work
 import android.content.Context
 import androidx.work.Configuration
 import androidx.work.analytics.WorkMetricsInfoRepository
-import io.github.twinsen81.lustro.DebugRequest
-import io.github.twinsen81.lustro.DebugResponse
+import io.github.twinsen81.lustro.DebugRoutes
 import io.github.twinsen81.lustro.DebugTab
+import io.github.twinsen81.lustro.ExperimentalDebugRoutes
 import io.github.twinsen81.lustro.work.internal.WorkEvents
 import io.github.twinsen81.lustro.work.internal.WorkMetrics
 import io.github.twinsen81.lustro.work.internal.WorkRoutes
@@ -73,13 +73,16 @@ public class WorkDebugTab private constructor(private val source: WorkSource) : 
     override val icon: String = "⏳"
     override val order: Int = 50
 
-    private val routes = WorkRoutes(source)
+    private val workRoutes = WorkRoutes(source)
 
     /** The view's static shell; `work.js` and `work.css` in the assets fill and style it. */
     override fun renderContent(): String = WorkView.HTML
 
-    /** Serves the routes under `/api/v1/work/`; the static `work.openapi.json` describes them. */
-    override fun handle(request: DebugRequest): DebugResponse? = routes.handle(request)
+    /** Declares the routes under `/api/v1/work/`, which also make the tab's OpenAPI document. */
+    @OptIn(ExperimentalDebugRoutes::class)
+    override fun routes(routes: DebugRoutes) {
+        workRoutes.declare(routes)
+    }
 
     /** Starts recording the events of the listeners that [configure] set. */
     override fun onStart() {

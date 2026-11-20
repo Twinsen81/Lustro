@@ -215,7 +215,7 @@ next run.
 - `POST prune` deletes finished work, as `WorkManager.pruneWork()` does.
 
 See [Agents and automation](../AGENTS.md#workmanager-tab-operations) and
-[`work.openapi.json`](https://github.com/Twinsen81/Lustro/blob/main/lustro-work/src/main/assets/lustro/work.openapi.json).
+[`work.openapi.json`](https://github.com/Twinsen81/Lustro/blob/main/lustro-work/openapi/work.openapi.json).
 
 ## CLI examples
 
