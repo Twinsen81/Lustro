@@ -111,8 +111,11 @@ jobs:
       - name: Public API check (BCV; :lustro-api baseline)
         run: ./gradlew apiCheck --console=plain --stacktrace
 
-      - name: Sample debug + release (R8) compile
-        run: ./gradlew :sample:assembleDebug :sample:assembleRelease --console=plain --stacktrace
+      # The no-op halves ship no keep rule, so R8 removes their classes or
+      # renames them: no class of the release build has a Lustro name (see
+      # checkReleaseHasNoLustroClasses in sample/build.gradle.kts).
+      - name: Sample debug + release (R8) compile, no Lustro class name in release
+        run: ./gradlew :sample:assembleDebug :sample:assembleRelease :sample:checkReleaseHasNoLustroClasses --console=plain --stacktrace
 
       # The release-safe no-op half of each pair must match its runtime facade
       # exactly, :lustro-noop to :lustro first (the BCV-Android follow-up; see the
@@ -193,12 +196,12 @@ jobs:
       - name: Publish the checkout to the local Maven repository
         run: ./gradlew publishToMavenLocal --console=plain --stacktrace
 
-      - name: Build the app and check its dependency versions
+      - name: Build the app and check its dependency versions and release classes
         working-directory: consumer-check
         run: >-
           ./gradlew :app:assembleWithLustroDebug :app:assembleWithLustroRelease
-          :app:checkLustroKeepsAppVersions ${{ matrix.overrides }}
-          --console=plain --stacktrace
+          :app:checkLustroKeepsAppVersions :app:checkWithLustroReleaseHasNoLustroClasses
+          ${{ matrix.overrides }} --console=plain --stacktrace
 
       # The release lint, which assembleRelease runs, must fail on a DebugTab
       # subclass in src/release and in src/main. It has the check only because

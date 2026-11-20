@@ -26,9 +26,17 @@ no-op half, the calls do nothing:
 - The plugin factories, such as `PrefsDebugTab.create(...)`, read nothing, and do not call the
     lambdas that the app gives them, such as the database supplier of `SqliteDb.support`.
 
+The no-op halves ship no keep rule, so R8 handles their classes as it handles the app's own code.
+A minified release build keeps only the classes that the app's release code calls, such as the
+pass-through interceptor, and R8 gives them short names. With `proguard-android-optimize.txt`, a
+minified release build has no class with a Lustro name, and when the app's release code does not
+call Lustro, it has no Lustro class at all.
+
 **Check it:** `./gradlew -q :app:dependencies --configuration releaseRuntimeClasspath | grep -E 'twinsen81|nanohttpd'`
 lists only `lustro-api` and the `-noop` artifacts. Each build type other than `debug` needs the
 no-op halves too, such as `stagingImplementation(libs.lustro.noop)`. This is step 2 of [Check the integration](../get-started/check.md).
+After `./gradlew :app:assembleRelease`, `grep ' -> io\.github\.twinsen81\.lustro\.' app/build/outputs/mapping/release/mapping.txt`
+prints nothing: no class in the APK has a Lustro name.
 
 ## The shared capability
 

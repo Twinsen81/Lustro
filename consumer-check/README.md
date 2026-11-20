@@ -25,6 +25,11 @@ floor that moves up there makes this build fail until the floor is a decision.
 - `assembleWithLustroRelease` builds it with `lustro-noop`, `lustro-logs-noop`,
   `lustro-prefs-noop`, `lustro-sqlite-noop`, `lustro-work-noop`,
   `lustro-screen-noop`, and R8.
+- `checkWithLustroReleaseHasNoLustroClasses` reads R8's mapping file of that
+  build and fails on a class whose name in the APK is in the
+  `io.github.twinsen81.lustro` package, other than the app's own. The no-op
+  halves ship no keep rule, so R8 removes their classes or renames them; a
+  `-keep` rule leaves them with their names.
 - With `-PappMinSdk=23`, below the runtime's 24, the release build takes the no-op halves at that
   level, and the debug build raises its own to 24 with `androidComponents.beforeVariants`, as
   README.md tells such an app. WorkManager 2.12.0 needs 24, so CI runs it with
@@ -50,7 +55,8 @@ Publish the current checkout to the local Maven repository, then build here:
 ```bash
 ./gradlew publishToMavenLocal
 cd consumer-check
-./gradlew :app:assembleWithLustroDebug :app:assembleWithLustroRelease :app:checkLustroKeepsAppVersions
+./gradlew :app:assembleWithLustroDebug :app:assembleWithLustroRelease :app:checkLustroKeepsAppVersions \
+    :app:checkWithLustroReleaseHasNoLustroClasses
 ./check-release-lint.sh
 ```
 
