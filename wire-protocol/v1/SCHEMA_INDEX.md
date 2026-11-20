@@ -9,7 +9,7 @@
 | `meta.schema.json` | `GET /api/v1/_meta` response | present |
 | `_schema.json` (in the `lustro` AAR assets) | `GET /api/v1/_schema` response: the shared envelopes, in one document | present |
 | `network.openapi.json` (generated from the `lustro` route declarations of the Network tab; served at `GET /api/v1/network/_schema`) | Network tab routes; its version is the protocol version | present |
-| `logs.openapi.json` (in the `lustro-logs` AAR assets) | Logs tab routes, version `1.1` | present |
+| `logs.openapi.json` (generated from the `lustro-logs` route declarations; served at `GET /api/v1/logs/_schema`) | Logs tab routes, version `1.1` | present |
 | `prefs.openapi.json` (generated from the `lustro-prefs` route declarations; served at `GET /api/v1/prefs/_schema`) | Preferences tab routes, version `1.2` | present |
 | `sqlite.openapi.json` (generated from the `lustro-sqlite` route declarations; served at `GET /api/v1/sqlite/_schema`) | SQLite tab routes, version `1.2` | present |
 | `work.openapi.json` (in the `lustro-work` AAR assets) | WorkManager tab routes, version `1.3` | present |

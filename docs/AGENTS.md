@@ -712,7 +712,7 @@ request body with no `Content-Type` is stored as text, and its `requestContentTy
 
 Base path `/api/v1/logs`, when the app registers the Logs plugin (`LogsDebugTab.create()`; without
 it, the routes are an enveloped `404 Unknown tab: logs`). The authoritative contract is
-`lustro-logs/src/main/assets/lustro/logs.openapi.json`, version `1.1` (`1.1` added `from` and `to`). The tab runs
+`lustro-logs/openapi/logs.openapi.json`, version `1.1` (`1.1` added `from` and `to`). The tab runs
 `logcat -b main -b system -b crash -v threadtime -v UTC --pid=<the app's pid>` while Lustro is started, also in the background, from
 the start of the app's process, and holds the newest lines in a buffer of a fixed size (4 MiB by
 default). The app's own logger can also append its lines in full (`LogsDebugTab.append`), and

@@ -35,7 +35,8 @@ def main() -> int:
     assets = _REPO_ROOT / "lustro" / "src" / "main" / "assets" / "lustro"
     # Generated from the tab's route declarations and committed outside the assets: the tab serves its own.
     openapi = _REPO_ROOT / "lustro" / "openapi" / "network.openapi.json"
-    logs_openapi = _REPO_ROOT / "lustro-logs" / "src" / "main" / "assets" / "lustro" / "logs.openapi.json"
+    # Generated from the tab's route declarations and committed outside the assets: the tab serves its own.
+    logs_openapi = _REPO_ROOT / "lustro-logs" / "openapi" / "logs.openapi.json"
     # Generated from the tab's route declarations and committed outside the assets: the tab serves its own.
     prefs_openapi = _REPO_ROOT / "lustro-prefs" / "openapi" / "prefs.openapi.json"
     # Generated from the tab's route declarations and committed outside the assets: the tab serves its own.

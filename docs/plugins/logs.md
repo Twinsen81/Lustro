@@ -129,7 +129,7 @@ it as logcat's threadtime text. Both take the same filters, and a line must pass
 ignore case. Each is at most 200 characters, and one that does not compile gets a `400` with its
 `field`. Keep them simple: a regular expression that backtracks a lot, such as `(a+)+$`, can hold
 the request for a long time. `POST clear`, `pause`, and `compact` control the log. See [Agents and automation](../AGENTS.md#logs-tab-operations) and
-[`logs.openapi.json`](https://github.com/Twinsen81/Lustro/blob/main/lustro-logs/src/main/assets/lustro/logs.openapi.json).
+[`logs.openapi.json`](https://github.com/Twinsen81/Lustro/blob/main/lustro-logs/openapi/logs.openapi.json).
 
 ## CLI examples
 

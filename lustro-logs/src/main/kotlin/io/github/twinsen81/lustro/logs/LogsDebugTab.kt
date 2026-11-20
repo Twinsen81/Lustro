@@ -1,9 +1,9 @@
 package io.github.twinsen81.lustro.logs
 
 import android.os.Process
-import io.github.twinsen81.lustro.DebugRequest
-import io.github.twinsen81.lustro.DebugResponse
+import io.github.twinsen81.lustro.DebugRoutes
 import io.github.twinsen81.lustro.DebugTab
+import io.github.twinsen81.lustro.ExperimentalDebugRoutes
 import io.github.twinsen81.lustro.logs.internal.AppendedLine
 import io.github.twinsen81.lustro.logs.internal.AppendedTags
 import io.github.twinsen81.lustro.logs.internal.LogBuffer
@@ -54,13 +54,16 @@ public class LogsDebugTab private constructor(
     override val icon: String = "📜"
     override val order: Int = 20
 
-    private val routes = LogRoutes(buffer, reader)
+    private val logRoutes = LogRoutes(buffer, reader)
 
     /** The view's static shell; `logs.js` and `logs.css` in the assets fill and style it. */
     override fun renderContent(): String = LogsView.HTML
 
-    /** Serves the routes under `/api/v1/logs/`; the static `logs.openapi.json` describes them. */
-    override fun handle(request: DebugRequest): DebugResponse? = routes.handle(request)
+    /** Declares the routes under `/api/v1/logs/`, which also make the tab's OpenAPI document. */
+    @OptIn(ExperimentalDebugRoutes::class)
+    override fun routes(routes: DebugRoutes) {
+        logRoutes.declare(routes)
+    }
 
     /** Starts reading logcat. */
     override fun onStart() {

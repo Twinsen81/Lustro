@@ -5,7 +5,7 @@ These JSON files are vendored copies of the SemVer-governed wire protocol:
 - the shared JSON Schemas from ``wire-protocol/v1/*.schema.json``,
 - the authoritative OpenAPI documents of the Network tab
   (``lustro/openapi/network.openapi.json``, generated from its route declarations), the Logs tab
-  (``lustro-logs/src/main/assets/lustro/logs.openapi.json``), the
+  (``lustro-logs/openapi/logs.openapi.json``, generated from its route declarations), the
   Preferences tab (``lustro-prefs/openapi/prefs.openapi.json``, generated from its route
   declarations), the
   SQLite tab (``lustro-sqlite/openapi/sqlite.openapi.json``, generated from its route

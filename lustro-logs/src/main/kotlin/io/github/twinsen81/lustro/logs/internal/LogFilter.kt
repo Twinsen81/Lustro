@@ -1,6 +1,5 @@
 package io.github.twinsen81.lustro.logs.internal
 
-import io.github.twinsen81.lustro.DebugRequest
 import java.util.concurrent.TimeUnit
 import java.util.regex.Pattern
 import java.util.regex.PatternSyntaxException
@@ -47,41 +46,36 @@ internal class LogFilter(
         const val MAX_REGEX_LENGTH: Int = 200
 
         /**
-         * Reads the filters of [request].
+         * Reads the filters from the values of the query parameters, which the route
+         * declarations have checked: an empty [level], [text], or regex is no filter.
          *
          * @throws BadParameterException for a level that is not one of V, D, I, W, E,
-         *   and F, a regex that is too long or doesn't compile, or a time that is not
-         *   a whole number of milliseconds, or a `from` after `to`.
+         *   and F, a regex that doesn't compile, or a [from] after [to].
          */
-        fun from(request: DebugRequest): LogFilter {
-            val level = request.queryParam("level")?.takeIf { it.isNotEmpty() }
-            val rank = level?.singleOrNull()?.let { LogLevels.rank(it.uppercaseChar()) } ?: -1
-            if (level != null && rank < 0) throw BadParameterException("level must be one of V, D, I, W, E, and F", "level")
-            val minRank = rank.coerceAtLeast(0)
-            val from = time(request, "from") ?: Long.MIN_VALUE
-            val to = time(request, "to") ?: Long.MAX_VALUE
+        fun from(
+            level: String?,
+            tag: String?,
+            text: String?,
+            message: String?,
+            from: Long = Long.MIN_VALUE,
+            to: Long = Long.MAX_VALUE,
+        ): LogFilter {
+            val given = level?.takeIf { it.isNotEmpty() }
+            val rank = given?.singleOrNull()?.let { LogLevels.rank(it.uppercaseChar()) } ?: -1
+            if (given != null && rank < 0) throw BadParameterException("level must be one of V, D, I, W, E, and F", "level")
             if (from > to) throw BadParameterException("from must not be after to", "from")
             return LogFilter(
-                minRank = minRank,
-                tag = regex(request, "tag"),
-                text = request.queryParam("q")?.takeIf { it.isNotEmpty() },
-                message = regex(request, "mq"),
+                minRank = rank.coerceAtLeast(0),
+                tag = regex(tag, "tag"),
+                text = text?.takeIf { it.isNotEmpty() },
+                message = regex(message, "mq"),
                 from = from,
                 to = to,
             )
         }
 
-        private fun time(request: DebugRequest, name: String): Long? {
-            val given = request.queryParam(name)?.takeIf { it.isNotEmpty() } ?: return null
-            return given.toLongOrNull()
-                ?: throw BadParameterException("$name must be a time in epoch milliseconds, such as 1792419740000", name)
-        }
-
-        private fun regex(request: DebugRequest, name: String): Pattern? {
-            val source = request.queryParam(name)?.takeIf { it.isNotEmpty() } ?: return null
-            if (source.length > MAX_REGEX_LENGTH) {
-                throw BadParameterException("$name is longer than $MAX_REGEX_LENGTH characters", name)
-            }
+        private fun regex(source: String?, name: String): Pattern? {
+            if (source.isNullOrEmpty()) return null
             return try {
                 Pattern.compile(source)
             } catch (e: PatternSyntaxException) {

@@ -2256,6 +2256,39 @@ see [DECISIONS.md](DECISIONS.md).
   `field: "body"`; `body/both` and `events/abc/payload` answered `404`; and
   `?cursr=x` got its `Lustro-Warning`. The CLI end to end passed on the same
   emulator.
+- **The Logs tab declares its routes once (experimental API).** The Logs tab
+  routed its 5 routes by hand in `handle()` and read each parameter and body
+  itself, and `logs.openapi.json` described them again by hand. The tab now
+  declares them in `routes()`, so the routing, the checks of the parameters
+  and the bodies, the `405` with `Allow`, and the document of
+  `GET logs/_schema` come from one declaration. `GET entries` and `GET text`
+  declare their 7 shared parameters once. The document is committed at
+  `lustro-logs/openapi/logs.openapi.json`, which the wire-schema artifact and
+  the CLI copy, and a test keeps the copy equal to the declarations. It has
+  the paths, methods, parameters, and bodies of the hand-written one, with
+  `limit` as an `int32`. The routes keep their statuses, `error` types, and
+  `field` values, and the version stays `1.1`, with these differences. The
+  bodies of `POST pause` and `compact` must be strict JSON: a body that is not
+  a JSON object, such as `not json` or `[true]`, gets `400` with
+  `field: "body"`, where it named `paused` or `compact`, and `{"paused": null}`
+  toggles, as a body without the key does, where it got `400`. The checks of
+  `tag` and `mq` for length, of `from`, `to`, and `limit`, run before the
+  handler, which checks `level`, `from` after `to`, and the regex: so
+  `?level=X&from=noon` now gets `400` for `from`, where it got it for `level`.
+  An empty `from`, `to`, or `limit` of `GET text` gets `400`, as an empty
+  number without a default does on every tab, such as `since=` on the Network
+  tab, where it was no limit; an empty `limit` of `GET entries` still takes
+  `500`, an empty text parameter is still no filter, and a lowercase `level`
+  still works. Some messages change, such as `from must be a whole number, was noon`,
+  `limit must be from 1 to 5000, was 0`, and `tag must be at most 200
+  characters long`. Verified on a physical device (API 37) with the sample:
+  `GET logs/_schema` was byte-equal to the committed file, and `_meta` listed
+  `logs` 1.1; `GET clear` answered `405` with `Allow: POST`, and `POST
+  entries` with `Allow: GET`; `limit=0`, `level=X`, `tag=(`, `from=`,
+  `from=2&to=1`, and `level=X&from=noon` answered `400` with the field that
+  this entry names, and `level=w` answered `200`; `POST compact` with `not
+  json` answered `400` with `field: "body"`; and `?cursr=x` got its
+  `Lustro-Warning`. The CLI end to end passed on the same device.
 - **The Screen tab declares its route once (experimental API).** The Screen
   tab routed `GET tree` by hand in `handle()` and read `merged` and `settle`
   itself, and `screen.openapi.json` described the route again by hand. The tab
