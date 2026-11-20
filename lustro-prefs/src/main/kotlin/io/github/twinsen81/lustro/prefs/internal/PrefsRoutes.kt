@@ -1,29 +1,117 @@
 package io.github.twinsen81.lustro.prefs.internal
 
-import io.github.twinsen81.lustro.DebugRequest
+import io.github.twinsen81.lustro.DebugParam
+import io.github.twinsen81.lustro.DebugParams
 import io.github.twinsen81.lustro.DebugResponse
+import io.github.twinsen81.lustro.DebugResponseException
+import io.github.twinsen81.lustro.DebugRoutes
+import io.github.twinsen81.lustro.DebugRoutes.Companion.ref
+import io.github.twinsen81.lustro.ExperimentalDebugRoutes
 import io.github.twinsen81.lustro.escapeForJson
 import io.github.twinsen81.lustro.prefs.ValuePolicy
 import io.github.twinsen81.lustro.prefs.internal.PrefValues.appendItem
-import org.json.JSONException
-import org.json.JSONObject
+import org.json.JSONTokener
 
-/** The routes of the Preferences tab, under `/api/v1/prefs/`. */
+/**
+ * The routes of the Preferences tab, under `/api/v1/prefs/`. [declare] declares them, and the
+ * tab's OpenAPI document comes from the declarations, with the text of [PrefsDocument].
+ */
+@OptIn(ExperimentalDebugRoutes::class)
 internal class PrefsRoutes(private val registry: PrefsRegistry) {
-    // A wrong method is null too: the server answers 405 from prefs.openapi.json.
-    fun handle(request: DebugRequest): DebugResponse? =
+    fun declare(routes: DebugRoutes) {
+        routes.title = PrefsDocument.TITLE
+        routes.version = "1.2"
+        routes.description = PrefsDocument.DESCRIPTION
+        for ((name, schema) in PrefsDocument.COMPONENTS) routes.component(name, schema)
+
+        routes.get("files") {
+            operationId = "listPrefsFiles"
+            summary = "List the files, with their policies and cursors."
+            description = PrefsDocument.FILES_DESCRIPTION
+            response(PrefsDocument.FILES_RESPONSE, PrefsDocument.FILES_RESPONSE_SCHEMA)
+            handle { files() }
+        }
+        routes.get("entries") {
+            operationId = "listPrefEntries"
+            summary = "Poll a file: every entry, after its value policy."
+            description = PrefsDocument.ENTRIES_DESCRIPTION
+            val store = query.store(PrefsDocument.STORE_PARAM)
+            val file = query.file(minLength = 1)
+            val cursor = query.string("cursor") { description = PrefsDocument.CURSOR }
+            response(PrefsDocument.ENTRIES_RESPONSE, ref("PrefsCursorEnvelope"))
+            errors(404, 500)
+            handle { call -> guarded { entries(source(call[store], call[file]), call[cursor]) } }
+        }
+        routes.get("entry") {
+            operationId = "getPrefEntry"
+            summary = "Get one entry, with its whole value."
+            description = PrefsDocument.ENTRY_DESCRIPTION
+            val store = query.store(PrefsDocument.STORE_PARAM)
+            val file = query.file(minLength = 1)
+            val key = query.string("key") { description = PrefsDocument.ENTRY_KEY }.required()
+            response(PrefsDocument.ENTRY_RESPONSE, PrefsDocument.ENTRY_RESPONSE_SCHEMA)
+            errors(404, 500)
+            handle { call -> guarded { entry(source(call[store], call[file]), call[key]) } }
+        }
+        routes.post("edit") {
+            operationId = "editPref"
+            summary = "Write one value, with its type."
+            description = PrefsDocument.EDIT_DESCRIPTION
+            bodyDescription = "The value to write."
+            val store = body.store(null)
+            val file = body.file(minLength = 0)
+            val key = body.string("key") { description = PrefsDocument.EDIT_KEY }.required()
+            // The store decides which types it can write, so the handler checks the type.
+            val type = body.string("type") { schema = ref("PrefWriteType") }.required()
+            val value = body.json("value") { description = PrefsDocument.VALUE; schema = PrefsDocument.VALUE_SCHEMA }.required()
+            response(PrefsDocument.EDIT_RESPONSE, PrefsDocument.EDIT_RESPONSE_SCHEMA)
+            errors(404, 500)
+            handle { call -> guarded { edit(writableSource(call[store], call[file]), call[key], call[type], call[value]) } }
+        }
+        routes.post("delete") {
+            operationId = "deletePref"
+            summary = "Remove one key."
+            description = PrefsDocument.DELETE_DESCRIPTION
+            bodyDescription = "The key to remove."
+            val store = body.store(null)
+            val file = body.file(minLength = 0)
+            val key = body.string("key") { description = PrefsDocument.DELETE_KEY }.required()
+            response(PrefsDocument.DELETE_RESPONSE, PrefsDocument.DELETE_RESPONSE_SCHEMA)
+            errors(404, 500)
+            handle { call -> guarded { delete(writableSource(call[store], call[file]), call[key]) } }
+        }
+        routes.post("clear") {
+            operationId = "clearPrefs"
+            summary = "Remove every key of a file."
+            description = PrefsDocument.CLEAR_DESCRIPTION
+            bodyDescription = "The file to clear."
+            val store = body.store(null)
+            val file = body.file(minLength = 0)
+            val confirm = body.boolean("confirm") { description = PrefsDocument.CONFIRM; schema = PrefsDocument.CONFIRM_SCHEMA }.required()
+            response(PrefsDocument.CLEAR_RESPONSE, PrefsDocument.CLEAR_RESPONSE_SCHEMA)
+            errors(404, 500)
+            handle { call -> guarded { clear(writableSource(call[store], call[file]), call[confirm]) } }
+        }
+    }
+
+    // A query file of "" is refused by the declaration; a body file of "" by fileName(), with the
+    // message that the route had before its declarations.
+    private fun DebugParams.file(minLength: Int): DebugParam<String> =
+        string("file") {
+            this.minLength = minLength
+            description = PrefsDocument.FILE
+        }.required()
+
+    private fun DebugParams.store(description: String?): DebugParam<String?> =
+        string("store") {
+            values = PrefsStore.entries.map { it.wireName }
+            schema = ref("PrefsStore")
+            this.description = description
+        }
+
+    private inline fun guarded(answer: () -> DebugResponse): DebugResponse =
         try {
-            when ("${request.method.uppercase()} ${request.path}") {
-                "GET files" -> files()
-                "GET entries" -> entries(request)
-                "GET entry" -> entry(request)
-                "POST edit" -> edit(body(request))
-                "POST delete" -> delete(body(request))
-                "POST clear" -> clear(body(request))
-                else -> null
-            }
-        } catch (e: RouteException) {
-            DebugResponse.error(e.message.orEmpty(), status = e.status, code = e.code, field = e.field)
+            answer()
         } catch (e: UnreadableFileException) {
             DebugResponse.error(e.message.orEmpty(), status = 500)
         } catch (e: WriteFailedException) {
@@ -60,28 +148,24 @@ internal class PrefsRoutes(private val registry: PrefsRegistry) {
         }
     }
 
-    private fun entries(request: DebugRequest): DebugResponse {
-        val source = source(store(request.queryParam("store")), request.queryParam("file"))
+    private fun entries(source: PrefsSource, cursor: String?): DebugResponse =
         // The sequence before the entries, so that a change while they are read moves the cursor past them.
-        return DebugResponse.cursorEnvelope(
+        DebugResponse.cursorEnvelope(
             currentSequence = source.currentSequence,
-            clientCursor = request.queryParam("cursor"),
+            clientCursor = cursor,
             epoch = source.epoch,
         ) {
-            // Read only when the client lacks them. An unreadable file throws out of the envelope, to handle().
+            // Read only when the client lacks them. An unreadable file throws out of the envelope, to guarded().
             val contents = source.read()
             contents.entries.keys.sorted().forEachIndexed { index, key ->
                 if (index > 0) append(',')
                 appendEntry(contents, key, PrefValues.MAX_VALUE_CHARS)
             }
         }
-    }
 
-    private fun entry(request: DebugRequest): DebugResponse {
-        val source = source(store(request.queryParam("store")), request.queryParam("file"))
-        val key = request.queryParam("key") ?: throw RouteException("key is required", field = "key")
+    private fun entry(source: PrefsSource, key: String): DebugResponse {
         val contents = source.read()
-        if (key !in contents.entries) throw RouteException("The file ${source.name} has no key \"$key\"", status = 404, field = "key")
+        if (key !in contents.entries) fail("The file ${source.name} has no key \"$key\"", status = 404, field = "key")
         return DebugResponse.json {
             append("{\"item\":")
             appendEntry(contents, key)
@@ -89,14 +173,12 @@ internal class PrefsRoutes(private val registry: PrefsRegistry) {
         }
     }
 
-    private fun edit(body: JSONObject): DebugResponse {
-        val source = writableSource(body)
-        val key = key(body)
+    private fun edit(source: PrefsSource, key: String, typeName: String, valueJson: String): DebugResponse {
         // Often a client's mistake, such as a shell variable that did not expand. Delete still takes it,
         // so that a client can remove such a key.
-        if (key.isEmpty()) throw RouteException("key must not be empty", field = "key")
-        val type = type(body, source.store)
-        val value = value(body, type)
+        if (key.isEmpty()) fail("key must not be empty", field = "key")
+        val type = type(typeName, source.store)
+        val value = value(valueJson, type)
         val before = source.read().entries[key]
         write(source, changed = !PrefValues.same(before, value), PrefChange.Put(key, type, value))
         val after = source.read()
@@ -107,19 +189,14 @@ internal class PrefsRoutes(private val registry: PrefsRegistry) {
         }
     }
 
-    private fun delete(body: JSONObject): DebugResponse {
-        val source = writableSource(body)
-        val key = key(body)
+    private fun delete(source: PrefsSource, key: String): DebugResponse {
         val existed = key in source.read().entries
         write(source, changed = existed, PrefChange.Remove(key))
         return DebugResponse.json { append("{\"status\":\"ok\",\"deleted\":").append(existed).append('}') }
     }
 
-    private fun clear(body: JSONObject): DebugResponse {
-        val source = writableSource(body)
-        if (body.opt("confirm") != true) {
-            throw RouteException("confirm must be true: clear removes every key of the file", field = "confirm")
-        }
+    private fun clear(source: PrefsSource, confirm: Boolean): DebugResponse {
+        if (!confirm) fail("confirm must be true: clear removes every key of the file", field = "confirm")
         val removed = source.read().entries.size
         write(source, changed = removed > 0, PrefChange.Clear)
         return DebugResponse.json { append("{\"status\":\"ok\",\"removed\":").append(removed).append('}') }
@@ -139,65 +216,38 @@ internal class PrefsRoutes(private val registry: PrefsRegistry) {
         }
     }
 
-    private fun body(request: DebugRequest): JSONObject {
-        val text = request.bodyAsString()?.takeIf { it.isNotBlank() } ?: throw RouteException("The body must be a JSON object", field = "body")
-        return try {
-            JSONObject(text)
-        } catch (e: JSONException) {
-            throw RouteException("The body is not a JSON object: ${e.message}", field = "body")
-        }
-    }
+    private fun type(name: String, store: PrefsStore): PrefType =
+        PrefType.forWireName(name)?.takeIf { it in store.writeTypes }
+            ?: fail("type must be one of ${store.writeTypes.joinToString { it.wireName }} for ${store.label}", field = "type")
 
-    private fun key(body: JSONObject): String = body.opt("key") as? String ?: throw RouteException("key is required, as a JSON string", field = "key")
-
-    private fun type(body: JSONObject, store: PrefsStore): PrefType {
-        val name = body.opt("type") as? String ?: throw RouteException("type is required, as a JSON string", field = "type")
-        return PrefType.forWireName(name)?.takeIf { it in store.writeTypes }
-            ?: throw RouteException("type must be one of ${store.writeTypes.joinToString { it.wireName }} for ${store.label}", field = "type")
-    }
-
-    private fun value(body: JSONObject, type: PrefType): Any {
-        if (body.isNull("value")) throw RouteException("value is required; POST delete removes a key", field = "value")
-        return try {
-            PrefValues.parse(type, body.get("value"))
+    // The value is the JSON text of the body's value, which the router read: parsed as org.json reads a body.
+    private fun value(json: String, type: PrefType): Any =
+        try {
+            PrefValues.parse(type, JSONTokener(json).nextValue())
         } catch (e: BadValueException) {
-            throw RouteException(e.message.orEmpty(), field = "value")
+            fail(e.message.orEmpty(), field = "value")
         }
-    }
 
-    private fun writableSource(body: JSONObject): PrefsSource {
-        val storeName = if (body.isNull("store")) null else body.opt("store") as? String ?: throw RouteException("store must be a JSON string", field = "store")
-        val source = source(store(storeName), body.opt("file") as? String)
-        if (!source.writable()) {
-            throw RouteException("The file ${source.name} is read-only", status = 403, code = "read_only", field = "file")
-        }
+    private fun writableSource(storeName: String?, fileName: String): PrefsSource {
+        val source = source(storeName, fileName)
+        if (!source.writable()) fail("The file ${source.name} is read-only", status = 403, code = "read_only", field = "file")
         return source
     }
 
-    // Without a store, a SharedPreferences file, as before there were others.
-    private fun store(name: String?): PrefsStore =
-        if (name == null) {
-            PrefsStore.SHARED_PREFS
-        } else {
-            PrefsStore.forWireName(name)
-                ?: throw RouteException("store must be one of ${PrefsStore.entries.joinToString { it.wireName }}", field = "store")
-        }
+    // Without a store, a SharedPreferences file, as before there were others. The declaration refuses another name.
+    private fun source(storeName: String?, name: String): PrefsSource {
+        val store = storeName?.let { PrefsStore.forWireName(it) } ?: PrefsStore.SHARED_PREFS
+        return registry.find(store, fileName(name)) ?: fail("No file named $name in the ${store.wireName} store", status = 404, field = "file")
+    }
 
-    private fun source(store: PrefsStore, name: String?): PrefsSource =
-        registry.find(store, fileName(name)) ?: throw RouteException("No file named $name in the ${store.wireName} store", status = 404, field = "file")
-
-    private fun fileName(name: String?): String {
-        if (name.isNullOrEmpty()) throw RouteException("file is required", field = "file")
-        if ('/' in name || '\\' in name) throw RouteException("file must be a file name, without / or \\", field = "file")
+    private fun fileName(name: String): String {
+        if (name.isEmpty()) fail("file is required", field = "file")
+        if ('/' in name || '\\' in name) fail("file must be a file name, without / or \\", field = "file")
         return name
     }
 
-    private class RouteException(
-        message: String,
-        val status: Int = 400,
-        val code: String? = null,
-        val field: String? = null,
-    ) : Exception(message)
+    private fun fail(message: String, status: Int = 400, code: String? = null, field: String? = null): Nothing =
+        throw DebugResponseException(DebugResponse.error(message, status = status, code = code, field = field))
 
     companion object {
         val ValuePolicy.wireName: String

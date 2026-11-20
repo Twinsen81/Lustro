@@ -3,7 +3,7 @@
 `DebugTab` is the only public extension point for adding a tab. Other public types, such as
 `Redactor`, `MockRuleStorage`, and the sink from `Lustro.networkCaptureSink()`, change how the
 Network tab works, but they add no tab. A tab must have an `id`, a `title`, and an `icon`. All the
-other members have a default, such as `handle(request)` for the JSON routes and `renderContent()`
+other members have a default, such as `routes(routes)` for the JSON routes and `renderContent()`
 for the HTML view. A tab without a view is valid: agents and scripts use its routes.
 
 The `id` is the part of the routes after `/api/v1/`. Two rules apply to it:
@@ -22,6 +22,7 @@ fails on a `DebugTab` subclass in `src/main` or `src/release`: see
 a complete tab step by step.
 
 ```kotlin
+@OptIn(ExperimentalDebugRoutes::class)
 class FlagsTab(private val flags: FeatureFlagRepository) : DebugTab() {
     override val id = "flags"
     override val title = "Feature Flags"
@@ -29,12 +30,14 @@ class FlagsTab(private val flags: FeatureFlagRepository) : DebugTab() {
 
     override fun renderContent() = """<div id="flags-list"></div>"""
 
-    // request.path is the remainder after /api/v1/flags/; null -> enveloped 404, or
-    // 405 when flags.openapi.json declares the path with another method; anything
-    // thrown, even TODO(), -> enveloped 500 (it never escapes into your app).
-    override fun handle(request: DebugRequest): DebugResponse? = when (request.path) {
-        "list" -> DebugResponse.ok(flags.toJson())
-        else -> null
+    // GET /api/v1/flags/list. Another method gets 405, another path 404, and anything
+    // thrown, even TODO(), an enveloped 500 (it never escapes into your app).
+    override fun routes(routes: DebugRoutes) {
+        routes.version = "1.0"
+        routes.get("list") {
+            summary = "The flags."
+            handle { DebugResponse.ok(flags.toJson()) }
+        }
     }
 }
 ```
@@ -47,6 +50,74 @@ Lustro.builder(application)
     .addTab(FlagsTab(flagsRepo))
     .build()
 ```
+
+## Declared routes
+
+A tab declares its routes in `routes(routes)`: for each route, its method, its path, its
+parameters and body, its response, and its handler. Lustro routes each request, checks its
+parameters, and makes the tab's OpenAPI document from the same declarations, so the routes and
+the document can't drift apart, and `GET /api/v1/_meta` lists the tab.
+
+```kotlin
+@OptIn(ExperimentalDebugRoutes::class)
+override fun routes(routes: DebugRoutes) {
+    routes.version = "1.0" // the info.version of the document; change it when a route changes
+    routes.get("items/{id}") {
+        summary = "One item."
+        val id = path.long("id")
+        val full = query.boolean("full").withDefault(false)
+        errors(404)
+        handle { call -> item(call[id], call[full]) }
+    }
+    routes.post("toggle") {
+        acceptsForm = true // also id=... from curl -d
+        val id = body.string("id") { minLength = 1 }.required()
+        handle { call -> toggle(call[id]) }
+    }
+}
+```
+
+- **The API needs an opt-in.** Its shape can still change in a way that breaks the code that
+    uses it, so it is marked `@ExperimentalDebugRoutes`, and the compiler stops a tab without
+    `@OptIn(ExperimentalDebugRoutes::class)`. It is a Kotlin API: Java is not a target.
+- **Parameters.** `path`, `query`, and `body` declare them, as a `string`, `int`, `long`, or
+    `boolean`, and in a body also as `json`, which gives the handler the value's JSON text. Each
+    returns a handle, and the handler reads the value with it: `call[id]`. A parameter is optional
+    (`null` when absent) until `.required()` or `.withDefault(value)`. Options: `description`,
+    `minLength`, `maxLength`, and `values` for a string, `min` and `max` for a number, and
+    `schema`, a JSON Schema that describes it in the document in place of the one made from its
+    type, such as `DebugRoutes.ref("Store")`.
+- **Empty values.** In the query or a form, an empty int, long, or boolean is absent, and an
+    empty string is a string, which `minLength = 1` refuses.
+- **Bodies.** Body fields come from a JSON object, with strict JSON types, and `null` counts as
+    absent. With `acceptsForm = true`, a route also takes them as an
+    `application/x-www-form-urlencoded` form. A route with a required field gets a `400` for an
+    empty body. For a body that is not a set of fields, such as an uploaded file, use
+    `rawBody(contentType, schema)` and read `call.request.body` in the handler.
+- **Answers.** A path that no route declares gets `404`. A declared path with another method gets
+    `405 method_not_allowed` with an `Allow` header. A missing or wrong parameter gets
+    `400 bad_request` with the parameter's name in `field`, and a body that is not a JSON object
+    gets `field: "body"`. For an error that depends on data, such as an unknown id, the handler
+    returns `DebugResponse.error(...)`, or a helper deep in its code throws
+    `DebugResponseException(response)`. The server answers that exception for a tab that routes
+    by hand too.
+- **The document.** It has the paths, methods, parameters, bodies, and responses, the shared
+    `ErrorEnvelope`, and the descriptions: `summary`, `description`, `bodyDescription`, and the
+    parameters' `description`. `response(description, schema)` adds the success response's
+    JSON Schema, `component(name, schema)` adds a schema under `components/schemas`, and
+    `DebugRoutes.ref(name)` refers to it. `errors(404, 409)` lists the error statuses that the
+    handler answers.
+- **Your own document or routing.** Override `schema()` to give your own document; the declared
+    routes still route. `super.schema()` gives the generated one, to change. Override `handle()`
+    to route some paths by hand, and call `super.handle(request)` for the declared ones.
+- **Mistakes.** A mistake in the declarations, such as a path parameter that the route does not
+    declare, two routes with the same method and path, a schema that is not valid JSON, or a
+    missing `version`, throws `IllegalStateException` from the first `handle()` or `schema()`
+    call. A unit test that calls `tab.schema()` finds it. The server then leaves the tab out of
+    `_meta` and answers its routes with `500`.
+- **Release builds.** `routes()` runs only when the runtime calls `handle()` or `schema()` for
+    the first time, never in a no-op build, and the declarations need no reflection and no keep
+    rules.
 
 **Asset and rendering conventions:**
 
@@ -66,17 +137,18 @@ Lustro.builder(application)
     them looks like the console in both themes, without CSS of its own. The
     [custom tab styleguide](STYLEGUIDE.md) gives the rules, and the sample's flags tab is a
     working example.
-- Return `null` from `handle()` for a method that a route does not take, as for a route that
-    the tab does not have. When the tab's OpenAPI document declares the path with other methods,
-    the client gets a `405` with an `Allow` header that lists them, and otherwise a `404`.
-- JSON routes go through `handle(request)`. Make the responses with the `DebugResponse`
+- A tab that routes by hand in `handle(request)` returns `null` for a method that a route does
+    not take, as for a route that the tab does not have. When the tab's OpenAPI document declares
+    the path with other methods, the client gets a `405` with an `Allow` header that lists them,
+    and otherwise a `404`.
+- Make the responses with the `DebugResponse`
     factories (`ok`, `json { ... }`, `text`, `bytes`, `notFound`, `error`). `error(message,
     status)` gives the error envelope, and its `error` type follows from the status:
     `bad_request` (400), `unauthorized` (401), `forbidden` (403), `not_found` (404),
     `method_not_allowed` (405), `conflict` (409), `payload_too_large` (413),
     `unprocessable_entity` (422), `too_many_requests` (429), `internal_error` (500),
     `unavailable` (503), `timeout` (504), and `error` for any other status.
-- Read a JSON body with `request.bodyAsString()`. For an `application/x-www-form-urlencoded`
+- A tab that routes by hand reads a JSON body with `request.bodyAsString()`. For an `application/x-www-form-urlencoded`
     body, as `curl -d key=value` and old clients send it, `request.formParams()` gives each name
     with its values, decoded as the query parameters are. It is empty for another content type.
     Unlike `org.json`, it needs no Robolectric in a JVM unit test.
@@ -111,10 +183,11 @@ Lustro.builder(application)
     or an OkHttp `Call`. A handler that ignores cancellation keeps its concurrency slot until it
     returns. For work that takes longer than the timeout, see [Long work](#long-work).
 - **Give the tab an OpenAPI document, so that agents find it.** `/api/v1/_meta` lists only the
-    tabs that have one: a static `assets/lustro/<id>.openapi.json`, or a `schema()` that returns
-    one. A tab without a document works in the console, but agents do not see it in `_meta`.
-    Declare each query parameter that a route reads (`"in": "query"`): the server names every
-    other one in a `Lustro-Warning` response header, and the CLI prints it.
+    tabs that have one: the document of the declared routes, a static
+    `assets/lustro/<id>.openapi.json`, or a `schema()` that returns one. A tab without a document
+    works in the console, but agents do not see it in `_meta`. The document declares each query
+    parameter that a route reads (`"in": "query"`): the server names every other one in a
+    `Lustro-Warning` response header, and the CLI prints it.
 
 ## Headless tabs
 

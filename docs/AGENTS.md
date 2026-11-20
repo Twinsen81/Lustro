@@ -15,8 +15,9 @@ This document is about using a running Lustro. To add Lustro to an app, follow
 ## The agent's view
 
 - **Discoverable tabs.** `GET /api/v1/_meta` lists every tab that ships a schema. A tab is
-  agent-discoverable **only if** it exposes one (a static `assets/lustro/<id>.openapi.json` or a
-  dynamic `schema()`); schema-less tabs are usable in the browser but absent from `_meta`.
+  agent-discoverable **only if** it exposes one (a static `assets/lustro/<id>.openapi.json`, a
+  dynamic `schema()`, or the document of its declared routes); schema-less tabs are usable in the
+  browser but absent from `_meta`.
 - **Self-describing.** Fetch `GET /api/v1/<id>/_schema` for a tab's OpenAPI document and
   `GET /api/v1/_schema` for the shared envelope schemas. Drive operations from those, not from
   hard-coded paths.
@@ -732,7 +733,8 @@ with the reason in `readerError` (the buffer keeps what it has, and `entries` st
 Base path `/api/v1/prefs`, when the app registers the Preferences plugin
 (`PrefsDebugTab.create(context, ...)`; without it, the routes are an enveloped
 `404 Unknown tab: prefs`). The authoritative contract is
-`lustro-prefs/src/main/assets/lustro/prefs.openapi.json`, version `1.2` (`1.1` sends a long past 2^53 - 1 as a string; `1.2` adds `redacted`, and refuses an empty key in `POST edit`). The CLI has no `prefs`
+`GET /api/v1/prefs/_schema`, made from the tab's route declarations, and its copy
+`lustro-prefs/openapi/prefs.openapi.json`, version `1.2` (`1.1` sends a long past 2^53 - 1 as a string; `1.2` adds `redacted`, and refuses an empty key in `POST edit`). The CLI has no `prefs`
 commands: use `lustro api`.
 
 | Operation | Route | Notes |

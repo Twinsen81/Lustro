@@ -29,7 +29,7 @@ policy live in [`wire-protocol/v1/`](https://github.com/Twinsen81/Lustro/tree/ma
 the Logs tab's is
 [`lustro-logs/src/main/assets/lustro/logs.openapi.json`](https://github.com/Twinsen81/Lustro/blob/main/lustro-logs/src/main/assets/lustro/logs.openapi.json),
 the Preferences tab's is
-[`lustro-prefs/src/main/assets/lustro/prefs.openapi.json`](https://github.com/Twinsen81/Lustro/blob/main/lustro-prefs/src/main/assets/lustro/prefs.openapi.json),
+[`lustro-prefs/openapi/prefs.openapi.json`](https://github.com/Twinsen81/Lustro/blob/main/lustro-prefs/openapi/prefs.openapi.json),
 the SQLite tab's is
 [`lustro-sqlite/src/main/assets/lustro/sqlite.openapi.json`](https://github.com/Twinsen81/Lustro/blob/main/lustro-sqlite/src/main/assets/lustro/sqlite.openapi.json),
 the WorkManager tab's is

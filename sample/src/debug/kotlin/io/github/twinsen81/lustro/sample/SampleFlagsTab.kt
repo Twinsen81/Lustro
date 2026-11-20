@@ -1,9 +1,10 @@
 package io.github.twinsen81.lustro.sample
 
 import android.app.Application
-import io.github.twinsen81.lustro.DebugRequest
 import io.github.twinsen81.lustro.DebugResponse
+import io.github.twinsen81.lustro.DebugRoutes
 import io.github.twinsen81.lustro.DebugTab
+import io.github.twinsen81.lustro.ExperimentalDebugRoutes
 import io.github.twinsen81.lustro.escapeForJson
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -16,7 +17,11 @@ import org.json.JSONObject
  * Debug-only sample tab for cursor polling, modal upload, and schema discovery.
  * The app reads the flags through [flags], so a toggle in the console changes
  * the app, and a toggle in the app shows in the console on its next poll.
+ *
+ * The tab declares its routes in [routes]: Lustro routes the requests, checks
+ * their parameters, and makes the tab's OpenAPI document from the declarations.
  */
+@OptIn(ExperimentalDebugRoutes::class)
 public class SampleFlagsTab(
     application: Application,
 ) : DebugTab() {
@@ -105,21 +110,108 @@ public class SampleFlagsTab(
         </div>
         """.trimIndent()
 
-    override fun handle(request: DebugRequest): DebugResponse? {
-        val method = request.method.uppercase()
-        val path = request.path
-        return when {
-            path == "snapshot" && method == "GET" -> handleSnapshot(request)
-            path == "toggle" && method == "POST" -> handleToggle(request)
-            path == "upload" && method == "POST" -> handleUpload(request.bodyAsString())
-            else -> null
+    override fun routes(routes: DebugRoutes) {
+        routes.version = "1.0"
+        routes.description =
+            "A sample custom Lustro tab demonstrating async polling (opaque cursor), a file-upload route, and modal UI. All routes are " +
+            "token-authenticated (Bearer header or HttpOnly cookie) and live under /api/v1/flags. Errors use the shared error envelope."
+        routes.component(
+            "Flag",
+            """
+            {
+              "type": "object",
+              "required": ["id"],
+              "properties": {
+                "id": {"type": "string"},
+                "description": {"type": "string"},
+                "enabled": {"type": "boolean", "default": false}
+              }
+            }
+            """,
+        )
+        routes.component(
+            "FlagCursorEnvelope",
+            """
+            {
+              "type": "object",
+              "required": ["cursor", "status"],
+              "properties": {
+                "cursor": {"type": "string", "description": "Opaque cursor token."},
+                "status": {"type": "string", "enum": ["delta", "unchanged", "reset"]},
+                "items": {"type": "array", "items": ${DebugRoutes.ref("Flag")}}
+              }
+            }
+            """,
+        )
+
+        routes.get("snapshot") {
+            operationId = "snapshotFlags"
+            summary = "Poll the current feature-flag set with an opaque cursor."
+            description =
+                "Short-polling. Send the last cursor back each call. status=reset returns the full current flag list; status=delta " +
+                "returns the current list after a change; status=unchanged omits items. Treat unknown statuses as reset. Every " +
+                "mutation (toggle, upload) advances the cursor."
+            val cursor = query.string("cursor") { description = "Opaque cursor from the previous response. Omit on first poll." }
+            response("Cursor envelope.", DebugRoutes.ref("FlagCursorEnvelope"))
+            handle { call -> snapshot(call[cursor]) }
+        }
+
+        routes.post("toggle") {
+            operationId = "toggleFlag"
+            summary = "Toggle a feature flag's enabled state."
+            // Also {"id": ...} as JSON: `curl -d id=dark-mode-v2` sends a form.
+            acceptsForm = true
+            val flagId = body.string("id") { minLength = 1 }.required()
+            response(
+                "New state.",
+                """
+                {
+                  "type": "object",
+                  "required": ["status", "id", "enabled"],
+                  "properties": {"status": {"const": "ok"}, "id": {"type": "string"}, "enabled": {"type": "boolean"}}
+                }
+                """,
+            )
+            errors(404)
+            handle { call -> toggle(call[flagId]) }
+        }
+
+        routes.post("upload") {
+            operationId = "uploadFlags"
+            summary = "Upload a flags file and merge its definitions."
+            description =
+                "Accepts the raw contents of an uploaded flags file: either a bare array of flag objects or an object with a " +
+                "top-level \"flags\" array. Existing flags with the same id are replaced; new ids are added. Advances the cursor " +
+                "when at least one flag is imported."
+            rawBody(
+                "application/json",
+                """
+                {
+                  "oneOf": [
+                    {"type": "array", "items": ${DebugRoutes.ref("Flag")}},
+                    {"type": "object", "required": ["flags"], "properties": {"flags": {"type": "array", "items": ${DebugRoutes.ref("Flag")}}}}
+                  ]
+                }
+                """,
+            )
+            response(
+                "Import result.",
+                """
+                {
+                  "type": "object",
+                  "required": ["status", "imported"],
+                  "properties": {"status": {"const": "ok"}, "imported": {"type": "integer"}}
+                }
+                """,
+            )
+            handle { call -> upload(call.request.bodyAsString().orEmpty()) }
         }
     }
 
-    private fun handleSnapshot(request: DebugRequest): DebugResponse =
+    private fun snapshot(cursor: String?): DebugResponse =
         DebugResponse.cursorEnvelope(
             currentSequence = sequence.get(),
-            clientCursor = request.queryParam("cursor"),
+            clientCursor = cursor,
         ) {
             val snapshot = synchronized(lock) { byId.values.toList() }
             snapshot.forEachIndexed { index, flag ->
@@ -132,21 +224,7 @@ public class SampleFlagsTab(
             }
         }
 
-    // Takes {"id": ...} as JSON, or id=... as a form body, as `curl -d id=dark-mode-v2` sends it.
-    private fun handleToggle(request: DebugRequest): DebugResponse {
-        val flagId =
-            if (request.contentType?.subtype == "x-www-form-urlencoded") {
-                request.formParams()["id"]?.firstOrNull().orEmpty()
-            } else {
-                try {
-                    JSONObject(request.bodyAsString() ?: "{}").optString("id")
-                } catch (e: Exception) {
-                    return DebugResponse.error("Invalid JSON: ${e.message}")
-                }
-            }
-        if (flagId.isBlank()) {
-            return DebugResponse.error("id is required", field = "id")
-        }
+    private fun toggle(flagId: String): DebugResponse {
         val updated =
             synchronized(lock) {
                 val existing = byId[flagId] ?: return DebugResponse.notFound("Unknown flag: $flagId")
@@ -162,9 +240,9 @@ public class SampleFlagsTab(
         }
     }
 
-    // Accepts either a bare array or {"flags": [...]}.
-    private fun handleUpload(body: String?): DebugResponse {
-        if (body.isNullOrBlank()) {
+    // Accepts either a bare array or {"flags": [...]}. The router answers an empty body.
+    private fun upload(body: String): DebugResponse {
+        if (body.isBlank()) {
             return DebugResponse.error("Empty upload", field = "body")
         }
         val array =
@@ -201,5 +279,4 @@ public class SampleFlagsTab(
             JSONObject(trimmed).optJSONArray("flags") ?: JSONArray()
         }
     }
-
 }

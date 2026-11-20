@@ -30,4 +30,9 @@ dependencies {
     compileOnly(libs.androidx.annotation) {
         exclude(group = "org.jetbrains.kotlin")
     }
+
+    // The tests of the declared routes read the generated OpenAPI documents with org.json,
+    // which the runtime has on Android.
+    testImplementation(libs.junit)
+    testImplementation(libs.json)
 }

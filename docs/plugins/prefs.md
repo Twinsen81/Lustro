@@ -150,7 +150,7 @@ and whether it is read-only.
     key, which is most often a shell variable that did not expand; `POST delete` takes one.
 
 See [Agents and automation](../AGENTS.md#preferences-tab-operations) and
-[`prefs.openapi.json`](https://github.com/Twinsen81/Lustro/blob/main/lustro-prefs/src/main/assets/lustro/prefs.openapi.json).
+[`prefs.openapi.json`](https://github.com/Twinsen81/Lustro/blob/main/lustro-prefs/openapi/prefs.openapi.json).
 
 ## CLI examples
 

@@ -2,7 +2,7 @@
 // DataStores, to read and edit them. A poll asks GET files, which has the cursor
 // of each file, and asks GET entries for the open file only when its cursor
 // moved, so a poll of a file that did not change is one short request.
-// prefs.openapi.json describes the routes.
+// GET /api/v1/prefs/_schema describes the routes.
 (function() {
     var STORAGE_KEY = 'debug-prefs';
     var WIDTHS_KEY = 'debug-prefs-column-widths';

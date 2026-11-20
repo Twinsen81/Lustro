@@ -26,18 +26,19 @@ A tab is your code, and it reads your app's internals. Put it in the `debug` sou
 release build does not compile it. The release lint fails the build on a `DebugTab` subclass in
 `src/main` or `src/release`: see [Release safety](concepts/release-safety.md#the-lint-check).
 
-The tab has one Kotlin file and three assets:
+The tab has one Kotlin file and two assets:
 
 ```text
 app/src/debug/
 ├── kotlin/com/example/debug/FlagsTab.kt
 └── assets/lustro/
     ├── flags.js
-    ├── flags.css
-    └── flags.openapi.json
+    └── flags.css
 ```
 
-The server finds the assets by the tab's id, so their names start with the id.
+The server finds the assets by the tab's id, so their names start with the id. The tab's OpenAPI
+document comes from its route declarations ([step 10](#10-describe-the-routes)), so it needs no
+`flags.openapi.json`.
 
 ## 2. Subclass `DebugTab`
 
@@ -55,6 +56,7 @@ the server, and returns `LustroStatus.DISABLED`. See
 ```kotlin
 data class Flag(val id: String, val description: String, val enabled: Boolean)
 
+@OptIn(ExperimentalDebugRoutes::class)
 class FlagsTab : DebugTab() {
     override val id = "flags"
     override val title = "Feature Flags"
@@ -66,6 +68,12 @@ class FlagsTab : DebugTab() {
 ```
 
 The server escapes the title and the icon before it puts them in the tab bar.
+
+The tab declares its routes with an API whose shape can still change, in a way that breaks the
+code that uses it. So the API is marked `@ExperimentalDebugRoutes`, and the compiler stops a tab
+that does not accept this with `@OptIn(ExperimentalDebugRoutes::class)`. A tab is debug code that
+the app builds with the same Lustro version that it runs, so such a change shows up as a compile
+error in the tab, when you update Lustro.
 
 A tab with only routes, for agents and scripts, sets `showInTabBar = false`. It is then headless:
 its routes work, but it has no link in the tab bar and no page, so `/tab/<id>` answers `404`, as
@@ -98,32 +106,56 @@ for two requests at the same time. So the state of the tab needs a lock, or a th
 When the app also reads the flags, give it a thread-safe view of them. The sample exposes a
 `StateFlow` that the tab updates under the same lock.
 
-## 4. Route the requests
+## 4. Declare the routes
 
-`handle(request)` gets every request to `/api/v1/flags/...`, with `request.path` set to the part
-after `flags/`. Return `null` for a route that the tab does not have, and for a method that a route
-does not take. The client gets a `404` in the error envelope, or, when `flags.openapi.json`
-([step 10](#10-describe-the-routes-in-openapi)) declares the path with another method, a `405` with
-an `Allow` header that lists the methods of the path. So `GET flags/toggle` gets `405` and
-`Allow: POST`, and the tab needs no table of methods of its own.
+`routes(routes)` declares each route of the tab: its method, its path after `/api/v1/flags/`, its
+parameters, and the handler that answers it. Lustro calls it once, for the first request:
 
 ```kotlin
-    override fun handle(request: DebugRequest): DebugResponse? {
-        val method = request.method.uppercase()
-        return when {
-            request.path == "snapshot" && method == "GET" -> snapshot(request)
-            request.path == "toggle" && method == "POST" -> toggle(request.bodyAsString())
-            request.path == "upload" && method == "POST" -> upload(request.bodyAsString())
-            else -> null
+    override fun routes(routes: DebugRoutes) {
+        routes.version = "1.0"
+        routes.get("snapshot") {
+            summary = "Poll the flags with an opaque cursor."
+            val cursor = query.string("cursor") { description = "The cursor of the previous response." }
+            handle { call -> snapshot(call[cursor]) }
+        }
+        routes.post("toggle") {
+            summary = "Turn one flag on or off."
+            acceptsForm = true
+            val flagId = body.string("id") { minLength = 1 }.required()
+            errors(404)
+            handle { call -> toggle(call[flagId]) }
+        }
+        routes.post("upload") {
+            summary = "Add the flags of a flags file."
+            rawBody("application/json", """{"type": ["array", "object"]}""")
+            handle { call -> upload(call.request.bodyAsString().orEmpty()) }
         }
     }
 ```
+
+Each parameter declaration returns a handle, and the handler reads the value with it:
+`call[cursor]` is a `String?`, because the cursor is optional, and `call[flagId]` is a `String`,
+because `.required()` makes the id required. The block runs once; the handler runs for each
+request, off the main thread.
+
+From these declarations, Lustro answers the client's mistakes before the handler runs:
+
+- a path that no route declares, such as `GET flags/nothing`, gets `404`;
+- a declared path with another method, such as `GET flags/toggle`, gets `405` with `Allow: POST`;
+- a missing or wrong parameter gets `400` with the parameter's name in `field`, such as
+    `{"error":"bad_request","message":"id is required","field":"id"}`, and a body that is not a
+    JSON object gets `field: "body"`.
 
 Only `snapshot` is a `GET`, because it changes nothing. A route that changes state must take
 `POST`, `PUT`, `PATCH`, or `DELETE`: a page on another site can make the browser send a `GET` that
 the server cannot refuse. [Custom tabs](custom-tabs.md) explains why.
 
-When `handle` throws, the client gets a `500`, and the app does not crash.
+When a handler throws, the client gets a `500`, and the app does not crash.
+
+A mistake in the declarations, such as `"items/{id}"` without `path.string("id")`, or two routes
+with the same method and path, throws `IllegalStateException` from the first request.
+[Step 13](#13-test-it) finds it in a unit test.
 
 ## 5. Answer a poll with the cursor envelope
 
@@ -133,10 +165,10 @@ poll. `DebugResponse.cursorEnvelope` compares the client's cursor with the curre
 calls the lambda only when the list must go out:
 
 ```kotlin
-    private fun snapshot(request: DebugRequest): DebugResponse =
+    private fun snapshot(cursor: String?): DebugResponse =
         DebugResponse.cursorEnvelope(
             currentSequence = sequence.get(),
-            clientCursor = request.queryParam("cursor"),
+            clientCursor = cursor,
         ) {
             val flags = synchronized(lock) { byId.values.toList() }
             flags.forEachIndexed { index, flag ->
@@ -168,19 +200,12 @@ when it is created, for example with `Random.nextLong()`.
 
 ## 6. Change state on `POST`
 
-`toggle` reads the body, changes one flag, and advances the sequence. The `DebugResponse` factories
-make the error envelope: `error(...)` is a `400` by default, and `notFound(...)` is a `404`.
+`toggle` gets the id that the router read from the body, changes one flag, and advances the
+sequence. The `DebugResponse` factories make the error envelope: `error(...)` is a `400` by
+default, and `notFound(...)` is a `404`.
 
 ```kotlin
-    private fun toggle(body: String?): DebugResponse {
-        val json =
-            try {
-                JSONObject(body ?: "{}")
-            } catch (e: JSONException) {
-                return DebugResponse.error("Invalid JSON: ${e.message}")
-            }
-        val flagId = json.optString("id")
-        if (flagId.isBlank()) return DebugResponse.error("id is required", field = "id")
+    private fun toggle(flagId: String): DebugResponse {
         val updated =
             synchronized(lock) {
                 val flag = byId[flagId] ?: return DebugResponse.notFound("Unknown flag: $flagId")
@@ -196,36 +221,20 @@ make the error envelope: `error(...)` is a `400` by default, and `notFound(...)`
 
 The other error types follow from the status, such as `conflict` for `409`,
 `unprocessable_entity` for `422`, and `too_many_requests` for `429`. [Custom tabs](custom-tabs.md)
-lists them all.
+lists them all. To end a request with an error from a helper deep in the handler's code, throw
+`DebugResponseException(DebugResponse.error(...))`: the client gets that response.
 
-To also accept a form body, such as `curl -d id=offline-sync`, give `toggle` the request in place
-of the body, and choose the parser by the content type. `request.formParams()` parses an
-`application/x-www-form-urlencoded` body with the rules of the query parameters. A form body
-without an `id` then gets `id is required`, and not `Invalid JSON`:
+The router reads the body fields from a JSON object, `{"id": "offline-sync"}`. With
+`acceptsForm = true`, `toggle` also takes them as a form, as `curl -d id=offline-sync` sends it.
+Turn it on only for the routes that need it.
 
-```kotlin
-    private fun toggle(request: DebugRequest): DebugResponse {
-        val flagId =
-            if (request.contentType?.subtype == "x-www-form-urlencoded") {
-                request.formParams()["id"]?.firstOrNull().orEmpty()
-            } else {
-                try {
-                    JSONObject(request.bodyAsString() ?: "{}").optString("id")
-                } catch (e: JSONException) {
-                    return DebugResponse.error("Invalid JSON: ${e.message}")
-                }
-            }
-        if (flagId.isBlank()) return DebugResponse.error("id is required", field = "id")
-        // The rest is as above.
-    }
-```
-
-`upload` takes a JSON array of flags, or an object with a `flags` array. It puts each flag, and
-advances the sequence once when it added at least one:
+`upload` reads its whole body itself, because a flags file is not a set of fields: `rawBody(...)`
+declares it, and the router answers an empty body with a `400` for `body`. `upload` takes a JSON
+array of flags, or an object with a `flags` array. It puts each flag, and advances the sequence
+once when it added at least one:
 
 ```kotlin
-    private fun upload(body: String?): DebugResponse {
-        if (body.isNullOrBlank()) return DebugResponse.error("Empty upload", field = "body")
+    private fun upload(body: String): DebugResponse {
         val array =
             try {
                 val text = body.trim()
@@ -389,35 +398,41 @@ tab follows the theme:
 
 The [styleguide](STYLEGUIDE.md) lists the tokens and the components.
 
-## 10. Describe the routes in OpenAPI
+## 10. Describe the routes
 
-`flags.openapi.json` describes the routes for agents and tools. Without it, the tab works in the
-console, but `GET /api/v1/_meta` does not list it, so an agent does not find it:
+The declarations of [step 4](#4-declare-the-routes) are also the tab's OpenAPI document, which
+`GET /api/v1/flags/_schema` serves. Agents and tools read it, and `GET /api/v1/_meta` lists the
+tab only because it has one. The document has each route's path, method, parameters, and body,
+the shared error envelope, and the error statuses: `400` for a route with parameters or a body,
+the ones that the server answers for any route, and the ones of `errors(...)`.
 
-```json
-{
-  "openapi": "3.1.0",
-  "info": { "title": "Feature Flags debug tab", "version": "1.0" },
-  "paths": {
-    "/api/v1/flags/snapshot": {
-      "get": {
-        "operationId": "snapshotFlags",
-        "summary": "Poll the flags with an opaque cursor.",
-        "parameters": [
-          { "name": "cursor", "in": "query", "required": false, "schema": { "type": "string" } }
-        ],
-        "responses": { "200": { "description": "Cursor envelope." } }
-      }
-    }
-  }
-}
+`routes.version` is the document's `info.version`, which `_meta` gives as the tab's version:
+change it when the routes change. A tab that declares a route must set it. A request with a query
+parameter that its route does not declare gets a `Lustro-Warning` header that names it, because
+the route ignores it.
+
+Descriptions and schemas make the document useful to an agent:
+
+```kotlin
+        routes.description = "The app's feature flags."
+        routes.component("Flag", """{"type": "object", "properties": {"id": {"type": "string"}, "enabled": {"type": "boolean"}}}""")
+        routes.get("snapshot") {
+            summary = "Poll the flags with an opaque cursor."
+            description = "status=reset has every flag; status=unchanged has none."
+            val cursor = query.string("cursor") { description = "The cursor of the previous response." }
+            response("The flags, in the cursor envelope.", """{"type": "object", "properties": {"items": {"type": "array", "items": ${DebugRoutes.ref("Flag")}}}}""")
+            handle { call -> snapshot(call[cursor]) }
+        }
 ```
 
-`_meta` gives `info.version` as the tab's version: change it when the routes change. Declare each
-query parameter that a route reads: a request with a query parameter that its route does not
-declare gets a `Lustro-Warning` header that names it, because the route ignores it. The sample's
-[`flags.openapi.json`](https://github.com/Twinsen81/Lustro/blob/main/sample/src/debug/assets/lustro/flags.openapi.json)
-has all three routes, with their bodies, responses, and errors.
+`response(...)` gives the success response's JSON Schema, `component(...)` adds a schema under
+`components/schemas`, and `DebugRoutes.ref(name)` refers to one. A parameter's `schema` replaces
+the one made from its type in the document, such as `{"const": true}`. The sample's
+[flags tab](https://github.com/Twinsen81/Lustro/blob/main/sample/src/debug/kotlin/io/github/twinsen81/lustro/sample/SampleFlagsTab.kt)
+declares all three routes, with their bodies, responses, and errors.
+
+A tab that has its own document overrides `schema()` and returns it; the declared routes still
+route the requests. `super.schema()` returns the generated document, for a tab that changes it.
 
 ## 11. Register the tab
 
@@ -458,6 +473,8 @@ Install the debug build and keep the app in the foreground:
 lustro meta                                                # flags is in the list
 lustro api GET flags/snapshot                              # the flags, with "status": "reset"
 lustro api POST flags/toggle --body '{"id":"offline-sync"}'
+lustro api POST flags/toggle --body '{}'                   # 400, "field": "id"
+lustro api GET flags/_schema                               # the document of the declared routes
 lustro open                                                # the console, with the Feature Flags tab
 ```
 
@@ -465,12 +482,12 @@ A toggle in the console and a toggle from the CLI both show in the console withi
 
 ## 13. Test it
 
-`DebugRequest` has a public constructor, so a unit test can call `handle` without a server. Put the
-test in `src/testDebug`, because the tab is in `src/debug`. The tab uses `org.json`, which needs
-Robolectric in a local unit test:
+`DebugRequest` has a public constructor, so a unit test can call `handle` without a server: the
+declared routes route the request, and check its parameters, as they do in the app. Put the test
+in `src/testDebug`, because the tab is in `src/debug`. The router reads JSON without `org.json`,
+so a test of `toggle` needs no Robolectric; a test of `upload`, which uses `org.json`, does:
 
 ```kotlin
-@RunWith(RobolectricTestRunner::class)
 class FlagsTabTest {
     @Test
     fun `a toggle of an unknown flag is a 404`() {
@@ -478,14 +495,19 @@ class FlagsTabTest {
 
         assertEquals(404, FlagsTab().handle(request)?.status)
     }
+
+    @Test
+    fun `the declarations have no mistake`() {
+        // Throws IllegalStateException for a mistake in routes().
+        assertNotNull(FlagsTab().schema())
+    }
 }
 ```
 
 To test a timeout, call `request.cancel()`: `isCancelled` turns `true`, and the `onCancel`
 actions run.
 
-`request.formParams()` does not use `org.json`, so a test of the `toggle` that reads a form body
-needs no Robolectric. Give the request a `contentType`:
+A test of the form body gives the request a `contentType`:
 
 ```kotlin
 class FlagsTabFormTest {

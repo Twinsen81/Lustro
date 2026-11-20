@@ -50,6 +50,14 @@ dependencies {
     testImplementation(libs.datastore.preferences.core)
 }
 
+// PrefsOpenApiDocumentTest compares the committed openapi/prefs.openapi.json with the document
+// that the route declarations make, and writes it when LUSTRO_UPDATE_OPENAPI=1, so both are
+// inputs of the unit tests.
+tasks.withType<Test>().configureEach {
+    inputs.file("openapi/prefs.openapi.json")
+    inputs.property("updateOpenApi", providers.environmentVariable("LUSTRO_UPDATE_OPENAPI").orElse(""))
+}
+
 lustroLibrary {
     // The same name in :lustro-prefs-noop, so that an app can't resolve both.
     pairCapability("lustro-prefs-runtime")
