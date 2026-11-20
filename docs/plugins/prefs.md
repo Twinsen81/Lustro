@@ -147,7 +147,9 @@ and whether it is read-only.
     `string_set`, and for a data store also `double`, and `bytes` as base64), `POST delete` removes
     a key, and `POST clear` (with `confirm: true`) empties a file. They return when the file on disk
     has the change, and answer `403` for a read-only file. `POST edit` answers `400` for an empty
-    key, which is most often a shell variable that did not expand; `POST delete` takes one.
+    key, which is most often a shell variable that did not expand; `POST delete` takes one. Their
+    bodies are one JSON object in strict JSON: a body with comments, single quotes, or unquoted
+    names is a `400` with `field: "body"`.
 
 See [Agents and automation](../AGENTS.md#preferences-tab-operations) and
 [`prefs.openapi.json`](https://github.com/Twinsen81/Lustro/blob/main/lustro-prefs/openapi/prefs.openapi.json).

@@ -181,8 +181,12 @@ CI adds the Dokka output under `api/` and `wire-protocol/` when it publishes.
     of the GitHub Release.
   - `lustro.facade-parity`: `checkFacadeParity`, at the root.
 
-The wire protocol is versioned under `wire-protocol/v1/`; per-tab OpenAPI
-fragments live at `lustro/src/main/assets/lustro/<id>.openapi.json`.
+The wire protocol is versioned under `wire-protocol/v1/`. Each tab's OpenAPI
+document is in its own module: `lustro/src/main/assets/lustro/network.openapi.json`
+for the Network tab, `src/main/assets/lustro/<id>.openapi.json` for a plugin
+with a hand-written document, and `openapi/<id>.openapi.json`, the committed
+copy of the generated document, for a plugin that declares its routes
+(Preferences).
 
 ### Adding a plugin module pair
 
@@ -219,10 +223,23 @@ as it adds `:lustro`: `debugImplementation` for the runtime and
    (`./gradlew :lustro-<name>-noop:detektBaseline`), as `:lustro-noop` does.
 3. Add the pair and its facade packages to the `facadeParity { }` block of the
    root `build.gradle.kts`.
-4. Put the tab's assets in the runtime module: `src/main/assets/lustro/<id>.js`,
-   `<id>.css`, and `<id>.openapi.json`, with its own `info.version`
-   (DECISIONS.md, row 9). The server serves them from the app's merged assets,
-   with no change to `:lustro`. The no-op half ships no assets.
+4. Put the tab's assets in the runtime module: `src/main/assets/lustro/<id>.js`
+   and `<id>.css`. The server serves them from the app's merged assets, with no
+   change to `:lustro`. The no-op half ships no assets. Give the tab an OpenAPI
+   document with its own `info.version` (DECISIONS.md, row 9), in one of two
+   ways:
+   - Declare the routes in `routes()` (DECISIONS.md, row 19), as
+     `:lustro-prefs` does. The tab then makes its document, and the module
+     commits a copy of it as `openapi/<id>.openapi.json`, outside the assets.
+     A unit test compares the copy with the declarations, and writes it when
+     the tests run with `LUSTRO_UPDATE_OPENAPI=1` in the environment (see
+     `PrefsOpenApiDocumentTest`).
+   - Or write the document by hand as `src/main/assets/lustro/<id>.openapi.json`.
+
+   Then add the document to the list in `lustro-wire-schema/build.gradle.kts`
+   and to `lustro-cli/src/lustro_cli/wire/sync.py`, and run the sync
+   (`PYTHONPATH=src python -m lustro_cli.wire.sync` in `lustro-cli/`), so that
+   the wire schema artifact and the CLI have it.
 5. Write the docs of the tab. `<name>` is the module suffix and the tab id, so
    the page of `:lustro-work` is `docs/plugins/work.md`.
    1. Copy `docs/plugins/_template.md` to `docs/plugins/<name>.md`, and fill
@@ -250,8 +267,8 @@ as it adds `:lustro`: `debugImplementation` for the runtime and
    screenshot: the reviewer checks those. It finds the plugin modules from the
    build, so the pair needs no entry in it.
 
-Nothing else in the build names the modules: the Dokka site and the GitHub Release take
-every module that applies `lustro.publishing`. Until the pair has commands of
+Apart from the OpenAPI document lists of step 4, nothing else in the build
+names the modules: the Dokka site and the GitHub Release take every module that applies `lustro.publishing`. Until the pair has commands of
 its own, `lustro api` reaches its routes, for example
 `lustro api GET <id>/entries --param level=W`.
 

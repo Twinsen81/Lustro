@@ -124,6 +124,8 @@ override fun routes(routes: DebugRoutes) {
 - Static assets live at `assets/lustro/<id>.{js,css,openapi.json}` and are resolved by id at
     runtime. Returning non-empty strings from `renderScript()` / `renderStyles()` overrides the
     static `.js` / `.css`; returning a non-null `schema()` overrides the static `.openapi.json`.
+    A tab that declares its routes in `routes()` needs no `.openapi.json`: its default `schema()`
+    returns the document of the declarations.
 - The console loads the tab's JS as an **external** script after `shared.js` (CSP:
     `script-src 'self'`). Use `data-action` attributes and one event listener on a parent element.
     **Do not use inline `onclick` handlers or `<script>` elements.** Send data with `fetch()`, not
