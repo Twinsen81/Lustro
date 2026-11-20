@@ -95,7 +95,7 @@ class OpenApiDocumentTest {
         assertEquals("List the items.", list.getString("summary"))
         val parameters = list.getJSONArray("parameters")
         assertParameter(parameters.getJSONObject(0), "sort", "query", false, """{"type":"string","enum":["name","price"]}""", "The order.")
-        assertParameter(parameters.getJSONObject(1), "limit", "query", false, """{"type":"integer","minimum":1,"maximum":50,"default":20}""", null)
+        assertParameter(parameters.getJSONObject(1), "limit", "query", false, """{"type":"integer","format":"int32","minimum":1,"maximum":50,"default":20}""", null)
         assertParameter(parameters.getJSONObject(2), "all", "query", false, """{"type":"boolean"}""", null)
         val item = operation("/api/v1/shop/items/{id}", "get").getJSONArray("parameters").getJSONObject(0)
         assertParameter(item, "id", "path", true, """{"type":"string"}""", "The item's id.")
@@ -112,7 +112,7 @@ class OpenApiDocumentTest {
         assertJson(
             """{"type":"object","required":["name"],"properties":{
               "name":{"type":"string","minLength":1,"maxLength":80,"description":"The item's name."},
-              "price":{"type":"integer","minimum":0},
+              "price":{"type":"integer","format":"int64","minimum":0},
               "hidden":{"const":false,"description":"Must be false."}}}""",
             schema,
         )

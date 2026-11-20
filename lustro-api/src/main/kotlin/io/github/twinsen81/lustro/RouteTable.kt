@@ -107,6 +107,21 @@ internal class RouteTable private constructor(
         private val min = (decl.spec as? DebugIntegerSpec)?.min ?: if (type == ParamType.INT) Int.MIN_VALUE.toLong() else null
         private val max = (decl.spec as? DebugIntegerSpec)?.max ?: if (type == ParamType.INT) Int.MAX_VALUE.toLong() else null
 
+        init {
+            // A default that a request could not send would reach the handler as a value outside the declaration.
+            if (decl.hasDefault) {
+                try {
+                    when (type) {
+                        ParamType.STRING -> checked(default as String)
+                        ParamType.INT, ParamType.LONG -> checked((default as Number).toLong())
+                        ParamType.BOOLEAN, ParamType.JSON -> Unit
+                    }
+                } catch (e: BadInput) {
+                    throw IllegalStateException("${decl.route.describe()}: the default of $name is not a value that it takes: ${e.message}", e)
+                }
+            }
+        }
+
         /** The value from the path, the query, or a form, where every value is text. */
         fun fromText(text: String?): Any? {
             val given = if (type == ParamType.STRING) text else text?.takeIf { it.isNotEmpty() }
@@ -187,9 +202,14 @@ internal class RouteTable private constructor(
             val tabId = declared.tab.id
             if (declared.declared.isEmpty()) return null
             check(!declared.version.isNullOrEmpty()) { "Tab $tabId: set routes.version, the version of the tab's routes" }
+            // items/{id} and items/{name} match the same requests, so they are one path, and OpenAPI allows one name.
+            val templates = HashMap<String, String>()
             val seen = HashSet<String>()
             for (route in declared.declared) {
-                check(seen.add("${route.method} ${route.template}")) { "Tab $tabId: two routes ${route.method} ${route.template}" }
+                val path = route.template.replace(TEMPLATE, "{}")
+                val first = templates.getOrPut(path) { route.template }
+                check(first == route.template) { "Tab $tabId: $first and ${route.template} are the same path; give its parameters the same names" }
+                check(seen.add("${route.method} $path")) { "Tab $tabId: two routes ${route.method} ${route.template}" }
             }
             val routes = declared.declared.map(::compile)
             return RouteTable(tabId, routes, OpenApiDocument(declared).write())

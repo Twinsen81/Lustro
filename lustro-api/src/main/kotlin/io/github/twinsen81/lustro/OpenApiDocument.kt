@@ -113,6 +113,7 @@ internal class OpenApiDocument(private val declared: DebugRoutes) {
             ParamType.INT, ParamType.LONG -> {
                 val spec = param.spec as DebugIntegerSpec
                 schema["type"] = "integer"
+                schema["format"] = if (param.type == ParamType.INT) "int32" else "int64"
                 spec.min?.let { schema["minimum"] = it }
                 spec.max?.let { schema["maximum"] = it }
             }

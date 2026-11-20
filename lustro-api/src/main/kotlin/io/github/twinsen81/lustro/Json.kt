@@ -152,7 +152,9 @@ internal object Json {
                 't' -> '\t'
                 'u' -> {
                     if (pos + 4 > text.length) fail("short \\u escape")
-                    val code = text.substring(pos, pos + 4).toIntOrNull(16) ?: fail("bad \\u escape")
+                    val digits = text.substring(pos, pos + 4)
+                    if (!digits.all { it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' }) fail("bad \\u escape")
+                    val code = digits.toInt(16)
                     pos += 4
                     code.toChar()
                 }

@@ -357,6 +357,28 @@ class DebugRoutesTest {
                     }
                 },
                 "is not an error status" to { routes -> routes.get("a") { errors(200) } },
+                "items/{id} and items/{name} are the same path" to { routes ->
+                    routes.get("items/{id}") {
+                        path.string("id")
+                        handle { DebugResponse.ok("{}") }
+                    }
+                    routes.delete("items/{name}") {
+                        path.string("name")
+                        handle { DebugResponse.ok("{}") }
+                    }
+                },
+                "the default of limit is not a value that it takes: limit must be from 1 to 50, was 0" to { routes ->
+                    routes.get("a") {
+                        query.int("limit") { min = 1; max = 50 }.withDefault(0)
+                        handle { DebugResponse.ok("{}") }
+                    }
+                },
+                "the default of dir is not a value that it takes" to { routes ->
+                    routes.get("a") {
+                        query.string("dir") { values = listOf("asc", "desc") }.withDefault("up")
+                        handle { DebugResponse.ok("{}") }
+                    }
+                },
             )
         for ((message, declare) in mistakes) {
             val tab =

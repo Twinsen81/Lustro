@@ -56,6 +56,7 @@ class JsonTest {
                 "tru" to "unexpected character 't' at character 1",
                 "{'a':1}" to "expected a member name at character 2",
                 "\"a\u0001\"" to "control character in a string at character 3",
+                "\"\\u+123\"" to "bad \\u escape at character 4",
             )
         for ((text, message) in cases) {
             val thrown = assertThrows(text, JsonException::class.java) { Json.parse(text) }
