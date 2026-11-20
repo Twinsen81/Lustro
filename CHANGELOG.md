@@ -1142,6 +1142,24 @@ see [DECISIONS.md](DECISIONS.md).
   (API 29): the sample's minified release build, signed with the debug key,
   starts, logs `Lustro start() returned DISABLED`, and a `GET /get` through its
   OkHttp client, which has the pass-through interceptor, returns 200.
+- **The Logs tab no longer loses the lines of an appended tag that the app
+  logs before its logger appends.** `LogsDebugTab.create(appendedTags = ...)`
+  dropped the logcat lines of those tags from the time of `create()`. But the
+  logger can append only after the app gives it the tab, and an app with
+  dependency injection often does that later than it creates the tab. A line
+  that the app logged between the two was lost: the tab dropped its logcat
+  copy, and the logger did not append it. When the logger was never connected,
+  for example in a build that does not install it, the tab dropped every line
+  of those tags. The tab now drops the logcat lines of a tag from the first
+  `append` of that tag on, so the older lines come from logcat and a tag that
+  is never appended keeps all its lines. The docs now say to call `append`
+  before the logger writes the line to logcat: when the logger writes first,
+  the first line of a tag can show twice. The sample's logger does so.
+  Verified on an emulator (API 29) with the sample and a line of the appended
+  tag logged after `create()` and before the first `append`: before the fix,
+  logcat had the line and `GET logs/entries?tag=^SampleState$` returned no
+  row; after it, the line was there, and the 12 KB message showed once, in
+  full, also the first time.
 - **The debug server no longer compresses its responses, so it no longer leaks
   a `Deflater` for each one.** When a client accepts gzip, as every browser
   does, NanoHTTPD compressed each text and JSON response: every page, style

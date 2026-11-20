@@ -5,6 +5,7 @@ import io.github.twinsen81.lustro.DebugRequest
 import io.github.twinsen81.lustro.DebugResponse
 import io.github.twinsen81.lustro.DebugTab
 import io.github.twinsen81.lustro.logs.internal.AppendedLine
+import io.github.twinsen81.lustro.logs.internal.AppendedTags
 import io.github.twinsen81.lustro.logs.internal.LogBuffer
 import io.github.twinsen81.lustro.logs.internal.LogRoutes
 import io.github.twinsen81.lustro.logs.internal.LogcatReader
@@ -34,15 +35,20 @@ import io.github.twinsen81.lustro.logs.internal.LogsView
  * logcat keeps at most about 4 KB of a message. When the app has a logger of its
  * own, the logger can also give its lines to [append], in full, and name their
  * tags with `appendedTags` of [create], so that the tab drops the cut copies
- * that come from logcat:
+ * that come from logcat, from the first [append] of each tag on:
  *
  * ```
  * val logs = LogsDebugTab.create(appendedTags = { it == "MyApp" })
- * // In the app's logger, after it writes the line to logcat:
+ * // In the app's logger, before it writes the line to logcat:
  * logs.append(Log.DEBUG, "MyApp", message)
  * ```
  */
-public class LogsDebugTab private constructor(private val buffer: LogBuffer, private val reader: LogcatReader) : DebugTab() {
+public class LogsDebugTab private constructor(
+    private val buffer: LogBuffer,
+    private val reader: LogcatReader,
+    private val appended: AppendedTags,
+    private val clock: () -> Long,
+) : DebugTab() {
     override val id: String = "logs"
     override val title: String = "Logs"
     override val icon: String = "📜"
@@ -79,6 +85,9 @@ public class LogsDebugTab private constructor(private val buffer: LogBuffer, pri
      * characters that take an eighth of `bufferBytes`, so that one line can't
      * empty the buffer. A longer text ends with `… cut (N more characters)`.
      *
+     * When `appendedTags` of [create] takes [tag], the first call for the tag
+     * starts the drop of its logcat lines.
+     *
      * Safe to call from any thread, also before `Lustro.start()` and after
      * `Lustro.stop()`. It does not write to logcat: the logger does that itself,
      * when it does. The line goes to the buffer at once. A logcat line goes in
@@ -93,6 +102,8 @@ public class LogsDebugTab private constructor(private val buffer: LogBuffer, pri
      */
     @JvmOverloads
     public fun append(priority: Int, tag: String, message: String, throwable: Throwable? = null) {
+        val at = clock()
+        appended.appended(tag, at)
         val line =
             AppendedLine.of(
                 priority,
@@ -100,7 +111,7 @@ public class LogsDebugTab private constructor(private val buffer: LogBuffer, pri
                 message,
                 throwable,
                 maxAppendedChars,
-                at = System.currentTimeMillis(),
+                at = at,
                 pid = Process.myPid(),
                 tid = Process.myTid(),
             )
@@ -125,12 +136,16 @@ public class LogsDebugTab private constructor(private val buffer: LogBuffer, pri
          *   characters.
          * @param appendedTags whether the app's logger also gives the lines of a
          *   tag to [append]. The tab then drops the logcat lines of that tag, so
-         *   that each line shows once, in full. Only the lines written from this
-         *   call on: the older ones come from logcat, because the app could not
-         *   append them yet. Create the tab before the logger writes its first
-         *   line. For a fixed set of tags, pass `setOf("A", "B")::contains`. The
-         *   reader thread calls it for each logcat line, so keep it fast. The
-         *   default drops no line.
+         *   that each line shows once, in full: the lines from the first [append]
+         *   of the tag on. The older lines of the tag come from logcat, cut, because
+         *   the logger could not append them yet, for example when the app gives
+         *   the logger the tab after it creates the tab. So no line is lost, and
+         *   a tag that the logger never appends keeps all its logcat lines. When
+         *   the logger writes a line to logcat before it appends it, the first
+         *   line of a tag can show twice: as the cut copies from logcat and as the
+         *   appended line. For a fixed set of tags, pass `setOf("A", "B")::contains`.
+         *   The reader thread calls it for the logcat lines of the tags that the
+         *   logger appended, so keep it fast. The default drops no line.
          * @throws IllegalArgumentException when [bufferBytes] is not positive.
          */
         @JvmStatic
@@ -141,11 +156,20 @@ public class LogsDebugTab private constructor(private val buffer: LogBuffer, pri
         ): LogsDebugTab {
             require(bufferBytes > 0) { "bufferBytes must be positive, was $bufferBytes" }
             val buffer = LogBuffer(bufferBytes)
-            val reader = LogcatReader(buffer, appendedTags = appendedTags, appendedSince = System.currentTimeMillis())
-            return LogsDebugTab(buffer, reader)
+            val appended = AppendedTags(appendedTags)
+            val reader = LogcatReader(buffer, appended = appended)
+            return LogsDebugTab(buffer, reader, appended, System::currentTimeMillis)
         }
 
-        /** Creates a tab over [buffer] and [reader], which tests give a logcat of their own. */
-        internal fun create(buffer: LogBuffer, reader: LogcatReader): LogsDebugTab = LogsDebugTab(buffer, reader)
+        /**
+         * Creates a tab over [buffer] and [reader], which tests give a logcat of
+         * their own. [appended] must be the one that [reader] has.
+         */
+        internal fun create(
+            buffer: LogBuffer,
+            reader: LogcatReader,
+            appended: AppendedTags,
+            clock: () -> Long,
+        ): LogsDebugTab = LogsDebugTab(buffer, reader, appended, clock)
     }
 }
