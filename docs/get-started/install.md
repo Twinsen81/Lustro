@@ -32,6 +32,11 @@ dependencies {
 }
 ```
 
+An app whose code in `src/main` names no Lustro type can leave out the no-op halves, with their
+`releaseImplementation` lines, and keep every Lustro call in `src/debug`. Its release build then
+has no Lustro class: see
+[Without the no-op halves](../concepts/release-safety.md#without-the-no-op-halves).
+
 `-SNAPSHOT` versions come from the Sonatype Central snapshots repository, so add it. You need it
 only until Lustro has a release:
 

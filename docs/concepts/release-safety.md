@@ -3,7 +3,9 @@
 Lustro gives the app's internals to anyone who has the token, so it must never be in a build that
 users get. Four protections keep it out of a release build. The first two depend on how the app
 adds the dependencies, the third on where the app puts its own tabs, and the fourth needs nothing
-from the app. Each section says how to check the protection in your app.
+from the app. Each section says how to check the protection in your app. An app can also leave
+the no-op halves out, so that its release build has no Lustro class: see
+[Without the no-op halves](#without-the-no-op-halves).
 
 | Protection | What it stops | Where it acts |
 | --- | --- | --- |
@@ -28,22 +30,54 @@ no-op half, the calls do nothing:
 
 The no-op halves ship no keep rule, so R8 handles their classes as it handles the app's own code.
 A minified release build keeps only the classes that the app's release code calls, such as the
-pass-through interceptor. When the app's release code does not call Lustro, the build has no Lustro
-class at all. When R8 obfuscates, as it does by default, it also gives the classes that it keeps
-short names outside the Lustro package.
+pass-through interceptor, and the classes that a keep rule of the app matches. When the app's
+release code does not call Lustro and no rule of the app matches a Lustro class, the build has no
+Lustro class at all. A common rule matches three of them: see
+[An app rule that keeps exceptions](#an-app-rule-that-keeps-exceptions). When R8 obfuscates, as it
+does by default, it also gives the classes that the release code calls short names outside the
+Lustro package.
 
 **Check it:** `./gradlew -q :app:dependencies --configuration releaseRuntimeClasspath | grep -E 'twinsen81|nanohttpd'`
 lists only `lustro-api` and the `-noop` artifacts. Each build type other than `debug` needs the
-no-op halves too, such as `stagingImplementation(libs.lustro.noop)`. This is step 2 of [Check the integration](../get-started/check.md).
+no-op halves too, such as `stagingImplementation(libs.lustro.noop)`, unless the app uses the
+[layout without the no-op halves](#without-the-no-op-halves). This is step 2 of [Check the integration](../get-started/check.md).
 This is the check that matters: the release build has no runtime and no NanoHTTPD.
 
 To see whether a class in the APK still has a Lustro name, build the release with
 `./gradlew :app:assembleRelease`, then search the mapping file of R8: `grep ' -> io\.github\.twinsen81\.lustro\.' app/build/outputs/mapping/release/mapping.txt`.
 With product flavors, use the variant's task and folder, such as `assembleFreeRelease` and
 `mapping/freeRelease/mapping.txt`: a `No such file` error is not a result. When R8 obfuscates, the
-command prints nothing. When the app's rules keep names, for example with `-dontobfuscate`,
-`-keepnames`, or `-keeppackagenames`, it prints the no-op classes that the release code calls.
-These classes do nothing, so that is not a problem.
+command prints nothing, unless the app has the rule of the next section. When the app's rules keep
+names, for example with `-dontobfuscate`, `-keepnames`, or `-keeppackagenames`, it prints the no-op
+classes that the release code calls. These classes do nothing, so that is not a problem.
+
+### An app rule that keeps exceptions
+
+Many apps keep every public exception class with its name, so that crash reports show the app's
+own exception names. The Firebase Crashlytics setup suggests this rule:
+
+```text
+-keep public class * extends java.lang.Exception
+```
+
+The rule acts on every class in the build, also on the classes of `lustro-api`, which the no-op
+halves bring to the release classpath. So it keeps three Lustro classes, also when no release code
+calls Lustro, and the mapping search above prints them:
+
+```text
+io.github.twinsen81.lustro.DebugResponseException -> io.github.twinsen81.lustro.DebugResponseException:
+io.github.twinsen81.lustro.JsonException -> io.github.twinsen81.lustro.JsonException:
+io.github.twinsen81.lustro.RouteTable$BadInput -> io.github.twinsen81.lustro.RouteTable$BadInput:
+```
+
+These classes are not a problem. The rule keeps no member, so in the APK each of them is empty:
+it has a name and a superclass, but no field and no method. So they hold no server and no
+capture, and no code uses them. `JsonException` and `RouteTable$BadInput` are internal to Lustro,
+but Kotlin `internal` is public in bytecode, so the rule keeps them too. `DebugResponseException`
+is public API.
+
+When a release audit must find no Lustro class at all, use the
+[layout without the no-op halves](#without-the-no-op-halves).
 
 ## The shared capability
 
@@ -129,3 +163,82 @@ build that users get.
 no `Lustro ready` line. When `adb logcat -d -s Lustro` prints the `Refusing to start` warning, the
 release build has the real runtime: correct the dependencies, then check
 [the no-op halves](#the-no-op-halves) again.
+
+## Without the no-op halves
+
+An app can also leave the no-op halves out. It adds the runtime and the plugins with
+`debugImplementation` only, and keeps every Lustro call in `src/debug`. The code in `src/main`
+calls an object or an interface of the app's own, and a release implementation of it does
+nothing:
+
+```kotlin
+// build.gradle.kts (app module): no releaseImplementation line
+dependencies {
+    debugImplementation(libs.lustro)
+    debugImplementation(libs.lustro.logs)
+}
+```
+
+```kotlin
+// src/debug/kotlin/<package>/LustroBootstrap.kt: it calls Lustro
+object LustroBootstrap {
+    private lateinit var lustro: Lustro
+
+    // First in Application.onCreate(), on the main thread, before the app builds its clients.
+    fun start(app: Application) {
+        lustro = Lustro.builder(app)
+            .addTab(NetworkDebugTab.create())
+            .addTab(LogsDebugTab.create())
+            .build()
+        lustro.start()
+    }
+
+    fun networkInterceptor(): Interceptor = lustro.networkInterceptor()
+
+    fun webSocketFactory(client: OkHttpClient): WebSocket.Factory = lustro.webSocketFactory(client)
+}
+```
+
+```kotlin
+// src/release/kotlin/<package>/LustroBootstrap.kt: the same functions, and no Lustro type
+object LustroBootstrap {
+    fun start(app: Application) = Unit
+
+    fun networkInterceptor(): Interceptor = Interceptor { chain -> chain.proceed(chain.request()) }
+
+    fun webSocketFactory(client: OkHttpClient): WebSocket.Factory = client
+}
+```
+
+`src/main` calls only these functions, such as `LustroBootstrap.networkInterceptor()` where it
+builds its OkHttp client. A custom tab goes into the `src/debug` file only, as in
+[Register the tab](../write-a-tab.md#11-register-the-tab). Each other build type needs the release
+implementation in its own source set, such as `src/staging`, and no Lustro artifact.
+
+The release classpath then has no Lustro artifact, so the release build has no Lustro class, also
+with [the rule that keeps exceptions](#an-app-rule-that-keeps-exceptions). The guard is the
+compiler: the release build compiles `src/main` without Lustro, so a Lustro call or a `DebugTab`
+subclass in `src/main` fails the release build, with `Unresolved reference` in Kotlin and
+`cannot find symbol` in Java. So this layout needs no lint check, and the release lint does not
+load one: only `lustro` and `lustro-noop` ship it. The [debuggable check](#the-debuggable-check)
+still stops the server when the runtime is in a release build by mistake.
+
+Two dependencies of the app need care:
+
+- The no-op halves bring OkHttp to the release classpath. An app that sends with OkHttp, but does
+    not declare it, fails the release build: add `implementation(libs.okhttp)`.
+- A library module of the app that depends on `lustro-api`, such as one with a custom tab, brings
+    `lustro-api` back to the release classpath. Add it with `debugImplementation` too.
+
+Choose this layout when no code in `src/main` names a Lustro type. Keep the no-op halves when it
+does, such as a call to `lustro.networkInterceptor()` where the app builds its OkHttp client in
+`src/main`, as the [dependency injection module](../get-started/app-code.md#dependency-injection)
+does: the no-op halves exist for such calls, so that the same code compiles in both build types.
+The cost of this layout is the release implementation, which the app writes and keeps up to date
+itself. With the no-op halves, the `src/release` file can make the same Lustro calls as the
+`src/debug` file, without its custom tabs.
+
+**Check it:** `./gradlew -q :app:dependencies --configuration releaseRuntimeClasspath | grep -E 'twinsen81|nanohttpd'`
+prints nothing. After `./gradlew :app:assembleRelease`,
+`grep '^io\.github\.twinsen81\.lustro\.' app/build/outputs/mapping/release/mapping.txt` prints
+nothing: no class in the APK comes from Lustro, with its name or renamed.

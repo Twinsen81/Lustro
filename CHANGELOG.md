@@ -1304,7 +1304,9 @@ see [DECISIONS.md](DECISIONS.md).
   removes the classes that the release code does not call and renames the
   others: the sample's release build has 8 Lustro classes, all renamed, in place
   of 36, and its `classes.dex` is 24 KB smaller (2,699,752 to 2,675,248 bytes).
-  A release build whose code does not call Lustro has none. In CI,
+  A release build whose code does not call Lustro has none, unless a keep rule
+  of the app matches one, such as `-keep public class * extends
+  java.lang.Exception`: see the release safety page. In CI,
   `checkReleaseHasNoLustroClasses` in the sample and
   `checkWithLustroReleaseHasNoLustroClasses` in the consumer check read R8's
   mapping file and fail on a class that has a Lustro name in the APK. With the

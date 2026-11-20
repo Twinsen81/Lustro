@@ -8,8 +8,11 @@ names of one variant, such as `assembleFreeDebug` and `freeReleaseRuntimeClasspa
 1. **Both build types build:** `./gradlew :app:assembleDebug :app:assembleRelease`.
 2. **The release build has no runtime:**
     `./gradlew -q :app:dependencies --configuration releaseRuntimeClasspath | grep -E 'twinsen81|nanohttpd'`
-    lists only `lustro-api` and the `-noop` artifacts. Each other build type also needs one of the
-    two, such as `stagingImplementation(libs.lustro.noop)`.
+    checks it. With the no-op halves, it lists only `lustro-api` and the `-noop` artifacts, and each
+    other build type also needs one of the two, such as `stagingImplementation(libs.lustro.noop)`.
+    [Without the no-op halves](../concepts/release-safety.md#without-the-no-op-halves), it prints
+    nothing, and each other build type needs the app's release implementation in its own source
+    set, such as `src/staging`, and no Lustro artifact.
 3. **The server starts.** Install the debug build, start the app, and keep it in the foreground.
     `adb logcat -d -s LustroToken` has the line `Lustro ready endpoint=... token=...`, and
     `lustro meta` lists the tabs that the app registers.
@@ -24,3 +27,5 @@ names of one variant, such as `assembleFreeDebug` and `freeReleaseRuntimeClasspa
 6. **Custom tabs are in `src/debug`.** When you wrote a `DebugTab`, it is in `src/debug`, and
     `./gradlew :app:lintRelease` reports no `LustroDebugUsageInRelease`. See
     [Release safety](../concepts/release-safety.md#the-lint-check) for what the check reports.
+    Without the no-op halves, the release lint has no such check, and step 1 checks this instead:
+    the release build fails to compile a `DebugTab` in `src/main`.
