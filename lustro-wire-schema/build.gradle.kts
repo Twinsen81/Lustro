@@ -23,7 +23,8 @@ java {
 //   - Logs OpenAPI document:          lustro-logs/src/main/assets/lustro/logs.openapi.json
 //   - Preferences OpenAPI document:   lustro-prefs/openapi/prefs.openapi.json (generated from
 //                                     the tab's route declarations; a test keeps it current)
-//   - SQLite OpenAPI document:        lustro-sqlite/src/main/assets/lustro/sqlite.openapi.json
+//   - SQLite OpenAPI document:        lustro-sqlite/openapi/sqlite.openapi.json (generated from
+//                                     the tab's route declarations; a test keeps it current)
 //   - WorkManager OpenAPI document:   lustro-work/src/main/assets/lustro/work.openapi.json
 //   - Screen OpenAPI document:        lustro-screen/src/main/assets/lustro/screen.openapi.json
 // We copy them into build/generated/wire-resources/lustro/wire/v1/ at build time
@@ -42,7 +43,7 @@ val prefsOpenApiFile =
         .file("lustro-prefs/openapi/prefs.openapi.json")
 val sqliteOpenApiFile =
     rootProject.layout.projectDirectory
-        .file("lustro-sqlite/src/main/assets/lustro/sqlite.openapi.json")
+        .file("lustro-sqlite/openapi/sqlite.openapi.json")
 val workOpenApiFile =
     rootProject.layout.projectDirectory
         .file("lustro-work/src/main/assets/lustro/work.openapi.json")

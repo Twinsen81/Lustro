@@ -12,37 +12,193 @@ import android.os.CancellationSignal
 import android.os.OperationCanceledException
 import android.util.Log
 import io.github.twinsen81.lustro.CursorCodec
+import io.github.twinsen81.lustro.DebugBodyParams
+import io.github.twinsen81.lustro.DebugCall
+import io.github.twinsen81.lustro.DebugParam
+import io.github.twinsen81.lustro.DebugParams
 import io.github.twinsen81.lustro.DebugRequest
 import io.github.twinsen81.lustro.DebugResponse
+import io.github.twinsen81.lustro.DebugRoutes
+import io.github.twinsen81.lustro.DebugRoutes.Companion.ref
+import io.github.twinsen81.lustro.ExperimentalDebugRoutes
 import io.github.twinsen81.lustro.escapeForJson
 import io.github.twinsen81.lustro.sqlite.TableHint
 import java.io.File
 import java.util.Locale
-import org.json.JSONException
-import org.json.JSONObject
 
-/** The routes of the SQLite tab, under `/api/v1/sqlite/`. */
+/**
+ * The routes of the SQLite tab, under `/api/v1/sqlite/`. [declare] declares them, and the tab's
+ * OpenAPI document comes from the declarations, with the text of [SqliteDocument].
+ */
+@OptIn(ExperimentalDebugRoutes::class)
 internal class SqliteRoutes(private val registry: SqliteRegistry, private val limit: ReadLimit = ReadLimit()) {
     private val console = SqliteQuery(limit)
 
-    // A wrong method is null too: the server answers 405 from sqlite.openapi.json.
-    fun handle(request: DebugRequest): DebugResponse? {
-        // A read stops when the runtime gives up on the request, at its timeout, so that a
-        // long one does not keep a SQLite lock or a request slot.
-        val signal = CancellationSignal()
-        request.onCancel { signal.cancel() }
-        return try {
-            when ("${request.method.uppercase()} ${request.path}") {
-                "GET databases" -> databases(signal)
-                "GET tables" -> tables(request, signal)
-                "GET schema" -> schema(request, signal)
-                "GET rows" -> rows(request, signal)
-                "POST query" -> query(body(request), signal)
-                "POST exec" -> exec(body(request), request)
-                "POST edit" -> edit(body(request), request, signal, delete = false)
-                "POST delete" -> edit(body(request), request, signal, delete = true)
-                else -> null
+    fun declare(routes: DebugRoutes) {
+        routes.title = SqliteDocument.TITLE
+        routes.version = "1.2"
+        routes.description = SqliteDocument.DESCRIPTION
+        for ((name, schema) in SQLITE_SCHEMAS) routes.component(name, schema)
+
+        routes.get("databases") {
+            operationId = "listSqliteDatabases"
+            summary = "List the databases."
+            description = SqliteDocument.DATABASES_DESCRIPTION
+            response("The databases.", SqliteDocument.DATABASES_RESPONSE_SCHEMA)
+            errors(504)
+            handle { call -> answer(call) { signal -> databases(signal) } }
+        }
+        routes.get("tables") {
+            operationId = "listSqliteTables"
+            summary = "List the tables and views of a database."
+            description = SqliteDocument.TABLES_DESCRIPTION
+            val db = query.name("db", SqliteDocument.DB)
+            response("The tables and views.", SqliteDocument.TABLES_RESPONSE_SCHEMA)
+            errors(404, 500, 504)
+            handle { call -> answer(call) { signal -> tables(entry(call[db]), signal) } }
+        }
+        routes.get("schema") {
+            operationId = "getSqliteSchema"
+            summary = "Get the columns, foreign keys, and row count of a table or view."
+            description = SqliteDocument.SCHEMA_DESCRIPTION
+            val db = query.name("db", SqliteDocument.DB)
+            val table = query.name("table", SqliteDocument.TABLE)
+            response("The schema.", ref("SqliteSchema"))
+            errors(404, 500, 504)
+            handle { call -> answer(call) { signal -> schema(entry(call[db]), call[table], signal) } }
+        }
+        routes.get("rows") {
+            operationId = "listSqliteRows"
+            summary = "Get a page of rows."
+            description = SqliteDocument.ROWS_DESCRIPTION
+            val db = query.name("db", SqliteDocument.DB)
+            val table = query.name("table", SqliteDocument.TABLE)
+            val cursor = query.string("cursor") { description = SqliteDocument.CURSOR }
+            val limit =
+                query.int("limit") {
+                    min = 1
+                    max = MAX_LIMIT.toLong()
+                    description = SqliteDocument.LIMIT
+                }.withDefault(DEFAULT_LIMIT)
+            val filter = query.string("filter") { description = SqliteDocument.FILTER }
+            val sort = query.string("sort") { description = SqliteDocument.SORT }
+            // Read by the handler, which takes ASC and DESC too, and an empty dir as asc.
+            val dir =
+                query.string("dir") {
+                    description = SqliteDocument.DIR
+                    schema = SqliteDocument.DIR_SCHEMA
+                }
+            response("The page.", ref("SqliteRowsPage"))
+            errors(404, 500, 504)
+            handle { call ->
+                answer(call) { signal ->
+                    val entry = entry(call[db])
+                    val offset = offset(call[cursor])
+                    val descending = descending(call[dir])
+                    rows(entry, call[table], RowsQuery(offset, call[limit], call[filter], call[sort]?.takeIf { it.isNotEmpty() }, descending), signal)
+                }
             }
+        }
+        routes.post("query") {
+            operationId = "runSqliteQuery"
+            summary = "Run a statement read-only."
+            description = SqliteDocument.QUERY_DESCRIPTION
+            bodyDescription = "The database and the statement."
+            val db = body.name("db", SqliteDocument.DB)
+            val sql = body.text("sql", SqliteDocument.SQL)
+            response("The result.", ref("SqliteQueryResult"))
+            errors(404, 500, 504)
+            handle { call -> answer(call) { signal -> query(entry(call[db]), call[sql], signal) } }
+        }
+        routes.post("exec") {
+            operationId = "execSqliteStatement"
+            summary = "Run a statement that writes."
+            description = SqliteDocument.EXEC_DESCRIPTION
+            bodyDescription = "The database and the statement."
+            val db = body.name("db", SqliteDocument.WRITABLE_DB)
+            val sql = body.text("sql", SqliteDocument.SQL)
+            response("Committed.", ref("SqliteExecResult"))
+            errors(404, 500, 504)
+            handle { call -> answer(call) { _ -> exec(writable(call[db]), call[sql], call.request) } }
+        }
+        routes.post("edit") {
+            operationId = "editSqliteRow"
+            summary = "Change one row."
+            description = SqliteDocument.EDIT_DESCRIPTION
+            bodyDescription = "The row, and the values to set."
+            val row = body.row()
+            val values =
+                body.json("values") {
+                    description = SqliteDocument.VALUES
+                    schema = SqliteDocument.VALUES_SCHEMA
+                }.required()
+            response("Committed.", ref("SqliteWriteOk"))
+            errors(404, 500, 504)
+            handle { call -> answer(call) { signal -> edit(row.read(call), call[values], call.request, signal) } }
+        }
+        routes.post("delete") {
+            operationId = "deleteSqliteRow"
+            summary = "Delete one row."
+            description = SqliteDocument.DELETE_DESCRIPTION
+            bodyDescription = "The row."
+            val row = body.row()
+            response("Committed.", ref("SqliteWriteOk"))
+            errors(404, 500, 504)
+            handle { call -> answer(call) { signal -> edit(row.read(call), values = null, call.request, signal) } }
+        }
+    }
+
+    // A name that the client gives: a database, a table, or a statement.
+    private fun DebugParams.name(name: String, description: String): DebugParam<String> =
+        string(name) {
+            minLength = 1
+            this.description = description
+        }.required()
+
+    // A body field that the handler checks for an empty value, after the database: a write to a
+    // database that is not writable is a 403 whatever the statement or the table is.
+    private fun DebugParams.text(name: String, description: String): DebugParam<String> =
+        string(name) {
+            this.description = description
+            schema = NON_EMPTY_STRING
+        }.required()
+
+    // The row of POST edit and POST delete. rowid is JSON, because it is a whole number or a string of one.
+    private fun DebugBodyParams.row(): RowParams =
+        RowParams(
+            db = name("db", SqliteDocument.WRITABLE_DB),
+            table = text("table", SqliteDocument.WRITABLE_TABLE),
+            rowid =
+                json("rowid") {
+                    description = SqliteDocument.ROWID
+                    schema = SqliteDocument.ROWID_SCHEMA
+                },
+            key =
+                json("key") {
+                    description = SqliteDocument.KEY
+                    schema = SqliteDocument.KEY_SCHEMA
+                },
+        )
+
+    private class RowParams(
+        val db: DebugParam<String>,
+        val table: DebugParam<String>,
+        val rowid: DebugParam<String?>,
+        val key: DebugParam<String?>,
+    ) {
+        fun read(call: DebugCall): RowBody = RowBody(call[db], call[table], call[rowid], call[key])
+    }
+
+    /** The row that a client names, with `rowid` and `key` as the JSON text of their values. */
+    private class RowBody(val db: String, val table: String, val rowid: String?, val key: String?)
+
+    // A read stops when the runtime gives up on the request, at its timeout, so that a long one
+    // does not keep a SQLite lock or a request slot.
+    private inline fun answer(call: DebugCall, block: (CancellationSignal) -> DebugResponse): DebugResponse {
+        val signal = CancellationSignal()
+        call.request.onCancel { signal.cancel() }
+        return try {
+            block(signal)
         } catch (e: RouteException) {
             DebugResponse.error(e.message.orEmpty(), status = e.status, code = e.code, field = e.field, hint = e.hint)
         } catch (_: OperationCanceledException) {
@@ -54,9 +210,8 @@ internal class SqliteRoutes(private val registry: SqliteRegistry, private val li
 
     // The client's statement runs on a connection that SQLite opened read-only, never on the app's
     // handle: rawQuery runs any statement that it is given, a DELETE too.
-    private fun query(body: JSONObject, signal: CancellationSignal): DebugResponse {
-        val entry = entry(string(body, "db"))
-        val sql = statement(body, exec = false)
+    private fun query(entry: DbEntry, text: String, signal: CancellationSignal): DebugResponse {
+        val sql = statement(text, exec = false)
         val result = readOnly(entry).use { connection -> statementErrors { console.run(connection, sql, signal, entry::masks) } }
         return DebugResponse.json {
             append("{\"database\":\"").append(entry.name.escapeForJson()).append('"')
@@ -75,30 +230,30 @@ internal class SqliteRoutes(private val registry: SqliteRegistry, private val li
         }
     }
 
-    private fun exec(body: JSONObject, request: DebugRequest): DebugResponse {
-        val entry = writable(string(body, "db"))
-        val sql = statement(body, exec = true)
+    private fun exec(entry: DbEntry, text: String, request: DebugRequest): DebugResponse {
+        val sql = statement(text, exec = true)
         val changes = live(entry).use { connection -> statementErrors { SqliteWriter(connection, request).exec(sql) } }
         afterWrite(entry)
         return DebugResponse.json { append("{\"status\":\"ok\",\"changes\":").append(changes).append('}') }
     }
 
     // POST edit and POST delete: one row, which the client names by its rowid or its primary key.
-    private fun edit(body: JSONObject, request: DebugRequest, signal: CancellationSignal, delete: Boolean): DebugResponse {
-        val entry = writable(string(body, "db"))
-        val name = string(body, "table")
+    // values is null for POST delete.
+    private fun edit(row: RowBody, values: String?, request: DebugRequest, signal: CancellationSignal): DebugResponse {
+        val entry = writable(row.db)
+        val name = nonEmpty(row.table, "table")
         live(entry).use { connection ->
             val reader = SqliteReader(connection, signal)
             val table = reader.table(name) ?: throw noTable(entry, name)
             if (table.isView) throw RouteException("${table.name} is a view: only the rows of a table change", field = "table")
             val columns = reader.columns(table)
-            val target = SqliteRowRequest.target(body, table, columns, reader.rowid(table, columns))
+            val target = SqliteRowRequest.target(row.rowid, row.key, table, columns, reader.rowid(table, columns))
             val writer = SqliteWriter(connection, request)
-            if (delete) {
+            if (values == null) {
                 statementErrors(field = null) { writer.delete(target) }
             } else {
-                val values = SqliteRowRequest.values(body, columns)
-                statementErrors(field = "values") { writer.edit(target, values) }
+                val bound = SqliteRowRequest.values(values, columns)
+                statementErrors(field = "values") { writer.edit(target, bound) }
             }
         }
         afterWrite(entry)
@@ -158,8 +313,7 @@ internal class SqliteRoutes(private val registry: SqliteRegistry, private val li
         }
     }
 
-    private fun tables(request: DebugRequest, signal: CancellationSignal): DebugResponse {
-        val entry = entry(request)
+    private fun tables(entry: DbEntry, signal: CancellationSignal): DebugResponse {
         return read(entry, signal) { reader ->
             val tables = reader.tables()
             DebugResponse.json {
@@ -197,9 +351,7 @@ internal class SqliteRoutes(private val registry: SqliteRegistry, private val li
         }
     }
 
-    private fun schema(request: DebugRequest, signal: CancellationSignal): DebugResponse {
-        val entry = entry(request)
-        val name = required(request, "table")
+    private fun schema(entry: DbEntry, name: String, signal: CancellationSignal): DebugResponse {
         return read(entry, signal) { reader ->
             val tables = reader.tables()
             val table = reader.table(name, tables) ?: throw noTable(entry, name)
@@ -243,18 +395,14 @@ internal class SqliteRoutes(private val registry: SqliteRegistry, private val li
         }
     }
 
-    private fun rows(request: DebugRequest, signal: CancellationSignal): DebugResponse {
-        val entry = entry(request)
-        val name = required(request, "table")
-        val offset = offset(request.queryParam("cursor"))
-        val limit = limit(request.queryParam("limit"))
-        val descending = descending(request.queryParam("dir"))
-        return read(entry, signal) { reader ->
+    // query.sort is the name that the client gave, which the table's schema turns into a column.
+    private fun rows(entry: DbEntry, name: String, query: RowsQuery, signal: CancellationSignal): DebugResponse =
+        read(entry, signal) { reader ->
             val table = reader.table(name) ?: throw noTable(entry, name)
             val columns = reader.columns(table)
             val rowid = reader.rowid(table, columns)
-            val sort = request.queryParam("sort")?.takeIf { it.isNotEmpty() }?.let { sortColumn(it, columns, rowid) }
-            val page = reader.rows(table, columns, rowid, RowsQuery(offset, limit, request.queryParam("filter"), sort, descending)) { entry.masks(it.name) }
+            val sort = query.sort?.let { sortColumn(it, columns, rowid) }
+            val page = reader.rows(table, columns, rowid, RowsQuery(query.offset, query.limit, query.filter, sort, query.descending)) { entry.masks(it.name) }
             DebugResponse.json {
                 append("{\"items\":[")
                 page.rows.forEachIndexed { index, row ->
@@ -275,7 +423,6 @@ internal class SqliteRoutes(private val registry: SqliteRegistry, private val li
                 append('}')
             }
         }
-    }
 
     // The column that a client names, as the schema names it, or the rowid when no column has its name.
     private fun sortColumn(name: String, columns: List<Column>, rowid: String?): String =
@@ -290,19 +437,12 @@ internal class SqliteRoutes(private val registry: SqliteRegistry, private val li
             ?: throw RouteException("cursor is not a cursor that GET rows returned", field = "cursor")
     }
 
-    private fun limit(text: String?): Int {
-        if (text.isNullOrEmpty()) return DEFAULT_LIMIT
-        return text.toIntOrNull()?.takeIf { it in 1..MAX_LIMIT } ?: throw RouteException("limit must be a whole number from 1 to $MAX_LIMIT", field = "limit")
-    }
-
     private fun descending(text: String?): Boolean =
         when {
             text.isNullOrEmpty() || text.equals("asc", ignoreCase = true) -> false
             text.equals("desc", ignoreCase = true) -> true
             else -> throw RouteException("dir must be asc or desc", field = "dir")
         }
-
-    private fun entry(request: DebugRequest): DbEntry = entry(required(request, "db"))
 
     private fun entry(name: String): DbEntry = registry.find(name) ?: throw RouteException("No database named $name", status = 404, field = "db")
 
@@ -316,8 +456,9 @@ internal class SqliteRoutes(private val registry: SqliteRegistry, private val li
         return entry
     }
 
-    private fun statement(body: JSONObject, exec: Boolean): String {
-        val sql = string(body, "sql")
+    private fun nonEmpty(value: String, field: String): String = value.ifEmpty { throw RouteException("$field must not be empty", field = field) }
+
+    private fun statement(sql: String, exec: Boolean): String {
         if (!SqliteStatements.hasStatement(sql)) throw RouteException("sql has no statement", field = "sql")
         SqliteStatements.refusal(sql, exec)?.let { throw RouteException(it, code = "statement_refused", field = "sql") }
         return sql
@@ -384,21 +525,6 @@ internal class SqliteRoutes(private val registry: SqliteRegistry, private val li
             else -> false
         }
 
-    private fun body(request: DebugRequest): JSONObject {
-        val text = request.bodyAsString()?.takeIf { it.isNotBlank() } ?: throw RouteException("The body must be a JSON object", field = "body")
-        return try {
-            JSONObject(text)
-        } catch (e: JSONException) {
-            throw RouteException("The body is not a JSON object: ${e.message}", field = "body")
-        }
-    }
-
-    private fun string(body: JSONObject, name: String): String =
-        (body.opt(name) as? String)?.takeIf { it.isNotEmpty() } ?: throw RouteException("$name is required, as a JSON string", field = name)
-
-    private fun required(request: DebugRequest, name: String): String =
-        request.queryParam(name)?.takeIf { it.isNotEmpty() } ?: throw RouteException("$name is required", field = name)
-
     private fun noTable(entry: DbEntry, name: String): RouteException =
         RouteException("The database ${entry.name} has no table or view named $name", status = 404, field = "table")
 
@@ -431,6 +557,7 @@ internal class SqliteRoutes(private val registry: SqliteRegistry, private val li
         const val TAG = "LustroSqlite"
         const val DEFAULT_LIMIT = 50
         const val MAX_LIMIT = 500
+        const val NON_EMPTY_STRING = "{\"type\": \"string\", \"minLength\": 1}"
     }
 }
 

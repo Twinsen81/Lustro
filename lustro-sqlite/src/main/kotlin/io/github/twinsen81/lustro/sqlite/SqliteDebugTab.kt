@@ -1,9 +1,9 @@
 package io.github.twinsen81.lustro.sqlite
 
 import android.content.Context
-import io.github.twinsen81.lustro.DebugRequest
-import io.github.twinsen81.lustro.DebugResponse
+import io.github.twinsen81.lustro.DebugRoutes
 import io.github.twinsen81.lustro.DebugTab
+import io.github.twinsen81.lustro.ExperimentalDebugRoutes
 import io.github.twinsen81.lustro.sqlite.internal.FileSource
 import io.github.twinsen81.lustro.sqlite.internal.SqliteRegistry
 import io.github.twinsen81.lustro.sqlite.internal.SqliteRoutes
@@ -72,13 +72,16 @@ public class SqliteDebugTab private constructor(registry: SqliteRegistry) : Debu
     override val icon: String = "🗄️"
     override val order: Int = 40
 
-    private val routes = SqliteRoutes(registry)
+    private val sqliteRoutes = SqliteRoutes(registry)
 
     /** The view's static shell; `sqlite.js` and `sqlite.css` in the assets fill and style it. */
     override fun renderContent(): String = SqliteView.HTML
 
-    /** Serves the routes under `/api/v1/sqlite/`; the static `sqlite.openapi.json` describes them. */
-    override fun handle(request: DebugRequest): DebugResponse? = routes.handle(request)
+    /** Declares the routes under `/api/v1/sqlite/`, which also make the tab's OpenAPI document. */
+    @OptIn(ExperimentalDebugRoutes::class)
+    override fun routes(routes: DebugRoutes) {
+        sqliteRoutes.declare(routes)
+    }
 
     /** Factory for [SqliteDebugTab]. */
     public companion object {

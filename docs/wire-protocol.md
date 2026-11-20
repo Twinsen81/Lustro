@@ -31,7 +31,7 @@ the Logs tab's is
 the Preferences tab's is
 [`lustro-prefs/openapi/prefs.openapi.json`](https://github.com/Twinsen81/Lustro/blob/main/lustro-prefs/openapi/prefs.openapi.json),
 the SQLite tab's is
-[`lustro-sqlite/src/main/assets/lustro/sqlite.openapi.json`](https://github.com/Twinsen81/Lustro/blob/main/lustro-sqlite/src/main/assets/lustro/sqlite.openapi.json),
+[`lustro-sqlite/openapi/sqlite.openapi.json`](https://github.com/Twinsen81/Lustro/blob/main/lustro-sqlite/openapi/sqlite.openapi.json),
 the WorkManager tab's is
 [`lustro-work/src/main/assets/lustro/work.openapi.json`](https://github.com/Twinsen81/Lustro/blob/main/lustro-work/src/main/assets/lustro/work.openapi.json),
 and the Screen tab's is

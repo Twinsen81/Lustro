@@ -8,6 +8,7 @@ import io.github.twinsen81.lustro.DebugResponse
 import io.github.twinsen81.lustro.sqlite.SqliteDb
 import io.github.twinsen81.lustro.sqlite.internal.Fixtures.json
 import java.io.File
+import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -143,6 +144,28 @@ class SqliteRowEditTest {
             assertField(403, "db", Fixtures.post(routes, "delete", JSONObject().put("db", db).put("table", "notes").put("rowid", "1")))
         }
         assertEquals(listOf("3"), row("SELECT COUNT(*) FROM notes"))
+    }
+
+    @Test
+    fun `the router checks the body before the handler, and the handler checks the database before the rest`() {
+        val locked = routes(SqliteDb.framework("locked") { live })
+
+        // Strict JSON: Android's JSONObject took single quotes and text after the object.
+        assertField(400, "body", post("delete", "{'db': 'app', 'table': 'notes', 'rowid': 1}"))
+        assertField(400, "body", post("delete", "{\"db\": \"app\", \"table\": \"notes\", \"rowid\": 1} x"))
+        assertField(400, "body", post("delete", ""))
+        // A missing field, or one of another JSON type, is refused before the database is found.
+        assertField(400, "table", Fixtures.post(locked, "delete", JSONObject().put("db", "locked").put("rowid", "1")))
+        assertField(400, "table", Fixtures.post(locked, "delete", JSONObject().put("db", "locked").put("table", 5).put("rowid", "1")))
+        assertField(400, "values", Fixtures.post(locked, "edit", JSONObject().put("db", "locked").put("table", "notes").put("rowid", "1")))
+        // The other checks come after the database's, as before.
+        assertField(403, "db", Fixtures.post(locked, "delete", JSONObject().put("db", "locked").put("table", "").put("rowid", "one")))
+        assertField(400, "table", delete(JSONObject().put("table", "").put("rowid", "1")))
+        assertField(400, "rowid", delete(JSONObject().put("rowid", "99999999999999999999")))
+        assertField(400, "key", delete(JSONObject().put("key", JSONArray().put(1))))
+        // A null rowid is no rowid.
+        ok(delete(JSONObject().put("rowid", JSONObject.NULL).put("key", JSONObject().put("id", 1))))
+        assertEquals(listOf("2"), row("SELECT COUNT(*) FROM notes"))
     }
 
     @Test

@@ -20,8 +20,9 @@ the protocol a stable public contract independent of the library's Kotlin API.
 - **Per-tab OpenAPI fragments**: served at `GET /api/v1/<id>/_schema`. A tab that
   declares its routes makes its document from the declarations, and the
   repository keeps a copy at `<module>/openapi/<id>.openapi.json`, such as
-  `lustro/openapi/network.openapi.json` for the Network tab, which a test keeps
-  equal to the declarations. A tab with a hand-written document keeps it in its
+  `lustro/openapi/network.openapi.json` for the Network tab and
+  `lustro-sqlite/openapi/sqlite.openapi.json` for the SQLite tab, which a test
+  keeps equal to the declarations. A tab with a hand-written document keeps it in its
   assets, such as `lustro-logs/src/main/assets/lustro/logs.openapi.json`, which
   is bundled into the AAR. A plugin tab's document lives in its own module and
   has a version of its own in `info.version` (see "Plugin tabs" below).

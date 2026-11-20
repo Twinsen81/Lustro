@@ -3,7 +3,7 @@
 // the cursor of the next page, so the page keeps the cursors of the pages
 // before for Previous. A statement goes to POST query, on a connection that
 // SQLite opens read-only, unless the user asks for a write, which goes to
-// POST exec. sqlite.openapi.json describes the routes.
+// POST exec. GET sqlite/_schema describes the routes.
 (function() {
     var STORAGE_KEY = 'debug-sqlite';
     var COLUMNS_KEY = 'debug-sqlite-columns';

@@ -347,8 +347,10 @@ class SqliteRoutesTest {
         assertError(400, "table", Fixtures.get(routes, "schema", "db" to "app"))
         assertError(404, "table", Fixtures.get(routes, "schema", "db" to "app", "table" to "nope"))
         assertError(404, "table", Fixtures.get(routes, "rows", "db" to "app", "table" to "nope"))
-        // The server answers a wrong method with 405, from sqlite.openapi.json.
-        assertNull(routes.handle(DebugRequest("rows", "POST")))
+        // The router answers a wrong method with 405, and a path that the tab does not declare is the server's 404.
+        val wrongMethod = routes.handle(DebugRequest("rows", "POST"))!!
+        assertEquals(405, wrongMethod.status)
+        assertEquals("GET", wrongMethod.headers.get("Allow"))
         assertNull(routes.handle(DebugRequest("import", "POST")))
     }
 

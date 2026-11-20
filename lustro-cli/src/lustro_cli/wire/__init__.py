@@ -8,7 +8,8 @@ These JSON files are vendored copies of the SemVer-governed wire protocol:
   (``lustro-logs/src/main/assets/lustro/logs.openapi.json``), the
   Preferences tab (``lustro-prefs/openapi/prefs.openapi.json``, generated from its route
   declarations), the
-  SQLite tab (``lustro-sqlite/src/main/assets/lustro/sqlite.openapi.json``), the
+  SQLite tab (``lustro-sqlite/openapi/sqlite.openapi.json``, generated from its route
+  declarations), the
   WorkManager tab (``lustro-work/src/main/assets/lustro/work.openapi.json``), and the
   Screen tab (``lustro-screen/src/main/assets/lustro/screen.openapi.json``), and
 - the golden response fixtures from ``wire-protocol/v1/golden/``.

@@ -355,8 +355,10 @@ class SqliteConsoleTest {
         assertField(400, "db", Fixtures.post(routes, "query", JSONObject().put("sql", "SELECT 1")))
         assertField(404, "db", Fixtures.post(routes, "query", body("missing", "SELECT 1")))
         assertField(400, "body", routes.handle(io.github.twinsen81.lustro.DebugRequest("query", "POST", body = "not json".toByteArray()))!!)
-        // The server answers a wrong method with 405, from sqlite.openapi.json.
-        assertNull(routes.handle(io.github.twinsen81.lustro.DebugRequest("query", "GET", mapOf("db" to listOf("app")))))
+        // The router answers a wrong method with 405.
+        val wrongMethod = routes.handle(io.github.twinsen81.lustro.DebugRequest("query", "GET", mapOf("db" to listOf("app"))))!!
+        assertEquals(405, wrongMethod.status)
+        assertEquals("POST", wrongMethod.headers.get("Allow"))
     }
 
     @Test

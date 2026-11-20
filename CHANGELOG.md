@@ -2148,6 +2148,51 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Changed
 
+- **The SQLite tab declares its routes once, with no change to the
+  declared-routes API (experimental).** The SQLite tab routed each request by
+  hand and read each parameter and body field itself, and
+  `sqlite.openapi.json` described the same 8 operations again by hand. It now
+  declares each route in `routes()`, as the Network and Preferences tabs do,
+  so the routing, the checks of the parameters and the bodies, the `405` with
+  `Allow`, and the document of `GET sqlite/_schema` come from one
+  declaration. The document is committed at
+  `lustro-sqlite/openapi/sqlite.openapi.json`, which the wire-schema artifact
+  and the CLI copy, and a test keeps the copy equal to the declarations. It
+  has the paths, methods, operation ids, parameters, bodies, and statuses of
+  the hand-written one, and keeps its version, `1.2`; `limit` now also says
+  `format: int32`. `rowid` in `POST edit` and `POST delete` takes a whole
+  number or a string of one, as `GET rows` gives it, and a declared field has
+  one type, so it is a `json` body field with both types in its schema, which
+  the tab parses itself: DECISIONS.md, row 19, says why this needs no
+  addition to the API. The routes keep their statuses, `error` types, and
+  `field` values, with these differences. The bodies of `POST query`, `exec`,
+  `edit`, and `delete` must be strict JSON: Android's `JSONObject` took single
+  quotes, unquoted names, comments, and text after the object, which now get
+  `400` with `field: "body"`. A required parameter or body field that is
+  missing, or a body field that is not a JSON string, is refused before the
+  tab looks for the database, so when a request has two errors, another can
+  win: `GET rows?db=nope` without `table` gets `400` for `table`, where it got
+  `404` for `db`; `GET rows?db=nope&limit=0` gets `400` for `limit`; and a
+  `POST exec`, `edit`, or `delete` to a database that is not writable gets
+  `400` for a missing `sql`, `table`, or `values`, where it got `403`. An
+  empty `sql` or `table` in a body is still checked after the database, so
+  it still gets the `403` there. Some messages changed, such as `db must be a
+  JSON string, was 5` for `"db": 5`, where it was `db is required, as a JSON
+  string`, `db must not be empty` for `?db=`, and `limit must be from 1 to
+  500, was 0`. Verified on a physical device (API 37) with the sample:
+  `_meta` listed `sqlite` 1.2, and `GET sqlite/_schema` was byte-equal to the
+  committed file; on a table made for the check, `POST edit` changed a row by
+  `rowid` 1, by `rowid` "2", and by `key` `{"id": 3}`, `GET rows` showed the
+  three values, and `POST delete` removed the same three rows the same three
+  ways; `GET edit` and `DELETE delete` answered `405` with `Allow: POST`, and
+  `POST rows` with `Allow: GET`; an edit with no `values`, `rowid` "one",
+  both `rowid` and `key`, `"db": 5`, `limit=0`, and a body in single quotes
+  answered `400` with the fields `values`, `rowid`, `rowid`, `db`, `limit`,
+  and `body`; `rowid` 99 answered `404` with `field: "rowid"`; `dir=DESC`
+  still sorted; `POST exec` with an empty `sql` to the read-only catalog
+  answered `403 read_only`; and `?cursr=x` got its `Lustro-Warning`. The CLI
+  end to end passed on the same device.
+
 - **The Network tab declares its routes once, and the declared routes take
   responses that are not JSON, repeated parameters, and path segments that
   name nothing (experimental).** The Network tab routed each request by hand

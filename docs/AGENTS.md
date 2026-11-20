@@ -834,7 +834,7 @@ A `file` that names no file is a `404`, and one with `/` or `\` a `400`, both wi
 Base path `/api/v1/sqlite`, when the app registers the SQLite plugin
 (`SqliteDebugTab.create(databases, discoverFrom)`; without it, the routes are an enveloped
 `404 Unknown tab: sqlite`). The authoritative contract is
-`lustro-sqlite/src/main/assets/lustro/sqlite.openapi.json`, version `1.1` (`1.1` adds `walBytes`). The CLI has no
+`lustro-sqlite/openapi/sqlite.openapi.json`, the document that the tab's route declarations make, version `1.2` (`1.1` adds `walBytes`; `1.2` refuses a pragma with a value in `POST query`). The CLI has no
 `sqlite` commands: use `lustro api`. The `GET` routes and `POST query` only read. `POST exec`,
 `edit`, and `delete` write, and only to a database that `GET databases` lists as `writable`.
 
