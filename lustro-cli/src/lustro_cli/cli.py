@@ -606,6 +606,68 @@ def _warn_if_newer_protocol(meta: Any) -> None:
         _print_warning(warning)
 
 
+# The options and MCP arguments that an app on an older wire protocol ignores, with the
+# revision that added each. The app answers 200 without them, so the command would
+# succeed with a wrong result: a mock rule that answers instead of failing, a text
+# search in place of a regex. A command that uses one reads _meta first, and refuses to
+# run against an older app. An option of a route that an older app does not have needs
+# no entry: that app answers 404.
+OPTION_PROTOCOLS: Dict[Tuple[str, str], str] = {
+    ("send", "--sender"): "1.7",
+    ("net list", "--regex"): "1.8",
+    ("net poll", "--regex"): "1.8",
+    ("net wait", "--regex"): "1.8",
+    ("net ws events", "--regex"): "1.8",
+    ("mock add", "--failure"): "1.12",
+    ("mock sync", "failure"): "1.12",
+    # MCP tools.
+    ("list_requests", "regex"): "1.8",
+    ("add_mock_rule", "failure"): "1.12",
+}
+
+# From this revision, the app names each query parameter that a route does not declare
+# in a Lustro-Warning header.
+UNKNOWN_PARAMETER_WARNINGS = "1.15"
+
+
+def _older_protocol(meta: Any, needed: str) -> Optional[str]:
+    """The app's ``protocolVersion`` in ``_meta`` when it is older than ``needed``, else
+    None. An app that sends no version that the CLI can compare is not refused."""
+    app = meta.get("protocolVersion") if isinstance(meta, dict) else None
+    app_version = _version_tuple(app)
+    needed_version = _version_tuple(needed)
+    if app_version is None or needed_version is None or app_version >= needed_version:
+        return None
+    return str(app)
+
+
+def require_protocol(client: LustroClient, command: str, option: str, *, hint: Optional[str] = None) -> None:
+    """Raise when the app's wire protocol is older than the revision that added ``option``
+    of ``command`` (see OPTION_PROTOCOLS). Costs one ``_meta`` request."""
+    needed = OPTION_PROTOCOLS[(command, option)]
+    app = _older_protocol(client.get(META), needed)
+    if app is not None:
+        raise LustroError(
+            "protocol_too_old",
+            "{} needs wire protocol {}, and the app uses {}, which ignores it".format(option, needed, app),
+            hint=hint or "update Lustro in the app, or leave out {}".format(option),
+        )
+
+
+def unwarned_parameters_note(client: LustroClient, schema_command: str) -> Optional[str]:
+    """A note for a request with query parameters to an app that does not warn about a
+    parameter that the route does not declare, or None. Costs one ``_meta`` request."""
+    app = _older_protocol(client.get(META), UNKNOWN_PARAMETER_WARNINGS)
+    if app is None:
+        return None
+    return (
+        "the app uses wire protocol {}, so it does not warn about a query parameter that the route does not "
+        "declare (from {}), and the route ignores it: {} lists the parameters of each route".format(
+            app, UNKNOWN_PARAMETER_WARNINGS, schema_command
+        )
+    )
+
+
 _printed_warnings: Set[str] = set()
 
 
@@ -893,6 +955,10 @@ def cmd_api(args: argparse.Namespace) -> int:
     path = _api_path(args.path)
     body = _api_body(args)
     client = _build_client(args)
+    if args.param or urllib.parse.urlsplit(path).query:
+        note = unwarned_parameters_note(client, "`lustro schema <tabId>`")
+        if note:
+            print("note: {}".format(note), file=sys.stderr)
     response = client.request_raw(args.method, path, params=args.param, json_body=body)
     if not response.data:
         return 0
@@ -1049,8 +1115,14 @@ def cmd_screen_tree(args: argparse.Namespace) -> int:
 # ── net subcommands ────────────────────────────────────────────────────────────
 
 
+def _require_regex(client: LustroClient, args: argparse.Namespace, command: str) -> None:
+    if args.regex:
+        require_protocol(client, command, "--regex")
+
+
 def cmd_net_list(args: argparse.Namespace) -> int:
     client = _build_client(args)
+    _require_regex(client, args, "net list")
     data = client.get(TRANSACTIONS, params=_search_params(args))
     _note_if_paused(data)
     items = _list_items(data)
@@ -1127,6 +1199,7 @@ def _print_changes(items: List[Any], printed: Dict[Any, bool], args: argparse.Na
 
 def cmd_net_poll(args: argparse.Namespace) -> int:
     client = _build_client(args)
+    _require_regex(client, args, "net poll")
     poller = CursorState()
     printed: Dict[Any, bool] = {}
     first = True
@@ -1197,6 +1270,7 @@ def _first_new_match(items: List[Any], finished_before: Set[Any], args: argparse
 def cmd_net_wait(args: argparse.Namespace) -> int:
     """Wait until a matching request finishes, print it, and exit 0; exit 1 at the timeout."""
     client = _build_client(args)
+    _require_regex(client, args, "net wait")
     deadline = time.monotonic() + args.timeout
 
     def time_left() -> float:
@@ -1422,6 +1496,7 @@ def _print_events(items: List[dict], connection_id: str, args: argparse.Namespac
 def cmd_net_ws_events(args: argparse.Namespace) -> int:
     """Print a connection's log, oldest first, and with --follow each new event as it comes."""
     client = _build_client(args)
+    _require_regex(client, args, "net ws events")
     connection_id = _resolve_ws_id(client, args.id)
     path = WEBSOCKETS + "/" + connection_id + "/events"
     filters = {
@@ -1550,6 +1625,8 @@ def cmd_mock_add(args: argparse.Namespace) -> int:
         print("--failure fails the request, so it takes no --status, --body, or --header", file=sys.stderr)
         return 2
     client = _build_client(args)
+    if args.failure is not None:
+        require_protocol(client, "mock add", "--failure")
     rule: dict = {"urlPattern": args.url_pattern}
     if args.id is not None:
         rule["id"] = args.id
@@ -1600,6 +1677,11 @@ def cmd_mock_sync(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 2
+    # `mock list --json` of a newer app has "failure": null in each rule, which an older app can ignore.
+    if any(isinstance(rule, dict) and rule.get("failure") is not None for rule in rules):
+        require_protocol(
+            client, "mock sync", "failure", hint="update Lustro in the app, or leave failure out of the rules"
+        )
     _emit(client.post(NETWORK + "/rules/_/sync", json_body=rules), raw_json=args.json)
     return 0
 
@@ -1626,6 +1708,8 @@ def cmd_senders(args: argparse.Namespace) -> int:
 
 def cmd_send(args: argparse.Namespace) -> int:
     client = _build_client(args)
+    if args.sender is not None:
+        require_protocol(client, "send", "--sender")
     payload: dict = {"url": args.url, "method": args.method}
     if args.sender is not None:
         payload["sender"] = args.sender

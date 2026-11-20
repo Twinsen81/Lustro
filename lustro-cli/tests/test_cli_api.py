@@ -18,6 +18,10 @@ SCRIPT = b"export function mount() {}\n"
 
 
 class _Handler(BaseHTTPRequestHandler):
+    # The protocolVersion that _meta answers, and the paths of the requests, in order.
+    protocol = "1.16"
+    paths = []
+
     def log_message(self, *args):  # silence
         pass
 
@@ -40,7 +44,10 @@ class _Handler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(length).decode("utf-8") if length else None
         url = urllib.parse.urlsplit(self.path)
-        if url.path == "/api/v1/echo":
+        self.paths.append(url.path)
+        if url.path == "/api/v1/_meta":
+            self._send_json(200, {"libraryVersion": "0.1.0", "protocolVersion": self.protocol, "tabs": []})
+        elif url.path == "/api/v1/echo":
             self._send_json(
                 200,
                 {
@@ -55,6 +62,8 @@ class _Handler(BaseHTTPRequestHandler):
             # Like the app: each parameter but "known" is undeclared, and "fail" also fails.
             names = [name for name, _ in urllib.parse.parse_qsl(url.query) if name != "known"]
             warning = ", ".join('unknown query parameter "{}"'.format(name) for name in names)
+            if cli._version_tuple(self.protocol) < (1, 15):
+                warning = None
             status = 404 if "fail" in names else 200
             self._send(status, json.dumps({"error": "not_found", "message": "no"} if status == 404 else {}).encode(),
                        "application/json", warning)
@@ -72,7 +81,9 @@ class _Handler(BaseHTTPRequestHandler):
 
 
 @pytest.fixture
-def lustro():
+def lustro(monkeypatch):
+    monkeypatch.setattr(_Handler, "protocol", "1.16")
+    monkeypatch.setattr(_Handler, "paths", [])
     httpd = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
@@ -244,3 +255,33 @@ def test_a_command_that_polls_prints_each_warning_once(capsys, monkeypatch):
 )
 def test_split_warnings_splits_at_the_commas_outside_quotes(value, warnings):
     assert split_warnings(value) == warnings
+
+
+NOTE = (
+    "note: the app uses wire protocol 1.14, so it does not warn about a query parameter that the route does not "
+    "declare (from 1.15), and the route ignores it: `lustro schema <tabId>` lists the parameters of each route\n"
+)
+
+
+@pytest.mark.parametrize("argv", [["warn", "--param", "uniqueName=X"], ["warn?uniqueName=X"]])
+def test_a_request_with_parameters_to_an_app_before_1_15_gets_a_note(lustro, capsys, argv):
+    _Handler.protocol = "1.14"
+    assert lustro("GET", *argv) == 0
+    captured = capsys.readouterr()
+    assert json.loads(captured.out) == {}
+    assert captured.err == NOTE
+    assert _Handler.paths == ["/api/v1/_meta", "/api/v1/warn"]
+
+
+def test_an_app_on_1_15_gets_no_note(lustro, capsys, monkeypatch):
+    monkeypatch.setattr(cli, "_printed_warnings", set())
+    _Handler.protocol = "1.15"
+    assert lustro("GET", "warn", "--param", "known=1") == 0
+    assert capsys.readouterr().err == ""
+
+
+def test_a_request_without_parameters_does_not_read_meta(lustro, capsys):
+    _Handler.protocol = "1.14"
+    assert lustro("GET", "echo") == 0
+    assert capsys.readouterr().err == ""
+    assert _Handler.paths == ["/api/v1/echo"]

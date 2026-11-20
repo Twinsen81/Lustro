@@ -102,6 +102,9 @@ class _SearchRejectingClient(LustroClient):
         self.params = []
 
     def request(self, method, path, *, params=None, json_body=None):
+        if path == cli.META:
+            # --regex reads the app's protocol first.
+            return {"protocolVersion": "1.8"}
         self.params.append(params)
         raise LustroError(
             "bad_request",

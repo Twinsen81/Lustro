@@ -14,6 +14,37 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Added
 
+- **The CLI refuses an option that the app's wire protocol is too old for,
+  instead of a wrong result.** An app on an older protocol ignores a request
+  field or a query parameter that its protocol does not have, and answers
+  `200`. So `lustro mock add --failure timeout` against an app on protocol 1.11
+  saved a rule that answers with a normal response, and a test that expected a
+  connection error passed or failed for the wrong reason. The CLI now has one
+  table of the options that an older app ignores, with the protocol revision
+  that added each: `send --sender` (1.7), `--regex` of `net list`, `net poll`,
+  `net wait`, and `net ws events` (1.8), and `mock add --failure` and a rule
+  with `failure` in the file of `mock sync` (1.12), and for the MCP tools,
+  `regex` of `list_requests` (1.8) and `failure` of `add_mock_rule` (1.12). A
+  command or a tool call with one reads `protocolVersion` from `_meta` first,
+  and when the app is older, it stops before it sends anything, with exit
+  status 1 and `error: protocol_too_old: --failure needs wire protocol 1.12,
+  and the app uses 1.11, which ignores it`, and a hint to update Lustro in the
+  app or to leave out the option. A command without such an option sends no
+  extra request, so an app on an older release works as before. `mock sync`
+  of the output of `mock list --json` from a newer app, with `"failure": null`
+  in each rule, still goes to an older app. `lustro api` and the MCP tool
+  `call_api` do not know the route, so they refuse nothing: for a request with
+  query parameters to an app older than 1.15, they add a note that this app
+  does not warn about a parameter that the route does not declare. Verified on
+  a physical device (API 37) with the sample built at protocol 1.11: `mock add
+  --failure timeout` exited 1 with the message above, and `mock list` showed no
+  new rule, where the same rule posted with `lustro api` was saved without its
+  `failure`; the MCP tool `add_mock_rule` with `failure` returned the same
+  error; `lustro api` with a query parameter printed the note. With the current
+  sample (protocol 1.16), `mock add --failure timeout` saved the rule, and a
+  `lustro send` to a matching URL failed with `timeout (mocked by Lustro rule
+  ...)`; `--regex` and `--sender` worked, and `lustro api` printed the app's
+  warning and no note.
 - **`lustro ready` waits until the app's server answers, each cause of a
   failure has its own exit code, and `lustro --version` prints the wire
   protocol.** A script that drove an app had to find the server itself: the CLI

@@ -129,8 +129,9 @@ def _changes(*, destructive: bool, idempotent: bool) -> Dict[str, Any]:
 # ── tools ─────────────────────────────────────────────────────────────────────
 
 
-# The warnings of the tool call in progress, from the app's Lustro-Warning headers. The
-# server runs one call at a time, and the result of the call passes them on.
+# The warnings of the tool call in progress, from the app's Lustro-Warning headers, and its
+# notes, each line with its prefix. The server runs one call at a time, and the result of
+# the call passes them on.
 _call_warnings: List[str] = []
 
 
@@ -140,9 +141,10 @@ def _client(args: argparse.Namespace) -> LustroClient:
     return client
 
 
-def _keep_warning(warning: str) -> None:
-    if warning not in _call_warnings:
-        _call_warnings.append(warning)
+def _keep_warning(warning: str, prefix: str = "warning") -> None:
+    line = "{}: {}".format(prefix, warning)
+    if line not in _call_warnings:
+        _call_warnings.append(line)
 
 
 def _dumps(obj: Any) -> str:
@@ -159,9 +161,10 @@ def _list_requests(args: argparse.Namespace, a: Dict[str, Any]) -> str:
             status = cli._status_range(a["status"])
         except argparse.ArgumentTypeError as exc:
             raise ToolError("status: {}".format(exc))
-    data = _client(args).get(
-        cli.TRANSACTIONS, params={"search": search, "regex": "true" if a.get("regex") else None}
-    )
+    client = _client(args)
+    if a.get("regex"):
+        cli.require_protocol(client, "list_requests", "regex")
+    data = client.get(cli.TRANSACTIONS, params={"search": search, "regex": "true" if a.get("regex") else None})
     items = cli._list_items(data)
     filters = argparse.Namespace(
         method=a.get("method"), url=a.get("url"), status=status, errors=bool(a.get("errors"))
@@ -242,7 +245,10 @@ def _add_mock_rule(args: argparse.Namespace, a: Dict[str, Any]) -> str:
     ):
         if a.get(name) is not None:
             rule[wire_name] = a[name]
-    return _dumps(_client(args).post(cli.NETWORK + "/rules", json_body=rule))
+    client = _client(args)
+    if "failure" in rule:
+        cli.require_protocol(client, "add_mock_rule", "failure")
+    return _dumps(client.post(cli.NETWORK + "/rules", json_body=rule))
 
 
 def _delete_mock_rule(args: argparse.Namespace, a: Dict[str, Any]) -> str:
@@ -287,7 +293,13 @@ def _call_api(args: argparse.Namespace, a: Dict[str, Any]) -> str:
             raise ToolError("body is a string that is not JSON: {}".format(exc))
         if not isinstance(body, (dict, list)):
             raise ToolError("body must be a JSON object or array")
-    response = _client(args).request_raw(method, path, params=_query_pairs(a.get("params")), json_body=body)
+    params = _query_pairs(a.get("params"))
+    client = _client(args)
+    if params or urllib.parse.urlsplit(path).query:
+        note = cli.unwarned_parameters_note(client, "get_schema with the tab")
+        if note:
+            _keep_warning(note, prefix="note")
+    response = client.request_raw(method, path, params=params, json_body=body)
     return _cut_text(_body_text(response), a.get("max_bytes", DEFAULT_MAX_BYTES))
 
 
@@ -762,7 +774,7 @@ def _with_warnings(result: Dict[str, Any]) -> Dict[str, Any]:
     """The result with the app's warnings, such as an unknown query parameter, in a text
     block of their own after the output, so that a cut in the output can't drop them."""
     if _call_warnings:
-        text = "\n".join("warning: {}".format(warning) for warning in _call_warnings)
+        text = "\n".join(_call_warnings)
         result["content"].append({"type": "text", "text": text})
     return result
 

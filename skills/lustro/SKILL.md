@@ -33,6 +33,14 @@ never install it, and never run `uvx lustro`.
 `lustro 0.1.0 (protocol 1.16)`. When `lustro ready` or `lustro meta` warns that the app's protocol
 is newer, install the CLI again with the command above, with `--force`.
 
+An app on an older protocol ignores an option that its protocol does not have, so the CLI refuses
+such a command before it changes anything, with exit status 1 and
+`error: protocol_too_old: --failure needs wire protocol 1.12, and the app uses 1.11`: `send --sender`
+(1.7), `--regex` (1.8), and `mock add --failure` or `mock sync` of a rule with `failure` (1.12).
+Then tell the user that the app needs a newer Lustro release, or do the step without the option.
+`lustro api` with `--param` to an app older than 1.15 prints a note: that app does not warn about
+a parameter that the route does not declare, so check the names in `lustro schema <tab>`.
+
 ## Connect
 
 1. With more than one device, `export ANDROID_SERIAL=<serial>`: the CLI and `adb` both use it.
