@@ -37,7 +37,7 @@ see [DECISIONS.md](DECISIONS.md).
   the app in the foreground, which can be the launcher, so an app there without
   the runtime exits 6. The message for a build without the runtime names both
   causes: the `-noop` artifacts, or a build from before the app added Lustro.
-  `lustro --version` prints `lustro 0.1.0 (protocol 1.15)`, from
+  `lustro --version` prints `lustro 0.1.0 (protocol 1.16)`, from
   `PROTOCOL_VERSION` in the CLI, because the library version stays the same
   for every build from `main`. `./gradlew checkCliVersion` fails when it
   differs from the server's protocol version, and `lustro ready`, `lustro
@@ -50,8 +50,9 @@ see [DECISIONS.md](DECISIONS.md).
   front, and 2 with more than one device and none selected; started 4 s before
   the app, it printed the endpoint 1 s after the app started; `meta` against a
   stopped app with a line from its earlier start exited 6 with "is not
-  running"; a CLI set to protocol 1.14 warned against the app's 1.15; the CLI
-  end to end passed with `lustro ready`.
+  running"; `ready --token wrong` exited 1 after 1 s; with the app on
+  protocol 1.16, `ready` printed no warning, and a CLI set to 1.15 warned;
+  the CLI end to end passed with `lustro ready`.
 - **Agents learn of a query parameter that a route ignores, `mock sync`
   restores the output of `mock list`, and the CLI says when the app is a
   no-op build (wire protocol 1.15).** A route ignores a query parameter that

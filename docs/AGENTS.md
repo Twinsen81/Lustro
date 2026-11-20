@@ -153,7 +153,7 @@ that finds the app uses them, not only `ready`:
 
 Without `--package`, an app in the foreground without the runtime exits 6, not 5, because that app
 can be another app than yours. `lustro --version` prints the wire protocol that the CLI implements,
-such as `lustro 0.1.0 (protocol 1.15)`. When the app's `protocolVersion` is newer, `lustro ready`
+such as `lustro 0.1.0 (protocol 1.16)`. When the app's `protocolVersion` is newer, `lustro ready`
 and `lustro meta` print a warning on stderr: update the CLI, or it lacks what the newer protocol
 adds.
 
