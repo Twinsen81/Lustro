@@ -53,6 +53,47 @@ see [DECISIONS.md](DECISIONS.md).
   running"; `ready --token wrong` exited 1 after 1 s; with the app on
   protocol 1.16, `ready` printed no warning, and a CLI set to 1.15 warned;
   the CLI end to end passed with `lustro ready`.
+- **A custom tab declares each route once, and gets the routing, the
+  parameter checks, and its OpenAPI document from the declaration
+  (experimental).** A tab described its routes twice: a `when` on the path
+  and the method in `handle()`, with its own parsing of each parameter, and
+  an OpenAPI document written by hand, which drifted apart. `DebugTab` now
+  has `routes(routes: DebugRoutes)`, where a tab declares each route: its
+  method, its path with path parameters, its query parameters and body
+  fields (`string`, `int`, `long`, `boolean`, and `json` in a body), whether
+  each is required or has a default, a raw body, a summary, a response
+  schema, and its handler, which reads each value with the handle that the
+  declaration returned: `call[id]`. The default `handle()` then answers `405`
+  with `Allow` for a declared path with another method, and `400` with
+  `field` for a missing or wrong parameter, before the handler runs, and the
+  default `schema()` returns the document of the declarations, so `_meta`
+  lists the tab and the server warns about an undeclared query parameter
+  with no hand-written JSON. A route takes a form body only when it sets
+  `acceptsForm`. A tab can still give its own document, change the generated
+  one, or route some paths by hand and call `super.handle()`. A
+  `DebugResponseException` that a handler, or any tab's `handle()`, throws
+  ends the request with its response. The API needs
+  `@OptIn(ExperimentalDebugRoutes::class)`, because its shape can still
+  change. The routes are built on the first request, so a no-op build keeps
+  none of these classes, with no keep rule. The sample's flags tab and the
+  Preferences tab use the declarations, with no route table and no
+  hand-written document; the generated Preferences document is equal to the
+  one that it replaces, and moved to `lustro-prefs/openapi/prefs.openapi.json`,
+  which the wire-schema artifact and the CLI copy. The Preferences routes keep
+  their statuses, fields, and codes; a few messages changed, such as `file
+  must not be empty` for `?file=`. Verified on a physical device (API 37)
+  with the sample: `_meta` listed `flags` 1.0 and `prefs` 1.2, and
+  `GET prefs/_schema` was byte-equal to the committed file; `GET flags/toggle`
+  and `GET prefs/edit` answered `405` with `Allow: POST`; `POST flags/toggle`
+  with `{}` answered `400` with `field: id`, with `{"id":"nope"}` `404`, and
+  toggled a flag both from JSON and from `id=offline-sync` as a form;
+  `POST flags/upload` with no body answered `400` with `field: body`;
+  `?cursr=x` got `Lustro-Warning: unknown query parameter "cursr"`;
+  the Preferences routes answered `400` for `field` `file`, `store`, `key`,
+  `value`, `confirm`, and `body`, `404` for an unknown file, and `403
+  read_only` for a read-only file, and wrote and deleted a string, a string
+  set, and a DataStore double; the console's flags tab toggled a flag, and
+  its Preferences tab showed the files.
 - **Agents learn of a query parameter that a route ignores, `mock sync`
   restores the output of `mock list`, and the CLI says when the app is a
   no-op build (wire protocol 1.15).** A route ignores a query parameter that
