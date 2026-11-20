@@ -10,7 +10,7 @@ directory (`../*.schema.json`) and the OpenAPI components of the Network tab
 tab (`lustro-prefs/openapi/prefs.openapi.json`), the SQLite
 tab (`lustro-sqlite/openapi/sqlite.openapi.json`), the
 WorkManager tab (`lustro-work/src/main/assets/lustro/work.openapi.json`), and
-the Screen tab (`lustro-screen/src/main/assets/lustro/screen.openapi.json`).
+the Screen tab (`lustro-screen/openapi/screen.openapi.json`).
 
 These files are bundled into the `lustro-cli` wheel under
 `lustro_cli/wire/golden/`, so the installed CLI ships its own contract corpus

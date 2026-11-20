@@ -1056,7 +1056,7 @@ A new process starts a new stream: a cursor from before gets a `reset`.
 Base path `/api/v1/screen`, when the app registers the Screen plugin
 (`ScreenDebugTab.create(context)`, or `create(context) { contextJson }` with a context provider;
 without it, the routes are an enveloped `404 Unknown tab: screen`). The authoritative contract is
-`lustro-screen/src/main/assets/lustro/screen.openapi.json`, version `1.0`. The tab only reads: it
+`lustro-screen/openapi/screen.openapi.json`, version `1.0`. The tab only reads: it
 has no route that changes the app.
 
 | Operation | Route | Notes |

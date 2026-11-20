@@ -35,7 +35,7 @@ the SQLite tab's is
 the WorkManager tab's is
 [`lustro-work/src/main/assets/lustro/work.openapi.json`](https://github.com/Twinsen81/Lustro/blob/main/lustro-work/src/main/assets/lustro/work.openapi.json),
 and the Screen tab's is
-[`lustro-screen/src/main/assets/lustro/screen.openapi.json`](https://github.com/Twinsen81/Lustro/blob/main/lustro-screen/src/main/assets/lustro/screen.openapi.json),
+[`lustro-screen/openapi/screen.openapi.json`](https://github.com/Twinsen81/Lustro/blob/main/lustro-screen/openapi/screen.openapi.json),
 each with a version of its own.
 
 For driving Lustro from agents, scripts, or the `lustro` CLI, see

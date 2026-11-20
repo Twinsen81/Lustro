@@ -26,7 +26,8 @@ java {
 //   - SQLite OpenAPI document:        lustro-sqlite/openapi/sqlite.openapi.json (generated from
 //                                     the tab's route declarations; a test keeps it current)
 //   - WorkManager OpenAPI document:   lustro-work/src/main/assets/lustro/work.openapi.json
-//   - Screen OpenAPI document:        lustro-screen/src/main/assets/lustro/screen.openapi.json
+//   - Screen OpenAPI document:        lustro-screen/openapi/screen.openapi.json (generated from
+//                                     the tab's route declarations; a test keeps it current)
 // We copy them into build/generated/wire-resources/lustro/wire/v1/ at build time
 // (NOT into committed src/) so the jar always reflects the current source of
 // truth and there is a single canonical copy in the repo. Packaged under the
@@ -49,7 +50,7 @@ val workOpenApiFile =
         .file("lustro-work/src/main/assets/lustro/work.openapi.json")
 val screenOpenApiFile =
     rootProject.layout.projectDirectory
-        .file("lustro-screen/src/main/assets/lustro/screen.openapi.json")
+        .file("lustro-screen/openapi/screen.openapi.json")
 
 // Root of the generated resource tree; the jar entries live under
 // <root>/lustro/wire/v1/... so they don't collide on a consumer classpath.

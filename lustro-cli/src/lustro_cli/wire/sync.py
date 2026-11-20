@@ -41,7 +41,8 @@ def main() -> int:
     # Generated from the tab's route declarations and committed outside the assets: the tab serves its own.
     sqlite_openapi = _REPO_ROOT / "lustro-sqlite" / "openapi" / "sqlite.openapi.json"
     work_openapi = _REPO_ROOT / "lustro-work" / "src" / "main" / "assets" / "lustro" / "work.openapi.json"
-    screen_openapi = _REPO_ROOT / "lustro-screen" / "src" / "main" / "assets" / "lustro" / "screen.openapi.json"
+    # Generated from the tab's route declarations and committed outside the assets: the tab serves its own.
+    screen_openapi = _REPO_ROOT / "lustro-screen" / "openapi" / "screen.openapi.json"
     served_schema = assets / "_schema.json"
     golden_src = wire_v1 / "golden"
 

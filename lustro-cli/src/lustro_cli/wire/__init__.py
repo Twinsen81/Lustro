@@ -11,7 +11,8 @@ These JSON files are vendored copies of the SemVer-governed wire protocol:
   SQLite tab (``lustro-sqlite/openapi/sqlite.openapi.json``, generated from its route
   declarations), the
   WorkManager tab (``lustro-work/src/main/assets/lustro/work.openapi.json``), and the
-  Screen tab (``lustro-screen/src/main/assets/lustro/screen.openapi.json``), and
+  Screen tab (``lustro-screen/openapi/screen.openapi.json``, generated from its route
+  declarations), and
 - the golden response fixtures from ``wire-protocol/v1/golden/``.
 
 They are packaged into the wheel so the installed CLI ships its own schemas and

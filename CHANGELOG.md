@@ -2256,6 +2256,26 @@ see [DECISIONS.md](DECISIONS.md).
   `field: "body"`; `body/both` and `events/abc/payload` answered `404`; and
   `?cursr=x` got its `Lustro-Warning`. The CLI end to end passed on the same
   emulator.
+- **The Screen tab declares its route once (experimental API).** The Screen
+  tab routed `GET tree` by hand in `handle()` and read `merged` and `settle`
+  itself, and `screen.openapi.json` described the route again by hand. The tab
+  now declares it in `routes()`, so the routing, the checks of `merged` and
+  `settle`, the `405` with `Allow`, and the document of `GET screen/_schema`
+  come from one declaration. The document is committed at
+  `lustro-screen/openapi/screen.openapi.json`, which the wire-schema artifact
+  and the CLI copy, and a test keeps the copy equal to the declarations. It
+  has the path, method, parameters, and schemas of the hand-written one, with
+  `settle` as an `int32`, and it lists the statuses that the server answers
+  for any route, `403`, `413`, and `503`, in place of `405`. The route keeps its
+  statuses, `error` types, `field` values, and codes, and its version stays
+  `1.0`. Only the messages for `settle` change: `settle must be a whole
+  number, was soon` and `settle must be from 0 to 10000, was -1`, in place of
+  one message for both. Verified on a physical device (API 37) with the
+  sample: `GET screen/_schema` was byte-equal to the committed file, and
+  `_meta` listed `screen` 1.0; `POST tree` answered `405` with `Allow: GET`;
+  `settle=-1`, `settle=soon`, and `merged=yes` answered `400` with that
+  field; `merged=&settle=` took the defaults; and `?sttle=5` got its
+  `Lustro-Warning`. The CLI end to end passed on the same device.
 - **A rules sync with a repeated id is a `400` (protocol 1.11).**
   `POST /api/v1/network/rules/_/sync` kept only the first of two posted rules
   with the same `id`, and still answered `200` with a `count` of the rules

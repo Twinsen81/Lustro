@@ -70,6 +70,14 @@ tasks.withType<Test>().configureEach {
     providers.gradleProperty("lustroScreenGoldenOut").orNull?.let { systemProperty("lustro.screen.golden.out", it) }
 }
 
+// ScreenOpenApiDocumentTest compares the committed openapi/screen.openapi.json with the document
+// that the route declarations make, and writes it when LUSTRO_UPDATE_OPENAPI=1, so both are
+// inputs of the unit tests.
+tasks.withType<Test>().configureEach {
+    inputs.file("openapi/screen.openapi.json")
+    inputs.property("updateOpenApi", providers.environmentVariable("LUSTRO_UPDATE_OPENAPI").orElse(""))
+}
+
 lustroLibrary {
     // The same name in :lustro-screen-noop, so that an app can't resolve both.
     pairCapability("lustro-screen-runtime")

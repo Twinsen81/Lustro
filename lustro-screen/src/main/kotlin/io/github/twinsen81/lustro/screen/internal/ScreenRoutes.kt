@@ -2,18 +2,47 @@ package io.github.twinsen81.lustro.screen.internal
 
 import io.github.twinsen81.lustro.DebugRequest
 import io.github.twinsen81.lustro.DebugResponse
+import io.github.twinsen81.lustro.DebugRoutes
+import io.github.twinsen81.lustro.DebugRoutes.Companion.ref
+import io.github.twinsen81.lustro.ExperimentalDebugRoutes
 
-/** The routes of the Screen tab, under `/api/v1/screen/`. */
+/**
+ * The routes of the Screen tab, under `/api/v1/screen/`. [declare] declares them, and the
+ * tab's OpenAPI document comes from the declarations, with the text of [ScreenDocument].
+ */
+@OptIn(ExperimentalDebugRoutes::class)
 internal class ScreenRoutes(private val source: ScreenSource) {
-    // A wrong method is null too: the server answers 405 from screen.openapi.json.
-    fun handle(request: DebugRequest): DebugResponse? =
+    fun declare(routes: DebugRoutes) {
+        routes.title = ScreenDocument.TITLE
+        routes.version = "1.0"
+        routes.description = ScreenDocument.DESCRIPTION
+        for ((name, schema) in SCREEN_SCHEMAS) routes.component(name, schema)
+
+        routes.get("tree") {
+            operationId = "getScreenTree"
+            summary = "The app's windows, and the nodes of each."
+            description = ScreenDocument.TREE_DESCRIPTION
+            val merged = query.boolean("merged") { description = ScreenDocument.MERGED }.withDefault(true)
+            val settle =
+                query.int("settle") {
+                    min = 0
+                    max = ScreenSource.MAX_SETTLE_MS.toLong()
+                    description = ScreenDocument.SETTLE
+                }.withDefault(0)
+            response(ScreenDocument.TREE_RESPONSE, ref("ScreenTree"))
+            errors(500, 504)
+            handle { call -> guarded { tree(call.request, call[merged], call[settle]) } }
+        }
+    }
+
+    private fun tree(request: DebugRequest, merged: Boolean, settle: Int): DebugResponse {
+        val tree = source.tree(request, merged, settle)
+        return DebugResponse.json { ScreenJson.appendTree(this, tree) }
+    }
+
+    private inline fun guarded(answer: () -> DebugResponse): DebugResponse =
         try {
-            when ("${request.method.uppercase()} ${request.path}") {
-                "GET tree" -> tree(request)
-                else -> null
-            }
-        } catch (e: RouteException) {
-            DebugResponse.error(e.message.orEmpty(), status = e.status, code = e.code, field = e.field, hint = e.hint)
+            answer()
         } catch (e: ScreenSource.ReadFailed) {
             DebugResponse.error(e.message.orEmpty(), status = 500, code = "read_failed")
         } catch (e: ScreenSource.MainThreadBlocked) {
@@ -28,37 +57,4 @@ internal class ScreenRoutes(private val source: ScreenSource) {
             Thread.currentThread().interrupt()
             DebugResponse.error("The request timed out or the server stopped", status = 504)
         }
-
-    private fun tree(request: DebugRequest): DebugResponse {
-        val merged = boolean(request, "merged", default = true)
-        val settle = settle(request.queryParam("settle"))
-        val tree = source.tree(request, merged, settle)
-        return DebugResponse.json { ScreenJson.appendTree(this, tree) }
-    }
-
-    private fun boolean(request: DebugRequest, name: String, default: Boolean): Boolean =
-        when (val value = request.queryParam(name)) {
-            null, "" -> default
-            "true" -> true
-            "false" -> false
-            else -> throw RouteException("$name must be true or false, was $value", field = name)
-        }
-
-    private fun settle(text: String?): Int {
-        if (text.isNullOrEmpty()) return 0
-        val value = text.toIntOrNull()
-        if (value == null || value < 0 || value > ScreenSource.MAX_SETTLE_MS) {
-            throw RouteException("settle must be a whole number of milliseconds from 0 to ${ScreenSource.MAX_SETTLE_MS}, was $text", field = "settle")
-        }
-        return value
-    }
-
-    /** A request that the route refuses, with the error envelope's fields. */
-    class RouteException(
-        message: String,
-        val status: Int = 400,
-        val code: String? = null,
-        val field: String? = null,
-        val hint: String? = null,
-    ) : Exception(message)
 }

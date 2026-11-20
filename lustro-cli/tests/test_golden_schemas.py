@@ -687,7 +687,7 @@ def test_the_screen_tree_is_declared_and_only_read():
     params = {p["name"]: p for p in paths["/api/v1/screen/tree"]["get"]["parameters"]}
     assert set(params) == {"merged", "settle"}
     assert params["merged"]["schema"] == {"type": "boolean", "default": True}
-    assert params["settle"]["schema"] == {"type": "integer", "minimum": 0, "maximum": 10000, "default": 0}
+    assert params["settle"]["schema"] == {"type": "integer", "format": "int32", "minimum": 0, "maximum": 10000, "default": 0}
 
 
 @pytest.mark.parametrize("fixture", SCREEN_FIXTURES)
