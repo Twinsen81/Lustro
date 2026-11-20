@@ -225,8 +225,15 @@ internal class JsonNumber(private val text: String) {
                 return null
             }
         // Never an exact conversion of a number such as 1e999999999 or 1.5e-999999999: it would compute every digit.
-        val stripped = number.stripTrailingZeros()
-        if (stripped.scale() > 0 || stripped.precision() - stripped.scale() > MAX_LONG_DIGITS) return null
+        // The digits are counted in a long, and a scale that passes the range of an int, such as for
+        // 100e2147483647, throws: neither is a long, so neither may reach the client as a 500.
+        val stripped =
+            try {
+                number.stripTrailingZeros()
+            } catch (_: ArithmeticException) {
+                return null
+            }
+        if (stripped.scale() > 0 || stripped.precision().toLong() - stripped.scale() > MAX_LONG_DIGITS) return null
         val whole = stripped.toBigInteger()
         return if (whole.bitLength() < Long.SIZE_BITS) whole.toLong() else null
     }

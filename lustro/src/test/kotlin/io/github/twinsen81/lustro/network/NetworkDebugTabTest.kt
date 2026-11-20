@@ -797,7 +797,10 @@ class NetworkDebugTabTest {
     fun `throttle answers 400 for a missing, wrong, negative, or too long delay, and keeps the one it has`() {
         val tab = tab()
         tab.handle(post("throttle", """{"delayMs":250}"""))
-        val bad = listOf("{}", """{"delayMs":-5}""", """{"delayMs":"x"}""", """{"delayMs":"2000"}""", """{"delayMs":1.5}""", """{"delayMs":null}""", """{"delayMs":true}""", """{"delayMs":600001}""", """{"delayMs":99999999}""")
+        val bad = listOf(
+            "{}", """{"delayMs":-5}""", """{"delayMs":"x"}""", """{"delayMs":"2000"}""", """{"delayMs":1.5}""", """{"delayMs":null}""", """{"delayMs":true}""",
+            """{"delayMs":600001}""", """{"delayMs":99999999}""", """{"delayMs":100e2147483647}""", """{"delayMs":1e2147483647}""",
+        )
         for (body in bad) {
             val response = tab.handle(post("throttle", body))!!
             assertEquals(body, 400, response.status)
