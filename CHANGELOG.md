@@ -2169,10 +2169,12 @@ see [DECISIONS.md](DECISIONS.md).
   `edit`, and `delete` must be strict JSON: Android's `JSONObject` took single
   quotes, unquoted names, comments, and text after the object, which now get
   `400` with `field: "body"`. A required parameter or body field that is
-  missing, or a body field that is not a JSON string, is refused before the
-  tab looks for the database, so when a request has two errors, another can
-  win: `GET rows?db=nope` without `table` gets `400` for `table`, where it got
-  `404` for `db`; `GET rows?db=nope&limit=0` gets `400` for `limit`; and a
+  missing, a query parameter that is empty or outside its range, and a body
+  field that is not a JSON string are refused before the tab looks for the
+  database, so when a request has two errors, another can win:
+  `GET rows?db=nope` without `table`, and `GET schema?db=nope&table=`, get
+  `400` for `table`, where they got `404` for `db`; `GET rows?db=nope&limit=0`
+  gets `400` for `limit`; and a
   `POST exec`, `edit`, or `delete` to a database that is not writable gets
   `400` for a missing `sql`, `table`, or `values`, where it got `403`. An
   empty `sql` or `table` in a body is still checked after the database, so
