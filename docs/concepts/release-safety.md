@@ -39,7 +39,8 @@ Lustro package.
 
 **Check it:** `./gradlew -q :app:dependencies --configuration releaseRuntimeClasspath | grep -E 'twinsen81|nanohttpd'`
 lists only `lustro-api` and the `-noop` artifacts. Each build type other than `debug` needs the
-no-op halves too, such as `stagingImplementation(libs.lustro.noop)`. This is step 2 of [Check the integration](../get-started/check.md).
+no-op halves too, such as `stagingImplementation(libs.lustro.noop)`, unless the app uses the
+[layout without the no-op halves](#without-the-no-op-halves). This is step 2 of [Check the integration](../get-started/check.md).
 This is the check that matters: the release build has no runtime and no NanoHTTPD.
 
 To see whether a class in the APK still has a Lustro name, build the release with
@@ -179,7 +180,27 @@ dependencies {
 ```
 
 ```kotlin
-// src/release/kotlin/<package>/LustroBootstrap.kt: it names no Lustro type
+// src/debug/kotlin/<package>/LustroBootstrap.kt: it calls Lustro
+object LustroBootstrap {
+    private lateinit var lustro: Lustro
+
+    // First in Application.onCreate(), on the main thread, before the app builds its clients.
+    fun start(app: Application) {
+        lustro = Lustro.builder(app)
+            .addTab(NetworkDebugTab.create())
+            .addTab(LogsDebugTab.create())
+            .build()
+        lustro.start()
+    }
+
+    fun networkInterceptor(): Interceptor = lustro.networkInterceptor()
+
+    fun webSocketFactory(client: OkHttpClient): WebSocket.Factory = lustro.webSocketFactory(client)
+}
+```
+
+```kotlin
+// src/release/kotlin/<package>/LustroBootstrap.kt: the same functions, and no Lustro type
 object LustroBootstrap {
     fun start(app: Application) = Unit
 
@@ -189,9 +210,10 @@ object LustroBootstrap {
 }
 ```
 
-The `src/debug` file has the same functions and calls Lustro, as in
+`src/main` calls only these functions, such as `LustroBootstrap.networkInterceptor()` where it
+builds its OkHttp client. A custom tab goes into the `src/debug` file only, as in
 [Register the tab](../write-a-tab.md#11-register-the-tab). Each other build type needs the release
-implementation in its own source set, such as `src/staging`.
+implementation in its own source set, such as `src/staging`, and no Lustro artifact.
 
 The release classpath then has no Lustro artifact, so the release build has no Lustro class, also
 with [the rule that keeps exceptions](#an-app-rule-that-keeps-exceptions). The guard is the
@@ -213,9 +235,10 @@ does, such as a call to `lustro.networkInterceptor()` where the app builds its O
 `src/main`, as the [dependency injection module](../get-started/app-code.md#dependency-injection)
 does: the no-op halves exist for such calls, so that the same code compiles in both build types.
 The cost of this layout is the release implementation, which the app writes and keeps up to date
-itself. With the no-op halves, the `src/release` file can be a copy of the `src/debug` file.
+itself. With the no-op halves, the `src/release` file can make the same Lustro calls as the
+`src/debug` file, without its custom tabs.
 
 **Check it:** `./gradlew -q :app:dependencies --configuration releaseRuntimeClasspath | grep -E 'twinsen81|nanohttpd'`
 prints nothing. After `./gradlew :app:assembleRelease`,
 `grep '^io\.github\.twinsen81\.lustro\.' app/build/outputs/mapping/release/mapping.txt` prints
-nothing: R8 had no Lustro class to keep, rename, or remove.
+nothing: no class in the APK comes from Lustro, with its name or renamed.

@@ -29,10 +29,10 @@ the docs pages that it links.
 ## 2. Add the dependencies
 
 Add each runtime with `debugImplementation` and its `-noop` half with `releaseImplementation`.
-They declare the same Gradle capability, so one configuration cannot have both. Each other build
-type needs one of the two as well, such as `stagingImplementation(libs.lustro.noop)`. Add only the
-plugin pairs whose tabs you register. To leave the `-noop` halves out, see "Without the no-op
-halves" in step 4.
+They declare the same Gradle capability, so one configuration cannot have both. With the no-op
+halves, each other build type needs one of the two as well, such as
+`stagingImplementation(libs.lustro.noop)`. Add only the plugin pairs whose tabs you register. To
+leave the `-noop` halves out, see "Without the no-op halves" in step 4.
 
 ```toml
 # gradle/libs.versions.toml
@@ -164,7 +164,8 @@ Add every tab before `build()`: after `start()`, `addTab()` throws. The other ty
 also leave out the `-noop` artifacts: add only the `debugImplementation` lines, and write the
 `src/release` file without Lustro, with functions that do nothing, such as
 `fun networkInterceptor(): Interceptor = Interceptor { chain -> chain.proceed(chain.request()) }`
-and `fun webSocketFactory(client: OkHttpClient): WebSocket.Factory = client`. The release build then
+and `fun webSocketFactory(client: OkHttpClient): WebSocket.Factory = client`. Each other build type
+then gets that file in `src/<build type>`, and no `-noop` artifact. The release build then
 has no Lustro class, and it fails to compile a Lustro call or a `DebugTab` in `src/main`, so it
 needs no lint check. The app must then declare OkHttp itself, which the `-noop` artifacts brought,
 and add each library module that depends on `lustro-api` with `debugImplementation`. Keep the
