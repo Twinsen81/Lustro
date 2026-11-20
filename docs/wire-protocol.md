@@ -21,7 +21,9 @@ that a tab adds with its own state, such as the Network tab's `paused` and `thro
 to an `unchanged` response. Each tab's OpenAPI document gives its shape. A response names each query
 parameter that the route does not declare in the tab's OpenAPI document in a `Lustro-Warning` header,
 such as `Lustro-Warning: unknown query parameter "uniqueName"`, because the route ignores it; the
-status and the body do not change. The schemas and the SemVer
+status and the body do not change. A method that a route does not take gets a `405` with an `Allow`
+header that lists the methods of the path, when the tab's OpenAPI document declares the path; a path
+that the document does not declare is a `404`. The schemas and the SemVer
 policy live in [`wire-protocol/v1/`](https://github.com/Twinsen81/Lustro/tree/main/wire-protocol/v1); the Network tab's contract is
 [`lustro/src/main/assets/lustro/network.openapi.json`](https://github.com/Twinsen81/Lustro/blob/main/lustro/src/main/assets/lustro/network.openapi.json),
 the Logs tab's is
