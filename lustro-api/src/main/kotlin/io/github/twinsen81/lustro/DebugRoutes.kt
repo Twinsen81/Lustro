@@ -208,6 +208,9 @@ public class DebugRoute internal constructor(
         if (schema != null) spec.content(JSON_CONTENT_TYPE, schema)
         spec.declare()
         spec.open = false
+        check(spec.contents.isEmpty() || spec.status !in NO_BODY_STATUSES) {
+            "${describe()}: a ${spec.status} response has no body, so it has no schema and no content"
+        }
         response = spec
     }
 
@@ -262,7 +265,10 @@ public class DebugResponseSpec internal constructor(
 
     /**
      * The status of the response, `200` by default: a success status from `200` to `299`, such
-     * as `201` for a route that creates an item. The document lists the response under it.
+     * as `201` for a route that creates an item. The document lists the response under it. A
+     * `204` or `205` response has no body, so it declares no schema and no [content], and its
+     * handler answers with an empty body, such as `DebugResponse.ok("", status = 204)`: a client
+     * such as OkHttp refuses a `204` with a body.
      */
     public var status: Int = 200
         set(value) {
@@ -304,6 +310,7 @@ public class DebugResponseSpec internal constructor(
 }
 
 private const val JSON_CONTENT_TYPE = "application/json"
+private val NO_BODY_STATUSES = setOf(204, 205)
 private const val STRING_SCHEMA = "{\"type\":\"string\"}"
 
 // An HTTP token, as a header name and the type and subtype of a media type must be.

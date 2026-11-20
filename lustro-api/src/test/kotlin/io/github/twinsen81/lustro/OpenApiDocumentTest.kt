@@ -229,7 +229,7 @@ class OpenApiDocumentTest {
                     }
                     routes.delete("") {
                         response("Every journal is gone.") { status = 204 }
-                        handle { DebugResponse.ok("{}", status = 204) }
+                        handle { DebugResponse.ok("", status = 204) }
                     }
                     routes.get("{id}") {
                         path.string("id")

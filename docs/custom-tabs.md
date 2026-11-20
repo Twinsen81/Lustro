@@ -126,7 +126,8 @@ override fun routes(routes: DebugRoutes) {
     `response("The file.") { content("image/png"); header("Content-Disposition", "attachment.") }`.
     The success response is `200`; `status` in the block names another success status, from
     `200` to `299`, such as `response("The new item.", schema) { status = 201 }`, and the handler
-    answers it with `DebugResponse.ok(json, status = 201)`. `component(name, schema)` adds a schema under `components/schemas`, and
+    answers it with `DebugResponse.ok(json, status = 201)`. A `204` or `205` has no body, so it
+    declares no schema, and its handler answers `DebugResponse.ok("", status = 204)`. `component(name, schema)` adds a schema under `components/schemas`, and
     `DebugRoutes.ref(name)` refers to it; a `$ref` can also point into one, such as
     `#/components/schemas/Envelope/properties/state`. `errors(404, 409)` lists the error statuses
     that the handler answers; the document already lists `400` when the router can refuse a
@@ -170,7 +171,9 @@ override fun routes(routes: DebugRoutes) {
     and otherwise a `404`. The server reads the document's paths as the declared routes do: the
     path `/api/v1/<tab id>` is the tab root, which the tab gets as the path `""`, and one slash
     at the end of a path does not count. The tab itself gets the path as the request gave it,
-    such as `seed/`.
+    such as `seed/`, so a tab with a document treats one slash at the end as no slash, as the
+    declared routes do. Otherwise `POST items/` gets a `405` that names `GET`, and then
+    `GET items/` gets `404`.
 - Make the responses with the `DebugResponse`
     factories (`ok`, `json { ... }`, `text`, `bytes`, `notFound`, `error`). `error(message,
     status)` gives the error envelope, and its `error` type follows from the status:

@@ -62,12 +62,17 @@ internal class DeclaredQueryParameters private constructor(private val operation
         private val TEMPLATE = Regex("\\{[^/{}]+\\}")
 
         /**
-         * The segments of a sub-path, without one slash at its end: none for the tab root, `""`.
-         * `"/"` keeps its slash, because the server gives `""` for both `/api/v1/<tab>` and
-         * `/api/v1/<tab>/`, so `"/"` came from a second slash.
+         * [subPath] without one slash at its end, as the declared routes read it: `seed/` is
+         * `seed`. `"/"` keeps its slash, because the server gives `""` for both `/api/v1/<tab>`
+         * and `/api/v1/<tab>/`, so `"/"` came from a second slash. The server's `405` writes
+         * the path that [methods] matched with this.
          */
+        fun withoutTrailingSlash(subPath: String): String =
+            if (subPath.length > 1 && subPath.endsWith('/')) subPath.dropLast(1) else subPath
+
+        /** The segments of a sub-path, without one slash at its end: none for the tab root, `""`. */
         private fun segmentsOf(subPath: String): List<String> {
-            val path = if (subPath.length > 1 && subPath.endsWith('/')) subPath.dropLast(1) else subPath
+            val path = withoutTrailingSlash(subPath)
             return if (path.isEmpty()) emptyList() else path.split('/')
         }
 

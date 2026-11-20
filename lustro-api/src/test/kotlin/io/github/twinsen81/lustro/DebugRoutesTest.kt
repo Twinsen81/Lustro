@@ -563,6 +563,21 @@ class DebugRoutesTest {
                 "Tab t, POST a: 199 is not a success status" to { routes ->
                     routes.post("a") { response("Early.") { status = 199 } }
                 },
+                "Tab t, DELETE a: a 204 response has no body" to { routes ->
+                    routes.delete("a") {
+                        response("Gone.", "{}") { status = 204 }
+                        handle { DebugResponse.ok("", status = 204) }
+                    }
+                },
+                "Tab t, POST a: a 205 response has no body" to { routes ->
+                    routes.post("a") {
+                        response("Reset.") {
+                            status = 205
+                            content("text/plain")
+                        }
+                        handle { DebugResponse.ok("", status = 205) }
+                    }
+                },
                 "is not valid JSON" to { routes -> routes.component("Thing", "{") },
                 "names no schema" to { routes ->
                     routes.get("a") {

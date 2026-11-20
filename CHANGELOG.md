@@ -29,8 +29,8 @@ see [DECISIONS.md](DECISIONS.md).
   number, such as `0x1p3`, and the document shows `"type": "number"` with
   `minimum` and `maximum`. `status` in the `response { }` block, such as
   `response("The new item.", schema) { status = 201 }`, puts that status in the
-  document in place of `200`; a status outside `200` to `299` throws
-  `IllegalStateException`. The router ignores one slash at the end of a
+  document in place of `200`; a status outside `200` to `299`, and a `204` or
+  `205` with a schema or a content type, throw `IllegalStateException`. The router ignores one slash at the end of a
   request's path, so `POST seed/` reaches the route `seed`, where it got `404`.
   The server reads a tab's OpenAPI document in the same way, generated or
   static: the root path `/api/v1/<tab>`, which it left out, now gets the

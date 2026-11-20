@@ -104,7 +104,9 @@ public abstract class DebugTab {
      * Handles a debug API [request]. Return `null` for a route that the tab does
      * not have, also for a method that a route does not take: the client gets an
      * enveloped `404`, or a `405` with an `Allow` header when the tab's OpenAPI
-     * document declares the path with other methods. Throwing anything, including
+     * document declares the path with other methods. For that check, one slash at
+     * the end of the path does not count, as for the declared routes, so a tab that
+     * routes by hand treats `items/` as `items`. Throwing anything, including
      * an [Error] such as `TODO()`, produces an enveloped `500`. Throwing a
      * [DebugResponseException] produces its response.
      *
