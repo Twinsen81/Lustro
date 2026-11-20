@@ -83,8 +83,13 @@ build, and that even in debug builds it stays bound to the local device.
   time the app's process starts, the first time it listens, and the token of
   the process before gets `401`. A token that recorded traffic, a screenshot,
   or a log gave away is then valid only until that process ends. A browser
-  signs in again after the app restarts; the CLI reads the token on each
-  call. There is no rotation API. Before
+  signs in again after the app restarts. The CLI finds the new token through
+  adb on each call, but a token given with `--token` or `LUSTRO_TOKEN` is
+  used as it is and gets `401` after a restart. There is no rotation API. On
+  loopback, the token is the boundary against the other apps on the device,
+  which can connect to the port. They have no way to get it: it is in the
+  app's private storage, an app can't read the log of another app, and the
+  traffic stays on the device. Before
   authentication, the server serves only framework chrome — no tab-authored
   output or captured data.
 - **Credentials stop at the server.** The server authenticates a request before

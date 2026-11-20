@@ -153,7 +153,9 @@ Tab
 Token
 :   The random 256-bit secret that every API request needs, as `Authorization: Bearer <token>` or
     as the console's `lustro_token` cookie. The app makes it once and keeps it until its data is
-    cleared. See [How Lustro works](../concepts/how-it-works.md#the-flow-of-the-token).
+    cleared, or with [LAN exposure](../concepts/lan.md#a-new-token-with-each-process) makes a
+    new one in each of its processes. See
+    [How Lustro works](../concepts/how-it-works.md#the-flow-of-the-token).
 
 Value policy
 :   How much of a value the Preferences and SQLite tabs show. `VISIBLE` shows every value.

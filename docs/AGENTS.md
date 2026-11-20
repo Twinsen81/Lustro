@@ -401,7 +401,8 @@ The server binds to `127.0.0.1:8080` by default and only listens while the app i
 - LAN exposure (`bindAddress = "0.0.0.0"`) is an opt-in the app developer sets; do not assume it.
   With it, the `LustroToken` line adds ` lan=` and the device's network URLs after the token,
   and the token changes each time the app's process starts: after a `401`, read the last
-  `LustroToken` line again.
+  `LustroToken` line again. The CLI does that through adb on each call, but not with `--token`
+  or `LUSTRO_TOKEN`, which it uses as given.
 - A client in the app's process, such as an instrumentation test, needs no forward and no log:
   `lustro.endpoint()` gives the URL on `127.0.0.1`, the port, and the token, or `null` while the
   server does not listen (the app is not in the foreground). Send `GET transactions?since=<ms>`

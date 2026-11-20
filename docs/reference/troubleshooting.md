@@ -41,8 +41,11 @@ The request has no valid token.
 - **After the app's data is cleared:** the app makes a new token. The last `LustroToken` line has
     it.
 - **After the app restarts, with LAN exposure:** when `DebugConfig.bindAddress` is not loopback,
-    each process of the app makes a new token. Sign in again with the token of the last
-    `LustroToken` line. See [LAN exposure](../concepts/lan.md#a-new-token-with-each-process).
+    each process of the app makes a new token. An open console tab shows "Signed out": append
+    `#lustro_token=<token>` with the token of the last `LustroToken` line to its URL. The CLI
+    finds the new token through adb, but not when `--token` or `LUSTRO_TOKEN` gives it one: pass
+    the new token, or remove the variable. See
+    [LAN exposure](../concepts/lan.md#a-new-token-with-each-process).
 
 ## `start()` returns DISABLED
 
