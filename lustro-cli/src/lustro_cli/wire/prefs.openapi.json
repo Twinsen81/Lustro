@@ -238,7 +238,6 @@
                     "$ref": "#/components/schemas/PrefWriteType"
                   },
                   "value": {
-                    "description": "For string, a JSON string. For int and long, a whole number, or a string of one, in the type's range. For float and double, a number, or a string of one, in the type's range, or \"NaN\", \"Infinity\", or \"-Infinity\". For boolean, true or false, or a string of one. For string_set, a JSON array of strings; a repeated string is kept once. For bytes, a padded base64 string (RFC 4648); white space in it is dropped. null is not a value: POST delete removes a key.",
                     "type": [
                       "string",
                       "number",
@@ -247,7 +246,8 @@
                     ],
                     "items": {
                       "type": "string"
-                    }
+                    },
+                    "description": "For string, a JSON string. For int and long, a whole number, or a string of one, in the type's range. For float and double, a number, or a string of one, in the type's range, or \"NaN\", \"Infinity\", or \"-Infinity\". For boolean, true or false, or a string of one. For string_set, a JSON array of strings; a repeated string is kept once. For bytes, a padded base64 string (RFC 4648); white space in it is dropped. null is not a value: POST delete removes a key."
                   }
                 }
               }

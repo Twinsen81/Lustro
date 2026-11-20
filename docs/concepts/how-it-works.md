@@ -166,7 +166,9 @@ flowchart LR
     and JS from `_view.css` and `_view.js`. The tab's own content is never served before the token
     is checked.
 - **The routes** under `/api/v1/<id>/` go to `handle(request)`, with `request.path` set to the
-    part after the id.
+    part after the id. A tab that declares its routes in `routes(routes)` gets a `handle()` that
+    routes the requests and checks their parameters, and a `schema()` that returns the document
+    of the routes.
 - **The OpenAPI document** is served at `/api/v1/<id>/_schema`. Only a tab with a document is in
     `GET /api/v1/_meta`, so agents find only those tabs. The `version` in `_meta` is the
     document's `info.version`.

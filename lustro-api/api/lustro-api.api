@@ -6,6 +6,60 @@ public final class io/github/twinsen81/lustro/CursorCodec {
 	public static final fun encode (JJ)Ljava/lang/String;
 }
 
+public final class io/github/twinsen81/lustro/DebugBodyParams : io/github/twinsen81/lustro/DebugParams {
+	public final fun json (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lio/github/twinsen81/lustro/DebugParam;
+	public static synthetic fun json$default (Lio/github/twinsen81/lustro/DebugBodyParams;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lio/github/twinsen81/lustro/DebugParam;
+}
+
+public final class io/github/twinsen81/lustro/DebugCall {
+	public final fun get (Lio/github/twinsen81/lustro/DebugParam;)Ljava/lang/Object;
+	public final fun getRequest ()Lio/github/twinsen81/lustro/DebugRequest;
+}
+
+public abstract interface class io/github/twinsen81/lustro/DebugHandler {
+	public abstract fun handle (Lio/github/twinsen81/lustro/DebugCall;)Lio/github/twinsen81/lustro/DebugResponse;
+}
+
+public final class io/github/twinsen81/lustro/DebugIntegerSpec : io/github/twinsen81/lustro/DebugParamSpec {
+	public final fun getMax ()Ljava/lang/Long;
+	public final fun getMin ()Ljava/lang/Long;
+	public final fun setMax (Ljava/lang/Long;)V
+	public final fun setMin (Ljava/lang/Long;)V
+}
+
+public final class io/github/twinsen81/lustro/DebugParam {
+	public final fun getName ()Ljava/lang/String;
+	public final fun required ()Lio/github/twinsen81/lustro/DebugParam;
+	public final fun withDefault (Ljava/lang/Object;)Lio/github/twinsen81/lustro/DebugParam;
+}
+
+public class io/github/twinsen81/lustro/DebugParamSpec {
+	public final fun getDescription ()Ljava/lang/String;
+	public final fun getSchema ()Ljava/lang/String;
+	public final fun setDescription (Ljava/lang/String;)V
+	public final fun setSchema (Ljava/lang/String;)V
+}
+
+public class io/github/twinsen81/lustro/DebugParams {
+	public final fun boolean (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lio/github/twinsen81/lustro/DebugParam;
+	public static synthetic fun boolean$default (Lio/github/twinsen81/lustro/DebugParams;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lio/github/twinsen81/lustro/DebugParam;
+	public final fun int (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lio/github/twinsen81/lustro/DebugParam;
+	public static synthetic fun int$default (Lio/github/twinsen81/lustro/DebugParams;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lio/github/twinsen81/lustro/DebugParam;
+	public final fun long (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lio/github/twinsen81/lustro/DebugParam;
+	public static synthetic fun long$default (Lio/github/twinsen81/lustro/DebugParams;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lio/github/twinsen81/lustro/DebugParam;
+	public final fun string (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lio/github/twinsen81/lustro/DebugParam;
+	public static synthetic fun string$default (Lio/github/twinsen81/lustro/DebugParams;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lio/github/twinsen81/lustro/DebugParam;
+}
+
+public final class io/github/twinsen81/lustro/DebugPathParams {
+	public final fun int (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lio/github/twinsen81/lustro/DebugParam;
+	public static synthetic fun int$default (Lio/github/twinsen81/lustro/DebugPathParams;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lio/github/twinsen81/lustro/DebugParam;
+	public final fun long (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lio/github/twinsen81/lustro/DebugParam;
+	public static synthetic fun long$default (Lio/github/twinsen81/lustro/DebugPathParams;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lio/github/twinsen81/lustro/DebugParam;
+	public final fun string (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lio/github/twinsen81/lustro/DebugParam;
+	public static synthetic fun string$default (Lio/github/twinsen81/lustro/DebugPathParams;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lio/github/twinsen81/lustro/DebugParam;
+}
+
 public final class io/github/twinsen81/lustro/DebugRequest {
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;)V
@@ -92,6 +146,61 @@ public final class io/github/twinsen81/lustro/DebugResponse$Companion {
 	public static synthetic fun text$default (Lio/github/twinsen81/lustro/DebugResponse$Companion;Ljava/lang/String;ILio/github/twinsen81/lustro/MediaType;ILjava/lang/Object;)Lio/github/twinsen81/lustro/DebugResponse;
 }
 
+public final class io/github/twinsen81/lustro/DebugResponseException : java/lang/RuntimeException {
+	public fun <init> (Lio/github/twinsen81/lustro/DebugResponse;)V
+	public final fun getResponse ()Lio/github/twinsen81/lustro/DebugResponse;
+}
+
+public final class io/github/twinsen81/lustro/DebugRoute {
+	public final fun errors ([I)V
+	public final fun getAcceptsForm ()Z
+	public final fun getBody ()Lio/github/twinsen81/lustro/DebugBodyParams;
+	public final fun getBodyDescription ()Ljava/lang/String;
+	public final fun getDescription ()Ljava/lang/String;
+	public final fun getOperationId ()Ljava/lang/String;
+	public final fun getPath ()Lio/github/twinsen81/lustro/DebugPathParams;
+	public final fun getQuery ()Lio/github/twinsen81/lustro/DebugParams;
+	public final fun getSummary ()Ljava/lang/String;
+	public final fun handle (Lio/github/twinsen81/lustro/DebugHandler;)V
+	public final fun rawBody (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun response (Ljava/lang/String;Ljava/lang/String;)V
+	public static synthetic fun response$default (Lio/github/twinsen81/lustro/DebugRoute;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)V
+	public final fun setAcceptsForm (Z)V
+	public final fun setBodyDescription (Ljava/lang/String;)V
+	public final fun setDescription (Ljava/lang/String;)V
+	public final fun setOperationId (Ljava/lang/String;)V
+	public final fun setSummary (Ljava/lang/String;)V
+}
+
+public final class io/github/twinsen81/lustro/DebugRoutes {
+	public static final field Companion Lio/github/twinsen81/lustro/DebugRoutes$Companion;
+	public final fun component (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun delete (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
+	public final fun get (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
+	public final fun getDescription ()Ljava/lang/String;
+	public final fun getTitle ()Ljava/lang/String;
+	public final fun getVersion ()Ljava/lang/String;
+	public final fun patch (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
+	public final fun post (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
+	public final fun put (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
+	public final fun setDescription (Ljava/lang/String;)V
+	public final fun setTitle (Ljava/lang/String;)V
+	public final fun setVersion (Ljava/lang/String;)V
+}
+
+public final class io/github/twinsen81/lustro/DebugRoutes$Companion {
+	public final fun ref (Ljava/lang/String;)Ljava/lang/String;
+}
+
+public final class io/github/twinsen81/lustro/DebugStringSpec : io/github/twinsen81/lustro/DebugParamSpec {
+	public final fun getMaxLength ()Ljava/lang/Integer;
+	public final fun getMinLength ()I
+	public final fun getValues ()Ljava/util/List;
+	public final fun setMaxLength (Ljava/lang/Integer;)V
+	public final fun setMinLength (I)V
+	public final fun setValues (Ljava/util/List;)V
+}
+
 public abstract class io/github/twinsen81/lustro/DebugTab {
 	public fun <init> ()V
 	public abstract fun getIcon ()Ljava/lang/String;
@@ -105,7 +214,11 @@ public abstract class io/github/twinsen81/lustro/DebugTab {
 	public fun renderContent ()Ljava/lang/String;
 	public fun renderScript ()Ljava/lang/String;
 	public fun renderStyles ()Ljava/lang/String;
+	protected fun routes (Lio/github/twinsen81/lustro/DebugRoutes;)V
 	public fun schema ()Ljava/lang/String;
+}
+
+public abstract interface annotation class io/github/twinsen81/lustro/ExperimentalDebugRoutes : java/lang/annotation/Annotation {
 }
 
 public abstract interface annotation class io/github/twinsen81/lustro/ExperimentalPlatformCapture : java/lang/annotation/Annotation {

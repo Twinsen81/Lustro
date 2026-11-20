@@ -1,9 +1,9 @@
 package io.github.twinsen81.lustro.prefs
 
 import android.content.Context
-import io.github.twinsen81.lustro.DebugRequest
-import io.github.twinsen81.lustro.DebugResponse
+import io.github.twinsen81.lustro.DebugRoutes
 import io.github.twinsen81.lustro.DebugTab
+import io.github.twinsen81.lustro.ExperimentalDebugRoutes
 import io.github.twinsen81.lustro.prefs.internal.PrefsRegistry
 import io.github.twinsen81.lustro.prefs.internal.PrefsRoutes
 import io.github.twinsen81.lustro.prefs.internal.PrefsView
@@ -69,13 +69,16 @@ public class PrefsDebugTab private constructor(private val registry: PrefsRegist
     override val icon: String = "⚙️"
     override val order: Int = 30
 
-    private val routes = PrefsRoutes(registry)
+    private val prefsRoutes = PrefsRoutes(registry)
 
     /** The view's static shell; `prefs.js` and `prefs.css` in the assets fill and style it. */
     override fun renderContent(): String = PrefsView.HTML
 
-    /** Serves the routes under `/api/v1/prefs/`; the static `prefs.openapi.json` describes them. */
-    override fun handle(request: DebugRequest): DebugResponse? = routes.handle(request)
+    /** Declares the routes under `/api/v1/prefs/`, which also make the tab's OpenAPI document. */
+    @OptIn(ExperimentalDebugRoutes::class)
+    override fun routes(routes: DebugRoutes) {
+        prefsRoutes.declare(routes)
+    }
 
     /** Listens to the files for the app's changes. */
     override fun onStart() {

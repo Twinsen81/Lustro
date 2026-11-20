@@ -25,8 +25,8 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 
 /**
- * The flags tab routes as `write-a-tab.md` shows, with no method table, and has a static
- * `flags.openapi.json`. The server answers a wrong method from that document.
+ * The flags tab declares its routes, as `write-a-tab.md` shows: a wrong method gets a `405`
+ * with `Allow` from the declarations, and `_meta` lists the tab with its generated document.
  */
 @RunWith(RobolectricTestRunner::class)
 class SampleFlagsTabServerTest {
@@ -76,6 +76,16 @@ class SampleFlagsTabServerTest {
         assertEquals(404, missing.code)
         assertNull(missing.header("Allow"))
         assertEquals(200, call("GET", "snapshot").code)
+    }
+
+    @Test
+    fun `meta lists the tab, and its schema is the generated document`() {
+        val meta = JSONObject(call("GET", "../_meta").body!!.string())
+        val tabs = meta.getJSONArray("tabs")
+        val flags = (0 until tabs.length()).map { tabs.getJSONObject(it) }.single { it.getString("id") == "flags" }
+        assertEquals("1.0", flags.getString("version"))
+        val schema = JSONObject(call("GET", "_schema").body!!.string())
+        assertEquals("toggleFlag", schema.getJSONObject("paths").getJSONObject("/api/v1/flags/toggle").getJSONObject("post").getString("operationId"))
     }
 
     private fun call(method: String, path: String): Response {

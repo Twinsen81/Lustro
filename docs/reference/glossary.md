@@ -99,7 +99,8 @@ No-op half
 
 OpenAPI document
 :   The JSON file that describes a tab's routes: `assets/lustro/<id>.openapi.json`, or the return
-    value of `DebugTab.schema()`. The server serves it at `/api/v1/<id>/_schema`. Only a tab with a
+    value of `DebugTab.schema()`, which is the document of the declared routes for a tab that declares
+    them in `routes()`. The server serves it at `/api/v1/<id>/_schema`. Only a tab with a
     document is in `_meta`. See [OpenAPI and wire protocol](../wire-protocol.md).
 
 Origin check

@@ -61,7 +61,7 @@ Facts to get right when you add Lustro to an app:
 
 - [Network tab OpenAPI document](https://raw.githubusercontent.com/Twinsen81/Lustro/main/lustro/src/main/assets/lustro/network.openapi.json): the contract of the `/api/v1/network` routes
 - [Logs tab OpenAPI document](https://raw.githubusercontent.com/Twinsen81/Lustro/main/lustro-logs/src/main/assets/lustro/logs.openapi.json): the contract of the `/api/v1/logs` routes
-- [Preferences tab OpenAPI document](https://raw.githubusercontent.com/Twinsen81/Lustro/main/lustro-prefs/src/main/assets/lustro/prefs.openapi.json): the contract of the `/api/v1/prefs` routes
+- [Preferences tab OpenAPI document](https://raw.githubusercontent.com/Twinsen81/Lustro/main/lustro-prefs/openapi/prefs.openapi.json): the contract of the `/api/v1/prefs` routes
 - [SQLite tab OpenAPI document](https://raw.githubusercontent.com/Twinsen81/Lustro/main/lustro-sqlite/src/main/assets/lustro/sqlite.openapi.json): the contract of the `/api/v1/sqlite` routes
 - [WorkManager tab OpenAPI document](https://raw.githubusercontent.com/Twinsen81/Lustro/main/lustro-work/src/main/assets/lustro/work.openapi.json): the contract of the `/api/v1/work` routes
 - [Screen tab OpenAPI document](https://raw.githubusercontent.com/Twinsen81/Lustro/main/lustro-screen/src/main/assets/lustro/screen.openapi.json): the contract of the `/api/v1/screen` routes

@@ -6,7 +6,9 @@ import android.util.Log
 import fi.iki.elonen.NanoHTTPD
 import io.github.twinsen81.lustro.DebugRequest
 import io.github.twinsen81.lustro.DebugResponse
+import io.github.twinsen81.lustro.DebugResponseException
 import io.github.twinsen81.lustro.DebugTab
+import io.github.twinsen81.lustro.ExperimentalDebugRoutes
 import io.github.twinsen81.lustro.Headers
 import io.github.twinsen81.lustro.MediaType
 import io.github.twinsen81.lustro.escapeForJson
@@ -651,8 +653,18 @@ $tabsHtml
         return toNanoResponse(DebugResponse.ok(body))
     }
 
-    private fun hasSchema(tab: DebugTab): Boolean =
-        tab.schema() != null || assetLoader.load("${tab.id}.openapi.json") != null
+    // A tab whose schema() throws, such as for a mistake in its declared routes, is left out,
+    // so that the other tabs are still listed.
+    private fun hasSchema(tab: DebugTab): Boolean {
+        val dynamic =
+            try {
+                tab.schema()
+            } catch (t: Throwable) {
+                Log.w(TAG, "Tab ${tab.id} schema() threw", t)
+                return false
+            }
+        return dynamic != null || assetLoader.load("${tab.id}.openapi.json") != null
+    }
 
     /**
      * The version of the tab's own schema, its `info.version`: a plugin's routes change at
@@ -660,7 +672,12 @@ $tabsHtml
      * version stands in for a schema without one. A static schema's version is read once.
      */
     private fun tabVersion(tab: DebugTab): String {
-        val dynamic = tab.schema()
+        val dynamic =
+            try {
+                tab.schema()
+            } catch (_: Throwable) {
+                return Versions.PROTOCOL_VERSION
+            }
         val version =
             if (dynamic != null) {
                 infoVersion(dynamic)
@@ -684,7 +701,13 @@ $tabsHtml
     }
 
     private fun handleTabSchema(tab: DebugTab): Response {
-        val dynamic = tab.schema()
+        val dynamic =
+            try {
+                tab.schema()
+            } catch (t: Throwable) {
+                Log.w(TAG, "Tab ${tab.id} schema() threw", t)
+                return toNanoResponse(DebugResponse.error("The tab's schema failed: ${t.message.orEmpty()}", status = 500))
+            }
         if (dynamic != null) return toNanoResponse(DebugResponse.ok(dynamic))
         val static = assetLoader.load("${tab.id}.openapi.json")
         return if (static != null) {
@@ -731,6 +754,7 @@ $tabsHtml
         return newFixedLengthResponse(Response.Status.OK, "$mime; charset=utf-8", asset)
     }
 
+    @OptIn(ExperimentalDebugRoutes::class)
     private fun dispatchToTab(
         session: IHTTPSession,
         tab: DebugTab,
@@ -743,6 +767,8 @@ $tabsHtml
         val response =
             try {
                 tab.handle(request)
+            } catch (e: DebugResponseException) {
+                e.response
             } catch (t: Throwable) {
                 // Thrown (Errors such as TODO() included) -> enveloped 500, logged WARN.
                 Log.w(TAG, "Tab ${tab.id} handle() threw for path '$subPath'", t)
