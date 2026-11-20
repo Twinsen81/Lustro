@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from lustro_cli import discovery
+from lustro_cli import discovery, exitcodes
 from lustro_cli.discovery import DiscoveryError, Endpoint, parse_ready_line, resolve
 
 
@@ -98,8 +98,10 @@ def test_resolve_env_token_but_logcat_host_port(monkeypatch):
 
 def test_resolve_raises_clear_error_when_no_token(monkeypatch):
     monkeypatch.setattr(discovery, "discover_from_logcat", lambda device=None: None)
+    monkeypatch.setattr(discovery, "_run_status", lambda cmd, timeout=10.0: (0, "device\n"))
     with pytest.raises(DiscoveryError) as excinfo:
         resolve(env={})
+    assert excinfo.value.exit_code == exitcodes.NOT_REACHABLE
     msg = str(excinfo.value)
     assert "LUSTRO_TOKEN" in msg
     assert "LustroToken" in msg
@@ -182,15 +184,22 @@ def test_parse_forwards_keeps_the_tcp_forwards_to_the_port_in_order():
     assert discovery.parse_forwards("", 8080) == []
 
 
-def _fake_adb_run(monkeypatch, outputs):
-    """Answer each adb command from ``outputs``, keyed by its arguments; record them."""
+def _fake_adb_run(monkeypatch, outputs, state=(0, "device\n")):
+    """Answer each adb command from ``outputs``, keyed by its arguments; record them.
+    ``adb get-state`` answers ``state``, its exit status and output: a device."""
     calls = []
 
     def run(cmd, timeout=10.0):
         calls.append(cmd)
         return outputs.get(" ".join(cmd))
 
+    def run_status(cmd, timeout=10.0):
+        calls.append(cmd)
+        assert cmd[-1] == "get-state", cmd
+        return state
+
     monkeypatch.setattr(discovery, "_run", run)
+    monkeypatch.setattr(discovery, "_run_status", run_status)
     return calls
 
 
@@ -325,71 +334,159 @@ def test_resolve_takes_the_port_from_the_prefs_for_a_token_from_the_environment(
     assert resolve(host="127.0.0.1", port=9000, token="t", env={}) == Endpoint("127.0.0.1", 9000, "t")
 
 
-# ── the no-op build check ─────────────────────────────────────────────────────
+# ── the cause, when there is no token ─────────────────────────────────────────
 
 _PM_PATH = "package:/data/app/~~Xy==/com.example.app-Ab==/base.apk\r\n"
 _GREP = "adb shell grep -c -F assets/lustro/ '/data/app/~~Xy==/com.example.app-Ab==/base.apk' || true"
+_PIDOF = "adb shell pidof com.example.app || true"
+_DUMPSYS = "adb shell dumpsys activity activities | grep ResumedActivity"
+_RESUMED = "  topResumedActivity=ActivityRecord{{1a2b u0 {}/.MainActivity t12}}\n"
 
 
-def _no_token(monkeypatch, outputs, **kwargs):
-    calls = _fake_adb_run(monkeypatch, outputs)
+def _no_token(monkeypatch, outputs, state=(0, "device\n"), **kwargs):
+    calls = _fake_adb_run(monkeypatch, outputs, state)
     with pytest.raises(DiscoveryError) as excinfo:
         resolve(env={}, **kwargs)
-    return str(excinfo.value), calls
+    return excinfo.value, calls
 
 
-def test_a_known_app_without_the_runtime_is_a_no_op_build(monkeypatch):
-    message, calls = _no_token(
+def test_without_adb_the_cause_is_no_device(monkeypatch):
+    error, _ = _no_token(monkeypatch, {}, state=(127, ""))
+    assert error.exit_code == exitcodes.NO_DEVICE
+    assert str(error).startswith("adb is not installed, or not on the PATH")
+    assert "--token" in str(error)
+
+
+@pytest.mark.parametrize(
+    "said",
+    ["error: no devices/emulators found", "error: device 'emulator-5554' not found", "error: device unauthorized."],
+)
+def test_a_device_that_adb_can_not_use_is_no_device(monkeypatch, said):
+    error, calls = _no_token(monkeypatch, {}, state=(1, said + "\n"), package="com.example.app")
+    assert error.exit_code == exitcodes.NO_DEVICE
+    assert str(error).startswith("no device that adb can use ({}):".format(said))
+    assert not any("pm" in cmd for cmd in calls)
+
+
+def test_more_than_one_device_with_none_selected_is_a_usage_error(monkeypatch):
+    error, _ = _no_token(monkeypatch, {}, state=(1, "error: more than one device/emulator\n"))
+    assert error.exit_code == exitcodes.USAGE
+    assert "--device SERIAL" in str(error)
+    assert "ANDROID_SERIAL" in str(error)
+
+
+def test_the_device_flag_goes_to_get_state(monkeypatch):
+    _, calls = _no_token(monkeypatch, {}, state=(1, "error: device 'x' not found\n"), device="x")
+    assert calls[-1] == ["adb", "-s", "x", "get-state"]
+
+
+def test_a_package_that_is_not_installed(monkeypatch):
+    error, _ = _no_token(monkeypatch, {}, package="com.example.app")
+    assert error.exit_code == exitcodes.NOT_INSTALLED
+    assert str(error).startswith("com.example.app is not installed on the device")
+
+
+def test_a_known_app_without_the_runtime_is_a_build_without_lustro(monkeypatch):
+    error, calls = _no_token(
         monkeypatch, {"adb shell pm path com.example.app": _PM_PATH, _GREP: "0\n"}, package="com.example.app"
     )
-    assert message.startswith("no token: the installed build of com.example.app does not contain the Lustro runtime")
-    assert "no-op build" in message
+    message = str(error)
+    assert error.exit_code == exitcodes.NO_RUNTIME
+    assert message.startswith("the installed build of com.example.app does not contain the Lustro runtime")
+    # Both causes: the no-op artifacts, and a build from before the app added Lustro.
+    assert "-noop artifacts" in message
+    assert "from before the app added Lustro" in message
     assert "Install a debug build" in message
     assert "logcat" not in message
     assert " ".join(calls[-1]) == _GREP
 
 
-def test_a_known_app_with_the_runtime_gets_the_message_for_a_stopped_server(monkeypatch):
-    message, _ = _no_token(
-        monkeypatch, {"adb shell pm path com.example.app": _PM_PATH, _GREP: "4\n"}, package="com.example.app"
+def test_a_known_app_that_is_not_running(monkeypatch):
+    error, _ = _no_token(
+        monkeypatch,
+        {"adb shell pm path com.example.app": _PM_PATH, _GREP: "4\n", _PIDOF: ""},
+        package="com.example.app",
     )
-    assert "LustroToken" in message
-    assert "no-op" not in message
+    assert error.exit_code == exitcodes.NOT_REACHABLE
+    assert str(error).startswith("com.example.app is not running: start it")
+
+
+def test_a_known_app_in_the_background(monkeypatch):
+    error, _ = _no_token(
+        monkeypatch,
+        {
+            "adb shell pm path com.example.app": _PM_PATH,
+            _GREP: "4\n",
+            _PIDOF: "4242\n",
+            _DUMPSYS: _RESUMED.format("com.android.launcher3"),
+        },
+        package="com.example.app",
+    )
+    assert error.exit_code == exitcodes.NOT_REACHABLE
+    assert str(error).startswith("com.example.app runs, but com.android.launcher3 is in the foreground")
+
+
+def test_a_known_app_in_the_foreground_gets_the_message_for_a_missing_ready_line(monkeypatch):
+    error, _ = _no_token(
+        monkeypatch,
+        {
+            "adb shell pm path com.example.app": _PM_PATH,
+            _GREP: "4\n",
+            _PIDOF: "4242\n",
+            _DUMPSYS: _RESUMED.format("com.example.app"),
+        },
+        package="com.example.app",
+    )
+    assert error.exit_code == exitcodes.NOT_REACHABLE
+    assert "LustroToken" in str(error)
+    assert "no-op" not in str(error)
 
 
 def test_the_app_in_the_foreground_is_checked_and_named(monkeypatch):
-    dumpsys = "  topResumedActivity=ActivityRecord{1a2b u0 com.example.app/.MainActivity t12}\n"
-    message, _ = _no_token(
+    error, _ = _no_token(
         monkeypatch,
-        {
-            "adb shell dumpsys activity activities | grep ResumedActivity": dumpsys,
-            "adb shell pm path com.example.app": _PM_PATH,
-            _GREP: "0",
-        },
+        {_DUMPSYS: _RESUMED.format("com.example.app"), "adb shell pm path com.example.app": _PM_PATH, _GREP: "0"},
     )
-    assert message.startswith("no token: the app in the foreground, com.example.app, does not contain the Lustro runtime")
+    message = str(error)
+    assert message.startswith("the app in the foreground, com.example.app, does not contain the Lustro runtime")
+    assert "from before the app added Lustro" in message
     assert "--package <id>" in message
+    # That app can be the launcher, or another app than the user's.
+    assert error.exit_code == exitcodes.NOT_REACHABLE
 
 
 @pytest.mark.parametrize(
     "outputs",
     [
-        {},  # no adb, or no device
-        {"adb shell pm path com.example.app": ""},  # not installed
         {"adb shell pm path com.example.app": _PM_PATH},  # grep failed
         {"adb shell pm path com.example.app": _PM_PATH, _GREP: "grep: Permission denied\n"},
     ],
 )
 def test_when_adb_can_not_tell_the_message_is_the_one_for_a_stopped_server(monkeypatch, outputs):
-    message, _ = _no_token(monkeypatch, outputs, package="com.example.app")
-    assert "LustroToken" in message
-    assert "no-op" not in message
+    error, _ = _no_token(monkeypatch, outputs, package="com.example.app")
+    assert error.exit_code == exitcodes.NOT_REACHABLE
+    assert "no-op" not in str(error)
 
 
 def test_without_a_known_app_there_is_no_check(monkeypatch):
-    message, calls = _no_token(monkeypatch, {})
-    assert "LustroToken" in message
+    error, calls = _no_token(monkeypatch, {})
+    assert error.exit_code == exitcodes.NOT_REACHABLE
+    assert "LustroToken" in str(error)
     assert not any("pm" in cmd for cmd in calls)
+
+
+def test_without_the_app_checks_resolve_makes_no_adb_call_for_the_cause(monkeypatch):
+    calls = _fake_adb_run(monkeypatch, {"adb shell pm path com.example.app": _PM_PATH, _GREP: "0\n"})
+    with pytest.raises(DiscoveryError) as excinfo:
+        resolve(env={}, package="com.example.app", check_app=False)
+    assert excinfo.value.exit_code == exitcodes.NOT_REACHABLE
+    assert not any(cmd[-1] == "get-state" or "pm" in cmd for cmd in calls)
+
+
+def test_diagnose_without_adb_required_ignores_a_computer_without_adb(monkeypatch):
+    _fake_adb_run(monkeypatch, {}, state=(127, ""))
+    assert discovery.diagnose(package="com.example.app", adb_required=False) is None
+    assert discovery.diagnose(package="com.example.app").exit_code == exitcodes.NO_DEVICE
 
 
 def test_a_found_token_needs_no_check(monkeypatch):

@@ -22,6 +22,7 @@ from typing import Any, Callable, Dict, List
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import ValidationError
 
+import lustro_cli
 from lustro_cli import wire
 
 OPENAPI = wire.load_openapi()
@@ -69,6 +70,16 @@ def check_open(text: str, rules: List[dict]) -> None:
     )
 
 
+def check_version(text: str, rules: List[dict]) -> None:
+    expected = "lustro {} (protocol {})".format(lustro_cli.__version__, lustro_cli.PROTOCOL_VERSION)
+    expect(text.strip() == expected, "expected {!r}, got {!r}".format(expected, text.strip()))
+
+
+def check_ready(text: str, rules: List[dict]) -> None:
+    endpoint = text.strip()
+    expect(re.fullmatch(r"http://127\.0\.0\.1:\d+", endpoint) is not None, "not an endpoint: {!r}".format(endpoint))
+
+
 def check_meta(text: str, rules: List[dict]) -> None:
     meta = json.loads(text)
     shared("meta.schema.json").validate(meta)
@@ -77,6 +88,10 @@ def check_meta(text: str, rules: List[dict]) -> None:
     expect(
         meta["protocolVersion"] == shipped,
         "the app speaks protocol {} and the CLI ships {}".format(meta["protocolVersion"], shipped),
+    )
+    expect(
+        meta["protocolVersion"] == lustro_cli.PROTOCOL_VERSION,
+        "the app speaks protocol {} and the CLI implements {}".format(meta["protocolVersion"], lustro_cli.PROTOCOL_VERSION),
     )
 
 
@@ -572,6 +587,8 @@ def check_ws_har(text: str, rules: List[dict]) -> None:
 
 
 CHECKS: Dict[str, Callable[[str, List[dict]], None]] = {
+    "version": check_version,
+    "ready": check_ready,
     "open": check_open,
     "meta": check_meta,
     "schema-network": check_schema_network,

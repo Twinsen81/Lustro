@@ -43,6 +43,11 @@ OkHttp-side tests. Wire-protocol changes must keep the contract tests and JSON
 Schema validation green. CI does not require internet access — network tests
 run against MockWebServer fixtures.
 
+A change of the wire protocol version in `lustro/build.gradle.kts` also sets
+`PROTOCOL_VERSION` in `lustro-cli/src/lustro_cli/__init__.py`, which
+`lustro --version` prints: `./gradlew checkCliVersion` fails until the two are
+the same.
+
 The modules compile against OkHttp 4.12.0, the floor an app can stay on. To run
 the suite with OkHttp 5 on the test runtime classpath, as CI does:
 

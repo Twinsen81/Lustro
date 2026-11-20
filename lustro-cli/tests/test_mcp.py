@@ -565,7 +565,8 @@ def test_a_tool_without_a_token_or_a_device_says_how_to_give_one(monkeypatch):
     monkeypatch.delenv("LUSTRO_TOKEN", raising=False)
     (reply,) = _serve([_request("tools/call", {"name": "list_mock_rules"})])
     assert reply["result"]["isError"] is True
-    assert "no token" in reply["result"]["content"][0]["text"]
+    # The computer of the test has no adb: the cause says to install it, or to pass --token.
+    assert "--token" in reply["result"]["content"][0]["text"]
 
 
 # ── adb on the PATH ───────────────────────────────────────────────────────────

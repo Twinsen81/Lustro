@@ -16,12 +16,12 @@ Resolution order (first that yields a value wins, per field):
    (``log.tag`` set to ``E``, for example), which drops the ready line.
 
 If none of these determine the endpoint/token, a clear, actionable error is
-raised. When the app is known, :func:`has_lustro_runtime` first checks its
-installed APK: a build with the no-op artifacts has no server, so the error
-then says that, and not that the app must be started. A token from the ready
-line can be stale, when the app was installed again and the device dropped the
-new line; :func:`token_from_prefs` reads the current one, for a client to retry
-with after a 401.
+raised. :func:`diagnose` first looks for the cause, with the exit code of each:
+no device, an app that is not installed, an installed build without the Lustro
+runtime, or an app that is not running or not in the foreground. A token from
+the ready line can be stale, when the app was installed again and the device
+dropped the new line; :func:`token_from_prefs` reads the current one, for a
+client to retry with after a 401.
 
 The port that these give is the app's port. On a device, the CLI reaches it
 through an ``adb forward``, whose local port can differ: :func:`forwarded_ports`
@@ -35,6 +35,8 @@ import re
 import shlex
 import subprocess
 from typing import List, NamedTuple, Optional, Tuple
+
+from . import exitcodes
 
 # Matches the single machine-parseable line Lustro logs at tag LustroToken:
 #   Lustro ready endpoint=http://127.0.0.1:8080 token=AbC123...
@@ -68,7 +70,12 @@ class Endpoint(NamedTuple):
 
 
 class DiscoveryError(Exception):
-    """Raised when the endpoint/token cannot be determined."""
+    """Raised when the endpoint/token cannot be determined, or the app cannot be
+    reached. ``exit_code`` is the code of the cause, from :mod:`exitcodes`."""
+
+    def __init__(self, message: str, exit_code: int = exitcodes.NOT_REACHABLE) -> None:
+        super().__init__(message)
+        self.exit_code = exit_code
 
 
 def parse_ready_line(text: str) -> Optional[Endpoint]:
@@ -117,6 +124,32 @@ def _run(cmd: List[str], timeout: float = 10.0) -> Optional[str]:
     if proc.returncode != 0:
         return None
     return proc.stdout.decode("utf-8", "replace")
+
+
+# The status of a command that could not start, as a shell gives it.
+_NOT_FOUND = 127
+
+
+def _run_status(cmd: List[str], timeout: float = 10.0) -> Tuple[int, str]:
+    """Run a command, returning its exit status and its stdout and stderr together.
+
+    The status is 127 when the command is not installed, and -1 when it could not
+    run for another reason or did not finish in time.
+    """
+    try:
+        proc = subprocess.run(
+            cmd,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=timeout,
+            check=False,
+        )
+    except FileNotFoundError:
+        return _NOT_FOUND, ""
+    except (OSError, subprocess.SubprocessError):
+        return -1, ""
+    return proc.returncode, proc.stdout.decode("utf-8", "replace")
 
 
 def discover_from_logcat(device: Optional[str] = None) -> Optional[Endpoint]:
@@ -189,17 +222,14 @@ def installed_apk(package: str, device: Optional[str] = None) -> Optional[str]:
     return None
 
 
-def has_lustro_runtime(package: str, device: Optional[str] = None) -> Optional[bool]:
-    """Whether the installed build of ``package`` contains the Lustro runtime, or ``None``
-    when adb can't tell.
+def apk_has_runtime(apk: str, device: Optional[str] = None) -> Optional[bool]:
+    """Whether the installed APK at ``apk`` on the device contains the Lustro runtime,
+    or ``None`` when adb can't tell.
 
-    It searches ``base.apk`` for the entry name ``assets/lustro/`` with ``grep -c -F``,
+    It searches the APK for the entry name ``assets/lustro/`` with ``grep -c -F``,
     not ``unzip``: API 28 emulator images have no ``unzip``, and toybox ``grep`` is on
     every API level. ``|| true`` because grep exits 1 when it counts 0.
     """
-    apk = installed_apk(package, device)
-    if apk is None:
-        return None
     out = _run(
         _adb_base(device)
         + ["shell", "grep -c -F {} {} || true".format(shlex.quote(RUNTIME_ASSET_ENTRY), shlex.quote(apk))],
@@ -209,6 +239,97 @@ def has_lustro_runtime(package: str, device: Optional[str] = None) -> Optional[b
     if not count.isdigit():
         return None
     return int(count) > 0
+
+
+def is_running(package: str, device: Optional[str] = None) -> Optional[bool]:
+    """Whether a process of ``package`` runs on the device, or ``None`` when adb can't
+    tell. ``|| true`` because pidof exits 1 when it finds none."""
+    out = _run(_adb_base(device) + ["shell", "pidof {} || true".format(shlex.quote(package))])
+    if out is None:
+        return None
+    return bool(out.strip())
+
+
+class AdbMissing(DiscoveryError):
+    """adb is not installed, or not on the PATH."""
+
+
+def device_problem(device: Optional[str] = None) -> Optional[DiscoveryError]:
+    """Why adb reaches no device, or ``None`` when it reaches one or can't tell.
+
+    ``adb get-state`` prints ``device`` for a device that adb can use, and fails for no
+    device, more than one with none selected, and a device that is offline or not
+    authorized.
+    """
+    status, out = _run_status(_adb_base(device) + ["get-state"])
+    if status == _NOT_FOUND:
+        return AdbMissing(
+            "adb is not installed, or not on the PATH, so the CLI can't find the app on a device. Install the "
+            "Android SDK Platform-Tools, or pass --token and --port for a server that adb does not reach.",
+            exitcodes.NO_DEVICE,
+        )
+    if status < 0 or (status == 0 and out.strip() == "device"):
+        return None
+    said = " ".join(out.split()) or "adb get-state exited with status {}".format(status)
+    if "more than one" in said:
+        return DiscoveryError(
+            "more than one device is connected ({}): pass --device SERIAL, or set ANDROID_SERIAL. `adb devices` "
+            "lists them.".format(said),
+            exitcodes.USAGE,
+        )
+    return DiscoveryError(
+        "no device that adb can use ({}): connect a device or start an emulator. `adb devices` lists each one "
+        "with its state, which must be `device`, not `offline` or `unauthorized`.".format(said),
+        exitcodes.NO_DEVICE,
+    )
+
+
+def diagnose(
+    device: Optional[str] = None, package: Optional[str] = None, *, adb_required: bool = True
+) -> Optional[DiscoveryError]:
+    """Why the app's server can't be reached, as far as adb can tell, or ``None``.
+
+    The checks go from the device to the app: is there a device, is the app
+    installed, does its build contain the Lustro runtime, does it run, and is it in
+    the foreground. Without ``package``, the app is the one in the foreground, and
+    only its runtime is checked: that app can be the launcher, or another app, so
+    an app without the runtime there gets the code of an app that is not reachable.
+    With ``adb_required`` false, a computer without adb gets ``None``: the CLI then
+    connects to a server on the computer, not on a device.
+    """
+    problem = device_problem(device)
+    if problem is not None:
+        return None if isinstance(problem, AdbMissing) and not adb_required else problem
+    app = package or foreground_package(device)
+    if not app:
+        return None
+    apk = installed_apk(app, device)
+    if apk is None:
+        if package:
+            return DiscoveryError(
+                "{} is not installed on the device: install a debug build that uses the Lustro artifacts, and "
+                "start it.".format(package),
+                exitcodes.NOT_INSTALLED,
+            )
+        return None
+    if apk_has_runtime(apk, device) is False:
+        code = exitcodes.NO_RUNTIME if package else exitcodes.NOT_REACHABLE
+        return DiscoveryError(_no_runtime_message(app, from_foreground=not package), code)
+    if not package:
+        return None
+    if is_running(package, device) is False:
+        return DiscoveryError(
+            "{} is not running: start it. Lustro listens while the app is in the foreground.".format(package),
+            exitcodes.NOT_REACHABLE,
+        )
+    front = foreground_package(device)
+    if front is not None and front != package:
+        return DiscoveryError(
+            "{} runs, but {} is in the foreground: bring the app to the front. Lustro listens only while its app "
+            "is in the foreground, and a locked screen stops it.".format(package, front),
+            exitcodes.NOT_REACHABLE,
+        )
+    return None
 
 
 def token_from_prefs(device: Optional[str] = None, package: Optional[str] = None) -> Optional[str]:
@@ -253,13 +374,15 @@ def resolve(
     device: Optional[str] = None,
     package: Optional[str] = None,
     env: Optional[dict] = None,
+    check_app: bool = True,
 ) -> Endpoint:
     """Resolve the active endpoint+token following the documented order.
 
     Explicit args take precedence; otherwise ``LUSTRO_TOKEN`` (token), then the
     logcat ready line (host/port/token), then ``run-as`` (token). Defaults for
     host/port are filled in last. Raises :class:`DiscoveryError` if no token can
-    be determined from any source.
+    be determined from any source: with the cause that :func:`diagnose` finds, or,
+    with ``check_app`` false, without those adb calls, for a caller that tries again.
     """
     env = os.environ if env is None else env
 
@@ -308,8 +431,9 @@ def resolve(
         r_port = DEFAULT_PORT
 
     if not r_token:
-        if app and has_lustro_runtime(app, device) is False:
-            raise DiscoveryError(_no_runtime_message(app, from_foreground=not package))
+        cause = diagnose(device, package) if check_app else None
+        if cause is not None:
+            raise cause
         raise DiscoveryError(
             "no token: set --token or LUSTRO_TOKEN, or ensure the app is "
             "running in the foreground and `adb logcat -d -s LustroToken` shows the ready line "
@@ -327,16 +451,16 @@ def resolve(
 def _no_runtime_message(package: str, *, from_foreground: bool) -> str:
     """The error for an app whose APK has no Lustro runtime. Without --package, the app
     is the one in the foreground, which is the launcher when the user's app is closed."""
-    no_op = (
-        "a no-op build, which uses the -noop artifacts: they have no server and log nothing. Install a debug "
-        "build that uses the Lustro artifacts, and start it"
+    causes = (
+        "a build with the -noop artifacts, which have no server and log nothing, or a build from before the app "
+        "added Lustro. Install a debug build that uses the Lustro artifacts, and start it"
     )
     if from_foreground:
         return (
-            "no token: the app in the foreground, {pkg}, does not contain the Lustro runtime: its APK has no {entry} "
-            "entries. If it is your app, it is {no_op}. If it is not, start your app, or pass --package <id>."
-        ).format(pkg=package, entry=RUNTIME_ASSET_ENTRY, no_op=no_op)
+            "the app in the foreground, {pkg}, does not contain the Lustro runtime: its APK has no {entry} entries. "
+            "If it is your app, it is {causes}. If it is not, start your app. Pass --package <id> to check your app."
+        ).format(pkg=package, entry=RUNTIME_ASSET_ENTRY, causes=causes)
     return (
-        "no token: the installed build of {pkg} does not contain the Lustro runtime: its APK has no {entry} entries. "
-        "It is {no_op}."
-    ).format(pkg=package, entry=RUNTIME_ASSET_ENTRY, no_op=no_op)
+        "the installed build of {pkg} does not contain the Lustro runtime: its APK has no {entry} entries. "
+        "It is {causes}."
+    ).format(pkg=package, entry=RUNTIME_ASSET_ENTRY, causes=causes)

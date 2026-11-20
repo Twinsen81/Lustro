@@ -29,18 +29,35 @@ The package installs one command under two names, `lustro` and `lustro-cli`; thi
 `lustro`. The PyPI package `lustro` is a different project with a `lustro` command of its own:
 never install it, and never run `uvx lustro`.
 
+`lustro --version` prints the wire protocol that the CLI implements, such as
+`lustro 0.1.0 (protocol 1.15)`. When `lustro ready` or `lustro meta` warns that the app's protocol
+is newer, install the CLI again with the command above, with `--force`.
+
 ## Connect
 
-1. Install the debug build and start the app. The server listens only while the app is in the
-   foreground: a locked screen or another app in front stops it.
-2. `lustro meta` lists the tabs that the app registers. Each command finds the token in logcat, or
-   through `run-as` in the app's prefs, and makes the `adb forward` itself.
-3. With more than one device, `export ANDROID_SERIAL=<serial>`: the CLI and `adb` both use it.
+1. With more than one device, `export ANDROID_SERIAL=<serial>`: the CLI and `adb` both use it.
    `--device <serial>` selects the device for one `lustro` command.
+2. Start the app, then `lustro ready --package <package>`. It waits up to 30 s until the server
+   answers, and prints the endpoint. The server listens only while the app is in the foreground:
+   a locked screen or another app in front stops it.
+3. `lustro meta` lists the tabs that the app registers. Each command finds the token in logcat, or
+   through `run-as` in the app's prefs, and makes the `adb forward` itself.
 
-When a command cannot connect, the app is in the background, or the installed build is not a
-debug build with Lustro. `adb logcat -d -s LustroToken` shows the line of each start:
-`Lustro ready endpoint=http://127.0.0.1:8080 token=<token>`.
+When `ready` or another command cannot reach the app, it prints the cause, and its exit code says
+which cause it is:
+
+| Code | Cause | What to do |
+| --- | --- | --- |
+| 1 | The app answered with an error. | Read the error. |
+| 2 | A bad flag or input, or more than one device with none selected. | Change the command, or pass `--device`. |
+| 3 | No device, or adb is not installed. | Connect a device, or start an emulator. |
+| 4 | The app of `--package` is not installed. | Install a debug build with Lustro. |
+| 5 | The installed build has no Lustro runtime: a build with the `-noop` artifacts, or one from before the app added Lustro. | Install a debug build with Lustro. This replaces the installed build: if the user asked you to look at that build, ask first. |
+| 6 | The app is not running or not in the foreground, or its port does not answer. | Start the app, and keep it in front. |
+
+Without `--package`, the CLI checks only the app in the foreground, and an app there without the
+runtime exits 6: it can be another app. `adb logcat -d -s LustroToken` shows the line of each
+start: `Lustro ready endpoint=http://127.0.0.1:8080 token=<token>`.
 
 A crash ends the app's process and the server with it, so Lustro cannot show the crash. Logcat
 keeps it: `adb logcat -d -b crash` prints the recent crashes of the device, and the one for the

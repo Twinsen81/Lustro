@@ -6,12 +6,17 @@ dependency on a source checkout and uses the Python standard library only at
 runtime.
 """
 
-__all__ = ["__version__", "LustroError", "LustroClient", "CursorState", "main"]
+__all__ = ["__version__", "PROTOCOL_VERSION", "LustroError", "LustroClient", "CursorState", "main"]
 
 # The package's only version: pyproject.toml reads it from here. It is
 # VERSION_NAME in gradle.properties without -SNAPSHOT, so a release publishes the
 # CLI with the version of the library; `./gradlew checkCliVersion` fails when not.
 __version__ = "0.1.0"
+
+# The wire protocol version that this CLI implements, which `lustro --version`
+# prints. It is the server's protocolVersion in lustro/build.gradle.kts, and
+# `./gradlew checkCliVersion` fails when not: a change to the protocol updates it.
+PROTOCOL_VERSION = "1.15"
 
 from .client import CursorState, LustroClient, LustroError  # noqa: E402
 from .cli import main  # noqa: E402

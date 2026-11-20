@@ -40,7 +40,7 @@ def raising_client(monkeypatch):
     client = _RaisingClient()
     monkeypatch.setattr(cli, "_build_client", lambda args: client)
     monkeypatch.setattr(
-        cli, "_build_endpoint", lambda args: Endpoint("127.0.0.1", 8080, "tok")
+        cli, "_build_endpoint", lambda args, **_: Endpoint("127.0.0.1", 8080, "tok")
     )
     return client
 
@@ -75,7 +75,7 @@ def test_poll_once_exits_nonzero_on_error(raising_client, capsys):
 def test_open_percent_encodes_token_fragment(monkeypatch, capsys):
     nasty_token = "a#b&c%d=e/f"
     monkeypatch.setattr(
-        cli, "_build_endpoint", lambda args: Endpoint("127.0.0.1", 8080, nasty_token)
+        cli, "_build_endpoint", lambda args, **_: Endpoint("127.0.0.1", 8080, nasty_token)
     )
     rc = cli.main(["open", "--no-forward", "--print-only"])
     assert rc == 0

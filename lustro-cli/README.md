@@ -40,6 +40,13 @@ pip install -e 'lustro-cli[test]'    # to work on the CLI: adds pytest and jsons
 The wheel bundles the wire-protocol schemas, the Network OpenAPI document, and
 the golden fixtures (`lustro_cli/wire/`).
 
+`lustro --version` prints the version of the CLI and the version of the wire
+protocol that it implements, such as `lustro 0.1.0 (protocol 1.15)`. Each
+protocol version adds routes or fields, so two builds of the CLI with the same
+version can differ in what they do: compare the protocol. When an app's protocol,
+`protocolVersion` in `GET /api/v1/_meta`, is newer, `lustro ready` and `lustro
+meta` print a warning on stderr: update the CLI.
+
 ## Endpoint and token discovery
 
 The CLI resolves the endpoint+token in this order (first hit wins, per field):
@@ -56,13 +63,22 @@ The CLI resolves the endpoint+token in this order (first hit wins, per field):
    app is in the foreground. This finds the app on a device that drops Info logs, such as one
    with `adb shell getprop log.tag` set to `E`, where the ready line never reaches logcat.
 
-If none of these determine the token, the CLI prints a clear, actionable error.
-When it knows the app, from `--package` or as the app in the foreground, it first
-checks the installed APK: `adb shell pm path <pkg>`, then `grep -c -F assets/lustro/`
-in its `base.apk` (not `unzip`, which API 28 emulator images do not have). A build
-with the `-noop` artifacts has no such entry, and no server. Then the error says that
-the installed build does not contain the Lustro runtime, and that a debug build must
-be installed, in place of telling you to start the app and read logcat.
+If none of these determine the token, the CLI looks for the cause with adb, and
+prints it and exits with its code (see [Exit codes](#exit-codes)). It checks, in
+this order: that adb finds one device that it can use (`adb get-state`), that the
+app of `--package` is installed (`adb shell pm path <pkg>`), that its build
+contains the Lustro runtime, that it runs (`pidof`), and that it is in the
+foreground. For the runtime, it searches the installed `base.apk` for an entry
+under `assets/lustro/` with `grep -c -F` (not `unzip`, which API 28 emulator
+images do not have). Every build with the Lustro runtime has such entries. A build
+without them is a build with the `-noop` artifacts, which has no server, or a build
+from before the app added Lustro: install a debug build that uses the Lustro
+artifacts. Without `--package`, the CLI checks only the runtime of the app in the
+foreground, which can be another app, such as the launcher when your app is not
+running. Pass `--package` in a script, so that the CLI checks your app. A
+connection that fails gets the same checks, because a ready line from an earlier
+start of the app gives a token and a port that no longer answer, unless `--port`
+names the local port: then the server can be on this computer.
 
 A token from the ready line can be stale: when the app was installed again and the device
 dropped the new line, the last line in the log is from the earlier install. When the server
@@ -97,6 +113,7 @@ discovery), `--json` (JSON output). They go before or after the command:
 | Command | Route |
 | --- | --- |
 | `lustro open [--local-port N]` | discovery + `adb forward` + print/open `…/#lustro_token=<token>`; exits 1 when `adb forward` fails |
+| `lustro ready [--timeout SECONDS]` | `GET /api/v1/_meta` until the server answers, then prints the endpoint; at the timeout (30 s by default), prints the cause and exits with its code (see [Wait until the app is ready](#wait-until-the-app-is-ready)) |
 | `lustro meta` | `GET /api/v1/_meta` |
 | `lustro schema [tabId]` | `GET /api/v1/_schema` or `/api/v1/<tab>/_schema` |
 | `lustro net list` | `GET network/transactions` (one poll): the newest 50 transactions, newest first |
@@ -133,6 +150,47 @@ lustro mock add --url-pattern /v1/orders --status 500
 # ... the test ...
 lustro mock sync rules.json            # the rules as they were
 ```
+
+## Wait until the app is ready
+
+A script that starts the app waits for its server with `lustro ready`, before
+its first command:
+
+```bash
+adb shell am start -W -n com.example.app/.MainActivity
+lustro ready --package com.example.app --timeout 30   # prints http://127.0.0.1:8080
+```
+
+Each try runs discovery again and sends `GET /api/v1/_meta`, once a second,
+because the app logs its ready line only when its server starts, and a line from
+an earlier start names a token and a port that may not answer. When the server
+answers, `ready` prints the endpoint that the CLI reaches it at and exits 0;
+`--json` prints `{"endpoint", "libraryVersion", "protocolVersion"}`, without the
+token. When the time is over, it prints the cause and exits with its code: no
+device, an app that is not installed, a build without the Lustro runtime, an app
+that is not running or not in the foreground, or a port that does not answer. It
+makes the checks of the cause once, at the end, because the check of the runtime
+reads the whole APK.
+
+## Exit codes
+
+Each cause has its own exit code, so that a script can act on it without reading
+the message:
+
+| Code | Cause | What to do |
+| --- | --- | --- |
+| 0 | The command did its work. | |
+| 1 | The app answered with an error, such as `404 not_found`, or the command did not get what it waited for: `net wait` at its timeout, and `open` when `adb forward` fails. | Read the error on stderr. |
+| 2 | The command can't run as given: a bad flag or input, an id that more than one item starts with, a search that the app rejects, or more than one device with none selected. | Change the command, or pass `--device`. |
+| 3 | No device: adb is not installed, or it finds no device, or the device is offline or not authorized. | Connect a device, or start an emulator. |
+| 4 | The app of `--package` is not installed. | Install a debug build that uses the Lustro artifacts. |
+| 5 | The installed build of `--package` does not contain the Lustro runtime: a build with the `-noop` artifacts, or one from before the app added Lustro. | Install a debug build that uses the Lustro artifacts. This replaces the installed build. |
+| 6 | The app can't be reached: it is not running or not in the foreground, it logged no ready line, or its port does not answer. | Start the app, and keep it in the foreground. |
+
+Without `--package`, an app in the foreground without the runtime exits 6, not 5:
+that app can be the launcher, or another app than yours. Every command that
+finds the app exits with codes 3 to 6, and the error text of an MCP tool names
+the same cause.
 
 > **Live use of `lustro open`** requires a running app: the server only listens
 > while the app is foregrounded, and discovery reads the `LustroToken` log line
@@ -282,7 +340,7 @@ header, and every command prints it on stderr, once, such as
 response prints the error from its envelope on stderr, such as
 `error: 404 not_found: ...`, and exits 1; nothing goes to stdout. A search
 that the app rejects (a `400` with `field: "search"`) exits 2, as a bad flag
-does.
+does. See [Exit codes](#exit-codes) for the others.
 
 ## The MCP server
 
