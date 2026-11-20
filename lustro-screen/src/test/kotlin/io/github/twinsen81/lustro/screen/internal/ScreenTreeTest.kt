@@ -269,6 +269,10 @@ class ScreenTreeTest {
         assertEquals(405, post.status)
         assertEquals("GET", post.headers.get("Allow"))
         assertNull(tab.handle(io.github.twinsen81.lustro.DebugRequest("windows", "GET")))
+        // An empty value takes the default, as before the declarations: merged true, settle 0.
+        val empty = json(get(tab, "tree", "merged" to "", "settle" to ""))
+        assertEquals(json(get(tab, "tree")).toString(), empty.toString())
+        assertFalse(empty.has("settle"))
         val merged = json(get(tab, "tree", "merged" to "yes"))
         assertEquals("bad_request", merged.getString("error"))
         assertEquals("merged", merged.getString("field"))

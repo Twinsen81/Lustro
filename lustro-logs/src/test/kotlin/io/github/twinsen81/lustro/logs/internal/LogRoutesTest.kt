@@ -247,6 +247,7 @@ class LogRoutesTest {
 
         assertBadRequest(post("pause", """{"paused":"yes"}"""), "paused")
         assertBadRequest(post("compact", "not json"), "body")
+        assertBadRequest(post("pause", "not json"), "body")
         assertBadRequest(post("compact", "[true]"), "body")
         // null is no value, so it toggles.
         assertEquals(true, JSONObject(routes.handle(post("pause", """{"paused":null}"""))!!.text()).getBoolean("paused"))
