@@ -2,8 +2,11 @@
 
 package io.github.twinsen81.lustro.network
 
-import io.github.twinsen81.lustro.DebugRequest
 import io.github.twinsen81.lustro.DebugResponse
+import io.github.twinsen81.lustro.DebugRoutes
+import io.github.twinsen81.lustro.DebugRoutes.Companion.ref
+import io.github.twinsen81.lustro.DebugTab
+import io.github.twinsen81.lustro.ExperimentalDebugRoutes
 import io.github.twinsen81.lustro.ExperimentalPlatformCapture
 import io.github.twinsen81.lustro.Headers
 import io.github.twinsen81.lustro.MediaType
@@ -16,10 +19,11 @@ import io.github.twinsen81.lustro.internal.network.HarExport
 import io.github.twinsen81.lustro.internal.network.HarWebSocket
 import io.github.twinsen81.lustro.internal.network.HttpUrlConnectionCapture
 import io.github.twinsen81.lustro.internal.network.LustroNetworkInterceptor
-import io.github.twinsen81.lustro.internal.network.MockRuleCodec
-import io.github.twinsen81.lustro.internal.network.MockRuleImpl
-import io.github.twinsen81.lustro.internal.network.MockRuleParseResult
+import io.github.twinsen81.lustro.internal.network.MAX_THROTTLE_MS
+import io.github.twinsen81.lustro.internal.network.MockRuleRoutes
+import io.github.twinsen81.lustro.internal.network.NETWORK_SCHEMAS
 import io.github.twinsen81.lustro.internal.network.NetworkCaptureProvider
+import io.github.twinsen81.lustro.internal.network.NetworkDocument
 import io.github.twinsen81.lustro.internal.network.NetworkSendRequestImpl
 import io.github.twinsen81.lustro.internal.network.NetworkTrafficStore
 import io.github.twinsen81.lustro.internal.network.SafeCaptureFilter
@@ -32,13 +36,12 @@ import io.github.twinsen81.lustro.internal.network.WebSocketTrafficStore
 import io.github.twinsen81.lustro.internal.network.appendTransactionJson
 import io.github.twinsen81.lustro.internal.network.respondWithSearch
 import io.github.twinsen81.lustro.internal.network.setThrottle
-import io.github.twinsen81.lustro.DebugTab
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.WebSocket
-import org.json.JSONArray
 import org.json.JSONObject
+import org.json.JSONTokener
 
 /**
  * Debug console tab for inspecting captured HTTP traffic and WebSocket messages,
@@ -124,6 +127,8 @@ public class NetworkDebugTab private constructor(
     internal var searchTimeoutMs: Long = SearchBudget.DEFAULT_TIMEOUT_MS
 
     private val webSocketRoutes = WebSocketRoutes(webSocketStore, { searchTimeoutMs }) { stateJson() }
+
+    private val mockRuleRoutes = MockRuleRoutes(store)
 
     // A factory that is already capturing is returned as it is, so wrapping
     // twice doesn't record every message twice.
@@ -323,58 +328,127 @@ public class NetworkDebugTab private constructor(
         </div>
         """.trimIndent() + "\n" + SEARCH_HELP_DIALOG
 
-    // The static OpenAPI lives at assets/lustro/network.openapi.json; the tab
-    // still works without a dynamic schema.
-    override fun schema(): String? = null
+    /**
+     * Declares the routes under `/api/v1/network/`, which also make the tab's OpenAPI document.
+     * `POST send` is declared only when the app gave a sender, so without one the route and
+     * its document are absent, and the request gets `404`.
+     */
+    @OptIn(ExperimentalDebugRoutes::class)
+    override fun routes(routes: DebugRoutes) {
+        routes.title = NetworkDocument.TITLE
+        // The Network routes are the core of the wire protocol, so they have its version.
+        routes.version = Versions.PROTOCOL_VERSION
+        routes.description = NetworkDocument.DESCRIPTION
+        for ((name, schema) in NETWORK_SCHEMAS) routes.component(name, schema)
 
-    override fun handle(request: DebugRequest): DebugResponse? {
-        val path = request.path
-        val method = request.method.uppercase()
-        val body = request.bodyAsString()
-        return when {
-            path == "transactions" && method == "GET" -> handleTransactions(request)
-            path == "transactions/_/export" && method == "GET" -> handleExport(request)
-            path.startsWith("transactions/") && method == "GET" ->
-                handleTransactionPath(path.removePrefix("transactions/").split('/'))
-            path == "websockets" || path.startsWith("websockets/") -> webSocketRoutes.handle(request)
-            path == "clear" && method == "POST" -> handleClear()
-            path == "rules" && method == "GET" -> handleGetRules()
-            path == "rules" && method == "POST" -> handleAddRule(body)
-            path == "rules/_/sync" && method == "POST" -> handleSyncRules(body)
-            path == "rules/delete" && method == "POST" -> handleDeleteRule(body)
-            path == "rules/toggle" && method == "POST" -> handleToggleRule(body)
-            path == "pause" && method == "POST" -> handleTogglePause()
-            path == "overwrite-mode" && method == "POST" -> handleToggleOverwriteMode()
-            path == "throttle" && method == "POST" -> setThrottle(store, body)
-            path == "senders" && method == "GET" -> handleSenders()
-            path == "send" && method == "POST" && senders.isNotEmpty() -> handleSendRequest(body)
-            else -> null
+        routes.get("transactions") {
+            operationId = "listTransactions"
+            summary = "Poll captured transactions with an opaque cursor."
+            description = NetworkDocument.TRANSACTIONS
+            val cursor = query.string("cursor") { description = NetworkDocument.CURSOR }
+            val search = query.string("search") { description = NetworkDocument.TRANSACTIONS_SEARCH }
+            val regex = query.boolean("regex") { description = NetworkDocument.REGEX }.withDefault(false)
+            val since = query.long("since") { min = 0; description = NetworkDocument.TRANSACTIONS_SINCE }
+            response("Cursor envelope.", ref("TransactionCursorEnvelope"))
+            handle { call -> transactions(call[cursor], call[search], call[regex], call[since]) }
+        }
+        routes.get("transactions/{id}") {
+            operationId = "getTransaction"
+            summary = "Full detail for one captured transaction."
+            val id = path.string("id")
+            response("Transaction detail.", ref("Transaction"))
+            errors(404)
+            handle { call -> transactionDetail(call[id]) }
+        }
+        routes.get("transactions/{id}/body/{direction}") {
+            operationId = "getTransactionBody"
+            summary = "One captured body, as it is stored."
+            description = NetworkDocument.TRANSACTION_BODY
+            val id = path.string("id")
+            val direction = path.string("direction") { values = listOf(REQUEST, RESPONSE) }
+            response("The body.") {
+                header("Content-Disposition", NetworkDocument.TRANSACTION_BODY_DISPOSITION)
+                header("Content-Security-Policy", NetworkDocument.TRANSACTION_BODY_CSP)
+                content(ANY_CONTENT)
+            }
+            errors(404)
+            handle { call -> transactionBody(call[id], request = call[direction] == REQUEST) }
+        }
+        routes.get("transactions/_/export") {
+            operationId = "exportTransactions"
+            summary = "Captured transactions as a HAR 1.2 document."
+            description = NetworkDocument.EXPORT
+            // The router refuses another format, so the handler needs no value.
+            query.string("format") { values = listOf(EXPORT_FORMAT_HAR); description = "The export format. 400 for any other." }
+                .withDefault(EXPORT_FORMAT_HAR)
+            val ids = query.strings("ids") { description = NetworkDocument.EXPORT_IDS }
+            response("A HAR document.", ref("HarDocument"))
+            handle { call -> export(call[ids]) }
+        }
+        webSocketRoutes.declare(routes)
+        routes.post("clear") {
+            operationId = "clearTransactions"
+            summary = NetworkDocument.CLEAR_SUMMARY
+            response("Acknowledged.", NetworkDocument.OK)
+            handle { clear() }
+        }
+        mockRuleRoutes.declare(routes)
+        routes.post("pause") {
+            operationId = "togglePause"
+            summary = NetworkDocument.PAUSE_SUMMARY
+            response("New state.", NetworkDocument.PAUSE_RESPONSE_SCHEMA)
+            handle { togglePause() }
+        }
+        routes.post("overwrite-mode") {
+            operationId = "toggleOverwriteMode"
+            summary = NetworkDocument.OVERWRITE_MODE_SUMMARY
+            response("New state.", NetworkDocument.OVERWRITE_MODE_RESPONSE_SCHEMA)
+            handle { toggleOverwriteMode() }
+        }
+        routes.post("throttle") {
+            operationId = "setThrottle"
+            summary = "Set a global pre-request throttle delay (ms)."
+            description = NetworkDocument.THROTTLE
+            val delayMs = body.int("delayMs") { min = 0; max = MAX_THROTTLE_MS.toLong() }.required()
+            response("New delay.", NetworkDocument.THROTTLE_RESPONSE_SCHEMA)
+            handle { call -> setThrottle(store, call[delayMs]) }
+        }
+        routes.get("senders") {
+            operationId = "listSenders"
+            summary = NetworkDocument.SENDERS_SUMMARY
+            description = NetworkDocument.SENDERS
+            response("The senders, in order.", NetworkDocument.SENDERS_RESPONSE_SCHEMA)
+            handle { listSenders() }
+        }
+        if (senders.isNotEmpty()) {
+            routes.post("send") {
+                operationId = "sendRequest"
+                summary = "Send a request through one of the app's senders (synchronous)."
+                description = NetworkDocument.SEND
+                val url = body.string("url") { description = NetworkDocument.SEND_URL }.required()
+                val sender = body.string("sender") { description = NetworkDocument.SEND_SENDER; schema = """{"type": ["string", "null"]}""" }
+                val method = body.string("method").withDefault("GET")
+                val headers = body.json("headers") { schema = """{"type": "object", "additionalProperties": {"type": "string"}}""" }
+                val requestBody = body.string("body")
+                response("Synchronous send result.", NetworkDocument.SEND_RESPONSE_SCHEMA)
+                errors(504)
+                handle { call -> send(call[url], call[sender], call[method], call[headers], call[requestBody]) }
+            }
         }
     }
 
-    private fun handleTransactions(request: DebugRequest): DebugResponse {
-        val sinceParam = request.queryParam("since")
-        val since =
-            if (sinceParam == null) {
-                null
-            } else {
-                sinceParam.toLongOrNull()?.takeIf { it >= 0 }
-                    ?: return DebugResponse.error(
-                        "since must be a time in milliseconds since the Unix epoch, 0 or more: $sinceParam",
-                        field = "since",
-                    )
-            }
-        return respondWithSearch(request) { search ->
+    private fun transactions(cursor: String?, search: String?, regex: Boolean, since: Long?): DebugResponse =
+        respondWithSearch(search, regex) { query ->
             DebugResponse.cursorEnvelope(
                 // A handshake's webSocketId depends on which connections are listed, and
                 // each transaction's activeMockRuleId on the rules, so a change to either
                 // is a change to this list. Every count only grows.
                 currentSequence = store.getSequence() + webSocketStore.getMembershipSequence() + store.getRulesRevision(),
-                clientCursor = request.queryParam("cursor"),
+                clientCursor = cursor,
                 state = stateJson(),
                 epoch = store.epoch,
             ) {
-                val transactions = store.getTransactions(search = search, budget = SearchBudget(searchTimeoutMs), since = since)
+                val transactions = store.getTransactions(search = query, budget = SearchBudget(searchTimeoutMs), since = since)
                 val webSockets = webSocketStore.transactionLinks()
                 // One snapshot, so every row is matched against the same rules.
                 val rules = store.getMockRules()
@@ -384,7 +458,6 @@ public class NetworkDebugTab private constructor(
                 }
             }
         }
-    }
 
     private fun stateJson(): String =
         buildString {
@@ -405,18 +478,7 @@ public class NetworkDebugTab private constructor(
             append("}")
         }
 
-    // transactions/{id} and transactions/{id}/body/{request|response}.
-    private fun handleTransactionPath(segments: List<String>): DebugResponse? =
-        when {
-            segments.size == 1 -> handleTransactionDetail(segments[0])
-            segments.size == 3 && segments[1] == "body" && segments[2] == "request" ->
-                handleTransactionBody(segments[0], request = true)
-            segments.size == 3 && segments[1] == "body" && segments[2] == "response" ->
-                handleTransactionBody(segments[0], request = false)
-            else -> null
-        }
-
-    private fun handleTransactionDetail(txId: String): DebugResponse {
+    private fun transactionDetail(txId: String): DebugResponse {
         val tx = store.getTransaction(txId) ?: return DebugResponse.notFound("Transaction not found")
         return DebugResponse.json {
             appendTransactionJson(tx, brief = false, webSocketId = webSocketStore.transactionLinks()[tx.id], rules = store.getMockRules())
@@ -430,7 +492,7 @@ public class NetworkDebugTab private constructor(
      * attachment with a sandboxing CSP, so a captured page can never run script
      * under the console's origin.
      */
-    private fun handleTransactionBody(txId: String, request: Boolean): DebugResponse {
+    private fun transactionBody(txId: String, request: Boolean): DebugResponse {
         val tx = store.getTransaction(txId) ?: return DebugResponse.notFound("Transaction not found")
         val bytes = if (request) tx.requestBinaryBody else tx.responseBinaryBody
         val text = if (request) tx.requestBody else tx.responseBody
@@ -464,20 +526,16 @@ public class NetworkDebugTab private constructor(
     }
 
     /**
-     * The transactions named by `ids`, or every one when it is left out, as a HAR
+     * The transactions named by [ids], or every one when it is `null`, as a HAR
      * document, oldest first. An id the store no longer has is left out, so a
      * selection taken just before an eviction still exports what remains.
      */
-    private fun handleExport(request: DebugRequest): DebugResponse {
-        val format = request.queryParam("format") ?: EXPORT_FORMAT_HAR
-        if (!format.equals(EXPORT_FORMAT_HAR, ignoreCase = true)) {
-            return DebugResponse.error("Unknown export format '$format'; the only one is har", field = "format")
-        }
+    private fun export(ids: List<String>?): DebugResponse {
         // Repeated ids parameters and comma-separated lists both work. An ids
         // parameter that names none is an empty selection, not every transaction.
-        val ids = request.queryParams["ids"]?.flatMap { it.split(',') }?.map { it.trim() }?.filter { it.isNotEmpty() }
+        val named = ids?.flatMap { it.split(',') }?.map { it.trim() }?.filter { it.isNotEmpty() }
         val transactions =
-            if (ids == null) store.getTransactions() else ids.distinct().mapNotNull { store.getTransaction(it) }
+            if (named == null) store.getTransactions() else named.distinct().mapNotNull { store.getTransaction(it) }
         val oldestFirst = transactions.sortedWith(compareBy({ it.startedAt }, { it.startOrder }))
         // A socket's messages go out with its handshake.
         val webSockets = webSocketStore.transactionLinks()
@@ -494,119 +552,20 @@ public class NetworkDebugTab private constructor(
 
     // The filter's counts restart with the list, so they describe the requests
     // missing from what is on screen.
-    private fun handleClear(): DebugResponse {
+    private fun clear(): DebugResponse {
         store.clear()
         webSocketStore.clear()
         captureFilter.resetCounts()
         return ok()
     }
 
-    // In the order the rules are tried, which the store keeps.
-    private fun handleGetRules(): DebugResponse =
-        DebugResponse.json {
-            append("{\"items\":[")
-            val rules = store.getMockRules()
-            rules.forEachIndexed { index, rule ->
-                if (index > 0) append(",")
-                appendMockRule(rule)
-            }
-            append("]}")
-        }
-
-    private fun handleAddRule(body: String?): DebugResponse =
-        try {
-            when (val parsed = MockRuleCodec.parse(JSONObject(body ?: "{}"), generateMissingId = true)) {
-                is MockRuleParseResult.Invalid ->
-                    DebugResponse.error(parsed.message, field = parsed.field)
-
-                is MockRuleParseResult.Valid -> {
-                    store.addMockRule(parsed.rule)
-                    DebugResponse.json {
-                        append("{\"status\":\"ok\",\"id\":\"${parsed.rule.id.escapeForJson()}\"}")
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            DebugResponse.error("Invalid JSON: ${e.message}")
-        }
-
-    private fun handleSyncRules(body: String?): DebugResponse {
-        return try {
-            val arr = JSONArray(body ?: "[]")
-            val rules = ArrayList<MockRuleImpl>(arr.length())
-            val indexById = HashMap<String, Int>()
-            for (i in 0 until arr.length()) {
-                // Declarative sync is all-or-nothing: the OpenAPI promises the
-                // resulting set equals the posted array, so a malformed entry must
-                // reject the whole batch with a 400 BEFORE the store is touched —
-                // never silently drop it — mirroring the single-rule add validation.
-                val obj = arr.optJSONObject(i)
-                    ?: return DebugResponse.error("rule at index $i is not a JSON object")
-                when (val parsed = MockRuleCodec.parse(obj, generateMissingId = true)) {
-                    is MockRuleParseResult.Invalid ->
-                        return DebugResponse.error(
-                            "rule at index $i: ${parsed.message}",
-                            field = parsed.field,
-                        )
-
-                    is MockRuleParseResult.Valid -> {
-                        // The store keeps one rule for each id, so a repeated id
-                        // would leave a posted rule out of the set.
-                        val first = indexById.putIfAbsent(parsed.rule.id, i)
-                        if (first != null) {
-                            return DebugResponse.error(
-                                "rule at index $i has the same id as the rule at index $first: ${parsed.rule.id}",
-                                field = "id",
-                            )
-                        }
-                        rules.add(parsed.rule)
-                    }
-                }
-            }
-            store.replaceMockRules(rules)
-            DebugResponse.json { append("{\"status\":\"ok\",\"count\":${rules.size}}") }
-        } catch (e: Exception) {
-            DebugResponse.error("Invalid JSON: ${e.message}")
-        }
-    }
-
-    private fun handleDeleteRule(body: String?): DebugResponse =
-        try {
-            val json = JSONObject(body ?: "{}")
-            val ruleId = json.optString("id")
-            when {
-                ruleId.isBlank() -> DebugResponse.error("id is required", field = "id")
-                store.removeMockRule(ruleId) -> ok()
-                else -> noSuchRule(ruleId)
-            }
-        } catch (e: Exception) {
-            DebugResponse.error("Invalid JSON: ${e.message}")
-        }
-
-    private fun handleToggleRule(body: String?): DebugResponse =
-        try {
-            val json = JSONObject(body ?: "{}")
-            val ruleId = json.optString("id")
-            when {
-                ruleId.isBlank() -> DebugResponse.error("id is required", field = "id")
-                store.toggleMockRule(ruleId) -> ok()
-                else -> noSuchRule(ruleId)
-            }
-        } catch (e: Exception) {
-            DebugResponse.error("Invalid JSON: ${e.message}")
-        }
-
-    // A 404, not ok: a client that mistyped the id must not think that it changed a rule.
-    private fun noSuchRule(id: String): DebugResponse =
-        DebugResponse.error("No mock rule has the id $id. GET rules lists them", status = 404, field = "id")
-
-    private fun handleTogglePause(): DebugResponse {
+    private fun togglePause(): DebugResponse {
         val newState = !store.isPaused()
         store.setPaused(newState)
         return DebugResponse.json { append("{\"status\":\"ok\",\"paused\":$newState}") }
     }
 
-    private fun handleToggleOverwriteMode(): DebugResponse {
+    private fun toggleOverwriteMode(): DebugResponse {
         val newState = !store.isOverwriteMode()
         store.setOverwriteMode(newState)
         return DebugResponse.json { append("{\"status\":\"ok\",\"overwriteMode\":$newState}") }
@@ -616,7 +575,7 @@ public class NetworkDebugTab private constructor(
     private fun baseUrlOf(sender: OkHttpSender): String? =
         sender.baseUrl ?: appServerBaseUrl.takeIf { sendersUseConfigBaseUrl }
 
-    private fun handleSenders(): DebugResponse =
+    private fun listSenders(): DebugResponse =
         DebugResponse.json {
             append("{\"items\":[")
             senders.forEachIndexed { index, sender ->
@@ -635,16 +594,13 @@ public class NetworkDebugTab private constructor(
             append("]}")
         }
 
-    private fun handleSendRequest(body: String?): DebugResponse {
-        if (senders.isEmpty()) return DebugResponse.notFound("Send is not configured")
+    private fun send(url: String, senderName: String?, requestMethod: String, headersJson: String?, bodyText: String?): DebugResponse {
         return try {
-            val json = JSONObject(body ?: "{}")
-            val rawUrl = json.optString("url").trim()
-            val method = json.optString("method", "GET").uppercase()
+            val rawUrl = url.trim()
+            val method = requestMethod.uppercase()
             if (rawUrl.isBlank()) {
                 return DebugResponse.error("url is required", field = "url")
             }
-            val senderName = if (json.isNull("sender")) null else json.optString("sender")
             val sender =
                 if (senderName == null) {
                     senders.first()
@@ -687,12 +643,13 @@ public class NetworkDebugTab private constructor(
             }
             val headersBuilder = Headers.Builder()
             var contentType: MediaType? = null
-            val headersJson = json.optJSONObject("headers")
-            if (headersJson != null) {
-                val keys = headersJson.keys()
+            // Read as org.json reads it, so a value that is not a string is sent as its text. Headers that are not an object are left out.
+            val headers = headersJson?.let { JSONTokener(it).nextValue() as? JSONObject }
+            if (headers != null) {
+                val keys = headers.keys()
                 while (keys.hasNext()) {
                     val key = keys.next()
-                    val value = headersJson.optString(key)
+                    val value = headers.optString(key)
                     // Carry Content-Type via the body's media type instead of a raw
                     // header so it isn't duplicated.
                     if (key.equals("Content-Type", ignoreCase = true)) {
@@ -702,8 +659,7 @@ public class NetworkDebugTab private constructor(
                     }
                 }
             }
-            val bodyText = json.optString("body")
-            val requestBody = bodyText.takeIf { it.isNotEmpty() }?.toByteArray(Charsets.UTF_8)
+            val requestBody = bodyText?.takeIf { it.isNotEmpty() }?.toByteArray(Charsets.UTF_8)
             val sendRequest =
                 NetworkSendRequestImpl(
                     url = resolvedUrl,
@@ -762,12 +718,6 @@ public class NetworkDebugTab private constructor(
         } catch (_: Exception) {
             false
         }
-    }
-
-    // responseHeaders go out with the rule (the browser form doesn't show them,
-    // but agents and the CLI round-trip the whole rule through this route).
-    private fun StringBuilder.appendMockRule(rule: MockRuleImpl) {
-        MockRuleCodec.appendJson(this, rule, includeHitCount = true)
     }
 
     private fun ok(): DebugResponse = DebugResponse.json { append("{\"status\":\"ok\"}") }
@@ -982,6 +932,12 @@ public class NetworkDebugTab private constructor(
         private val ABSOLUTE_URL = Regex("^https?://", RegexOption.IGNORE_CASE)
 
         private const val EXPORT_FORMAT_HAR = "har"
+
+        private const val REQUEST = "request"
+        private const val RESPONSE = "response"
+
+        // A body of any type: the captured one, or application/octet-stream.
+        private const val ANY_CONTENT = "*/*"
 
         // Types the console shows in an <img>. Browsers render them without script.
         private val INLINE_BODY_TYPES = setOf("image/png", "image/jpeg", "image/gif", "image/webp")

@@ -109,10 +109,11 @@ public abstract class DebugTab {
      * [DebugResponseException] produces its response.
      *
      * By default, routes [request] to the routes that [routes] declares: `null` when no
-     * declared path matches, `405` with `Allow` for a declared path with another method,
-     * `400` with `field` for a missing or wrong parameter, and else the route handler's
-     * response. A tab that overrides this to route some paths by hand can call
-     * `super.handle(request)` for the declared ones.
+     * declared path matches, or when a path segment does not fit its parameter, `405` with
+     * `Allow` for a declared path with another method, `400` with `field` for a missing or
+     * wrong query parameter or body, and else the route handler's response. A tab that
+     * overrides this to route some paths by hand can call `super.handle(request)` for the
+     * declared ones.
      *
      * Invoked OFF the main thread, and calls may be concurrent (the runtime
      * dispatches multiple requests in flight), so a tab holding mutable state

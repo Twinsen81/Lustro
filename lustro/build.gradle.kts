@@ -98,6 +98,14 @@ dependencies {
     androidTestImplementation(libs.okhttp.tls)
 }
 
+// NetworkOpenApiDocumentTest compares the committed openapi/network.openapi.json with the
+// document that the route declarations make, and writes it when LUSTRO_UPDATE_OPENAPI=1, so
+// both are inputs of the unit tests.
+tasks.withType<Test>().configureEach {
+    inputs.file("openapi/network.openapi.json")
+    inputs.property("updateOpenApi", providers.environmentVariable("LUSTRO_UPDATE_OPENAPI").orElse(""))
+}
+
 lustroLibrary {
     // :lustro and :lustro-noop both declare `io.github.twinsen81:lustro-runtime`,
     // so a consumer cannot resolve BOTH on the same configuration. See

@@ -25,7 +25,7 @@ status and the body do not change. A method that a route does not take gets a `4
 header that lists the methods of the path, when the tab's OpenAPI document declares the path; a path
 that the document does not declare is a `404`. The schemas and the SemVer
 policy live in [`wire-protocol/v1/`](https://github.com/Twinsen81/Lustro/tree/main/wire-protocol/v1); the Network tab's contract is
-[`lustro/src/main/assets/lustro/network.openapi.json`](https://github.com/Twinsen81/Lustro/blob/main/lustro/src/main/assets/lustro/network.openapi.json),
+[`lustro/openapi/network.openapi.json`](https://github.com/Twinsen81/Lustro/blob/main/lustro/openapi/network.openapi.json),
 the Logs tab's is
 [`lustro-logs/src/main/assets/lustro/logs.openapi.json`](https://github.com/Twinsen81/Lustro/blob/main/lustro-logs/src/main/assets/lustro/logs.openapi.json),
 the Preferences tab's is

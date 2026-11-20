@@ -54,6 +54,23 @@ class OpenApiDocumentTest {
                     handle { DebugResponse.ok("{}") }
                 }
                 routes.post("reset") { handle { DebugResponse.ok("{}") } }
+                routes.get("items/{id}/image") {
+                    path.string("id")
+                    response("The image.") {
+                        content("image/png")
+                        content("*/*", """{"type": "string"}""")
+                        header("Content-Disposition", "attachment, for a download.")
+                        header("X-Count", "How many.", """{"type": "integer"}""")
+                    }
+                    errors(404)
+                    handle { DebugResponse.ok("{}") }
+                }
+                routes.get("feed") {
+                    query.string("cursor")
+                    query.strings("ids") { description = "Item ids." }
+                    response("The first item's id.", """{"${'$'}ref": "#/components/schemas/Item/properties/id"}""")
+                    handle { DebugResponse.ok("{}") }
+                }
             }
         }
 
@@ -80,7 +97,15 @@ class OpenApiDocumentTest {
     @Test
     fun `the paths are under the tab, in the order of the declarations`() {
         assertEquals(
-            listOf("/api/v1/shop/items", "/api/v1/shop/items/{id}", "/api/v1/shop/items/{id}/tags", "/api/v1/shop/import", "/api/v1/shop/reset"),
+            listOf(
+                "/api/v1/shop/items",
+                "/api/v1/shop/items/{id}",
+                "/api/v1/shop/items/{id}/tags",
+                "/api/v1/shop/import",
+                "/api/v1/shop/reset",
+                "/api/v1/shop/items/{id}/image",
+                "/api/v1/shop/feed",
+            ),
             keys("paths"),
         )
         assertEquals(listOf("get", "post"), keys("paths", "/api/v1/shop/items"))
@@ -144,11 +169,41 @@ class OpenApiDocumentTest {
             list.getJSONObject("200").getJSONObject("content").getJSONObject("application/json").getJSONObject("schema").getString("\$ref"),
         )
         assertEquals("#/components/responses/Error", list.getJSONObject("400").getString("\$ref"))
-        val item = operation("/api/v1/shop/items/{id}", "get").getJSONObject("responses")
-        assertEquals(listOf("200", "400", "401", "403", "404", "413", "503"), keys("paths", "/api/v1/shop/items/{id}", "get", "responses"))
+        // A path parameter that takes every segment can't get a 400; the handler's 404 is declared.
+        assertEquals(listOf("200", "401", "403", "404", "413", "503"), keys("paths", "/api/v1/shop/items/{id}", "get", "responses"))
+        // A long path parameter refuses a segment with 404, and a body can always get 400.
+        assertEquals(listOf("200", "400", "401", "403", "404", "413", "503"), keys("paths", "/api/v1/shop/items/{id}/tags", "put", "responses"))
+        // An optional string with no limits takes every value.
+        assertEquals(listOf("200", "401", "403", "413", "503"), keys("paths", "/api/v1/shop/feed", "get", "responses"))
         val reset = operation("/api/v1/shop/reset", "post").getJSONObject("responses")
         assertEquals(listOf("200", "401", "403", "413", "503"), keys("paths", "/api/v1/shop/reset", "post", "responses"))
         assertEquals("Success.", reset.getJSONObject("200").getString("description"))
+    }
+
+    @Test
+    fun `a response can have bodies of other content types and headers`() {
+        val ok = operation("/api/v1/shop/items/{id}/image", "get").getJSONObject("responses").getJSONObject("200")
+        assertEquals(listOf("description", "headers", "content"), keys("paths", "/api/v1/shop/items/{id}/image", "get", "responses", "200"))
+        assertEquals("The image.", ok.getString("description"))
+        assertEquals(listOf("image/png", "*/*"), keys("paths", "/api/v1/shop/items/{id}/image", "get", "responses", "200", "content"))
+        assertJson("{}", ok.getJSONObject("content").getJSONObject("image/png").getJSONObject("schema"))
+        assertJson("""{"type":"string"}""", ok.getJSONObject("content").getJSONObject("*/*").getJSONObject("schema"))
+        assertJson(
+            """{"Content-Disposition":{"description":"attachment, for a download.","schema":{"type":"string"}},
+              "X-Count":{"description":"How many.","schema":{"type":"integer"}}}""",
+            ok.getJSONObject("headers"),
+        )
+    }
+
+    @Test
+    fun `a repeated parameter is an array, and a reference can point into a schema`() {
+        val feed = operation("/api/v1/shop/feed", "get")
+        assertParameter(feed.getJSONArray("parameters").getJSONObject(1), "ids", "query", false, """{"type":"array","items":{"type":"string"}}""", "Item ids.")
+        assertEquals(
+            "#/components/schemas/Item/properties/id",
+            feed.getJSONObject("responses").getJSONObject("200").getJSONObject("content").getJSONObject("application/json")
+                .getJSONObject("schema").getString("\$ref"),
+        )
     }
 
     @Test

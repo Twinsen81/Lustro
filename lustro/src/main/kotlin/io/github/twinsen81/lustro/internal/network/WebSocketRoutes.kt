@@ -1,7 +1,9 @@
 package io.github.twinsen81.lustro.internal.network
 
-import io.github.twinsen81.lustro.DebugRequest
 import io.github.twinsen81.lustro.DebugResponse
+import io.github.twinsen81.lustro.DebugRoutes
+import io.github.twinsen81.lustro.DebugRoutes.Companion.ref
+import io.github.twinsen81.lustro.ExperimentalDebugRoutes
 import io.github.twinsen81.lustro.Headers
 import io.github.twinsen81.lustro.MediaType
 import io.github.twinsen81.lustro.escapeForJson
@@ -21,22 +23,60 @@ internal class WebSocketRoutes(
     private val searchTimeoutMs: () -> Long,
     private val stateJson: () -> String,
 ) {
-    fun handle(request: DebugRequest): DebugResponse? {
-        if (!request.method.equals("GET", ignoreCase = true)) return null
-        val segments = request.path.split('/')
-        return when {
-            segments.size == 1 -> connections(request)
-            segments.size == 2 -> connection(segments[1])
-            segments.size == 3 && segments[2] == "events" -> events(segments[1], request)
-            segments.size == 5 && segments[2] == "events" && segments[4] == "payload" -> payload(segments[1], segments[3])
-            else -> null
+    /** Declares the routes, with the text of their OpenAPI document in [NetworkDocument]. */
+    @OptIn(ExperimentalDebugRoutes::class)
+    fun declare(routes: DebugRoutes) {
+        routes.get("websockets") {
+            operationId = "listWebSockets"
+            summary = "Poll captured WebSocket connections with an opaque cursor."
+            description = NetworkDocument.WEBSOCKETS
+            val cursor = query.string("cursor") { description = NetworkDocument.CURSOR }
+            response("Cursor envelope.", ref("WebSocketCursorEnvelope"))
+            handle { call -> connections(call[cursor]) }
+        }
+        routes.get("websockets/{id}") {
+            operationId = "getWebSocket"
+            summary = "One WebSocket connection, with the headers of its handshake."
+            val id = path.string("id")
+            response("Connection detail.", ref("WebSocketConnection"))
+            errors(404)
+            handle { call -> connection(call[id]) }
+        }
+        routes.get("websockets/{id}/events") {
+            operationId = "listWebSocketEvents"
+            summary = "Poll a connection's log: its messages and lifecycle events, in order."
+            description = NetworkDocument.EVENTS
+            val id = path.string("id")
+            val cursor = query.string("cursor") { description = NetworkDocument.CURSOR }
+            // No upper limit: the log's own limits bound a response.
+            val limit = query.int("limit") { min = 1; description = NetworkDocument.EVENTS_LIMIT }.withDefault(DEFAULT_LIMIT)
+            val direction = query.string("direction") { values = listOf(SENT, RECEIVED); description = NetworkDocument.EVENTS_DIRECTION }
+            val search = query.string("search") { description = NetworkDocument.EVENTS_SEARCH }
+            val regex = query.boolean("regex") { description = NetworkDocument.REGEX }.withDefault(false)
+            response("Stream envelope.", ref("WebSocketEventStreamEnvelope"))
+            errors(404)
+            handle { call -> events(call[id], call[cursor], call[limit], call[direction], call[search], call[regex]) }
+        }
+        routes.get("websockets/{id}/events/{seq}/payload") {
+            operationId = "getWebSocketPayload"
+            summary = "The payload of one message, as it is stored."
+            description = NetworkDocument.PAYLOAD
+            val id = path.string("id")
+            val seq = path.long("seq") { description = "The event's seq." }
+            response("The payload.") {
+                header("Content-Disposition", "attachment, always.")
+                header("Content-Security-Policy", NetworkDocument.PAYLOAD_CSP)
+                content("*/*")
+            }
+            errors(404)
+            handle { call -> payload(call[id], call[seq]) }
         }
     }
 
-    private fun connections(request: DebugRequest): DebugResponse =
+    private fun connections(cursor: String?): DebugResponse =
         DebugResponse.cursorEnvelope(
             currentSequence = store.getSequence(),
-            clientCursor = request.queryParam("cursor"),
+            clientCursor = cursor,
             state = stateJson(),
             epoch = store.epoch,
         ) {
@@ -51,24 +91,13 @@ internal class WebSocketRoutes(
         return DebugResponse.json { appendConnection(connection, brief = false) }
     }
 
-    private fun events(id: String, request: DebugRequest): DebugResponse {
+    private fun events(id: String, cursor: String?, limit: Int, direction: String?, search: String?, regex: Boolean): DebugResponse {
         val log = store.getEvents(id) ?: return DebugResponse.notFound(NO_CONNECTION)
-        val direction = request.queryParam("direction")?.takeIf { it.isNotEmpty() }
-        if (direction != null && direction != SENT && direction != RECEIVED) {
-            return DebugResponse.error("direction must be $SENT or $RECEIVED", field = "direction")
-        }
-        val limit =
-            when (val given = request.queryParam("limit")?.takeIf { it.isNotEmpty() }) {
-                null -> DEFAULT_LIMIT
-                // No upper limit: the log's own limits bound a response.
-                else -> given.toIntOrNull()?.takeIf { it >= 1 }
-                    ?: return DebugResponse.error("limit must be a whole number, 1 or more", field = "limit")
-            }
-        return respondWithSearch(request) { search ->
+        return respondWithSearch(search, regex) { query ->
             val budget = SearchBudget(searchTimeoutMs())
-            eventsEnvelope(log, limit, request) { event ->
+            eventsEnvelope(log, limit, cursor) { event ->
                 (direction == null || event.outgoing == (direction == SENT)) &&
-                    (search == null || search.matchesText(event.text, budget))
+                    (query == null || query.matchesText(event.text, budget))
             }
         }
     }
@@ -76,14 +105,14 @@ internal class WebSocketRoutes(
     private fun eventsEnvelope(
         log: WebSocketEventLog,
         limit: Int,
-        request: DebugRequest,
+        cursor: String?,
         matches: (WebSocketEvent) -> Boolean,
     ): DebugResponse {
         val events = log.events
         return DebugResponse.streamEnvelope(
             total = log.stored,
             retained = events.size,
-            clientCursor = request.queryParam("cursor"),
+            clientCursor = cursor,
             epoch = log.epoch,
         ) { from, reset ->
             if (reset) {
@@ -114,9 +143,8 @@ internal class WebSocketRoutes(
      * sandboxing policy, so a captured payload can never run script under the
      * console's origin.
      */
-    private fun payload(id: String, seqText: String): DebugResponse {
+    private fun payload(id: String, seq: Long): DebugResponse {
         val log = store.getEvents(id) ?: return DebugResponse.notFound(NO_CONNECTION)
-        val seq = seqText.toLongOrNull()
         val event = log.events.firstOrNull { it.seq == seq } ?: return DebugResponse.notFound("Event not found")
         val headers = Headers.of("Content-Disposition" to "attachment", "Content-Security-Policy" to ATTACHMENT_CSP)
         val bytes = event.bytes

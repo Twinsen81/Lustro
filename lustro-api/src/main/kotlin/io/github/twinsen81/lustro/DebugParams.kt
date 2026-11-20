@@ -7,10 +7,13 @@ package io.github.twinsen81.lustro
  *
  * A parameter is optional, so its value is `null` when the request does not give it, until
  * [DebugParam.required] or [DebugParam.withDefault] says otherwise. In the query or a form,
- * an empty value of an int, long, or boolean parameter counts as absent; an empty string is
- * a string, which [DebugStringSpec.minLength] can refuse. In a JSON body, `null` counts as
- * absent, and the JSON type must match: a string parameter takes a JSON string, an int or
- * long parameter a whole number, and a boolean parameter `true` or `false`.
+ * an empty value of an int, long, or boolean parameter takes the parameter's default, and
+ * without a default it gets a `400`, as other text that is not a number or `true` or `false`
+ * does: a request such as `?since=` usually comes from a variable that has no value. An empty
+ * string is a string, which [DebugStringSpec.minLength] and [DebugStringSpec.values] can
+ * refuse. In a JSON body, `null` counts as absent, and the JSON type must match: a string
+ * parameter takes a JSON string, an int or long parameter a whole number, and a boolean
+ * parameter `true` or `false`.
  */
 @ExperimentalDebugRoutes
 public open class DebugParams internal constructor(
@@ -20,6 +23,14 @@ public open class DebugParams internal constructor(
     /** Declares a string parameter named [name]. */
     public fun string(name: String, declare: DebugStringSpec.() -> Unit = {}): DebugParam<String?> =
         DebugParam(add(name, ParamType.STRING, DebugStringSpec().apply(declare)))
+
+    /**
+     * Declares a string parameter named [name] that the request can give more than once, such
+     * as `?ids=a&ids=b`: its value is every value that the request gives, in order, and each
+     * one must fit the options of [declare]. In a JSON body, the field is an array of strings.
+     */
+    public fun strings(name: String, declare: DebugStringSpec.() -> Unit = {}): DebugParam<List<String>?> =
+        DebugParam(add(name, ParamType.STRINGS, DebugStringSpec().apply(declare)))
 
     /**
      * Declares a whole-number parameter named [name], from [Int.MIN_VALUE] to [Int.MAX_VALUE]
@@ -64,7 +75,9 @@ public class DebugBodyParams internal constructor(route: DebugRoute) : DebugPara
 /**
  * Declares the parameters in a route's path ([DebugRoute.path]): one for each segment in
  * braces, with the name in the braces. A path parameter is always present, so its value is
- * never `null`.
+ * never `null`. A segment that the parameter does not take, such as `x` for an int, or a
+ * value that is not one of [DebugStringSpec.values], matches no route: the path names a
+ * resource that does not exist, so the client gets `404`, not `400`.
  */
 @ExperimentalDebugRoutes
 public class DebugPathParams internal constructor(private val params: DebugParams) {
@@ -164,6 +177,7 @@ internal enum class ParamIn(val wire: String) {
 
 internal enum class ParamType {
     STRING,
+    STRINGS,
     INT,
     LONG,
     BOOLEAN,

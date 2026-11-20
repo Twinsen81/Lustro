@@ -899,10 +899,41 @@ class NetworkDebugTabTest {
     }
 
     @Test
-    fun `unknown route returns null so the server enveloped-404s`() {
+    fun `unknown route returns null so the server enveloped-404s, and a wrong method is a 405`() {
         val tab = tab()
         assertNull(tab.handle(get("nope")))
-        assertNull(tab.handle(post("transactions", "{}"))) // wrong method
+        val wrongMethod = tab.handle(post("transactions", "{}"))!!
+        assertEquals(405, wrongMethod.status)
+        assertEquals("GET", wrongMethod.headers.get("Allow"))
+    }
+
+    @Test
+    fun `a body that is missing or not strict JSON is a 400 on body, and sync keeps the rules`() {
+        val tab = tab()
+        tab.handle(post("rules", """{"id":"kept","urlPattern":"/x"}"""))
+        for (path in listOf("rules", "rules/_/sync", "rules/delete", "rules/toggle", "throttle")) {
+            val empty = tab.handle(DebugRequest(path = path, method = "POST"))!!
+            assertEquals(path, 400, empty.status)
+            assertEquals(path, "body", empty.json().getString("field"))
+        }
+        // org.json took single quotes; the declared fields take strict JSON only.
+        for (path in listOf("rules/delete", "rules/toggle")) {
+            val lenient = tab.handle(post(path, "{'id':'kept'}"))!!
+            assertEquals(path, 400, lenient.status)
+            assertEquals(path, "body", lenient.json().getString("field"))
+            val number = tab.handle(post(path, """{"id":5}"""))!!
+            assertEquals(path, 400, number.status)
+            assertEquals(path, "id", number.json().getString("field"))
+        }
+        assertEquals(listOf("kept"), tab.handle(get("rules"))!!.json().getJSONArray("items").objects().map { it.getString("id") })
+    }
+
+    @Test
+    fun `a segment that a path parameter does not take is no route, so the server answers 404`() {
+        val tab = tab()
+        assertNull(tab.handle(get("websockets/any/events/x/payload")))
+        assertNull(tab.handle(get("transactions/any/body/both")))
+        assertEquals(404, tab.handle(get("websockets/any/events/1/payload"))!!.status)
     }
 
     @Test
