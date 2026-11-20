@@ -14,6 +14,7 @@ import okhttp3.Request
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -99,6 +100,42 @@ class LustroEndpointTest {
         assertEquals(listOf("http://192.168.1.23:${lustro.boundPort()}"), endpoint.lanUrls)
     }
 
+    private fun metaStatus(endpoint: LustroEndpoint, token: String): Int {
+        val request = Request.Builder().url("${endpoint.url}/api/v1/_meta").header("Authorization", "Bearer $token").build()
+        return OkHttpClient().newCall(request).execute().use { it.code }
+    }
+
+    @Test
+    fun `with LAN exposure, each Lustro makes a new token and the one before stops working`() {
+        val stored = LustroTokenStore(app).token()
+        owner.registry.currentState = Lifecycle.State.STARTED
+        val first = lustro(bindAddress = "0.0.0.0").also { it.start() }
+        val firstToken = first.endpoint()!!.token
+        first.stop()
+
+        // A second instance stands for the app's next process.
+        val second = lustro(bindAddress = "0.0.0.0").also { it.start() }
+        val endpoint = second.endpoint()!!
+
+        assertNotEquals("the token from before LAN exposure", stored, firstToken)
+        assertNotEquals(firstToken, endpoint.token)
+        assertEquals(401, metaStatus(endpoint, firstToken))
+        assertEquals(200, metaStatus(endpoint, endpoint.token))
+        assertEquals("a client that reads the prefs file gets it", endpoint.token, LustroTokenStore(app).token())
+    }
+
+    @Test
+    fun `on loopback, a later Lustro keeps the token`() {
+        owner.registry.currentState = Lifecycle.State.STARTED
+        val first = lustro().also { it.start() }
+        val firstToken = first.endpoint()!!.token
+        first.stop()
+
+        val second = lustro().also { it.start() }
+
+        assertEquals(firstToken, second.endpoint()!!.token)
+    }
+
     @Test
     fun `with LAN exposure, the endpoint log keeps its format and adds the LAN urls after the token`() {
         val lustro = lustro(bindAddress = "0.0.0.0")
@@ -106,7 +143,7 @@ class LustroEndpointTest {
         owner.registry.currentState = Lifecycle.State.STARTED
         val port = lustro.boundPort()
 
-        val expected = "Lustro ready endpoint=http://0.0.0.0:$port token=${LustroTokenStore(app).token()} lan=http://192.168.1.23:$port"
+        val expected = "Lustro ready endpoint=http://0.0.0.0:$port token=${lustro.endpoint()!!.token} lan=http://192.168.1.23:$port"
         val deadline = System.currentTimeMillis() + 5_000
         var lines = emptyList<String>()
         while (expected !in lines && System.currentTimeMillis() < deadline) {

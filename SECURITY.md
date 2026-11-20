@@ -61,12 +61,30 @@ build, and that even in debug builds it stays bound to the local device.
   reachable only while the app is foregrounded; the socket is torn down on
   background after draining in-flight requests. LAN exposure is strictly opt-in
   through `DebugConfig.bindAddress`.
+- **On a network, the token does not stop a person who can read the traffic.**
+  The server speaks plain HTTP. With `DebugConfig.bindAddress` set for LAN
+  access, each request of a client on the network carries the token: in the
+  `Authorization` header, in the `lustro_token` cookie, or in the body of
+  `POST /api/v1/_auth`. A person who can record the traffic of that network
+  reads it there, which is easy on an open Wi-Fi network and possible on one
+  with a shared password. That person then reads and changes all that the
+  registered tabs do, while that token is valid. The token keeps out the
+  clients on the network that never saw it; it is not a boundary on a network
+  that other people use. Bind beyond loopback only on a network where you
+  trust every device. `adb forward` needs no LAN exposure, also without a
+  cable, through wireless debugging.
 - **Token auth is always on.** A token is generated on first run and stored in
   private debug preferences. Programmatic clients authenticate with
   `Authorization: Bearer <token>`; browsers use an `HttpOnly; SameSite=Strict`
-  cookie. The token is logged at server start under the tag `LustroToken`. It is
-  generated once and then persists: there is no rotation API, so the same token
-  stays valid until the app's data is cleared or the app is reinstalled. Before
+  cookie. The token is logged at server start under the tag `LustroToken`.
+  With the default loopback binding it is generated once and then persists:
+  the same token stays valid until the app's data is cleared or the app is
+  reinstalled. With any other bind address, the server makes a new token each
+  time the app's process starts, the first time it listens, and the token of
+  the process before gets `401`. A token that recorded traffic, a screenshot,
+  or a log gave away is then valid only until that process ends. A browser
+  signs in again after the app restarts; the CLI reads the token on each
+  call. There is no rotation API. Before
   authentication, the server serves only framework chrome — no tab-authored
   output or captured data.
 - **Credentials stop at the server.** The server authenticates a request before

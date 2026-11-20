@@ -25,7 +25,7 @@ Without `config(...)`, Lustro uses `DebugConfig.DEFAULT`. `lustro-noop` has the 
 | --- | --- | --- | --- |
 | `allowNonDebuggableBuilds` | `Boolean` | `false` | When `true`, `start()` opens the server in a build without `android:debuggable`. Only for internal builds: see [Release safety](../concepts/release-safety.md#the-debuggable-check). |
 | `serverPort` | `Int` | `8080` | The port that the server binds on the device. Forward the same port: `adb forward tcp:8081 tcp:8081`. The CLI reads the port from the `LustroToken` line. UI tests that start WireMock in the app's process use 8080 too: see [Instrumentation tests](../get-started/app-code.md#instrumentation-tests). |
-| `bindAddress` | `String` | `"127.0.0.1"` | The address that the server binds. `"0.0.0.0"` makes it reachable from the network: see [LAN exposure](../concepts/lan.md). |
+| `bindAddress` | `String` | `"127.0.0.1"` | The address that the server binds. `"0.0.0.0"` makes it reachable from the network, and the server then makes a new token with each process of the app: see [LAN exposure](../concepts/lan.md). |
 | `bindFallback` | `Boolean` | `false` | When `serverPort` is taken: with `true`, the server binds a port that the system picks, and the `LustroToken` line gives it. With `false`, it tries `serverPort` again for 10 s, then waits for the next foreground. |
 | `allowedOrigins` | `List<String>` | empty | More origins that a browser can call the API from, on every method, such as `"http://192.168.1.42:8080"`. The server's own origin is always allowed. Other ports of `localhost` are not. See [Security model](../concepts/security.md). |
 

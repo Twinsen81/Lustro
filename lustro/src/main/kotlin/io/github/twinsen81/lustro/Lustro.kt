@@ -77,7 +77,12 @@ public class Lustro internal constructor(
     // Always-on token store backed by a private SharedPreferences file. Opening
     // that file is disk I/O, so the token is only read off the main thread: by
     // request handlers, and on [workExecutor] for the endpoint log after each bind.
-    private val tokenStore = LustroTokenStore(application.applicationContext)
+    // A server that listens beyond loopback gets a new token with each process.
+    private val tokenStore =
+        LustroTokenStore(
+            application.applicationContext,
+            newTokenOnFirstUse = !LanAddresses.isLoopback(config.bindAddress),
+        )
 
     // Read once at construction: whether the host app ships android:debuggable.
     // start() consults this before arming, so a release APK that somehow carries
@@ -296,8 +301,10 @@ public class Lustro internal constructor(
      * [DebugConfig.bindAddress] opts into LAN exposure.
      *
      * The token gives full access to the app's data through the server, so
-     * show it only in a debug build. The first call can read the token from a
-     * private file; StrictMode can report that read on the main thread.
+     * show it only in a debug build. With LAN exposure it changes each time
+     * the app's process starts, so do not keep it across processes. The first
+     * call can read the token from a private file; StrictMode can report that
+     * read on the main thread.
      */
     public fun endpoint(): LustroEndpoint? {
         val srv = server?.takeIf { it.isAlive } ?: return null

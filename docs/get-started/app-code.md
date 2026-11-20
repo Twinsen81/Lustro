@@ -92,7 +92,8 @@ if (endpoint != null) {
 port in use, which differs from `DebugConfig.serverPort` after a fallback bind.
 
 The token gives full access to the app's data through the server. Show it only in a debug build,
-and do not send it off the device. `lustro-noop` returns `null`. Read the endpoint this way, not
+and do not send it off the device. With LAN exposure it changes each time the app's process
+starts, so call `endpoint()` each time you show it. `lustro-noop` returns `null`. Read the endpoint this way, not
 from Lustro's private prefs file, whose format can change.
 
 ## Instrumentation tests

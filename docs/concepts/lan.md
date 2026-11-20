@@ -24,8 +24,11 @@ comma-separated, or the IPv6 ones when the device has no IPv4 address. App code 
 developer screen (see [Use Lustro from your app's code](../get-started/app-code.md#show-how-to-connect)).
 
 > **Risk:** `bindAddress = "0.0.0.0"` exposes the debug server (and your app's captured traffic)
-> to everyone on the same network. Token auth still applies, but you lose the loopback boundary.
-> Use it only on trusted networks, and prefer `adb forward` whenever you can.
+> to everyone on the same network. Token auth still applies, but you lose the loopback boundary,
+> and the token does not replace it: the server speaks plain HTTP, so each request of a client on
+> the network carries the token, and a person who can record that network's traffic reads it.
+> Use it only on a network where you trust every device, and prefer `adb forward` whenever you
+> can. Wireless debugging (`adb connect`, then `adb forward`) needs no cable and no LAN exposure.
 
 > **Browser login over LAN:** add the browser's origin to `DebugConfig.allowedOrigins`, such as
 > `allowedOrigins(listOf("http://192.168.1.42:8080"))` for the address the browser shows. The
@@ -33,6 +36,27 @@ developer screen (see [Use Lustro from your app's code](../get-started/app-code.
 > the listening port counts as the server's own origin, so a page loaded over LAN is rejected with
 > `403` until its origin is listed. Programmatic clients that send neither `Origin` nor
 > `Sec-Fetch-Site`, such as `curl` or the CLI, are unaffected.
+
+## A new token with each process
+
+When the bind address is not loopback, the server makes a new token each time the app's process
+starts, the first time it listens. The token of the process before gets `401`. So a token that
+recorded traffic, a screenshot, or a log gave away is valid only until that process ends, not
+until the app's data is cleared. It does not stop a person who records the traffic while the app
+runs.
+
+- **A browser** signs in again after the app restarts: open the console with the new
+  `#lustro_token=<token>`. Android can end the app's process while the app is in the background,
+  and the next start is a restart too.
+- **The CLI and agents** read the token on each call, so they need no change. A script that keeps
+  the token reads the last `LustroToken` line again after a `401`.
+- **App code** calls `lustro.endpoint()` each time it shows the token, and does not keep it across
+  processes.
+
+With the default loopback binding, the token stays the same until the app's data is cleared: a
+client there needs adb, which reads the same data of a debuggable app without the token.
+
+## No network security config
 
 A network security config is **not** needed for any of this: it governs the connections your app
 makes, not the socket Lustro listens on. Lustro serves plain HTTP and needs no

@@ -40,6 +40,9 @@ The request has no valid token.
     `adb logcat -d -s LustroToken`.
 - **After the app's data is cleared:** the app makes a new token. The last `LustroToken` line has
     it.
+- **After the app restarts, with LAN exposure:** when `DebugConfig.bindAddress` is not loopback,
+    each process of the app makes a new token. Sign in again with the token of the last
+    `LustroToken` line. See [LAN exposure](../concepts/lan.md#a-new-token-with-each-process).
 
 ## `start()` returns DISABLED
 

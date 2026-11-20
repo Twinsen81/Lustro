@@ -21,7 +21,11 @@ public class LustroEndpoint internal constructor(
     public val host: String,
     /** The port the server listens on. It differs from `DebugConfig.serverPort` after a fallback bind. */
     public val port: Int,
-    /** The token that a client sends as `Authorization: Bearer <token>`. */
+    /**
+     * The token that a client sends as `Authorization: Bearer <token>`. When
+     * `DebugConfig.bindAddress` is not loopback, it is a new one in each
+     * process of the app, so read it again after the app restarts.
+     */
     public val token: String,
     /**
      * The device's network addresses that a client on the same network, such

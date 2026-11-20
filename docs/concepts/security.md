@@ -4,12 +4,15 @@ Lustro deliberately surfaces app internals, so its defaults are conservative. Se
 [SECURITY.md](https://github.com/Twinsen81/Lustro/blob/main/SECURITY.md) for the full threat model.
 
 - **Loopback by default.** The server binds to `127.0.0.1`; it is reachable only from the device
-    itself (and your desktop via `adb forward`).
+    itself (and your desktop via `adb forward`). With [LAN exposure](lan.md), each request
+    carries the token as plain HTTP, so the token does not stop a person who can record the
+    network's traffic.
 - **Token auth, always on.** A 256-bit token is generated on first run and stored in private
     debug preferences. Programmatic clients send `Authorization: Bearer <token>`; browsers use an
     `HttpOnly; SameSite=Strict` cookie that `/api/v1/_auth` sets. Before a client sends the token,
     the server sends only the console's frame: no tab content and no captured data. The server
-    logs the token at the `LustroToken` tag.
+    logs the token at the `LustroToken` tag. With LAN exposure, it makes a
+    [new token with each process](lan.md#a-new-token-with-each-process) of the app.
 - **Tabs never see the credentials.** The server authenticates a request before dispatching it,
     and the `DebugRequest` a tab receives carries no `Authorization` or `Cookie` header, so a tab
     that logs or echoes its request can't leak the token.

@@ -111,7 +111,8 @@ sequenceDiagram
 
 1. On the first bind, the server makes a random 256-bit token and saves it in the app's private
     `lustro_debug` SharedPreferences file, with the host and the port. The token stays the same
-    until the app's data is cleared or the app is installed again.
+    until the app's data is cleared or the app is installed again. With
+    [LAN exposure](lan.md#a-new-token-with-each-process), each process of the app makes a new one.
 2. After each bind, the server logs one line at the `LustroToken` tag:
     `Lustro ready endpoint=http://127.0.0.1:8080 token=<token>`.
 3. The CLI and agents read the line, or the prefs file through `adb shell run-as` when the device
