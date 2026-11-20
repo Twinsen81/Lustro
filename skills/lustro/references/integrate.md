@@ -31,7 +31,8 @@ the docs pages that it links.
 Add each runtime with `debugImplementation` and its `-noop` half with `releaseImplementation`.
 They declare the same Gradle capability, so one configuration cannot have both. Each other build
 type needs one of the two as well, such as `stagingImplementation(libs.lustro.noop)`. Add only the
-plugin pairs whose tabs you register.
+plugin pairs whose tabs you register. To leave the `-noop` halves out, see "Without the no-op
+halves" in step 4.
 
 ```toml
 # gradle/libs.versions.toml
@@ -159,6 +160,19 @@ Add every tab before `build()`: after `start()`, `addTab()` throws. The other ty
     Follow the
     [WorkManager](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/plugins/work.md) page of the docs.
 
+**Without the no-op halves.** The `src/main` of this step names no Lustro type, so the app can
+also leave out the `-noop` artifacts: add only the `debugImplementation` lines, and write the
+`src/release` file without Lustro, with functions that do nothing, such as
+`fun networkInterceptor(): Interceptor = Interceptor { chain -> chain.proceed(chain.request()) }`
+and `fun webSocketFactory(client: OkHttpClient): WebSocket.Factory = client`. The release build then
+has no Lustro class, and it fails to compile a Lustro call or a `DebugTab` in `src/main`, so it
+needs no lint check. The app must then declare OkHttp itself, which the `-noop` artifacts brought,
+and add each library module that depends on `lustro-api` with `debugImplementation`. Keep the
+no-op halves when code in `src/main` must name a Lustro type, such as a dependency injection module
+that provides `Lustro`. See
+[Release safety](https://raw.githubusercontent.com/Twinsen81/Lustro/main/docs/concepts/release-safety.md),
+"Without the no-op halves".
+
 ## 5. Check the integration
 
 A build that compiles does not show that capture works. Run each check, and fix what fails. With
@@ -167,7 +181,7 @@ product flavors, use the names of one variant, such as `assembleFreeDebug` and
 
 1. `./gradlew :app:assembleDebug :app:assembleRelease`.
 2. `./gradlew -q :app:dependencies --configuration releaseRuntimeClasspath | grep -E 'twinsen81|nanohttpd'`
-   lists only `lustro-api` and the `-noop` artifacts.
+   lists only `lustro-api` and the `-noop` artifacts, or nothing without the no-op halves.
 3. Install the debug build and start the app: `lustro meta` lists the tabs. If it cannot connect,
    see "Connect" in [SKILL.md](../SKILL.md).
 4. Make the app send a request: `lustro net list --last 5` shows it. If not, the interceptor is on
@@ -176,6 +190,7 @@ product flavors, use the names of one variant, such as `assembleFreeDebug` and
    `lustro api GET sqlite/databases` (no `error`), and `lustro api GET work/items | jq -c .state`
    (`"listeners":"installed"`).
 6. If you wrote a `DebugTab`, it is in `src/debug`, and `./gradlew :app:lintRelease` reports no
-   `LustroDebugUsageInRelease`.
+   `LustroDebugUsageInRelease`. Without the no-op halves, step 1 checks this: the release build
+   does not compile a `DebugTab` in `src/main`.
 
 Report what you checked, and the result of each step.
