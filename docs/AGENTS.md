@@ -96,7 +96,9 @@ with `field: "search"`), the exit status is 2, as for a bad flag. A PATH without
 under `/api/v1/`. `--param KEY=VALUE` adds a query parameter, `--body JSON` or `--input FILE` (`-`
 for stdin) sends a JSON body. A parameter that the route does not declare gets a warning on stderr,
 such as `warning: unknown query parameter "uniqueName"` (see [Unknown query
-parameters](#unknown-query-parameters)), from every command. `lustro schema <tabId>` prints the tab's OpenAPI document, which
+parameters](#unknown-query-parameters)), from every command. An app older than protocol 1.15
+sends no such warning, so `lustro api` with query parameters to that app prints a note on stderr
+that says so: check the names in the tab's OpenAPI document. `lustro schema <tabId>` prints the tab's OpenAPI document, which
 describes its routes.
 
 Each row of `net list` starts with a short transaction id: the first 8 characters of the id, or more
@@ -157,6 +159,20 @@ can be another app than yours. `lustro --version` prints the wire protocol that 
 such as `lustro 0.1.0 (protocol 1.16)`. When the app's `protocolVersion` is newer, `lustro ready`
 and `lustro meta` print a warning on stderr: update the CLI, or it lacks what the newer protocol
 adds.
+
+An app on an older protocol ignores a request field or a query parameter that its protocol does
+not have, and answers `200`. So a command with one of these options reads `protocolVersion` from
+`_meta` first, and when the app is older, refuses the command before it sends anything, with exit
+status 1 and `error: protocol_too_old: --failure needs wire protocol 1.12, and the app uses 1.11,
+which ignores it`: `send --sender` (1.7), `--regex` of `net list`, `net poll`, `net wait`, and
+`net ws events` (1.8), `mock add --failure` (1.12), and `mock sync` of a file with a rule that has
+`failure` (1.12). The MCP tools refuse `regex` of `list_requests` and `failure` of
+`add_mock_rule`, and `from_ms` and `to_ms` of `read_logs` when the app's Logs tab, in
+`tabs[].version` of `_meta`, is older than 1.1. Update Lustro in the app, or leave out the option.
+Other commands send no extra request, and work with an older app. `mock sync` rejects two rules
+with the same `id` itself, with exit status 2: an app before 1.11 keeps the first and loses the
+other. Before 1.16, `mock toggle` and `mock delete` answer `200` for an id that no rule has, and
+`net throttle` takes any delay, so check the result with `mock list` or `net state`.
 
 ### Keep the output small
 
@@ -277,7 +293,11 @@ in its annotations (`readOnlyHint`, and `destructiveHint` for a tool that change
 the first words of its description. A tool that fails, for example because the app is not in the
 foreground, returns the CLI's error message with `isError: true`. A warning from the app, such as
 `warning: unknown query parameter "uniqueName"` for a `call_api` with a parameter that the route
-does not declare, is a text block of its own after the output.
+does not declare, is a text block of its own after the output, and so is the note for a `call_api`
+with query parameters to an app older than protocol 1.15. `regex` of `list_requests` and `failure`
+of `add_mock_rule` against an app whose protocol is older than the one that added them (1.8 and
+1.12), and `from_ms` and `to_ms` of `read_logs` against a Logs tab older than 1.1, are a tool error,
+and the tool changes nothing.
 
 The server takes the global flags: `lustro mcp --device SERIAL` selects the device for every call,
 as `ANDROID_SERIAL` in the server's environment does. It serves the protocol versions from

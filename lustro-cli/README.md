@@ -47,6 +47,46 @@ version can differ in what they do: compare the protocol. When an app's protocol
 `protocolVersion` in `GET /api/v1/_meta`, is newer, `lustro ready` and `lustro
 meta` print a warning on stderr: update the CLI.
 
+### An app on an older protocol
+
+An app can stay on an older Lustro release, and so on an older protocol, and most
+commands work with it. But an older app ignores a request field or a query
+parameter that its protocol does not have, and answers `200`, so a command with
+such an option would succeed with a wrong result: a mock rule that answers instead
+of failing, or a text search in place of a regex. So when a command uses one of
+these options, the CLI first reads `protocolVersion` from `_meta`, and refuses the
+command when the app is older, before it sends anything, with exit status 1:
+
+| Option | Command | Protocol |
+| --- | --- | --- |
+| `--sender` | `send` | 1.7 |
+| `--regex` | `net list`, `net poll`, `net wait`, `net ws events` | 1.8 |
+| `--failure` | `mock add` | 1.12 |
+| `failure` in a rule of the file | `mock sync` | 1.12 |
+
+```
+error: protocol_too_old: --failure needs wire protocol 1.12, and the app uses 1.11, which ignores it
+  hint: update Lustro in the app, or leave out --failure
+```
+
+The MCP tools refuse `regex` of `list_requests` and `failure` of `add_mock_rule`
+in the same way. A command without such an option sends no extra request. A
+command for a route that an older app does not have, such as `net ws list` before
+1.3, gets a `404` from the app. `lustro api` does not know the route, so it
+refuses nothing; see [Any route](#any-route).
+
+The MCP tool `read_logs` refuses `from_ms` and `to_ms` in the same way when the
+app's Logs tab is older than 1.1, the version in `tabs[].version` of `_meta`,
+because a Logs tab 1.0 returns the whole log. An app that gives the tab its
+`protocolVersion` there is from before the tabs had versions of their own, and
+its Logs tab is 1.0. `mock sync` rejects two rules with
+the same `id` itself, with exit status 2, because an app before protocol 1.11
+keeps the first of them and loses the other. Some values that a newer app
+rejects, an older app accepts without an error: before 1.16, `mock toggle` and
+`mock delete` answer `200` for an id that no rule has, and change nothing, and
+`net throttle` takes a delay over 600000 ms and sets 0 for a negative one. Check
+the result with `mock list` or `net state`.
+
 ## Endpoint and token discovery
 
 The CLI resolves the endpoint+token in this order (first hit wins, per field):
@@ -338,7 +378,10 @@ lustro api POST network/rules/_/sync --input rules.json     # --input - reads st
 query parameter that it does not know, so the app names each one that the tab's
 OpenAPI document does not declare for the route in a `Lustro-Warning` response
 header, and every command prints it on stderr, once, such as
-`warning: unknown query parameter "uniqueName"`. An error
+`warning: unknown query parameter "uniqueName"`. An app older than protocol
+1.15 sends no such header, so for a request with query parameters to that app,
+`lustro api` prints a note on stderr that says so; `lustro schema <tabId>`
+lists the parameters of each route. An error
 response prints the error from its envelope on stderr, such as
 `error: 404 not_found: ...`, and exits 1; nothing goes to stdout. A search
 that the app rejects (a `400` with `field: "search"`) exits 2, as a bad flag
@@ -383,7 +426,10 @@ Each tool call finds the app as a command does, so the global flags apply to eve
 standard library, one message per line, and serves the protocol versions from `2024-11-05` to
 `2026-07-28`. Only protocol messages go to stdout; its own messages go to stderr. A warning from
 the app, such as `warning: unknown query parameter "uniqueName"` for a `call_api` with a parameter
-that the route does not declare, is a text block of its own after the output of the tool.
+that the route does not declare, is a text block of its own after the output of the tool, and so is
+the note for a `call_api` with query parameters to an app older than protocol 1.15. A tool argument
+that the app's protocol is too old for is a tool error, as for a command (see
+[An app on an older protocol](#an-app-on-an-older-protocol)).
 
 ## Contract tests
 

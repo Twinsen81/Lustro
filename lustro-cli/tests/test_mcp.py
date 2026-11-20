@@ -311,6 +311,8 @@ class _Recorder(BaseHTTPRequestHandler):
     """Records each request, and answers it like the app."""
 
     requests = []
+    # The protocolVersion that _meta answers, when not the one of the golden file.
+    protocol = None
 
     def log_message(self, *args):  # silence
         pass
@@ -356,7 +358,8 @@ class _Recorder(BaseHTTPRequestHandler):
         elif route == ("GET", "/api/v1/logs/text"):
             self._send(200, LOG_TEXT.encode("utf-8"), "text/plain; charset=utf-8")
         elif route == ("GET", "/api/v1/_meta"):
-            self._send(200, wire.load_golden("meta.json"))
+            meta = wire.load_golden("meta.json")
+            self._send(200, dict(meta, protocolVersion=self.protocol or meta["protocolVersion"]))
         elif route == ("GET", "/api/v1/network/_schema"):
             self._send(200, {"openapi": "3.1.0", "info": {"title": "Network"}})
         elif route == ("GET", "/api/v1/screen/image"):
@@ -364,6 +367,8 @@ class _Recorder(BaseHTTPRequestHandler):
         elif route == ("GET", "/api/v1/work/items"):
             names = [name for name, _ in urllib.parse.parse_qsl(url.query) if name != "name"]
             warning = ", ".join('unknown query parameter "{}"'.format(name) for name in names)
+            if self.protocol and cli._version_tuple(self.protocol) < (1, 15):
+                warning = None
             self._send(400 if "fail" in names else 200, {"items": []} if "fail" not in names else
                        {"error": "bad_request", "message": "no"}, warning=warning)
         elif route == ("GET", "/api/v1/big"):
@@ -376,8 +381,9 @@ class _Recorder(BaseHTTPRequestHandler):
 
 
 @pytest.fixture
-def app():
+def app(monkeypatch):
     _Recorder.requests = []
+    monkeypatch.setattr(_Recorder, "protocol", None)
     httpd = ThreadingHTTPServer(("127.0.0.1", 0), _Recorder)
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
@@ -404,7 +410,11 @@ def _text(result):
 
 def test_list_requests_reads_the_transactions_and_prints_the_state_and_rows(app):
     text = _text(app("list_requests", search="orders", regex=True, method="get"))
-    assert app.requests == [("GET", "/api/v1/network/transactions", [("search", "orders"), ("regex", "true")], None)]
+    assert app.requests == [
+        # regex reads the app's protocol first.
+        ("GET", "/api/v1/_meta", [], None),
+        ("GET", "/api/v1/network/transactions", [("search", "orders"), ("regex", "true")], None),
+    ]
     lines = text.splitlines()
     assert lines[0] == "state: paused=false overwriteMode=false throttleDelayMs=0 enabledMockRules=1"
     assert len(lines) == 2 and lines[1].startswith(FULL_ID[:8]) and " GET " in lines[1]
@@ -474,7 +484,7 @@ def test_add_mock_rule_posts_the_rule_with_the_wire_names(app):
 def test_add_mock_rule_posts_a_failure(app):
     _text(app("add_mock_rule", url_pattern="/v1/orders", failure="unknownHost"))
     rule = {"urlPattern": "/v1/orders", "failure": "unknownHost"}
-    assert app.requests == [("POST", "/api/v1/network/rules", [], rule)]
+    assert app.requests == [("GET", "/api/v1/_meta", [], None), ("POST", "/api/v1/network/rules", [], rule)]
 
 
 def test_delete_mock_rule_posts_the_id(app):
@@ -490,6 +500,8 @@ def test_set_throttle_posts_the_delay(app):
 def test_read_logs_reads_the_text_route_with_the_wire_names_of_the_filters(app):
     text = _text(app("read_logs", level="W", tag="^Sync$", text="slow", message_regex="s.ow", from_ms=1, to_ms=2))
     assert app.requests == [
+        # from_ms and to_ms read the version of the app's Logs tab first.
+        ("GET", "/api/v1/_meta", [], None),
         (
             "GET",
             "/api/v1/logs/text",
@@ -532,6 +544,8 @@ def test_call_api_sends_any_request_and_returns_the_body(app):
     meta = json.loads(_text(app("call_api", method="GET", path="/api/v1/_meta", params={"a": ["1", 2], "b": True})))
     assert app.requests == [
         ("POST", "/api/v1/network/throttle", [], {"delayMs": 5}),
+        # Query parameters read the app's protocol first.
+        ("GET", "/api/v1/_meta", [], None),
         ("GET", "/api/v1/_meta", [("a", "1"), ("a", "2"), ("b", "true")], None),
     ]
     assert meta["protocolVersion"]
@@ -559,6 +573,22 @@ def test_get_schema_reads_meta_without_a_tab_and_the_schema_with_one(app):
         ("GET", "/api/v1/_meta"),
         ("GET", "/api/v1/network/_schema"),
     ]
+
+
+def test_the_adb_note_is_only_for_an_app_that_the_server_did_not_reach(app, monkeypatch):
+    monkeypatch.setattr(mcp.shutil, "which", lambda name, path=None: None)
+    note = "note: adb is not on the PATH of the MCP server"
+    answered = app("call_api", method="GET", path="network/nope")
+    assert answered["isError"] is True
+    assert note not in answered["content"][0]["text"]
+    closed = ThreadingHTTPServer(("127.0.0.1", 0), _Recorder)
+    port = closed.server_address[1]
+    closed.server_close()
+    (reply,) = _serve(
+        [_request("tools/call", {"name": "list_mock_rules"})], _args(host="127.0.0.1", port=port, token=TOKEN)
+    )
+    assert reply["result"]["isError"] is True
+    assert note in reply["result"]["content"][0]["text"]
 
 
 def test_a_tool_without_a_token_or_a_device_says_how_to_give_one(monkeypatch):
@@ -676,3 +706,22 @@ def test_an_error_result_keeps_its_warning_and_the_next_call_starts_without_it(a
     assert result["content"][1]["text"] == 'warning: unknown query parameter "fail"'
     assert len(app("call_api", method="GET", path="work/items")["content"]) == 1
 
+
+
+def test_a_call_with_parameters_to_an_app_before_1_15_gets_a_note(app):
+    _Recorder.protocol = "1.14"
+    result = app("call_api", method="GET", path="work/items", params={"uniqueName": "X"})
+    assert result["isError"] is False
+    assert [block["text"] for block in result["content"]] == [
+        '{"items":[]}',
+        "note: the app uses wire protocol 1.14, so it does not warn about a query parameter that the route does "
+        "not declare (from 1.15), and the route ignores it: get_schema with the tab lists the parameters of each "
+        "route",
+    ]
+    assert [request[:2] for request in app.requests] == [("GET", "/api/v1/_meta"), ("GET", "/api/v1/work/items")]
+
+
+def test_a_call_without_parameters_does_not_read_meta(app):
+    _Recorder.protocol = "1.14"
+    assert len(app("call_api", method="GET", path="work/items")["content"]) == 1
+    assert [request[:2] for request in app.requests] == [("GET", "/api/v1/work/items")]
