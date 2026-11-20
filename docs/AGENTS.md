@@ -908,7 +908,8 @@ because a longer read would make the app's writes fail with `SQLITE_BUSY`.
 
 **`POST exec`, `edit`, and `delete` write through the app's handle,** in a transaction of their
 own, and only to a database that the app registers with `writable = true`: any other answers
-`403` with `code: "read_only"` and `field: "db"`, whatever the rest of the body is. `exec` takes
+`403` with `code: "read_only"` and `field: "db"`, before the other values of the body are checked: only a
+required field that is missing, or a field that is not of its JSON type, is a `400` first. `exec` takes
 a statement that returns no rows: one that returns rows, such as a `SELECT` or a write with
 `RETURNING`, is a `400` with `code: "statement_refused"`, and does not run; read it with `query`. `edit` and `delete` name one row by
 `rowid` (as `GET rows` gives it) or by `key`, an object with each primary key column of the table
