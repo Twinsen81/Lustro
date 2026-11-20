@@ -766,6 +766,11 @@ commands: use `lustro api`.
 | Remove a key | `POST delete` | Body `{ store?, file, key }`. Returns `{ status: "ok", deleted }`, `false` when the key was not there. |
 | Empty a file | `POST clear` | Body `{ store?, file, confirm: true }`; without `confirm: true`, a `400` with `field: "confirm"`. Returns `{ status: "ok", removed }`. |
 
+**Bodies.** The `POST` routes take one JSON object in strict JSON (RFC 8259). Unquoted names,
+single quotes, comments, and text after the object are a `400` with `field: "body"`. A missing or
+wrong field is a `400` with the field's name in `field`, and this check comes before the checks of
+the file: a body without `key` for a read-only file gets a `400` with `field: "key"`, not a `403`.
+
 **Stores.** A SharedPreferences file and a Preferences DataStore can have the same name, so
 `store` picks the kind: `shared_prefs`, the default when a request leaves it out, or
 `preferences_datastore`. Any other value is a `400` with `field: "store"`. The tab reads and

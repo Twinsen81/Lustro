@@ -5,6 +5,12 @@ them.
 
 ## The browser cannot connect
 
+Start with `lustro ready --package <your.app.id>`. It waits until the server answers and prints
+its endpoint, or it names the cause and exits with its code: no device (3), the app is not
+installed (4), the build has no Lustro runtime (5), or the app is not running, not in the
+foreground, or its port does not answer (6). [Exit codes](../AGENTS.md#exit-codes) says what to do
+for each. When it names no cause that helps, check these steps by hand:
+
 1. Keep the app in the **foreground**. The server listens only while the app is in the
     foreground, and closes its socket when the app goes to the background.
 2. Forward the port: `adb forward tcp:8080 tcp:8080`. `lustro open` does it for you.

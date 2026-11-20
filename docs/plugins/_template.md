@@ -85,7 +85,9 @@ app in docs/images/<name>-tab.png. When the tab has no console view, say so in o
 <!--
 Each route under /api/v1/<name>/ in one or two sentences: its parameters, its envelope, and what
 it changes. Link the tab's section of docs/AGENTS.md for the details, and the tab's OpenAPI
-document, lustro-<name>/src/main/assets/lustro/<name>.openapi.json.
+document: lustro-<name>/openapi/<name>.openapi.json, the committed copy, for a tab that declares
+its routes in routes(), or lustro-<name>/src/main/assets/lustro/<name>.openapi.json for a tab with
+a hand-written document.
 -->
 
 ## CLI examples
