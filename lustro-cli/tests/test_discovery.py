@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from fake_apk import APP_ENTRIES, RUNTIME_ENTRIES, apk_bytes, tail_of
 
 from lustro_cli import discovery, exitcodes
 from lustro_cli.discovery import DiscoveryError, Endpoint, parse_ready_line, resolve
@@ -189,7 +190,8 @@ def _fake_adb_run(monkeypatch, outputs, state=(0, "device\n")):
     ``adb get-state`` answers ``state``, its exit status and output: a device. A
     command with an exit status that is not in ``outputs`` exits 1 with no output,
     as ``pm path`` does for a package that is not installed. An output that is a
-    tuple is the exit status and the output."""
+    tuple is the exit status and the output. ``tail -c`` through ``adb exec-out``
+    reads the bytes in ``outputs`` at the path of the file."""
     calls = []
 
     def run(cmd, timeout=10.0):
@@ -206,7 +208,12 @@ def _fake_adb_run(monkeypatch, outputs, state=(0, "device\n")):
             return out
         return (1, "") if out is None else (0, out)
 
+    def run_bytes(cmd, timeout=10.0):
+        calls.append(cmd)
+        return tail_of(outputs, cmd)
+
     monkeypatch.setattr(discovery, "_run", run)
+    monkeypatch.setattr(discovery, "_run_bytes", run_bytes)
     monkeypatch.setattr(discovery, "_run_status", run_status)
     return calls
 
@@ -344,11 +351,97 @@ def test_resolve_takes_the_port_from_the_prefs_for_a_token_from_the_environment(
 
 # ── the cause, when there is no token ─────────────────────────────────────────
 
-_PM_PATH = "package:/data/app/~~Xy==/com.example.app-Ab==/base.apk\r\n"
-_GREP = "adb shell grep -c -F assets/lustro/ '/data/app/~~Xy==/com.example.app-Ab==/base.apk' || true"
+_APK = "/data/app/~~Xy==/com.example.app-Ab==/base.apk"
+_PM_PATH = "package:{}\r\n".format(_APK)
+_TAIL = "adb exec-out tail -c 65557 '{}'".format(_APK)
+_WITH_RUNTIME = apk_bytes(APP_ENTRIES + RUNTIME_ENTRIES)
+_NO_RUNTIME = apk_bytes(APP_ENTRIES)
 _PIDOF = "adb shell pidof com.example.app || true"
 _DUMPSYS = "adb shell dumpsys activity activities | grep ResumedActivity"
 _RESUMED = "  topResumedActivity=ActivityRecord{{1a2b u0 {}/.MainActivity t12}}\n"
+
+
+class _Tail:
+    """``read_tail`` for :func:`discovery.zip_entry_names`: the end of ``data``, with the
+    size of each read."""
+
+    def __init__(self, data):
+        self.data = data
+        self.sizes = []
+
+    def __call__(self, size):
+        self.sizes.append(size)
+        return self.data[-size:]
+
+
+@pytest.mark.parametrize("comment", [b"", b"a comment", b"PK\x05\x06 in a comment"])
+def test_the_entry_names_come_from_the_central_directory_in_one_read(comment):
+    read = _Tail(apk_bytes(APP_ENTRIES + RUNTIME_ENTRIES, comment=comment))
+    assert discovery.zip_entry_names(read) == APP_ENTRIES + RUNTIME_ENTRIES
+    assert read.sizes == [65557]
+
+
+def test_a_central_directory_larger_than_64_kb_takes_a_second_read():
+    names = APP_ENTRIES + ["res/drawable/icon_{:05d}_with_a_long_name.png".format(n) for n in range(2000)]
+    data = apk_bytes(names + RUNTIME_ENTRIES)
+    read = _Tail(data)
+    assert discovery.zip_entry_names(read) == names + RUNTIME_ENTRIES
+    eocd = len(data) - 22
+    size = int.from_bytes(data[eocd + 12 : eocd + 16], "little")
+    assert size > 65557
+    assert read.sizes == [65557, size + 22]
+
+
+def test_a_file_smaller_than_the_first_read_is_read_whole():
+    data = apk_bytes(RUNTIME_ENTRIES)
+    assert len(data) < 65557
+    assert discovery.zip_entry_names(_Tail(data)) == RUNTIME_ENTRIES
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        b"",
+        b"tail: base.apk: Permission denied\n",
+        apk_bytes(APP_ENTRIES)[:-1],  # the EOCD is not at the end
+    ],
+)
+def test_what_is_not_a_zip_gives_no_names(data):
+    assert discovery.zip_entry_names(_Tail(data)) is None
+
+
+def test_a_central_directory_that_is_not_where_the_eocd_says_gives_no_names():
+    data = bytearray(apk_bytes(APP_ENTRIES))
+    eocd = len(data) - 22
+    size = int.from_bytes(data[eocd + 12 : eocd + 16], "little")
+    data[eocd + 12 : eocd + 16] = (size - 1).to_bytes(4, "little")
+    assert discovery.zip_entry_names(_Tail(bytes(data))) is None
+
+
+@pytest.mark.parametrize("size", [0xFFFFFFFF, 64 * 1024 * 1024])
+def test_a_central_directory_of_zip64_or_of_a_damaged_eocd_is_not_read(size):
+    data = bytearray(apk_bytes(APP_ENTRIES))
+    eocd = len(data) - 22
+    data[eocd + 12 : eocd + 16] = size.to_bytes(4, "little")
+    read = _Tail(bytes(data))
+    assert discovery.zip_entry_names(read) is None
+    assert read.sizes == [65557]
+
+
+def test_a_second_read_that_ends_early_gives_no_names():
+    names = ["res/raw/file_{:05d}_with_a_long_name.bin".format(n) for n in range(2000)]
+    data = apk_bytes(names)
+    assert discovery.zip_entry_names(lambda size: data[-size:][1:] if size > 65557 else data[-size:]) is None
+
+
+def test_the_runtime_check_reads_the_end_of_the_apk_on_the_selected_device(monkeypatch):
+    calls = _fake_adb_run(monkeypatch, {_APK: _WITH_RUNTIME})
+    assert discovery.apk_has_runtime(_APK, "emulator-5554") is True
+    assert calls == [["adb", "-s", "emulator-5554", "exec-out", "tail -c 65557 '{}'".format(_APK)]]
+    _fake_adb_run(monkeypatch, {_APK: _NO_RUNTIME})
+    assert discovery.apk_has_runtime(_APK) is False
+    _fake_adb_run(monkeypatch, {})
+    assert discovery.apk_has_runtime(_APK) is None
 
 
 def _no_token(monkeypatch, outputs, state=(0, "device\n"), **kwargs):
@@ -419,7 +512,7 @@ def test_a_package_query_that_fails_is_not_a_package_that_is_not_installed(monke
     error, calls = _no_token(monkeypatch, {"adb shell pm path com.example.app": answer}, package="com.example.app")
     assert error.exit_code == exitcodes.NOT_REACHABLE
     assert "not installed" not in str(error)
-    assert not any("grep" in " ".join(cmd) for cmd in calls)
+    assert not any("exec-out" in cmd for cmd in calls)
 
 
 def test_an_app_without_a_base_apk_gets_no_runtime_check(monkeypatch):
@@ -429,12 +522,12 @@ def test_an_app_without_a_base_apk_gets_no_runtime_check(monkeypatch):
     }
     error, calls = _no_token(monkeypatch, outputs, package="com.example.app")
     assert str(error).startswith("com.example.app is not running")
-    assert not any("grep" in " ".join(cmd) for cmd in calls)
+    assert not any("exec-out" in cmd for cmd in calls)
 
 
 def test_a_known_app_without_the_runtime_is_a_build_without_lustro(monkeypatch):
     error, calls = _no_token(
-        monkeypatch, {"adb shell pm path com.example.app": _PM_PATH, _GREP: "0\n"}, package="com.example.app"
+        monkeypatch, {"adb shell pm path com.example.app": _PM_PATH, _APK: _NO_RUNTIME}, package="com.example.app"
     )
     message = str(error)
     assert error.exit_code == exitcodes.NO_RUNTIME
@@ -444,13 +537,13 @@ def test_a_known_app_without_the_runtime_is_a_build_without_lustro(monkeypatch):
     assert "from before the app added Lustro" in message
     assert "Install a debug build" in message
     assert "logcat" not in message
-    assert " ".join(calls[-1]) == _GREP
+    assert " ".join(calls[-1]) == _TAIL
 
 
 def test_a_known_app_that_is_not_running(monkeypatch):
     error, _ = _no_token(
         monkeypatch,
-        {"adb shell pm path com.example.app": _PM_PATH, _GREP: "4\n", _PIDOF: ""},
+        {"adb shell pm path com.example.app": _PM_PATH, _APK: _WITH_RUNTIME, _PIDOF: ""},
         package="com.example.app",
     )
     assert error.exit_code == exitcodes.NOT_REACHABLE
@@ -462,7 +555,7 @@ def test_a_known_app_in_the_background(monkeypatch):
         monkeypatch,
         {
             "adb shell pm path com.example.app": _PM_PATH,
-            _GREP: "4\n",
+            _APK: _WITH_RUNTIME,
             _PIDOF: "4242\n",
             _DUMPSYS: _RESUMED.format("com.android.launcher3"),
         },
@@ -477,7 +570,7 @@ def test_a_known_app_in_the_foreground_gets_the_message_for_a_missing_ready_line
         monkeypatch,
         {
             "adb shell pm path com.example.app": _PM_PATH,
-            _GREP: "4\n",
+            _APK: _WITH_RUNTIME,
             _PIDOF: "4242\n",
             _DUMPSYS: _RESUMED.format("com.example.app"),
         },
@@ -491,7 +584,7 @@ def test_a_known_app_in_the_foreground_gets_the_message_for_a_missing_ready_line
 def test_the_app_in_the_foreground_is_checked_and_named(monkeypatch):
     error, _ = _no_token(
         monkeypatch,
-        {_DUMPSYS: _RESUMED.format("com.example.app"), "adb shell pm path com.example.app": _PM_PATH, _GREP: "0"},
+        {_DUMPSYS: _RESUMED.format("com.example.app"), "adb shell pm path com.example.app": _PM_PATH, _APK: _NO_RUNTIME},
     )
     message = str(error)
     assert message.startswith("the app in the foreground, com.example.app, does not contain the Lustro runtime")
@@ -504,8 +597,8 @@ def test_the_app_in_the_foreground_is_checked_and_named(monkeypatch):
 @pytest.mark.parametrize(
     "outputs",
     [
-        {"adb shell pm path com.example.app": _PM_PATH},  # grep failed
-        {"adb shell pm path com.example.app": _PM_PATH, _GREP: "grep: Permission denied\n"},
+        {"adb shell pm path com.example.app": _PM_PATH},  # tail failed
+        {"adb shell pm path com.example.app": _PM_PATH, _APK: b"tail: base.apk: Permission denied\n"},
     ],
 )
 def test_when_adb_can_not_tell_the_message_is_the_one_for_a_stopped_server(monkeypatch, outputs):
@@ -522,7 +615,7 @@ def test_without_a_known_app_there_is_no_check(monkeypatch):
 
 
 def test_without_the_app_checks_resolve_makes_no_adb_call_for_the_cause(monkeypatch):
-    calls = _fake_adb_run(monkeypatch, {"adb shell pm path com.example.app": _PM_PATH, _GREP: "0\n"})
+    calls = _fake_adb_run(monkeypatch, {"adb shell pm path com.example.app": _PM_PATH, _APK: _NO_RUNTIME})
     with pytest.raises(DiscoveryError) as excinfo:
         resolve(env={}, package="com.example.app", check_app=False)
     assert excinfo.value.exit_code == exitcodes.NOT_REACHABLE
@@ -538,5 +631,5 @@ def test_diagnose_without_adb_required_ignores_a_computer_without_adb(monkeypatc
 def test_a_found_token_needs_no_check(monkeypatch):
     calls = _fake_adb_run(monkeypatch, {"adb logcat -d -s LustroToken": "Lustro ready endpoint=http://127.0.0.1:8080 token=t"})
     assert resolve(env={}, package="com.example.app").token == "t"
-    assert not any("pm" in cmd or "grep" in " ".join(cmd) for cmd in calls)
+    assert not any("pm" in cmd or "exec-out" in cmd for cmd in calls)
 

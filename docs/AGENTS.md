@@ -124,7 +124,15 @@ answers, and prints the endpoint that the CLI reaches it at. A ready line from a
 the app names a token and a port that may not answer, so the CLI does not trust the first line
 that it finds. When the time is over, it prints the cause and exits with its code (see [Exit
 codes](#exit-codes)). A `401` or another `4xx` other than `429` ends the wait at once with exit 1. Pass `--package`: without it, the CLI checks only the app in the
-foreground, which can be the launcher.
+foreground, which can be the launcher. A `404` for `_meta` is not an exception: Lustro always has
+that route, so the `404` is from another server on the port, such as the debug server of another
+app on the port that a stopped app's prefs keep. `ready` waits, and at the timeout prints the cause
+and says that another server answers on the port.
+
+**The token in a script.** `lustro ready` does not print the token. A script that needs it, for the
+console URL or a `curl` call, runs `lustro open --print-only --json`: it prints `url`, `token`,
+`host`, and `port`, and opens no browser. It forwards the port as `lustro open` does; add
+`--no-forward` when the script forwards it itself.
 
 `lustro open` forwards a local port to the app's port on the device: 8080, or a free local port
 that adb chooses when another process or a forward to another device holds 8080. `--local-port N`
@@ -137,7 +145,8 @@ With more than one device connected, pass `--device <serial>` (or set `ANDROID_S
 command. The CLI then connects only through a forward to that device, so agents that each drive
 the app on their own emulator at the same time do not reach each other's app. Don't pass `--port`
 for a device: `--port N` connects to local port N as it is, which can be a forward to another
-device.
+device. A script that makes its own forward and passes its local port with `--port` also passes
+`--device` or `--package`: with either one, a connection that fails gets the cause from adb.
 
 ### Exit codes
 
@@ -350,12 +359,16 @@ a `401` to a token from the log means read the prefs.
 
 **A no-op build has no ready line.** A build with the `-noop` artifacts, such as a release-like
 build with the package of the debug build, has no server and logs nothing. Its APK has no entry
-under `assets/lustro/`, which a build with the Lustro runtime always has. `grep` finds the entry
-name, because a zip stores it as plain text; API 28 emulator images have no `unzip`:
+under `assets/lustro/`, which a build with the Lustro runtime always has. API 28 emulator images
+have no `unzip`, and the `grep` of API 30 to 33 does not find the entry names in the binary file,
+so list the entries on the computer:
 
 ```bash
-adb shell grep -c -F assets/lustro/ "$(adb shell pm path <package> | grep base.apk | cut -d: -f2 | tr -d '\r')"   # 0: a no-op build
+adb pull "$(adb shell pm path <package> | grep base.apk | cut -d: -f2 | tr -d '\r')" app.apk
+unzip -l app.apk | grep -c ' assets/lustro/'   # 0: a no-op build
 ```
+
+The CLI reads only the central directory at the end of the APK, so it does not copy the whole file.
 
 A build from before the app added Lustro has no such entry either. When the CLI finds no token,
 or the app's port does not answer, it checks, with adb, that there is a device, that the app of

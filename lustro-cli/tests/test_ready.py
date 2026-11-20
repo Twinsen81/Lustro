@@ -10,6 +10,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
+from fake_apk import APP_ENTRIES, RUNTIME_ENTRIES, apk_bytes, tail_of
 
 import lustro_cli
 from lustro_cli import cli, discovery, exitcodes, mcp
@@ -19,7 +20,7 @@ PACKAGE = "com.example.app"
 LOGCAT = "adb logcat -d -s LustroToken"
 PM_PATH = "adb shell pm path " + PACKAGE
 APK = "/data/app/~~Xy==/com.example.app-Ab==/base.apk"
-GREP = "adb shell grep -c -F assets/lustro/ '{}' || true".format(APK)
+TAIL = "adb exec-out tail -c 65557 '{}'".format(APK)
 PIDOF = "adb shell pidof {} || true".format(PACKAGE)
 DUMPSYS = "adb shell dumpsys activity activities | grep ResumedActivity"
 
@@ -32,10 +33,13 @@ def _ready_line(port, token=TOKEN):
     return "I LustroToken: Lustro ready endpoint=http://127.0.0.1:{} token={}\n".format(port, token)
 
 
+WITH_RUNTIME = apk_bytes(APP_ENTRIES + RUNTIME_ENTRIES)
+NO_RUNTIME = apk_bytes(APP_ENTRIES)
+
 # adb's answers for an installed debug build that runs in the foreground.
 HEALTHY = {
     PM_PATH: "package:{}\n".format(APK),
-    GREP: "3\n",
+    APK: WITH_RUNTIME,
     PIDOF: "4242\n",
     DUMPSYS: _resumed(PACKAGE),
 }
@@ -44,13 +48,15 @@ HEALTHY = {
 class FakeAdb:
     """Answers each adb command from ``outputs``, keyed by its arguments. A value can
     be a function of the number of earlier calls of the same command. ``adb get-state``
-    answers ``state``, its exit status and output."""
+    answers ``state``, its exit status and output. ``tail -c`` through ``adb exec-out``
+    reads the bytes in ``outputs`` at the path of the file."""
 
     def __init__(self, monkeypatch, outputs, state=(0, "device\n")):
         self.outputs = outputs
         self.state = state
         self.calls = []
         monkeypatch.setattr(discovery, "_run", self.run)
+        monkeypatch.setattr(discovery, "_run_bytes", self.run_bytes)
         monkeypatch.setattr(discovery, "_run_status", self.run_status)
 
     def run(self, cmd, timeout=10.0):
@@ -59,6 +65,10 @@ class FakeAdb:
         self.calls.append(key)
         answer = self.outputs.get(key)
         return answer(earlier) if callable(answer) else answer
+
+    def run_bytes(self, cmd, timeout=10.0):
+        self.calls.append(" ".join(cmd))
+        return tail_of(self.outputs, cmd)
 
     def run_status(self, cmd, timeout=10.0):
         key = " ".join(cmd)
@@ -111,6 +121,37 @@ def server():
         thread.join(timeout=5)
 
 
+class _OtherServerHandler(BaseHTTPRequestHandler):
+    """The debug server of another app: it has no Lustro routes, and its 404 is not
+    Lustro's error envelope."""
+
+    def log_message(self, *args):
+        pass
+
+    def do_GET(self):
+        self.server.requests += 1
+        data = b"Endpoint not found: v1"
+        self.send_response(404)
+        self.send_header("Content-Type", "text/plain")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+
+@pytest.fixture
+def other_server():
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), _OtherServerHandler)
+    httpd.requests = 0
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield httpd
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+        thread.join(timeout=5)
+
+
 @pytest.fixture
 def closed_port():
     """A port on which nothing listens."""
@@ -149,7 +190,7 @@ def test_ready_runs_discovery_again_until_the_app_logs_its_ready_line(server, mo
     assert capsys.readouterr().out == "http://127.0.0.1:{}\n".format(port)
     assert adb.count(LOGCAT) == 4
     # The checks of the cause run only when the time is over.
-    assert adb.count(GREP) == 0
+    assert adb.count(TAIL) == 0
     assert not any(call.endswith("get-state") for call in adb.calls)
 
 
@@ -206,19 +247,19 @@ def test_ready_when_the_app_is_not_installed(monkeypatch, capsys):
 
 
 def test_ready_when_the_build_has_no_lustro_runtime(monkeypatch, capsys):
-    adb = FakeAdb(monkeypatch, dict(HEALTHY, **{GREP: "0\n"}))
+    adb = FakeAdb(monkeypatch, dict(HEALTHY, **{APK: NO_RUNTIME}))
     assert _ready("--package", PACKAGE) == exitcodes.NO_RUNTIME
     cause = _cause(capsys)
     assert cause.startswith("the installed build of {} does not contain the Lustro runtime".format(PACKAGE))
     assert "from before the app added Lustro" in cause
     # One read of the APK, at the end, however many tries there were.
-    assert adb.count(GREP) == 1
+    assert adb.count(TAIL) == 1
     assert adb.count(LOGCAT) > 1
 
 
 def test_ready_for_a_no_op_build_with_a_ready_line_from_an_earlier_debug_build(closed_port, monkeypatch, capsys):
     # The line names a port where nothing listens now: the cause is the build, not the port.
-    FakeAdb(monkeypatch, dict(HEALTHY, **{GREP: "0\n", LOGCAT: _ready_line(closed_port)}))
+    FakeAdb(monkeypatch, dict(HEALTHY, **{APK: NO_RUNTIME, LOGCAT: _ready_line(closed_port)}))
     assert _ready("--package", PACKAGE) == exitcodes.NO_RUNTIME
     assert "does not contain the Lustro runtime" in _cause(capsys)
 
@@ -252,7 +293,69 @@ def test_ready_with_a_port_that_does_not_answer_and_no_adb_checks(closed_port, m
     adb = FakeAdb(monkeypatch, HEALTHY)
     assert _ready("--port", str(closed_port), "--token", TOKEN) == exitcodes.NOT_REACHABLE
     assert _cause(capsys).startswith("connection_failed:")
-    assert not any(call.endswith("get-state") or call in (PM_PATH, GREP, PIDOF) for call in adb.calls)
+    assert not any(call.endswith("get-state") or call in (PM_PATH, TAIL, PIDOF) for call in adb.calls)
+
+
+RUN_AS = "adb shell run-as {} cat shared_prefs/lustro_debug.xml".format(PACKAGE)
+
+
+def _prefs(port):
+    """The app's prefs, with the token and the port of its last bind."""
+    return (
+        '<map><string name="lustro_token">{}</string><string name="lustro_host">127.0.0.1</string>'
+        '<int name="lustro_port" value="{}" /></map>'.format(TOKEN, port)
+    )
+
+
+def _other_server_text(port):
+    return "nother server answers on http://127.0.0.1:{}: it answered 404 to GET /api/v1/_meta, a route that " \
+        "every Lustro server has.\n".format(port)
+
+
+def test_ready_waits_while_another_server_answers_on_the_port_and_prints_the_cause(other_server, monkeypatch, capsys):
+    # The app is stopped, and another app's server listens on the port that its prefs keep.
+    port = other_server.server_address[1]
+    FakeAdb(monkeypatch, dict(HEALTHY, **{PIDOF: "", RUN_AS: _prefs(port)}))
+    started = time.monotonic()
+    assert _ready("--package", PACKAGE) == exitcodes.NOT_REACHABLE
+    assert time.monotonic() - started >= 0.2
+    assert other_server.requests > 1
+    cause = _cause(capsys)
+    assert cause.startswith(PACKAGE + " is not running: start it.")
+    assert cause.endswith(" A" + _other_server_text(port))
+
+
+def test_ready_says_that_another_server_answers_when_adb_finds_no_cause(other_server, monkeypatch, capsys):
+    port = other_server.server_address[1]
+    FakeAdb(monkeypatch, dict(HEALTHY, **{RUN_AS: _prefs(port)}))
+    assert _ready("--package", PACKAGE) == exitcodes.NOT_REACHABLE
+    assert _cause(capsys) == "a" + _other_server_text(port)
+
+
+def test_ready_with_a_port_where_another_server_answers_and_no_adb_checks(other_server, monkeypatch, capsys):
+    adb = FakeAdb(monkeypatch, HEALTHY)
+    port = other_server.server_address[1]
+    assert _ready("--port", str(port), "--token", TOKEN) == exitcodes.NOT_REACHABLE
+    assert _cause(capsys) == "a" + _other_server_text(port)
+    assert not any(call.endswith("get-state") or call in (PM_PATH, TAIL, PIDOF) for call in adb.calls)
+
+
+def test_ready_finds_the_app_that_starts_while_another_server_answers_on_its_old_port(
+    server, other_server, monkeypatch, capsys
+):
+    # The app starts on another port, which its new ready line names.
+    old, new = other_server.server_address[1], server.server_address[1]
+    FakeAdb(monkeypatch, {LOGCAT: lambda earlier: _ready_line(new if earlier >= 2 else old)})
+    assert cli.main(["ready", "--timeout", "5"]) == exitcodes.OK
+    assert capsys.readouterr().out == "http://127.0.0.1:{}\n".format(new)
+    assert other_server.requests == 2
+
+
+def test_ready_with_the_port_of_a_scripts_forward_gets_the_cause_from_adb(closed_port, monkeypatch, capsys):
+    # A script that forwards the app's port itself passes the local port with --port.
+    FakeAdb(monkeypatch, dict(HEALTHY, **{PIDOF: ""}))
+    assert _ready("--package", PACKAGE, "--port", str(closed_port), "--token", TOKEN) == exitcodes.NOT_REACHABLE
+    assert _cause(capsys).startswith(PACKAGE + " is not running: start it.")
 
 
 def test_ready_tries_again_while_the_server_is_busy(server, capsys):
@@ -284,7 +387,7 @@ def test_ready_rejects_a_timeout_that_is_not_positive(capsys):
 
 
 def test_a_command_exits_with_the_code_of_the_cause(monkeypatch, capsys):
-    FakeAdb(monkeypatch, dict(HEALTHY, **{GREP: "0\n"}))
+    FakeAdb(monkeypatch, dict(HEALTHY, **{APK: NO_RUNTIME}))
     assert cli.main(["net", "list", "--package", PACKAGE]) == exitcodes.NO_RUNTIME
     assert capsys.readouterr().err.startswith("error: the installed build of {}".format(PACKAGE))
 
@@ -293,6 +396,28 @@ def test_a_command_whose_connection_fails_gets_the_cause_from_adb(closed_port, m
     FakeAdb(monkeypatch, dict(HEALTHY, **{PIDOF: "", LOGCAT: _ready_line(closed_port)}))
     assert cli.main(["meta", "--package", PACKAGE]) == exitcodes.NOT_REACHABLE
     assert capsys.readouterr().err.startswith("error: {} is not running".format(PACKAGE))
+
+
+def test_a_command_with_the_port_of_a_scripts_forward_gets_the_cause_from_adb(closed_port, monkeypatch, capsys):
+    FakeAdb(monkeypatch, dict(HEALTHY, **{APK: NO_RUNTIME}))
+    argv = ["--package", PACKAGE, "--host", "127.0.0.1", "--port", str(closed_port), "--token", TOKEN, "net", "list"]
+    assert cli.main(argv) == exitcodes.NO_RUNTIME
+    assert capsys.readouterr().err.startswith("error: the installed build of {}".format(PACKAGE))
+
+
+def test_a_command_with_a_port_and_a_device_that_adb_does_not_find(closed_port, monkeypatch, capsys):
+    FakeAdb(monkeypatch, {}, state=(1, "error: device 'emulator-5554' not found\n"))
+    argv = ["--device", "emulator-5554", "--port", str(closed_port), "--token", TOKEN, "meta"]
+    assert cli.main(argv) == exitcodes.NO_DEVICE
+    assert capsys.readouterr().err.startswith("error: no device that adb can use")
+
+
+def test_a_command_with_a_port_is_not_a_usage_error_for_more_than_one_device(closed_port, monkeypatch, capsys):
+    # The command connects to the local port without adb: it needs no device selected.
+    FakeAdb(monkeypatch, {}, state=(1, "error: more than one device/emulator\n"))
+    argv = ["--package", PACKAGE, "--port", str(closed_port), "--token", TOKEN, "meta"]
+    assert cli.main(argv) == exitcodes.NOT_REACHABLE
+    assert capsys.readouterr().err.startswith("error: connection_failed:")
 
 
 def test_an_error_response_exits_1(server, capsys):
