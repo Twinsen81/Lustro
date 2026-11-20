@@ -25,11 +25,16 @@ see [DECISIONS.md](DECISIONS.md).
   `net wait`, and `net ws events` (1.8), and `mock add --failure` and a rule
   with `failure` in the file of `mock sync` (1.12), and for the MCP tools,
   `regex` of `list_requests` (1.8) and `failure` of `add_mock_rule` (1.12). A
-  command or a tool call with one reads `protocolVersion` from `_meta` first,
-  and when the app is older, it stops before it sends anything, with exit
-  status 1 and `error: protocol_too_old: --failure needs wire protocol 1.12,
-  and the app uses 1.11, which ignores it`, and a hint to update Lustro in the
-  app or to leave out the option. A command without such an option sends no
+  plugin tab's routes have a version of their own, in `tabs[].version` of
+  `_meta`, so the table also has `from_ms` and `to_ms` of the MCP tool
+  `read_logs`, which need the Logs tab 1.1: a Logs tab 1.0 returns the whole
+  log. A command or a tool call with one reads `_meta` first, and when the app
+  or its tab is older, it stops before it sends anything, with exit status 1
+  and `error: protocol_too_old: --failure needs wire protocol 1.12, and the
+  app uses 1.11, which ignores it`, and a hint to update Lustro in the app or
+  to leave out the option. `mock sync` rejects two rules with the same `id`
+  itself, with exit status 2, because an app before 1.11 kept the first and
+  lost the other without an error. A command without such an option sends no
   extra request, so an app on an older release works as before. `mock sync`
   of the output of `mock list --json` from a newer app, with `"failure": null`
   in each rule, still goes to an older app. `lustro api` and the MCP tool
@@ -44,7 +49,12 @@ see [DECISIONS.md](DECISIONS.md).
   sample (protocol 1.16), `mock add --failure timeout` saved the rule, and a
   `lustro send` to a matching URL failed with `timeout (mocked by Lustro rule
   ...)`; `--regex` and `--sender` worked, and `lustro api` printed the app's
-  warning and no note.
+  warning and no note. With the sample built at protocol 1.10, before the Logs
+  tab had a time range, `read_logs` with `from_ms` and `to_ms` returned the
+  error, where `from` had returned lines from before it, and `mock sync` of two
+  rules with the id `feed` exited 2, where the app had answered `count: 2` and
+  kept only the first; with the current sample, `read_logs` with `from_ms`
+  returned the lines after it.
 - **`lustro ready` waits until the app's server answers, each cause of a
   failure has its own exit code, and `lustro --version` prints the wire
   protocol.** A script that drove an app had to find the server itself: the CLI

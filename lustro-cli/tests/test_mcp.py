@@ -500,6 +500,8 @@ def test_set_throttle_posts_the_delay(app):
 def test_read_logs_reads_the_text_route_with_the_wire_names_of_the_filters(app):
     text = _text(app("read_logs", level="W", tag="^Sync$", text="slow", message_regex="s.ow", from_ms=1, to_ms=2))
     assert app.requests == [
+        # from_ms and to_ms read the version of the app's Logs tab first.
+        ("GET", "/api/v1/_meta", [], None),
         (
             "GET",
             "/api/v1/logs/text",

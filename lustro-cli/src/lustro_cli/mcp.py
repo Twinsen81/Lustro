@@ -269,7 +269,11 @@ def _read_logs(args: argparse.Namespace, a: Dict[str, Any]) -> str:
         "to": a.get("to_ms"),
         "limit": a.get("limit", DEFAULT_LOG_LINES),
     }
-    text = _client(args).request_raw("GET", "/api/v1/logs/text", params=params).data.decode("utf-8", "replace")
+    client = _client(args)
+    times = [name for name in ("from_ms", "to_ms") if a.get(name) is not None]
+    if times:
+        cli.require_protocol(client, "read_logs", *times)
+    text = client.request_raw("GET", "/api/v1/logs/text", params=params).data.decode("utf-8", "replace")
     if not text.strip():
         return "no log line matches"
     return _cut_head(text, a.get("max_bytes", DEFAULT_MAX_BYTES))

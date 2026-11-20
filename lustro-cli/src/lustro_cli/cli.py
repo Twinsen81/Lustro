@@ -25,7 +25,7 @@ import sys
 import time
 import urllib.parse
 import webbrowser
-from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
+from typing import Any, Dict, Iterable, List, NamedTuple, Optional, Set, Tuple
 
 from . import PROTOCOL_VERSION, __version__, exitcodes, wire
 from .client import CursorState, LustroClient, LustroError
@@ -606,23 +606,34 @@ def _warn_if_newer_protocol(meta: Any) -> None:
         _print_warning(warning)
 
 
-# The options and MCP arguments that an app on an older wire protocol ignores, with the
-# revision that added each. The app answers 200 without them, so the command would
-# succeed with a wrong result: a mock rule that answers instead of failing, a text
-# search in place of a regex. A command that uses one reads _meta first, and refuses to
-# run against an older app. An option of a route that an older app does not have needs
-# no entry: that app answers 404.
-OPTION_PROTOCOLS: Dict[Tuple[str, str], str] = {
-    ("send", "--sender"): "1.7",
-    ("net list", "--regex"): "1.8",
-    ("net poll", "--regex"): "1.8",
-    ("net wait", "--regex"): "1.8",
-    ("net ws events", "--regex"): "1.8",
-    ("mock add", "--failure"): "1.12",
-    ("mock sync", "failure"): "1.12",
+class Needs(NamedTuple):
+    """The version that an option needs: of the wire protocol, or of the plugin tab ``tab``,
+    whose routes have a version of their own, ``tabs[].version`` in ``_meta``."""
+
+    version: str
+    tab: Optional[str] = None
+
+
+# The options and MCP arguments that an app on an older wire protocol, or with an older
+# version of a plugin tab, ignores, with the version that added each. The app answers 200
+# without them, so the command would succeed with a wrong result: a mock rule that
+# answers instead of failing, a text search in place of a regex, the whole log in place
+# of a time range. A command that uses one reads _meta first, and refuses to run against
+# an older app. An option of a route that an older app does not have needs no entry:
+# that app answers 404.
+OPTION_PROTOCOLS: Dict[Tuple[str, str], Needs] = {
+    ("send", "--sender"): Needs("1.7"),
+    ("net list", "--regex"): Needs("1.8"),
+    ("net poll", "--regex"): Needs("1.8"),
+    ("net wait", "--regex"): Needs("1.8"),
+    ("net ws events", "--regex"): Needs("1.8"),
+    ("mock add", "--failure"): Needs("1.12"),
+    ("mock sync", "failure"): Needs("1.12"),
     # MCP tools.
-    ("list_requests", "regex"): "1.8",
-    ("add_mock_rule", "failure"): "1.12",
+    ("list_requests", "regex"): Needs("1.8"),
+    ("add_mock_rule", "failure"): Needs("1.12"),
+    ("read_logs", "from_ms"): Needs("1.1", tab="logs"),
+    ("read_logs", "to_ms"): Needs("1.1", tab="logs"),
 }
 
 # From this revision, the app names each query parameter that a route does not declare
@@ -630,34 +641,63 @@ OPTION_PROTOCOLS: Dict[Tuple[str, str], str] = {
 UNKNOWN_PARAMETER_WARNINGS = "1.15"
 
 
-def _older_protocol(meta: Any, needed: str) -> Optional[str]:
-    """The app's ``protocolVersion`` in ``_meta`` when it is older than ``needed``, else
-    None. An app that sends no version that the CLI can compare is not refused."""
-    app = meta.get("protocolVersion") if isinstance(meta, dict) else None
-    app_version = _version_tuple(app)
+def _older(version: Any, needed: str) -> Optional[str]:
+    """``version``, the app's, when it is older than ``needed``, else None. A version that
+    the CLI can't compare, or none, is not older."""
+    app_version = _version_tuple(version)
     needed_version = _version_tuple(needed)
-    if app_version is None or needed_version is None or app_version >= needed_version:
+    if version is None or app_version is None or needed_version is None or app_version >= needed_version:
         return None
-    return str(app)
+    return str(version)
 
 
-def require_protocol(client: LustroClient, command: str, option: str, *, hint: Optional[str] = None) -> None:
-    """Raise when the app's wire protocol is older than the revision that added ``option``
-    of ``command`` (see OPTION_PROTOCOLS). Costs one ``_meta`` request."""
-    needed = OPTION_PROTOCOLS[(command, option)]
-    app = _older_protocol(client.get(META), needed)
-    if app is not None:
+def _app_version(meta: Any, tab: Optional[str]) -> Any:
+    """The app's ``protocolVersion``, or the version of its Lustro plugin tab ``tab``, from
+    ``_meta``."""
+    if not isinstance(meta, dict):
+        return None
+    protocol = meta.get("protocolVersion")
+    if tab is None:
+        return protocol
+    tabs = meta.get("tabs")
+    for entry in tabs if isinstance(tabs, list) else ():
+        if isinstance(entry, dict) and entry.get("id") == tab:
+            # A plugin tab reports a version of its own from the change that also gave the
+            # Logs tab its time range. Before it, _meta gave each tab the protocolVersion,
+            # and the tab had the routes of its first version.
+            return "1.0" if entry.get("version") == protocol else entry.get("version")
+    # No such tab: the request gets the app's 404.
+    return None
+
+
+def require_protocol(client: LustroClient, command: str, *options: str, hint: Optional[str] = None) -> None:
+    """Raise when the app is older than the version that added one of ``options`` of
+    ``command`` (see OPTION_PROTOCOLS). Costs one ``_meta`` request."""
+    meta = client.get(META)
+    for option in options:
+        needs = OPTION_PROTOCOLS[(command, option)]
+        app = _older(_app_version(meta, needs.tab), needs.version)
+        if app is None:
+            continue
+        # With the other options that have the same need, so that one error names them all.
+        same = [name for name in options if OPTION_PROTOCOLS[(command, name)] == needs]
+        names = " and ".join(same)
+        verb, pronoun = ("need", "them") if len(same) > 1 else ("needs", "it")
+        if needs.tab is None:
+            needed = "wire protocol {}, and the app uses {}".format(needs.version, app)
+        else:
+            needed = "version {} of the {} tab, and the app's is {}".format(needs.version, needs.tab, app)
         raise LustroError(
             "protocol_too_old",
-            "{} needs wire protocol {}, and the app uses {}, which ignores it".format(option, needed, app),
-            hint=hint or "update Lustro in the app, or leave out {}".format(option),
+            "{} {} {}, which ignores {}".format(names, verb, needed, pronoun),
+            hint=hint or "update Lustro in the app, or leave out {}".format(names),
         )
 
 
 def unwarned_parameters_note(client: LustroClient, schema_command: str) -> Optional[str]:
     """A note for a request with query parameters to an app that does not warn about a
     parameter that the route does not declare, or None. Costs one ``_meta`` request."""
-    app = _older_protocol(client.get(META), UNKNOWN_PARAMETER_WARNINGS)
+    app = _older(_app_version(client.get(META), None), UNKNOWN_PARAMETER_WARNINGS)
     if app is None:
         return None
     return (
@@ -1658,6 +1698,23 @@ def cmd_mock_toggle(args: argparse.Namespace) -> int:
     return 0
 
 
+def _check_rule_ids(rules: List[Any]) -> None:
+    """Reject two rules with the same id. An app from protocol 1.11 rejects them too, but
+    an older one keeps the first of the two, and loses the other without an error."""
+    first: Dict[str, int] = {}
+    for index, rule in enumerate(rules):
+        rule_id = rule.get("id") if isinstance(rule, dict) else None
+        if not isinstance(rule_id, str):
+            continue
+        if rule_id in first:
+            raise UsageError(
+                "rules {} and {} of the file have the same id {}: give each rule its own id, or none".format(
+                    first[rule_id], index, json.dumps(rule_id)
+                )
+            )
+        first[rule_id] = index
+
+
 def cmd_mock_sync(args: argparse.Namespace) -> int:
     client = _build_client(args)
     try:
@@ -1677,6 +1734,7 @@ def cmd_mock_sync(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 2
+    _check_rule_ids(rules)
     # `mock list --json` of a newer app has "failure": null in each rule, which an older app can ignore.
     if any(isinstance(rule, dict) and rule.get("failure") is not None for rule in rules):
         require_protocol(

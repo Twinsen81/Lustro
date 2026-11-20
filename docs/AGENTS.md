@@ -166,8 +166,12 @@ status 1 and `error: protocol_too_old: --failure needs wire protocol 1.12, and t
 which ignores it`: `send --sender` (1.7), `--regex` of `net list`, `net poll`, `net wait`, and
 `net ws events` (1.8), `mock add --failure` (1.12), and `mock sync` of a file with a rule that has
 `failure` (1.12). The MCP tools refuse `regex` of `list_requests` and `failure` of
-`add_mock_rule`. Update Lustro in the app, or leave out the option. Other commands send no extra
-request, and work with an older app.
+`add_mock_rule`, and `from_ms` and `to_ms` of `read_logs` when the app's Logs tab, in
+`tabs[].version` of `_meta`, is older than 1.1. Update Lustro in the app, or leave out the option.
+Other commands send no extra request, and work with an older app. `mock sync` rejects two rules
+with the same `id` itself, with exit status 2: an app before 1.11 keeps the first and loses the
+other. Before 1.16, `mock toggle` and `mock delete` answer `200` for an id that no rule has, and
+`net throttle` takes any delay, so check the result with `mock list` or `net state`.
 
 ### Keep the output small
 
@@ -291,7 +295,8 @@ foreground, returns the CLI's error message with `isError: true`. A warning from
 does not declare, is a text block of its own after the output, and so is the note for a `call_api`
 with query parameters to an app older than protocol 1.15. `regex` of `list_requests` and `failure`
 of `add_mock_rule` against an app whose protocol is older than the one that added them (1.8 and
-1.12) are a tool error, and the tool changes nothing.
+1.12), and `from_ms` and `to_ms` of `read_logs` against a Logs tab older than 1.1, are a tool error,
+and the tool changes nothing.
 
 The server takes the global flags: `lustro mcp --device SERIAL` selects the device for every call,
 as `ANDROID_SERIAL` in the server's environment does. It serves the protocol versions from

@@ -21,9 +21,11 @@ README = Path(__file__).resolve().parents[2] / "wire-protocol" / "v1" / "README.
 
 
 class _App(BaseHTTPRequestHandler):
-    """Answers like the app on ``protocol``, and records each request."""
+    """Answers like the app on ``protocol``, with the Logs tab of version ``logs`` (None: no
+    Logs tab), and records each request."""
 
     protocol = PROTOCOL_VERSION
+    logs = None
     requests = []
 
     def log_message(self, *args):  # silence
@@ -44,7 +46,17 @@ class _App(BaseHTTPRequestHandler):
         self.requests.append((self.command, url.path, dict(urllib.parse.parse_qsl(url.query)), body))
         route = (self.command, url.path)
         if route == ("GET", "/api/v1/_meta"):
-            self._send(200, {"libraryVersion": "0.1.0", "protocolVersion": self.protocol, "tabs": []})
+            tabs = [{"id": "network", "title": "Network", "schemaUrl": "/api/v1/network/_schema", "version": self.protocol}]
+            if self.logs is not None:
+                tabs.append({"id": "logs", "title": "Logs", "schemaUrl": "/api/v1/logs/_schema", "version": self.logs})
+            self._send(200, {"libraryVersion": "0.1.0", "protocolVersion": self.protocol, "tabs": tabs})
+        elif route == ("GET", "/api/v1/logs/text") and self.logs is not None:
+            data = b"11-18 09:00:00.000  1234  1234 W Sync: slow\n"
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
         elif route == ("GET", "/api/v1/network/transactions"):
             self._send(200, wire.load_golden("cursor-reset.json"))
         elif route == ("GET", "/api/v1/network/websockets/{}/events".format(WS_ID)):
@@ -72,6 +84,10 @@ class _Running:
     def on(self, protocol):
         """Answer _meta with this protocolVersion."""
         self._monkeypatch.setattr(_App, "protocol", protocol)
+
+    def with_logs(self, version):
+        """Have a Logs tab of this version, or none for None."""
+        self._monkeypatch.setattr(_App, "logs", version)
 
 
 @pytest.fixture
@@ -219,6 +235,56 @@ def test_an_mcp_argument_that_the_apps_protocol_is_too_old_for_is_a_tool_error(a
     assert _call(app, tool, **arguments)["isError"] is False
 
 
+@pytest.mark.parametrize(
+    "arguments, names",
+    [
+        ({"from_ms": 1}, "from_ms needs"),
+        ({"to_ms": 2}, "to_ms needs"),
+        ({"from_ms": 1, "to_ms": 2}, "from_ms and to_ms need"),
+    ],
+)
+def test_read_logs_with_a_time_range_is_a_tool_error_for_a_logs_tab_before_1_1(app, arguments, names):
+    app.with_logs("1.0")
+    result = _call(app, "read_logs", **arguments)
+    assert result["isError"] is True
+    which = "them" if " and " in names else "it"
+    assert result["content"][0]["text"] == (
+        "error: protocol_too_old: {} version 1.1 of the logs tab, and the app's is 1.0, which ignores {}\n"
+        "  hint: update Lustro in the app, or leave out {}".format(names, which, names.rsplit(" ", 1)[0])
+    )
+    assert _routes(app) == [("GET", "/api/v1/_meta")]
+
+
+def test_a_logs_tab_that_reports_the_protocol_version_is_its_first_version(app):
+    # An app from before the tabs reported a version of their own: its Logs tab had no time range.
+    app.on("1.10")
+    app.with_logs("1.10")
+    result = _call(app, "read_logs", from_ms=1)
+    assert result["content"][0]["text"].startswith(
+        "error: protocol_too_old: from_ms needs version 1.1 of the logs tab, and the app's is 1.0, which ignores it"
+    )
+    assert _routes(app) == [("GET", "/api/v1/_meta")]
+
+
+def test_read_logs_with_a_time_range_reads_the_logs_of_a_logs_tab_1_1(app):
+    app.with_logs("1.1")
+    assert _call(app, "read_logs", from_ms=1, to_ms=2)["isError"] is False
+    assert _routes(app) == [("GET", "/api/v1/_meta"), ("GET", "/api/v1/logs/text")]
+    assert app.requests[-1][2] == {"from": "1", "to": "2", "limit": "100"}
+
+
+def test_read_logs_without_a_time_range_does_not_read_meta(app):
+    app.with_logs("1.0")
+    assert _call(app, "read_logs", level="W")["isError"] is False
+    assert _routes(app) == [("GET", "/api/v1/logs/text")]
+
+
+def test_an_app_without_the_tab_is_not_refused_and_gets_the_apps_404(app):
+    result = _call(app, "read_logs", from_ms=1)
+    assert _routes(app) == [("GET", "/api/v1/_meta"), ("GET", "/api/v1/logs/text")]
+    assert result["content"][0]["text"].startswith("error: 404 not_found")
+
+
 # ── the table ─────────────────────────────────────────────────────────────────
 
 
@@ -227,12 +293,16 @@ def _revisions():
     return set(re.findall(r"^- \*\*(1\.\d+)\*\*", README.read_text(encoding="utf-8"), re.MULTILINE))
 
 
-def test_each_revision_in_the_table_is_one_that_the_readme_lists():
+def test_each_version_in_the_table_is_one_that_the_protocol_or_the_tab_has():
     revisions = _revisions()
     ours = cli._version_tuple(PROTOCOL_VERSION)
-    for (command, option), version in cli.OPTION_PROTOCOLS.items():
-        assert version in revisions, (command, option)
-        assert cli._version_tuple(version) <= ours
+    for (command, option), needs in cli.OPTION_PROTOCOLS.items():
+        if needs.tab is None:
+            assert needs.version in revisions, (command, option)
+            assert cli._version_tuple(needs.version) <= ours
+        else:
+            tab_version = wire.load_openapi(needs.tab)["info"]["version"]
+            assert cli._version_tuple(needs.version) <= cli._version_tuple(tab_version), (command, option)
     assert cli.UNKNOWN_PARAMETER_WARNINGS in revisions
 
 

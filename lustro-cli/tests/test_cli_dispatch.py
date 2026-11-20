@@ -342,6 +342,18 @@ def test_mock_sync_takes_the_output_of_mock_list(rec, tmp_path):
     assert body == listed["items"]
 
 
+def test_mock_sync_rejects_two_rules_with_the_same_id(rec, tmp_path, capsys):
+    # An app before protocol 1.11 kept the first of them, and lost the other without an error.
+    rules = [{"id": "feed", "urlPattern": "/a"}, {"urlPattern": "/b"}, {"urlPattern": "/c"}, {"id": "feed", "urlPattern": "/d"}]
+    f = tmp_path / "rules.json"
+    f.write_text(json.dumps(rules), encoding="utf-8")
+    assert run(["mock", "sync", str(f)]) == 2
+    assert capsys.readouterr().err == (
+        'error: rules 0 and 3 of the file have the same id "feed": give each rule its own id, or none\n'
+    )
+    assert rec.calls == []
+
+
 @pytest.mark.parametrize("content", ['{"rules": []}', '{"items": {}}', '"x"'])
 def test_mock_sync_rejects_a_file_without_rules(rec, tmp_path, capsys, content):
     f = tmp_path / "rules.json"

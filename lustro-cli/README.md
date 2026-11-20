@@ -75,6 +75,18 @@ command for a route that an older app does not have, such as `net ws list` befor
 1.3, gets a `404` from the app. `lustro api` does not know the route, so it
 refuses nothing; see [Any route](#any-route).
 
+The MCP tool `read_logs` refuses `from_ms` and `to_ms` in the same way when the
+app's Logs tab is older than 1.1, the version in `tabs[].version` of `_meta`,
+because a Logs tab 1.0 returns the whole log. An app that gives the tab its
+`protocolVersion` there is from before the tabs had versions of their own, and
+its Logs tab is 1.0. `mock sync` rejects two rules with
+the same `id` itself, with exit status 2, because an app before protocol 1.11
+keeps the first of them and loses the other. Some values that a newer app
+rejects, an older app accepts without an error: before 1.16, `mock toggle` and
+`mock delete` answer `200` for an id that no rule has, and change nothing, and
+`net throttle` takes a delay over 600000 ms and sets 0 for a negative one. Check
+the result with `mock list` or `net state`.
+
 ## Endpoint and token discovery
 
 The CLI resolves the endpoint+token in this order (first hit wins, per field):
