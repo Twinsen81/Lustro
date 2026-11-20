@@ -215,6 +215,9 @@ internal object JsonNull
 internal class JsonNumber(private val text: String) {
     /** The value when it is a whole number in the range of a [Long], else `null`. */
     fun toLongOrNull(): Long? {
+        // A long has at most 19 digits. BigDecimal takes time that grows with the square of the digits, such as
+        // minutes for a million of them in a 1 MB body, on a request thread that a timeout can't stop.
+        if (text.length > MAX_TEXT_LENGTH) return null
         val number =
             try {
                 BigDecimal(text)
@@ -236,6 +239,7 @@ internal class JsonNumber(private val text: String) {
 
     private companion object {
         private const val MAX_LONG_DIGITS = 19
+        private const val MAX_TEXT_LENGTH = 40
     }
 }
 

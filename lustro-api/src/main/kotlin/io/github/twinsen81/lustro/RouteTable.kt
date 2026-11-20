@@ -110,14 +110,22 @@ internal class RouteTable private constructor(
         init {
             // A default that a request could not send would reach the handler as a value outside the declaration.
             if (decl.hasDefault) {
-                try {
-                    when (type) {
-                        ParamType.STRING -> checked(default as String)
-                        ParamType.INT, ParamType.LONG -> checked((default as Number).toLong())
-                        ParamType.BOOLEAN, ParamType.JSON -> Unit
+                val problem =
+                    try {
+                        when (type) {
+                            ParamType.STRING -> checked(default as String)
+                            ParamType.INT, ParamType.LONG -> checked((default as Number).toLong())
+                            ParamType.JSON -> Json.parse(default as String)
+                            ParamType.BOOLEAN -> Unit
+                        }
+                        null
+                    } catch (e: BadInput) {
+                        e
+                    } catch (e: JsonException) {
+                        e
                     }
-                } catch (e: BadInput) {
-                    throw IllegalStateException("${decl.route.describe()}: the default of $name is not a value that it takes: ${e.message}", e)
+                if (problem != null) {
+                    throw IllegalStateException("${decl.route.describe()}: the default of $name is not a value that it takes: ${problem.message}", problem)
                 }
             }
         }

@@ -22,6 +22,9 @@ public abstract class DebugTab {
     @Volatile
     private var routesRead = false
 
+    @Volatile
+    private var routesFailure: Exception? = null
+
     private var readingRoutes = false
     /**
      * The stable tab id. Must match the regex `[a-z][a-z0-9-]{0,30}`; this is
@@ -76,8 +79,11 @@ public abstract class DebugTab {
      * the default [handle] routes the requests to the handlers, and the default [schema]
      * returns the OpenAPI document of the routes. See [DebugRoutes].
      *
-     * The declarations must not depend on state that changes: the first call's result stays.
-     * They must not call [handle] or [schema], which throw [IllegalStateException] then.
+     * The declarations must not depend on state that changes: the first call's result stays,
+     * also when it throws. Then every later [handle] and [schema] call throws an
+     * [IllegalStateException] whose cause is that first failure, and [routes] does not run
+     * again. The declarations must not call [handle] or [schema], which throw
+     * [IllegalStateException] then.
      */
     @ExperimentalDebugRoutes
     protected open fun routes(routes: DebugRoutes) {}
@@ -141,8 +147,10 @@ public abstract class DebugTab {
     // another reason does not keep the router: only the runtime calls handle() and schema().
     private fun declaredRoutes(): RouteTable? {
         if (routesRead) return routeTable
+        throwIfFailed()
         synchronized(routesLock) {
             if (!routesRead) {
+                throwIfFailed()
                 check(!readingRoutes) { "Tab $id: routes() must not call handle() or schema()" }
                 readingRoutes = true
                 try {
@@ -150,11 +158,20 @@ public abstract class DebugTab {
                     routes(declared)
                     routeTable = RouteTable.build(declared)
                     routesRead = true
+                } catch (e: Exception) {
+                    // Kept, so that a mistake does not run the tab's routes() again for each request.
+                    routesFailure = e
+                    throw e
                 } finally {
                     readingRoutes = false
                 }
             }
             return routeTable
         }
+    }
+
+    private fun throwIfFailed() {
+        val cause = routesFailure ?: return
+        throw IllegalStateException("Tab $id: the route declarations failed: ${cause.message}", cause)
     }
 }

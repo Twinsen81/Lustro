@@ -76,5 +76,13 @@ class JsonTest {
         assertNull(JsonNumber("1e999999999").toLongOrNull())
         assertNull(JsonNumber("1.5e-999999999").toLongOrNull())
         assertEquals(0L, JsonNumber("0e-999999999").toLongOrNull())
+        for (zero in listOf("0.0", "-0.0", "0e-5")) assertEquals(zero, 0L, JsonNumber(zero).toLongOrNull())
+    }
+
+    @Test(timeout = 2_000)
+    fun `a number with very many digits is not a long, and costs no time`() {
+        val digits = "1" + "0".repeat(100_000)
+        assertNull(JsonNumber(digits).toLongOrNull())
+        assertNull((Json.parse("{\"n\":$digits}") as Map<*, *>).let { (it["n"] as JsonNumber).toLongOrNull() })
     }
 }

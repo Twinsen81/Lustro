@@ -5,6 +5,7 @@ package io.github.twinsen81.lustro
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -373,6 +374,12 @@ class DebugRoutesTest {
                         handle { DebugResponse.ok("{}") }
                     }
                 },
+                "the default of tags is not a value that it takes: unexpected character 'a' at character 2" to { routes ->
+                    routes.post("a") {
+                        body.json("tags").withDefault("[a]")
+                        handle { DebugResponse.ok("{}") }
+                    }
+                },
                 "the default of dir is not a value that it takes" to { routes ->
                     routes.get("a") {
                         query.string("dir") { values = listOf("asc", "desc") }.withDefault("up")
@@ -389,6 +396,27 @@ class DebugRoutesTest {
             val thrown = assertThrows(message, IllegalStateException::class.java) { tab.schema() }
             assertTrue("$message: ${thrown.message}", thrown.message.orEmpty().contains(message))
         }
+    }
+
+    @Test
+    fun `a failed declaration runs routes once, and every later call fails with it`() {
+        var calls = 0
+        val tab =
+            object : DebugTab() {
+                override val id = "broken"
+                override val title = "Broken"
+                override val icon = ""
+
+                override fun routes(routes: DebugRoutes) {
+                    calls++
+                    routes.get("a") { handle { DebugResponse.ok("{}") } }
+                }
+            }
+        val first = assertThrows(IllegalStateException::class.java) { tab.schema() }
+        val again = assertThrows(IllegalStateException::class.java) { tab.handle(DebugRequest("a", "GET")) }
+        assertSame(first, again.cause)
+        assertTrue(again.message.orEmpty().contains("set routes.version"))
+        assertEquals(1, calls)
     }
 
     @Test
