@@ -144,8 +144,8 @@ public class LogsDebugTab private constructor(
          *   the logger writes a line to logcat before it appends it, the first
          *   line of a tag can show twice: as the cut copies from logcat and as the
          *   appended line. For a fixed set of tags, pass `setOf("A", "B")::contains`.
-         *   The reader thread calls it for the logcat lines of the tags that the
-         *   logger appended, so keep it fast. The default drops no line.
+         *   [append] calls it on the logger's thread, for each line of a tag that
+         *   it has not taken yet, so keep it fast. The default drops no line.
          * @throws IllegalArgumentException when [bufferBytes] is not positive.
          */
         @JvmStatic

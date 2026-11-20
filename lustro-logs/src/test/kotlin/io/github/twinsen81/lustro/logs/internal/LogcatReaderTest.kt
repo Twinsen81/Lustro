@@ -212,7 +212,7 @@ class LogcatReaderTest {
                 // At the time of the first append, and after it: the logger appends these.
                 "10-19 14:22:20.005  4321  4330 D AppLog  : appended",
                 "10-19 14:22:20.006  4321  4330 I okhttp  : library",
-                // A check that throws keeps the line, and the reader runs on.
+                // A check that throws at the append keeps the lines of the tag.
                 "10-19 14:22:20.007  4321  4330 I Broken  : kept",
                 // A tag that the check takes but that the logger has not appended yet.
                 "10-19 14:22:20.008  4321  4330 D Late    : not appended yet",
