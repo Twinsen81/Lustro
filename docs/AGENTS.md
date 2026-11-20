@@ -23,7 +23,7 @@ This document is about using a running Lustro. To add Lustro to an app, follow
   hard-coded paths.
 - **Built-in tab.** `lustro` has one built-in tab: `network` (capture, inspect, mock,
   throttle, Send Request, and the messages of WebSocket connections). Its contract is
-  `lustro/src/main/assets/lustro/network.openapi.json`. The app registers it, as it registers a
+  `lustro/openapi/network.openapi.json`, the document that the tab's route declarations make. The app registers it, as it registers a
   plugin tab (`addTab(NetworkDebugTab.create(...))`); without it, the `network/` routes are an
   enveloped `404 Unknown tab: network`.
 - **Plugin tabs.** An app can also register plugin tabs, such as `logs`, the app's own logcat
@@ -485,7 +485,7 @@ below summarizes it. All routes are token-authenticated and use the shared error
 | Poll transactions | `GET transactions?cursor=&search=&regex=&since=` | Cursor envelope. First poll (no/invalid cursor) → `reset` with the full list; cursor unchanged → `unchanged` (items omitted); after a change → `delta`. `search` filters case-insensitively over the URL, the method, the headers (each as the line `Name: value`), and the bodies; with `regex=true`, it is a Java regular expression, and one that doesn't compile gets a `400` with `field: search`. `since` (milliseconds since the Unix epoch, device clock) keeps the transactions with `startedAt` at or after it. Carries a top-level `state` `{ paused, overwriteMode, throttleDelayMs, mockRules, captureFilter }`. |
 | Transaction detail | `GET transactions/{id}` | Full object (headers + bodies, with truncation flags). Enveloped `404` if missing. |
 | Transaction body | `GET transactions/{id}/body/{request\|response}` | One body as it is stored: the bytes of an image, or the redacted text as UTF-8. Not JSON. Enveloped `404` when no body was kept. See below. |
-| Export as HAR | `GET transactions/_/export?format=har&ids=` | A HAR 1.2 document of the transactions in `ids` (comma-separated), or of every one. See below. |
+| Export as HAR | `GET transactions/_/export?format=har&ids=` | A HAR 1.2 document of the transactions in `ids` (comma-separated, or the parameter repeated), or of every one. See below. |
 | Poll WebSocket connections | `GET websockets?cursor=` | Cursor envelope, newest first, with the same `state` as the transactions poll. See below. |
 | WebSocket connection detail | `GET websockets/{id}` | One connection with `requestHeaders`, `responseHeaders`, and `protocol`. Enveloped `404` if missing. |
 | Poll a connection's events | `GET websockets/{id}/events?cursor=&limit=&direction=&search=&regex=` | Stream envelope: the messages and lifecycle events, in order. See below. |
@@ -565,7 +565,9 @@ The response body is never returned, and the sender reads at most `maxBodyCaptur
 large or endless responses are safe to send. A send that outlives the per-request timeout gets the
 enveloped `504`, and its call is cancelled. Requests to the debug server's **own** bind host:port
 are rejected. **Send is only available when the app registered a sender**: if not, `GET senders`
-is empty, `POST send` returns an enveloped `404`, and the console has no Send form. Senders,
+is empty, `POST send` returns an enveloped `404`, `GET network/_schema` has no `send` route, and
+the console has no Send form. The body is strict JSON, and each field must have its type: a
+`body` that is not a JSON string gets a `400` with `field: "body"`. Senders,
 `sender`, the send result's `sender` and `url`, and a set `transactionId` arrived in protocol 1.7.
 
 **What advances the cursor.** Changes to the captured list advance the transactions cursor: a

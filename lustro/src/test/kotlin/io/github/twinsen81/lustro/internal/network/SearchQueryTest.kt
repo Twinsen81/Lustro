@@ -121,19 +121,13 @@ class SearchQueryTest {
         assertFalse(matches("feat("))
     }
 
+    // The routes' declarations refuse a regex that is not true or false.
     @Test
     fun `the parameters choose the search, and a blank one leaves nothing out`() {
-        assertNull(SearchQuery.fromParams(null, null))
-        assertNull(SearchQuery.fromParams("  ", "true"))
-        assertFalse(SearchQuery.fromParams("a|b", null)!!.regex)
-        assertFalse(SearchQuery.fromParams("a|b", "false")!!.regex)
-        assertTrue(SearchQuery.fromParams("a|b", "true")!!.regex)
-        try {
-            SearchQuery.fromParams("a", "yes")
-            fail("accepted regex=yes")
-        } catch (e: SearchQueryException) {
-            assertEquals("regex", e.field)
-        }
+        assertNull(SearchQuery.fromParams(null, false))
+        assertNull(SearchQuery.fromParams("  ", true))
+        assertFalse(SearchQuery.fromParams("a|b", false)!!.regex)
+        assertTrue(SearchQuery.fromParams("a|b", true)!!.regex)
     }
 
     @Test

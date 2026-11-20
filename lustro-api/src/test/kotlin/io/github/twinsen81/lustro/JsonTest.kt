@@ -75,6 +75,8 @@ class JsonTest {
         assertNull(JsonNumber("1.5").toLongOrNull())
         assertNull(JsonNumber("1e999999999").toLongOrNull())
         assertNull(JsonNumber("1.5e-999999999").toLongOrNull())
+        // At the limits of an int scale: the stripped scale overflows, or the digit count does.
+        for (huge in listOf("100e2147483647", "1e2147483647", "-1e2147483647", "1E+2147483647")) assertNull(huge, JsonNumber(huge).toLongOrNull())
         assertEquals(0L, JsonNumber("0e-999999999").toLongOrNull())
         for (zero in listOf("0.0", "-0.0", "0e-5")) assertEquals(zero, 0L, JsonNumber(zero).toLongOrNull())
     }

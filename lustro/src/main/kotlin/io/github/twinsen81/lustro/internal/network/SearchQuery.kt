@@ -1,6 +1,5 @@
 package io.github.twinsen81.lustro.internal.network
 
-import io.github.twinsen81.lustro.DebugRequest
 import io.github.twinsen81.lustro.DebugResponse
 import java.util.concurrent.TimeUnit
 import java.util.regex.Pattern
@@ -57,17 +56,9 @@ internal class SearchQuery private constructor(
          * The search of a request's `search` and `regex` parameters, or null when
          * `search` is blank, which leaves nothing out.
          *
-         * @throws SearchQueryException when `regex` is not `true` or `false`, or a regex doesn't compile.
+         * @throws SearchQueryException when [regex] is true and a word doesn't compile.
          */
-        fun fromParams(search: String?, regex: String?): SearchQuery? {
-            val isRegex =
-                when (regex) {
-                    null, "", "false" -> false
-                    "true" -> true
-                    else -> throw SearchQueryException("regex must be true or false", field = "regex")
-                }
-            return search?.takeIf { it.isNotBlank() }?.let { parse(it, isRegex) }
-        }
+        fun fromParams(search: String?, regex: Boolean): SearchQuery? = search?.takeIf { it.isNotBlank() }?.let { parse(it, regex) }
 
         /** @throws SearchQueryException when [regex] is true and a word doesn't compile. */
         fun parse(text: String, regex: Boolean = false): SearchQuery {
@@ -98,19 +89,19 @@ internal class SearchQuery private constructor(
 }
 
 /**
- * Answers [request] with [respond], given the search of its `search` and
- * `regex` parameters, or with a 400 on the parameter at fault when the search
- * can't run or passes its time.
+ * Answers with [respond], given the search of the `search` and `regex`
+ * parameters, which the route's declaration checked, or with a 400 on
+ * `search` when the search can't run or passes its time.
  */
-internal inline fun respondWithSearch(request: DebugRequest, respond: (SearchQuery?) -> DebugResponse): DebugResponse {
-    val search =
+internal inline fun respondWithSearch(search: String?, regex: Boolean, respond: (SearchQuery?) -> DebugResponse): DebugResponse {
+    val query =
         try {
-            SearchQuery.fromParams(request.queryParam("search"), request.queryParam("regex"))
+            SearchQuery.fromParams(search, regex)
         } catch (e: SearchQueryException) {
             return DebugResponse.error(e.message.orEmpty(), field = e.field)
         }
     return try {
-        respond(search)
+        respond(query)
     } catch (e: SearchTimeoutException) {
         DebugResponse.error(e.message.orEmpty(), field = "search")
     }

@@ -182,11 +182,10 @@ CI adds the Dokka output under `api/` and `wire-protocol/` when it publishes.
   - `lustro.facade-parity`: `checkFacadeParity`, at the root.
 
 The wire protocol is versioned under `wire-protocol/v1/`. Each tab's OpenAPI
-document is in its own module: `lustro/src/main/assets/lustro/network.openapi.json`
-for the Network tab, `src/main/assets/lustro/<id>.openapi.json` for a plugin
-with a hand-written document, and `openapi/<id>.openapi.json`, the committed
-copy of the generated document, for a plugin that declares its routes
-(Preferences).
+document is in its own module: `src/main/assets/lustro/<id>.openapi.json` for a
+plugin with a hand-written document, and `openapi/<id>.openapi.json`, the
+committed copy of the generated document, for a tab that declares its routes
+(`lustro/openapi/network.openapi.json` for the Network tab, and Preferences).
 
 ### Adding a plugin module pair
 

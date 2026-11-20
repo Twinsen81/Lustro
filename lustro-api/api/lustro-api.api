@@ -49,6 +49,8 @@ public class io/github/twinsen81/lustro/DebugParams {
 	public static synthetic fun long$default (Lio/github/twinsen81/lustro/DebugParams;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lio/github/twinsen81/lustro/DebugParam;
 	public final fun string (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lio/github/twinsen81/lustro/DebugParam;
 	public static synthetic fun string$default (Lio/github/twinsen81/lustro/DebugParams;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lio/github/twinsen81/lustro/DebugParam;
+	public final fun strings (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lio/github/twinsen81/lustro/DebugParam;
+	public static synthetic fun strings$default (Lio/github/twinsen81/lustro/DebugParams;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lio/github/twinsen81/lustro/DebugParam;
 }
 
 public final class io/github/twinsen81/lustro/DebugPathParams {
@@ -151,6 +153,13 @@ public final class io/github/twinsen81/lustro/DebugResponseException : java/lang
 	public final fun getResponse ()Lio/github/twinsen81/lustro/DebugResponse;
 }
 
+public final class io/github/twinsen81/lustro/DebugResponseSpec {
+	public final fun content (Ljava/lang/String;Ljava/lang/String;)V
+	public static synthetic fun content$default (Lio/github/twinsen81/lustro/DebugResponseSpec;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)V
+	public final fun header (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public static synthetic fun header$default (Lio/github/twinsen81/lustro/DebugResponseSpec;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)V
+}
+
 public final class io/github/twinsen81/lustro/DebugRoute {
 	public final fun errors ([I)V
 	public final fun getAcceptsForm ()Z
@@ -163,8 +172,8 @@ public final class io/github/twinsen81/lustro/DebugRoute {
 	public final fun getSummary ()Ljava/lang/String;
 	public final fun handle (Lio/github/twinsen81/lustro/DebugHandler;)V
 	public final fun rawBody (Ljava/lang/String;Ljava/lang/String;)V
-	public final fun response (Ljava/lang/String;Ljava/lang/String;)V
-	public static synthetic fun response$default (Lio/github/twinsen81/lustro/DebugRoute;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)V
+	public final fun response (Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
+	public static synthetic fun response$default (Lio/github/twinsen81/lustro/DebugRoute;Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
 	public final fun setAcceptsForm (Z)V
 	public final fun setBodyDescription (Ljava/lang/String;)V
 	public final fun setDescription (Ljava/lang/String;)V

@@ -11,7 +11,6 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -77,11 +76,14 @@ class NetworkHarExportTest {
 
     @Test
     fun `an unknown format is a 400 naming the field`() {
-        val res = export("format" to "csv")
-        assertEquals(400, res.status)
-        val error = JSONObject(res.body.toString(Charsets.UTF_8))
-        assertEquals("bad_request", error.getString("error"))
-        assertEquals("format", error.getString("field"))
+        // har only, as the document's enum says: an upper-case HAR and an empty value are other formats.
+        for (format in listOf("csv", "HAR", "")) {
+            val res = export("format" to format)
+            assertEquals(format, 400, res.status)
+            val error = JSONObject(res.body.toString(Charsets.UTF_8))
+            assertEquals(format, "bad_request", error.getString("error"))
+            assertEquals(format, "format", error.getString("field"))
+        }
     }
 
     @Test
@@ -284,6 +286,8 @@ class NetworkHarExportTest {
 
     @Test
     fun `the export route takes GET only`() {
-        assertNull(tab.handle(DebugRequest(path = "transactions/_/export", method = "POST")))
+        val post = tab.handle(DebugRequest(path = "transactions/_/export", method = "POST"))!!
+        assertEquals(405, post.status)
+        assertEquals("GET", post.headers.get("Allow"))
     }
 }

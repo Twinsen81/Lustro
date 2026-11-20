@@ -18,7 +18,8 @@ java {
 // --- Sync the canonical wire artifacts into this module's resources ----------
 // Source of truth lives elsewhere in the repo:
 //   - JSON Schemas + golden fixtures: wire-protocol/v1/
-//   - Network OpenAPI document:       lustro/src/main/assets/lustro/network.openapi.json
+//   - Network OpenAPI document:       lustro/openapi/network.openapi.json (generated from the
+//                                     tab's route declarations; a test keeps it current)
 //   - Logs OpenAPI document:          lustro-logs/src/main/assets/lustro/logs.openapi.json
 //   - Preferences OpenAPI document:   lustro-prefs/openapi/prefs.openapi.json (generated from
 //                                     the tab's route declarations; a test keeps it current)
@@ -32,7 +33,7 @@ java {
 val wireProtocolDir = rootProject.layout.projectDirectory.dir("wire-protocol/v1")
 val openApiFile =
     rootProject.layout.projectDirectory
-        .file("lustro/src/main/assets/lustro/network.openapi.json")
+        .file("lustro/openapi/network.openapi.json")
 val logsOpenApiFile =
     rootProject.layout.projectDirectory
         .file("lustro-logs/src/main/assets/lustro/logs.openapi.json")

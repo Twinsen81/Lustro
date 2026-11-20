@@ -81,32 +81,43 @@ override fun routes(routes: DebugRoutes) {
     uses it, so it is marked `@ExperimentalDebugRoutes`, and the compiler stops a tab without
     `@OptIn(ExperimentalDebugRoutes::class)`. It is a Kotlin API: Java is not a target.
 - **Parameters.** `path`, `query`, and `body` declare them, as a `string`, `int`, `long`, or
-    `boolean`, and in a body also as `json`, which gives the handler the value's JSON text. Each
-    returns a handle, and the handler reads the value with it: `call[id]`. A parameter is optional
-    (`null` when absent) until `.required()` or `.withDefault(value)`. Options: `description`,
-    `minLength`, `maxLength`, and `values` for a string, `min` and `max` for a number, and
-    `schema`, a JSON Schema that describes it in the document in place of the one made from its
-    type, such as `DebugRoutes.ref("Store")`.
-- **Empty values.** In the query or a form, an empty int, long, or boolean is absent, and an
-    empty string is a string, which `minLength = 1` refuses.
+    `boolean`, and in a body also as `json`, which gives the handler the value's JSON text. In
+    the query and the body, `strings` declares a parameter that the request can repeat, such as
+    `?ids=a&ids=b`: its value is the list of every value, and in a JSON body a JSON array of
+    strings. Each returns a handle, and the handler reads the value with it: `call[id]`. A
+    parameter is optional (`null` when absent) until `.required()` or `.withDefault(value)`.
+    Options: `description`, `minLength`, `maxLength`, and `values` for a string, `min` and `max`
+    for a number, and `schema`, a JSON Schema that describes it in the document in place of the
+    one made from its type, such as `DebugRoutes.ref("Store")`.
+- **Empty values.** In the query or a form, an empty int, long, or boolean takes its default,
+    and without a default gets a `400`: `?since=` usually comes from a variable with no value. An
+    empty string is a string, which `minLength = 1` and `values` refuse.
+- **Path parameters.** A segment that its parameter does not take, such as `items/x` for a
+    `path.long("id")` or a value outside `values`, matches no route, so the client gets `404`, as
+    for an id that names nothing.
 - **Bodies.** Body fields come from a JSON object in strict JSON (RFC 8259), with strict JSON
     types, and `null` counts as absent. With `acceptsForm = true`, a route also takes them as an
     `application/x-www-form-urlencoded` form. A route with a required field gets a `400` for an
     empty body. For a body that is not a set of fields, such as an uploaded file, use
     `rawBody(contentType, schema)` and read `call.request.body` in the handler.
 - **Answers.** A path that no route declares gets `404`. A declared path with another method gets
-    `405 method_not_allowed` with an `Allow` header. A missing or wrong parameter gets
-    `400 bad_request` with the parameter's name in `field`, and a body that is not a JSON object
-    gets `field: "body"`. For an error that depends on data, such as an unknown id, the handler
+    `405 method_not_allowed` with an `Allow` header. A missing or wrong query parameter or body
+    field gets `400 bad_request` with the parameter's name in `field`, and the message says what
+    the request gave, and a body that is not a JSON object gets `field: "body"`. For an error that depends on data, such as an unknown id, the handler
     returns `DebugResponse.error(...)`, or a helper deep in its code throws
     `DebugResponseException(response)`. The server answers that exception for a tab that routes
     by hand too.
 - **The document.** It has the paths, methods, parameters, bodies, and responses, the shared
     `ErrorEnvelope`, and the descriptions: `summary`, `description`, `bodyDescription`, and the
     parameters' `description`. `response(description, schema)` adds the success response's
-    JSON Schema, `component(name, schema)` adds a schema under `components/schemas`, and
-    `DebugRoutes.ref(name)` refers to it. `errors(404, 409)` lists the error statuses that the
-    handler answers.
+    JSON Schema, and a block after it describes a body that is not JSON, such as
+    `response("The file.") { content("image/png"); header("Content-Disposition", "attachment.") }`.
+    `component(name, schema)` adds a schema under `components/schemas`, and
+    `DebugRoutes.ref(name)` refers to it; a `$ref` can also point into one, such as
+    `#/components/schemas/Envelope/properties/state`. `errors(404, 409)` lists the error statuses
+    that the handler answers; the document already lists `400` when the router can refuse a
+    query parameter or the body, and `404` for a path parameter that does not take every
+    segment.
 - **Your own document or routing.** Override `schema()` to give your own document; the declared
     routes still route. `super.schema()` gives the generated one, to change. Override `handle()`
     to route some paths by hand, and call `super.handle(request)` for the declared ones.

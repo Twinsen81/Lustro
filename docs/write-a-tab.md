@@ -426,8 +426,11 @@ Descriptions and schemas make the document useful to an agent:
 ```
 
 `response(...)` gives the success response's JSON Schema, `component(...)` adds a schema under
-`components/schemas`, and `DebugRoutes.ref(name)` refers to one. A parameter's `schema` replaces
-the one made from its type in the document, such as `{"const": true}`. The sample's
+`components/schemas`, and `DebugRoutes.ref(name)` refers to one. For a response that is not JSON,
+such as the bytes of an export, a block after `response(...)` names its content type and its
+headers: `response("The export.") { content("text/csv"); header("Content-Disposition", "attachment.") }`.
+A parameter's `schema` replaces the one made from its type in the document, such as
+`{"const": true}`. The sample's
 [flags tab](https://github.com/Twinsen81/Lustro/blob/main/sample/src/debug/kotlin/io/github/twinsen81/lustro/sample/SampleFlagsTab.kt)
 declares all three routes, with their bodies, responses, and errors.
 

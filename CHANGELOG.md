@@ -2148,6 +2148,67 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Changed
 
+- **The Network tab declares its routes once, and the declared routes take
+  responses that are not JSON, repeated parameters, and path segments that
+  name nothing (experimental).** The Network tab routed each request by hand
+  in `handle()` and read each parameter and body field itself, and its OpenAPI
+  document described the same 19 operations again by hand. It now declares
+  each route in `routes()`, so the routing, the checks of the parameters and
+  the bodies, the `405` with `Allow`, and the document of `GET network/_schema`
+  come from one declaration. The document is committed at
+  `lustro/openapi/network.openapi.json`, which the wire-schema artifact and the
+  CLI copy, and a test keeps the copy equal to the declarations. It has the
+  paths, methods, parameters, and bodies of the hand-written one: `regex` is a
+  boolean and `ids` an array of strings in it, as the router reads them,
+  `senders` also lists `413`, and the `send` route is there only when the app
+  gave a sender. The Network routes were the test of the declared-routes API
+  before it is stable, and the API changed where it did not fit them:
+  `response()` takes a block with `content(type, schema)` for a body that is
+  not JSON, such as the bytes of a captured body, and `header(name,
+  description)` for its headers; `strings()` declares a query or body
+  parameter that a request can repeat, such as `?ids=a&ids=b`; a path segment
+  that its parameter does not take, such as `body/both` for `{direction}` or
+  `events/x/payload` for an integer `{seq}`, matches no route, so `404`, not
+  `400`; an empty query or form value of an int, long, or boolean takes the
+  parameter's default, and without one gets `400`, where it was absent before;
+  a `$ref` can point into a component, such as
+  `#/components/schemas/TransactionCursorEnvelope/properties/state`; the
+  document lists `400` only when the router can refuse a query parameter or
+  the body, and `404` for a path parameter that does not take every segment;
+  and a body field of the wrong JSON type gets a message with the value that
+  it had, such as `delayMs must be a whole number, was "x"`. The Network routes
+  keep their statuses, `error` types, and `field` values, with these
+  differences. The bodies of `POST rules/delete`, `rules/toggle`, `throttle`,
+  and `send` must be strict JSON, with each field of its JSON type: Android's
+  `JSONObject` took single quotes, unquoted names, and comments, and turned a
+  number or an object into text, so `{"id": 5}` and a `send` `body` that is a
+  JSON object now get `400` with that field, and a body that is not JSON gets
+  `400` with `field: "body"`, where it had no `field`. `POST rules` and
+  `rules/_/sync` read their bodies as before. A `POST` with no body to `rules`,
+  `rules/_/sync`, `rules/delete`, `rules/toggle`, `throttle`, or `send` gets
+  `400` with `field: "body"`, where it named the first required field, and an
+  empty `rules/_/sync`, which removed every rule, now changes nothing: send
+  `[]` to remove them. The parameters and the body are checked before the
+  handler runs, so when a request has two errors, another can win:
+  `GET websockets/unknown/events?limit=0` gets `400` for `limit`, where it got
+  `404`, and `?since=-1&regex=x` gets `400` for `regex`, where it got it for
+  `since`. The export takes `format=har` as written, so `format=HAR` gets
+  `400`, and an empty `direction=` on the events of a connection gets `400`,
+  as any value other than `sent` or `received`, where it listed both. Without
+  a sender, `GET send` gets `404`, not `405`, because the route does not exist
+  then. Some messages changed, such as `since must be at least 0, was -1`.
+  Verified on an emulator (API 35) with the sample: `_meta` listed `network`
+  1.16, and `GET network/_schema` was byte-equal to the committed file;
+  `GET transactions/{id}`, its `body/response`, and `websockets/{id}/events`
+  answered `200`; `GET transactions/_/export` with two `ids` parameters
+  exported both transactions, `POST` to it answered `405` with `Allow: GET`,
+  and `GET transactions/_` answered `404`; `GET pause` answered `405` with
+  `Allow: POST`, and `DELETE rules` with `Allow: GET, POST`; `delayMs` 700000,
+  `since=-1`, `since=`, `limit=0`, and `{"id": 5}` answered `400` with that
+  field, and a body in single quotes and a sync with no body `400` with
+  `field: "body"`; `body/both` and `events/abc/payload` answered `404`; and
+  `?cursr=x` got its `Lustro-Warning`. The CLI end to end passed on the same
+  emulator.
 - **A rules sync with a repeated id is a `400` (protocol 1.11).**
   `POST /api/v1/network/rules/_/sync` kept only the first of two posted rules
   with the same `id`, and still answered `200` with a `count` of the rules

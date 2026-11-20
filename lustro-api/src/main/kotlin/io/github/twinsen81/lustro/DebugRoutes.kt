@@ -22,7 +22,9 @@ package io.github.twinsen81.lustro
  *
  * A route's path is relative to `/api/v1/<tab id>/`, such as `snapshot` or `items/{id}`: a
  * segment in braces is a path parameter, which the route declares with [DebugRoute.path]. A
- * literal segment wins over a parameter, so `items/new` and `items/{id}` can both exist.
+ * literal segment wins over a parameter, so `items/new` and `items/{id}` can both exist. A
+ * segment that its parameter does not take, such as `items/x` for an int `{id}`, matches no
+ * route, so the client gets `404`.
  *
  * A mistake in the declarations, such as two routes with the same method and path, a path
  * parameter that the route does not declare, a JSON fragment that is not valid JSON, or a
@@ -127,8 +129,7 @@ public class DebugRoute internal constructor(
     internal val params = ArrayList<ParamDecl>()
     internal var rawBodyType: String? = null
     internal var rawBodySchema: String? = null
-    internal var responseDescription: String? = null
-    internal var responseSchema: String? = null
+    internal var response: DebugResponseSpec? = null
     internal val errorStatuses = LinkedHashSet<Int>()
     internal var handler: DebugHandler? = null
     internal var open = true
@@ -179,21 +180,36 @@ public class DebugRoute internal constructor(
     }
 
     /**
-     * Describes the route's `200` response for the OpenAPI document, with the JSON Schema
-     * [schema] of its `application/json` body, or none. A route that answers another status
-     * or content type, such as `204` or [DebugResponse.text], has no way to say so here: the
-     * tab can change the generated document in its [DebugTab.schema].
+     * Describes the route's `200` response for the OpenAPI document: its [description], and the
+     * JSON Schema [schema] of its `application/json` body, or none. [declare] adds a body of
+     * another content type, such as the bytes of [DebugResponse.bytes], and the response's
+     * headers:
+     *
+     * ```
+     * response("The image, as it is stored.") {
+     *     content("image/png")
+     *     header("Content-Disposition", "attachment, for a download.")
+     * }
+     * ```
+     *
+     * A route that answers another success status, such as `204`, has no way to say so here:
+     * the tab can change the generated document in its [DebugTab.schema].
      */
-    public fun response(description: String, schema: String? = null) {
+    public fun response(description: String, schema: String? = null, declare: DebugResponseSpec.() -> Unit = {}) {
         checkOpen()
-        responseDescription = description
-        responseSchema = schema
+        check(response == null) { "${describe()}: two responses" }
+        val spec = DebugResponseSpec(this, description)
+        if (schema != null) spec.content(JSON_CONTENT_TYPE, schema)
+        spec.declare()
+        spec.open = false
+        response = spec
     }
 
     /**
      * Adds error statuses that the route's handler can answer, such as `404`, to the OpenAPI
-     * document. The document already lists `400` for a route with parameters or a body, and
-     * the statuses that the server can answer for any route.
+     * document. The document already lists the statuses that the server can answer for any
+     * route, `400` for a route with a body or a query parameter that the router can refuse, and
+     * `404` for a path parameter that does not take every segment.
      */
     public fun errors(vararg statuses: Int) {
         checkOpen()
@@ -220,6 +236,60 @@ public class DebugRoute internal constructor(
 
     internal fun describe(): String = "Tab ${routes.tab.id}, $method $template"
 }
+
+/**
+ * The `200` response of a route, for the OpenAPI document: [DebugRoute.response] declares it.
+ * Its bodies, one for each content type, and its headers are in the order of the declarations.
+ */
+@ExperimentalDebugRoutes
+@RoutesDsl
+public class DebugResponseSpec internal constructor(
+    private val route: DebugRoute,
+    internal val description: String,
+) {
+    internal val contents = LinkedHashMap<String, String>()
+    internal val headers = LinkedHashMap<String, Header>()
+    internal var open = true
+
+    /**
+     * Adds a body of [contentType] that the JSON Schema [schema] describes. [contentType] is a
+     * media type, such as `text/csv`, or a media range with `*` as the subtype, for any image,
+     * or as both parts, for a body of any type. The default [schema], `{}`, takes any body.
+     */
+    public fun content(contentType: String, schema: String = "{}") {
+        checkOpen()
+        check(MEDIA_RANGE.matches(contentType)) { "${route.describe()}: $contentType is not a content type, such as image/png" }
+        check(contents.keys.none { it.equals(contentType, ignoreCase = true) }) { "${route.describe()}: two responses of $contentType" }
+        contents[contentType] = schema
+    }
+
+    /**
+     * Adds the response header [name], with its [description] and the JSON Schema [schema] of its
+     * value, a string by default. `Content-Type` is not a header here: [content] declares it.
+     */
+    public fun header(name: String, description: String, schema: String = STRING_SCHEMA) {
+        checkOpen()
+        check(HEADER_NAME.matches(name)) { "${route.describe()}: $name is not a header name" }
+        check(!name.equals("Content-Type", ignoreCase = true)) { "${route.describe()}: declare the Content-Type with content()" }
+        check(headers.keys.none { it.equals(name, ignoreCase = true) }) { "${route.describe()}: two response headers named $name" }
+        headers[name] = Header(description, schema)
+    }
+
+    private fun checkOpen() {
+        route.checkOpen()
+        check(open) { "${route.describe()}: declare the response in its block" }
+    }
+
+    internal class Header(val description: String, val schema: String)
+}
+
+private const val JSON_CONTENT_TYPE = "application/json"
+private const val STRING_SCHEMA = "{\"type\":\"string\"}"
+
+// An HTTP token, as a header name and the type and subtype of a media type must be.
+private const val TOKEN = "[A-Za-z0-9!#$%&'*+.^_`|~-]+"
+private val MEDIA_RANGE = Regex("$TOKEN/$TOKEN")
+private val HEADER_NAME = Regex(TOKEN)
 
 /** Keeps a declaration block from setting a property of an outer block by mistake. */
 @DslMarker

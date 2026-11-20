@@ -34,9 +34,60 @@ class DebugRoutesTest {
         assertEquals(200, get(tab, "list")?.status)
         assertEquals(listOf(null, 100, null, null), seen)
         seen.clear()
-        // An empty int, long, or boolean is absent; an empty string is a string.
-        assertEquals(200, get(tab, "list", "text" to "", "limit" to "", "from" to "", "all" to "")?.status)
+        // An empty int, long, or boolean takes its default, and without one is refused; an empty string is a string.
+        assertEquals(200, get(tab, "list", "text" to "", "limit" to "")?.status)
         assertEquals(listOf("", 100, null, null), seen)
+        for ((name, message) in listOf("from" to "from must be a whole number, was empty", "all" to "all must be true or false, was empty")) {
+            val refused = get(tab, "list", name to "")!!
+            assertEquals(name, 400, refused.status)
+            assertEquals(name, refused.json().getString("field"))
+            assertEquals(message, refused.json().getString("message"))
+        }
+    }
+
+    @Test
+    fun `a repeated parameter arrives as every value, from the query, a form, or a JSON array`() {
+        val seen = ArrayList<Any?>()
+        val tab =
+            tab { routes ->
+                routes.get("export") {
+                    val ids = query.strings("ids")
+                    val kinds = query.strings("kind") { values = listOf("http", "ws") }.withDefault(listOf("http"))
+                    handle { call -> DebugResponse.ok("{}").also { seen.addAll(listOf(call[ids], call[kinds])) } }
+                }
+                routes.post("tag") {
+                    acceptsForm = true
+                    val tags = body.strings("tag") { minLength = 1 }.required()
+                    handle { call -> DebugResponse.ok("{}").also { seen.add(call[tags]) } }
+                }
+            }
+
+        assertEquals(200, get(tab, "export", "ids" to "a", "ids" to "b,c", "kind" to "ws", "kind" to "http")?.status)
+        assertEquals(200, get(tab, "export", "ids" to "")?.status)
+        assertEquals(200, get(tab, "export")?.status)
+        assertEquals(listOf(listOf("a", "b,c"), listOf("ws", "http"), listOf(""), listOf("http"), null, listOf("http")), seen)
+        val kind = get(tab, "export", "kind" to "ws", "kind" to "ftp")!!
+        assertEquals(400, kind.status)
+        assertEquals("kind", kind.json().getString("field"))
+        seen.clear()
+
+        val form = MediaType.parse("application/x-www-form-urlencoded")
+        assertEquals(200, post(tab, "tag", "tag=a&tag=b", form)?.status)
+        assertEquals(200, post(tab, "tag", """{"tag":["c"]}""")?.status)
+        assertEquals(listOf(listOf("a", "b"), listOf("c")), seen)
+        val cases =
+            listOf(
+                """{"tag":"c"}""" to "tag must be a JSON array of strings, was \"c\"",
+                """{"tag":["c",1]}""" to "tag must be a JSON array of strings, has 1",
+                """{"tag":[""]}""" to "tag must not be empty",
+                """{}""" to "tag is required",
+            )
+        for ((body, message) in cases) {
+            val response = post(tab, "tag", body)!!
+            assertEquals(body, 400, response.status)
+            assertEquals(body, "tag", response.json().getString("field"))
+            assertEquals(body, message, response.json().getString("message"))
+        }
     }
 
     @Test
@@ -47,6 +98,7 @@ class DebugRoutesTest {
                     query.string("file") { minLength = 1 }.required()
                     query.string("dir") { values = listOf("asc", "desc") }
                     query.int("limit") { min = 1; max = 500 }
+                    query.int("page") { min = 1 }
                     query.boolean("all")
                     handle { DebugResponse.ok("{}") }
                 }
@@ -59,6 +111,9 @@ class DebugRoutesTest {
                 listOf("file" to "f", "limit" to "x") to ("limit" to "limit must be a whole number, was x"),
                 listOf("file" to "f", "limit" to "0") to ("limit" to "limit must be from 1 to 500, was 0"),
                 listOf("file" to "f", "limit" to "99999999999") to ("limit" to "limit must be from 1 to 500, was 99999999999"),
+                // An int's own limit is in the message only when the number passed it.
+                listOf("file" to "f", "page" to "0") to ("page" to "page must be at least 1, was 0"),
+                listOf("file" to "f", "page" to "99999999999") to ("page" to "page must be at most 2147483647, was 99999999999"),
                 listOf("file" to "f", "all" to "yes") to ("all" to "all must be true or false, was yes"),
             )
         for ((query, expected) in cases) {
@@ -85,14 +140,24 @@ class DebugRoutesTest {
                     val seq = path.long("seq") { min = 0 }
                     handle { call -> DebugResponse.ok("{}").also { seen += call[seq] } }
                 }
+                routes.get("items/{id}/body/{direction}") {
+                    path.string("id")
+                    val direction = path.string("direction") { values = listOf("request", "response") }
+                    handle { call -> DebugResponse.ok("{}").also { seen += call[direction] } }
+                }
             }
 
         assertEquals(200, get(tab, "items/42")?.status)
         assertEquals(200, get(tab, "items/new")?.status)
         assertEquals(200, get(tab, "events/7/payload")?.status)
-        assertEquals(listOf<Any?>("42", "literal", 7L), seen)
-        assertEquals("seq", get(tab, "events/x/payload")!!.json().getString("field"))
-        assertEquals("seq", get(tab, "events/-1/payload")!!.json().getString("field"))
+        assertEquals(200, get(tab, "items/42/body/request")?.status)
+        assertEquals(listOf<Any?>("42", "literal", 7L, "request"), seen)
+        // A segment that its parameter does not take names nothing: no route, so the server answers 404.
+        assertNull(get(tab, "events/x/payload"))
+        assertNull(get(tab, "events/-1/payload"))
+        assertNull(get(tab, "items/42/body/both"))
+        // The method comes first, as in the server's lookup of the document.
+        assertEquals("GET", tab.handle(DebugRequest("events/x/payload", "POST"))!!.headers.get("Allow"))
         assertNull(get(tab, "items"))
         assertNull(get(tab, "items/"))
         assertNull(get(tab, "items/1/2"))
@@ -146,11 +211,12 @@ class DebugRoutesTest {
 
         val cases =
             listOf(
-                """{"key":5}""" to ("key" to "key must be a JSON string"),
+                """{"key":5}""" to ("key" to "key must be a JSON string, was 5"),
                 """{"count":3}""" to ("key" to "key is required"),
-                """{"key":"k","count":"3"}""" to ("count" to "count must be a whole number"),
-                """{"key":"k","count":1.5}""" to ("count" to "count must be a whole number"),
-                """{"key":"k","on":"true"}""" to ("on" to "on must be true or false"),
+                """{"key":"k","count":"3"}""" to ("count" to "count must be a whole number, was \"3\""),
+                """{"key":"k","count":1.5}""" to ("count" to "count must be a whole number, was 1.5"),
+                """{"key":"k","on":"true"}""" to ("on" to "on must be true or false, was \"true\""),
+                """{"key":{"a":"${"x".repeat(50)}"}}""" to ("key" to "key must be a JSON string, was {\"a\":\"${"x".repeat(34)}..."),
                 "" to ("body" to "The body must be a JSON object"),
                 "[1]" to ("body" to "The body is not a JSON object"),
                 "{" to ("body" to "The body is not a JSON object: expected a member name at character 2"),
@@ -346,6 +412,56 @@ class DebugRoutesTest {
                         handle { DebugResponse.ok("{}") }
                     }
                 },
+                "names nothing in the schema Thing" to { routes ->
+                    routes.component("Thing", """{"type": "object", "properties": {"a": {"type": "string"}}}""")
+                    routes.get("a") {
+                        response("A thing.", """{"${'$'}ref": "#/components/schemas/Thing/properties/b"}""")
+                        handle { DebugResponse.ok("{}") }
+                    }
+                },
+                "two responses" to { routes ->
+                    routes.get("a") {
+                        response("One.")
+                        response("Two.")
+                    }
+                },
+                "image/ is not a content type" to { routes ->
+                    routes.get("a") { response("Bytes.") { content("image/") } }
+                },
+                "two responses of IMAGE/PNG" to { routes ->
+                    routes.get("a") {
+                        response("Bytes.") {
+                            content("image/png")
+                            content("IMAGE/PNG")
+                        }
+                    }
+                },
+                "two responses of application/json" to { routes ->
+                    routes.get("a") { response("JSON.", "{}") { content("application/json") } }
+                },
+                "declare the Content-Type with content()" to { routes ->
+                    routes.get("a") { response("Bytes.") { header("content-type", "The type.") } }
+                },
+                "two response headers named ETag" to { routes ->
+                    routes.get("a") {
+                        response("Bytes.") {
+                            header("Etag", "The version.")
+                            header("ETag", "The version.")
+                        }
+                    }
+                },
+                "the header X-Count is not valid JSON" to { routes ->
+                    routes.get("a") {
+                        response("Bytes.") { header("X-Count", "How many.", "{") }
+                        handle { DebugResponse.ok("{}") }
+                    }
+                },
+                "the default of ids is not a value that it takes: ids must not be empty" to { routes ->
+                    routes.get("a") {
+                        query.strings("ids") { minLength = 1 }.withDefault(listOf("a", ""))
+                        handle { DebugResponse.ok("{}") }
+                    }
+                },
                 "is the shared error envelope" to { routes -> routes.component("ErrorEnvelope", "{}") },
                 "two operations with the operationId same" to { routes ->
                     routes.get("a") {
@@ -417,6 +533,20 @@ class DebugRoutesTest {
         assertSame(first, again.cause)
         assertTrue(again.message.orEmpty().contains("set routes.version"))
         assertEquals(1, calls)
+    }
+
+    @Test
+    fun `a response can't be declared after its block`() {
+        lateinit var kept: DebugResponseSpec
+        val tab =
+            tab { routes ->
+                routes.get("a") {
+                    response("Bytes.") { kept = this }
+                    handle { DebugResponse.ok("{}") }
+                }
+            }
+        tab.schema()
+        assertThrows(IllegalStateException::class.java) { kept.content("text/plain") }
     }
 
     @Test

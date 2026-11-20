@@ -15,7 +15,8 @@ internal class RouteTable private constructor(
      * Answers [request], or returns `null` when no declared path matches it, so that the
      * server answers `404`. A path that matches with another method gets `405` with an
      * `Allow` header, in the server's format. As in the server, the path that matches with
-     * the most literal segments wins, whatever its methods.
+     * the most literal segments wins, whatever its methods. A segment that its path parameter
+     * does not take also returns `null`: the path names a resource that does not exist.
      */
     fun handle(request: DebugRequest): DebugResponse? {
         val segments = request.path.split('/')
@@ -24,9 +25,10 @@ internal class RouteTable private constructor(
         val candidates = matching.filter { it.literals == literals }
         val method = request.method.uppercase()
         val route = candidates.firstOrNull { it.method == method } ?: return methodNotAllowed(request, method, candidates)
+        val path = route.readPath(segments) ?: return null
         val values =
             try {
-                route.read(request, segments)
+                route.read(request, path)
             } catch (e: BadInput) {
                 return DebugResponse.error(e.message.orEmpty(), field = e.field)
             }
@@ -59,10 +61,23 @@ internal class RouteTable private constructor(
             given.size == segments.size &&
                 segments.indices.all { i -> segments[i].literal?.equals(given[i]) ?: given[i].isNotEmpty() }
 
-        fun read(request: DebugRequest, given: List<String>): Map<ParamDecl, Any?> {
+        /** The values of the path parameters, or `null` when a segment does not fit its parameter. */
+        fun readPath(given: List<String>): MutableMap<ParamDecl, Any?>? {
             val values = HashMap<ParamDecl, Any?>()
-            segments.forEachIndexed { i, segment -> segment.param?.let { values[it.decl] = it.fromText(given[i]) } }
-            for (param in query) values[param.decl] = param.fromText(request.queryParam(param.name))
+            segments.forEachIndexed { i, segment ->
+                val param = segment.param ?: return@forEachIndexed
+                values[param.decl] =
+                    try {
+                        param.fromText(given[i])
+                    } catch (_: BadInput) {
+                        return null
+                    }
+            }
+            return values
+        }
+
+        fun read(request: DebugRequest, values: MutableMap<ParamDecl, Any?>): Map<ParamDecl, Any?> {
+            for (param in query) values[param.decl] = param.fromTexts(request.queryParams[param.name])
             if (body.isNotEmpty()) readFields(request, values)
             if (rawBody && (request.body == null || request.body.isEmpty())) badInput("The body is required", BODY)
             return values
@@ -80,7 +95,7 @@ internal class RouteTable private constructor(
             }
             if (form) {
                 val fields = request.formParams()
-                for (param in body) values[param.decl] = param.fromText(fields[param.name]?.firstOrNull())
+                for (param in body) values[param.decl] = param.fromTexts(fields[param.name])
                 return
             }
             val parsed =
@@ -114,6 +129,7 @@ internal class RouteTable private constructor(
                     try {
                         when (type) {
                             ParamType.STRING -> checked(default as String)
+                            ParamType.STRINGS -> (default as List<*>).forEach { checked(it as String) }
                             ParamType.INT, ParamType.LONG -> checked((default as Number).toLong())
                             ParamType.JSON -> Json.parse(default as String)
                             ParamType.BOOLEAN -> Unit
@@ -130,20 +146,28 @@ internal class RouteTable private constructor(
             }
         }
 
-        /** The value from the path, the query, or a form, where every value is text. */
+        /** The value from the query or a form, which can give a parameter more than once. */
+        fun fromTexts(texts: List<String>?): Any? =
+            if (type == ParamType.STRINGS) {
+                if (texts.isNullOrEmpty()) absent() else texts.map(::checked)
+            } else {
+                fromText(texts?.firstOrNull())
+            }
+
+        /** The value from one text: a path segment, or the first value of a query or form parameter. */
         fun fromText(text: String?): Any? {
-            val given = if (type == ParamType.STRING) text else text?.takeIf { it.isNotEmpty() }
-            given ?: return absent()
+            text ?: return absent()
+            if (text.isEmpty() && type != ParamType.STRING && decl.hasDefault) return default
             return when (type) {
-                ParamType.STRING -> checked(given)
-                ParamType.INT, ParamType.LONG -> checked(given.toLongOrNull() ?: badInput("$name must be a whole number, was ${shown(given)}", name))
+                ParamType.STRING -> checked(text)
+                ParamType.INT, ParamType.LONG -> checked(text.toLongOrNull() ?: badInput("$name must be a whole number, was ${shown(text)}", name))
                 ParamType.BOOLEAN ->
-                    when (given) {
+                    when (text) {
                         "true" -> true
                         "false" -> false
-                        else -> badInput("$name must be true or false, was ${shown(given)}", name)
+                        else -> badInput("$name must be true or false, was ${shown(text)}", name)
                     }
-                ParamType.JSON -> error("A JSON parameter is not text")
+                ParamType.STRINGS, ParamType.JSON -> error("$type is not one text")
             }
         }
 
@@ -151,10 +175,14 @@ internal class RouteTable private constructor(
         fun fromJson(value: Any?): Any? {
             if (value == null || value == JsonNull) return absent()
             return when (type) {
-                ParamType.STRING -> checked(value as? String ?: badInput("$name must be a JSON string", name))
+                ParamType.STRING -> checked(value as? String ?: badInput("$name must be a JSON string, was ${shownJson(value)}", name))
+                ParamType.STRINGS -> {
+                    val items = value as? List<*> ?: badInput("$name must be a JSON array of strings, was ${shownJson(value)}", name)
+                    items.map { item -> checked(item as? String ?: badInput("$name must be a JSON array of strings, has ${shownJson(item)}", name)) }
+                }
                 ParamType.INT, ParamType.LONG ->
-                    checked((value as? JsonNumber)?.toLongOrNull() ?: badInput("$name must be a whole number", name))
-                ParamType.BOOLEAN -> value as? Boolean ?: badInput("$name must be true or false", name)
+                    checked((value as? JsonNumber)?.toLongOrNull() ?: badInput("$name must be a whole number, was ${shownJson(value)}", name))
+                ParamType.BOOLEAN -> value as? Boolean ?: badInput("$name must be true or false, was ${shownJson(value)}", name)
                 ParamType.JSON -> Json.write(value, pretty = false)
             }
         }
@@ -171,12 +199,14 @@ internal class RouteTable private constructor(
         }
 
         private fun checked(number: Long): Any {
-            val outside = (min != null && number < min) || (max != null && number > max)
-            if (outside) {
+            val below = min != null && number < min
+            if (below || (max != null && number > max)) {
+                // An int's own limits are not in the message unless they are the limit that the number passed.
+                val declared = decl.spec as? DebugIntegerSpec
                 val range =
                     when {
-                        min != null && max != null -> "from $min to $max"
-                        min != null -> "at least $min"
+                        declared?.min != null && declared.max != null -> "from $min to $max"
+                        below -> "at least $min"
                         else -> "at most $max"
                     }
                 badInput("$name must be $range, was $number", name)
@@ -184,7 +214,14 @@ internal class RouteTable private constructor(
             return if (type == ParamType.INT) number.toInt() else number
         }
 
-        private fun shown(text: String): String = if (text.length > SHOWN_CHARS) text.take(SHOWN_CHARS) + "..." else text
+        private fun shown(text: String): String =
+            when {
+                text.isEmpty() -> "empty"
+                text.length > SHOWN_CHARS -> text.take(SHOWN_CHARS) + "..."
+                else -> text
+            }
+
+        private fun shownJson(value: Any?): String = shown(Json.write(value, pretty = false))
     }
 
     class BadInput(message: String, val field: String) : Exception(message)

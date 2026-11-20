@@ -5,7 +5,7 @@ Realistic recorded responses for the Lustro HTTP wire protocol. They are the
 validate against these to prove they parse the exact shapes the server emits,
 and the fixtures themselves are validated against the JSON Schemas in the parent
 directory (`../*.schema.json`) and the OpenAPI components of the Network tab
-(`lustro/src/main/assets/lustro/network.openapi.json`), the Logs tab
+(`lustro/openapi/network.openapi.json`), the Logs tab
 (`lustro-logs/src/main/assets/lustro/logs.openapi.json`), the Preferences
 tab (`lustro-prefs/openapi/prefs.openapi.json`), the SQLite
 tab (`lustro-sqlite/src/main/assets/lustro/sqlite.openapi.json`), the

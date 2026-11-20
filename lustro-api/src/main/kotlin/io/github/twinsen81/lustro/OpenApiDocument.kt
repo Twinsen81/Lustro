@@ -8,7 +8,8 @@ package io.github.twinsen81.lustro
  * the shared error envelope, and the schemas that the tab added.
  *
  * Every operation lists the error statuses that the server can answer for any route (`401`,
- * `403`, `413`, `503`), `400` when the route has parameters or a body, and the statuses that
+ * `403`, `413`, `503`), `400` when the router can refuse the route's body or one of its query
+ * parameters, `404` when a path parameter does not take every segment, and the statuses that
  * the route declares with [DebugRoute.errors].
  *
  * @throws IllegalStateException for a JSON fragment that is not a JSON object, a reference to
@@ -41,7 +42,7 @@ internal class OpenApiDocument(private val declared: DebugRoutes) {
                 "paths" to paths,
                 "components" to linkedMapOf("responses" to linkedMapOf("Error" to Json.parse(ERROR_RESPONSE)), "schemas" to schemas),
             )
-        checkReferences(document, schemas.keys)
+        checkReferences(document, schemas)
         return Json.write(document, pretty = true)
     }
 
@@ -103,12 +104,10 @@ internal class OpenApiDocument(private val declared: DebugRoutes) {
         param.spec.schema?.let { return fragment("${route.describe()}, the schema of ${param.name}", it) }
         val schema = LinkedHashMap<String, Any>()
         when (param.type) {
-            ParamType.STRING -> {
-                val spec = param.spec as DebugStringSpec
-                schema["type"] = "string"
-                if (spec.minLength > 0) schema["minLength"] = spec.minLength
-                spec.maxLength?.let { schema["maxLength"] = it }
-                spec.values?.let { schema["enum"] = it.toList() }
+            ParamType.STRING -> schema += stringSchema(param.spec as DebugStringSpec)
+            ParamType.STRINGS -> {
+                schema["type"] = "array"
+                schema["items"] = stringSchema(param.spec as DebugStringSpec)
             }
             ParamType.INT, ParamType.LONG -> {
                 val spec = param.spec as DebugIntegerSpec
@@ -127,18 +126,54 @@ internal class OpenApiDocument(private val declared: DebugRoutes) {
         return schema
     }
 
+    private fun stringSchema(spec: DebugStringSpec): Map<String, Any> {
+        val schema = linkedMapOf<String, Any>("type" to "string")
+        if (spec.minLength > 0) schema["minLength"] = spec.minLength
+        spec.maxLength?.let { schema["maxLength"] = it }
+        spec.values?.let { schema["enum"] = it.toList() }
+        return schema
+    }
+
     private fun responses(route: DebugRoute): Map<String, Any> {
         val responses = LinkedHashMap<String, Any>()
-        val ok = linkedMapOf<String, Any>("description" to (route.responseDescription ?: "Success."))
-        route.responseSchema?.let { schema ->
-            ok["content"] = linkedMapOf("application/json" to linkedMapOf("schema" to fragment("${route.describe()}, the response", schema)))
+        val spec = route.response
+        val ok = linkedMapOf<String, Any>("description" to (spec?.description ?: "Success."))
+        if (spec != null && spec.headers.isNotEmpty()) {
+            ok["headers"] =
+                spec.headers.entries.associateTo(LinkedHashMap()) { (name, header) ->
+                    name to linkedMapOf("description" to header.description, "schema" to fragment("${route.describe()}, the header $name", header.schema))
+                }
+        }
+        if (spec != null && spec.contents.isNotEmpty()) {
+            ok["content"] =
+                spec.contents.entries.associateTo(LinkedHashMap()) { (type, schema) ->
+                    type to linkedMapOf("schema" to fragment("${route.describe()}, the response of $type", schema))
+                }
         }
         responses["200"] = ok
         val errors = sortedSetOf(401, 403, 413, 503)
-        if (route.params.isNotEmpty() || route.rawBodyType != null) errors += 400
+        // Any body can be refused: one that is not JSON, or an empty raw body.
+        val body = route.rawBodyType != null || route.params.any { it.location == ParamIn.BODY }
+        if (body || route.params.any { it.location == ParamIn.QUERY && refusable(it) }) errors += 400
+        if (route.params.any { it.location == ParamIn.PATH && refusable(it) }) errors += 404
         errors += route.errorStatuses
         for (status in errors) responses[status.toString()] = linkedMapOf("\$ref" to ERROR_RESPONSE_REF)
         return responses
+    }
+
+    // Whether the router can refuse a request for the parameter: a missing required one, or a value that it does not take.
+    private fun refusable(param: ParamDecl): Boolean {
+        if (param.required && param.location != ParamIn.PATH) return true
+        return when (param.type) {
+            ParamType.STRING, ParamType.STRINGS -> {
+                val spec = param.spec as DebugStringSpec
+                // A path segment is never empty.
+                val shortest = if (param.location == ParamIn.PATH) 1 else 0
+                spec.minLength > shortest || spec.maxLength != null || spec.values != null
+            }
+            ParamType.INT, ParamType.LONG, ParamType.BOOLEAN -> true
+            ParamType.JSON -> false
+        }
     }
 
     private fun fragment(what: String, json: String): Map<String, Any> {
@@ -152,12 +187,24 @@ internal class OpenApiDocument(private val declared: DebugRoutes) {
         return checkNotNull(parsed as? Map<String, Any>) { "Tab ${tab.id}: $what is not a JSON object" }
     }
 
-    private fun checkReferences(value: Any?, schemas: Set<String>) {
+    private fun checkReferences(value: Any?, schemas: Map<String, Any>) {
         when (value) {
             is Map<*, *> -> {
                 val ref = value["\$ref"] as? String
                 if (ref != null && ref.startsWith(SCHEMA_REF)) {
-                    check(ref.removePrefix(SCHEMA_REF) in schemas) { "Tab ${tab.id}: $ref names no schema; add it with routes.component()" }
+                    // A JSON pointer can go on into the schema, such as #/components/schemas/Envelope/properties/state.
+                    val pointer = ref.removePrefix(SCHEMA_REF).split('/').map { it.replace("~1", "/").replace("~0", "~") }
+                    val schema = pointer.first()
+                    check(schema in schemas) { "Tab ${tab.id}: $ref names no schema; add it with routes.component()" }
+                    val target =
+                        pointer.drop(1).fold(schemas[schema]) { node, key ->
+                            when (node) {
+                                is Map<*, *> -> node[key]
+                                is List<*> -> key.toIntOrNull()?.let { node.getOrNull(it) }
+                                else -> null
+                            }
+                        }
+                    check(target != null) { "Tab ${tab.id}: $ref names nothing in the schema $schema" }
                 }
                 if (ref != null && ref.startsWith("#/components/responses/")) {
                     check(ref == ERROR_RESPONSE_REF) { "Tab ${tab.id}: $ref names no response" }

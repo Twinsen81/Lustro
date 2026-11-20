@@ -8,7 +8,7 @@
 | `pagination.schema.json` | `{ items, nextCursor }` | present |
 | `meta.schema.json` | `GET /api/v1/_meta` response | present |
 | `_schema.json` (in the `lustro` AAR assets) | `GET /api/v1/_schema` response: the shared envelopes, in one document | present |
-| `network.openapi.json` (in AAR assets) | Network tab routes | present |
+| `network.openapi.json` (generated from the `lustro` route declarations of the Network tab; served at `GET /api/v1/network/_schema`) | Network tab routes; its version is the protocol version | present |
 | `logs.openapi.json` (in the `lustro-logs` AAR assets) | Logs tab routes, version `1.1` | present |
 | `prefs.openapi.json` (generated from the `lustro-prefs` route declarations; served at `GET /api/v1/prefs/_schema`) | Preferences tab routes, version `1.2` | present |
 | `sqlite.openapi.json` (in the `lustro-sqlite` AAR assets) | SQLite tab routes, version `1.1` | present |

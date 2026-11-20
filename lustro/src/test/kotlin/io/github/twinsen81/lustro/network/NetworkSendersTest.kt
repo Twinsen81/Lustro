@@ -227,6 +227,17 @@ class NetworkSendersTest {
     }
 
     @Test
+    fun `send reads strict JSON, with each field of its type`() {
+        val tab = twoSenders()
+        val cases = listOf("""{"url":"/x","body":{"a":1}}""" to "body", "{url:'/x'}" to "body", """{"url":5}""" to "url", """{"url":"/x","method":1}""" to "method")
+        for ((body, field) in cases) {
+            val res = tab.handle(post("send", body))!!
+            assertEquals(body, 400, res.status)
+            assertEquals(body, field, res.json().getString("field"))
+        }
+    }
+
+    @Test
     fun `a relative url for a sender without a base url is a bad request`() {
         val res = twoSenders().handle(post("send", """{"url":"/x","sender":"Any host"}"""))!!
 

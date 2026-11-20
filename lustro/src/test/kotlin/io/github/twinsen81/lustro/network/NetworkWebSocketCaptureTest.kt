@@ -20,7 +20,6 @@ import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -233,7 +232,9 @@ class NetworkWebSocketCaptureTest {
         val notPaid = tab.events(id, "search" to "order -paid", "regex" to "true", "direction" to "sent")
         assertEquals(listOf("message sent text Order SHIPPED"), notPaid.getJSONArray("items").objects().map { it.summary() })
 
-        for ((name, value) in listOf("limit" to "0", "limit" to "many", "direction" to "up", "regex" to "yes")) {
+        // An empty limit or regex takes the default; an empty direction is a value that the route does not take.
+        assertEquals(200, tab.handle(get("websockets/$id/events", "limit" to "", "regex" to ""))!!.status)
+        for ((name, value) in listOf("limit" to "0", "limit" to "many", "direction" to "up", "direction" to "", "regex" to "yes")) {
             val error = tab.handle(get("websockets/$id/events", name to value))!!
             assertEquals(400, error.status)
             assertEquals(name, JSONObject(error.body.toString(Charsets.UTF_8)).getString("field"))
@@ -248,7 +249,7 @@ class NetworkWebSocketCaptureTest {
         tab.searchTimeoutMs = 60_000
         assertEquals(404, tab.handle(get("websockets/unknown/events"))!!.status)
         assertEquals(404, tab.handle(get("websockets/unknown"))!!.status)
-        assertNull(tab.handle(DebugRequest(path = "websockets", method = "POST")))
+        assertEquals(405, tab.handle(DebugRequest(path = "websockets", method = "POST"))!!.status)
         socket.cancel()
     }
 
