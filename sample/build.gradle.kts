@@ -158,14 +158,22 @@ abstract class CheckNoLustroClasses : DefaultTask() {
     fun check() {
         val lustroPrefix = "io.github.twinsen81.lustro."
         val appPrefix = "${appPackage.get()}."
-        val classes =
-            mappingFile.get().asFile.useLines { lines ->
+        val mapping = mappingFile.get().asFile
+        val allClasses =
+            mapping.useLines { lines ->
                 lines
-                    .filter { it.isNotEmpty() && !it[0].isWhitespace() && !it.startsWith("#") && it.endsWith(":") }
+                    .filter { it.isNotEmpty() && !it[0].isWhitespace() && !it.startsWith("#") }
+                    .filter { " -> " in it && it.endsWith(":") }
                     .map { it.substringBefore(" -> ") to it.substringAfter(" -> ").removeSuffix(":") }
-                    .filter { (name, _) -> name.startsWith(lustroPrefix) && !name.startsWith(appPrefix) }
                     .toList()
             }
+        // The app's Application and launcher Activity are always in the APK. When no class
+        // line names them, the file is empty or in a format that this task does not read,
+        // and the check below would pass on nothing.
+        if (allClasses.none { (name, _) -> name.startsWith(appPrefix) }) {
+            throw GradleException("$mapping has no class of the app ($appPrefix*): R8 wrote no mapping that this check can read.")
+        }
+        val classes = allClasses.filter { (name, _) -> name.startsWith(lustroPrefix) && !name.startsWith(appPrefix) }
         val named = classes.filter { (_, apkName) -> apkName.startsWith(lustroPrefix) }
         if (named.isNotEmpty()) {
             throw GradleException(
