@@ -182,11 +182,11 @@ CI adds the Dokka output under `api/` and `wire-protocol/` when it publishes.
   - `lustro.facade-parity`: `checkFacadeParity`, at the root.
 
 The wire protocol is versioned under `wire-protocol/v1/`. Each tab's OpenAPI
-document is in its own module: `src/main/assets/lustro/<id>.openapi.json` for a
-plugin with a hand-written document, and `openapi/<id>.openapi.json`, the
-committed copy of the generated document, for a tab that declares its routes
-(`lustro/openapi/network.openapi.json` for the Network tab, and Logs,
-Preferences, SQLite, WorkManager, and Screen).
+document is in its own module. Every tab of this repository declares its
+routes, and its module commits the generated document as
+`openapi/<id>.openapi.json` (`lustro/openapi/network.openapi.json` for the
+Network tab). A hand-written document in `src/main/assets/lustro/<id>.openapi.json`
+is an option for an app's custom tab, not for a plugin tab here.
 
 ### Adding a plugin module pair
 
@@ -226,15 +226,13 @@ as it adds `:lustro`: `debugImplementation` for the runtime and
 4. Put the tab's assets in the runtime module: `src/main/assets/lustro/<id>.js`
    and `<id>.css`. The server serves them from the app's merged assets, with no
    change to `:lustro`. The no-op half ships no assets. Give the tab an OpenAPI
-   document with its own `info.version` (DECISIONS.md, row 9), in one of two
-   ways:
-   - Declare the routes in `routes()` (DECISIONS.md, row 19), as
-     `:lustro-prefs` does. The tab then makes its document, and the module
-     commits a copy of it as `openapi/<id>.openapi.json`, outside the assets.
-     A unit test compares the copy with the declarations, and writes it when
-     the tests run with `LUSTRO_UPDATE_OPENAPI=1` in the environment (see
-     `PrefsOpenApiDocumentTest`).
-   - Or write the document by hand as `src/main/assets/lustro/<id>.openapi.json`.
+   document with its own `info.version` (DECISIONS.md, row 9): declare the
+   routes in `routes()` (DECISIONS.md, row 19), as every plugin tab does, such
+   as `:lustro-prefs`. The tab then makes its document, and the module commits
+   a copy of it as `openapi/<id>.openapi.json`, outside the assets. A unit test
+   compares the copy with the declarations, and writes it when the tests run
+   with `LUSTRO_UPDATE_OPENAPI=1` in the environment (see
+   `PrefsOpenApiDocumentTest`).
 
    Then add the document to the list in `lustro-wire-schema/build.gradle.kts`
    and to `lustro-cli/src/lustro_cli/wire/sync.py`, and run the sync
