@@ -359,10 +359,12 @@ def _cut_head(text: str, limit: int) -> str:
 def _get_schema(args: argparse.Namespace, a: Dict[str, Any]) -> str:
     tab = a.get("tab")
     if tab:
-        path = "/api/v1/{}/_schema".format(urllib.parse.quote(tab, safe=""))
-    else:
-        path = "/api/v1/_meta"
-    return _dumps(_client(args).get(path))
+        return _dumps(_client(args).get("/api/v1/{}/_schema".format(urllib.parse.quote(tab, safe=""))))
+    meta = _client(args).get(cli.META)
+    warning = cli.newer_protocol_warning(meta)
+    if warning:
+        _keep_warning(warning)
+    return _dumps(meta)
 
 
 TOOLS: Tuple[Tool, ...] = (
@@ -749,7 +751,10 @@ class Server:
         except (ToolError, cli.UsageError) as exc:
             return _text_result("error: {}".format(exc), is_error=True)
         except (LustroError, DiscoveryError) as exc:
-            return _with_warnings(_text_result("error: {}{}".format(exc, _adb_note()), is_error=True))
+            # The cause that adb finds, as a command prints it: a build without the
+            # Lustro runtime, or an app that is not running, for example.
+            _, message = cli.failure(self.args, exc)
+            return _with_warnings(_text_result("error: {}{}".format(message, _adb_note()), is_error=True))
         return _with_warnings(_text_result(text))
 
 

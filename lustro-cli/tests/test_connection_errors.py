@@ -10,11 +10,12 @@ import struct
 import subprocess
 import sys
 import threading
+import urllib.error
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
-from lustro_cli import cli
+from lustro_cli import cli, discovery, exitcodes
 from lustro_cli.client import LustroClient, LustroError
 from lustro_cli.discovery import Endpoint
 
@@ -79,7 +80,7 @@ def test_a_connection_that_ends_without_a_response_is_connection_failed(broken_s
 @pytest.mark.parametrize("broken_server", [_close_without_response], indirect=True)
 def test_the_cli_reports_a_closed_connection_without_a_traceback(broken_server, capsys):
     port = broken_server.rsplit(":", 1)[1]
-    assert cli.main(["meta", "--host", "127.0.0.1", "--port", port, "--token", TOKEN]) == 1
+    assert cli.main(["meta", "--host", "127.0.0.1", "--port", port, "--token", TOKEN]) == exitcodes.NOT_REACHABLE
     err = capsys.readouterr().err
     assert err.startswith("error: connection_failed: could not reach http://127.0.0.1:{}/api/v1/_meta: ".format(port))
     assert "Remote end closed connection without response" in err
@@ -91,7 +92,7 @@ def test_the_cli_reports_a_closed_connection_without_a_traceback(broken_server, 
 
 @pytest.fixture
 def endpoint(monkeypatch):
-    monkeypatch.setattr(cli, "_build_endpoint", lambda args: Endpoint("127.0.0.1", 8080, TOKEN))
+    monkeypatch.setattr(cli, "_build_endpoint", lambda args, **_: Endpoint("127.0.0.1", 8080, TOKEN))
     monkeypatch.setattr(cli, "forwarded_ports", lambda device_port, device: [])
 
 
@@ -142,11 +143,24 @@ def test_open_warns_and_goes_on_without_adb(endpoint, monkeypatch, capsys):
 
 
 def test_open_does_not_forward_for_a_lan_host(monkeypatch, capsys):
-    monkeypatch.setattr(cli, "_build_endpoint", lambda args: Endpoint("192.168.1.50", 8080, TOKEN))
+    monkeypatch.setattr(cli, "_build_endpoint", lambda args, **_: Endpoint("192.168.1.50", 8080, TOKEN))
     monkeypatch.setattr(cli, "forwarded_ports", lambda device_port, device: pytest.fail("adb forward --list ran"))
     monkeypatch.setattr(cli, "_adb_forward", lambda *args: pytest.fail("adb forward ran"))
     assert cli.main(["open", "--print-only"]) == 0
     assert capsys.readouterr().out.strip() == "http://192.168.1.50:8080/#lustro_token=tok"
+
+
+def test_a_lan_host_that_does_not_answer_gets_no_adb_diagnosis(monkeypatch, capsys):
+    # The CLI reaches a LAN host without adb, so adb says nothing about that server.
+    def refused(self, url, data, method, accept):
+        raise urllib.error.URLError(ConnectionRefusedError(61, "Connection refused"))
+
+    monkeypatch.setattr(LustroClient, "_open", refused)
+    monkeypatch.setattr(discovery, "diagnose", lambda *args, **kwargs: pytest.fail("adb diagnosis ran"))
+    monkeypatch.setattr(cli, "diagnose", lambda *args, **kwargs: pytest.fail("adb diagnosis ran"))
+    assert cli.main(["--host", "192.168.1.50", "--token", TOKEN, "meta"]) == exitcodes.NOT_REACHABLE
+    err = capsys.readouterr().err
+    assert err.startswith("error: connection_failed: could not reach http://192.168.1.50:8080/api/v1/_meta: ")
 
 
 def test_open_no_forward_skips_adb(endpoint, monkeypatch, capsys):

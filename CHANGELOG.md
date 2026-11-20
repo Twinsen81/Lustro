@@ -14,6 +14,45 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Added
 
+- **`lustro ready` waits until the app's server answers, each cause of a
+  failure has its own exit code, and `lustro --version` prints the wire
+  protocol.** A script that drove an app had to find the server itself: the CLI
+  end to end read logcat in a loop for the ready line, and a script could tell
+  "install a debug build" from "start the app" from "my command is wrong" only
+  from the message, because a discovery failure exited 2, the code of a bad
+  flag, and a refused connection exited 1, the code of an error response.
+  `lustro ready [--timeout SECONDS]` runs discovery and `GET /api/v1/_meta`
+  again, once a second, until the server answers, and prints the endpoint; at
+  the timeout (30 s by default) it prints the cause. The exit codes are now 0
+  for success, 1 for an error response, 2 for usage (also more than one device
+  with none selected), 3 for no device or no adb, 4 for an app of `--package`
+  that is not installed, 5 for an installed build without the Lustro runtime,
+  and 6 for an app that is not running, not in the foreground, or whose port
+  does not answer. Every command that finds the app uses them: when it finds
+  no token, or its connection fails, the CLI checks the device, the install,
+  the runtime, the process, and the app in the foreground with adb, and names
+  the first check that fails. So a no-op build with a ready line from an
+  earlier debug build in logcat now exits 5, not "not reachable". An MCP
+  tool's error names the same cause. Without `--package`, the CLI checks only
+  the app in the foreground, which can be the launcher, so an app there without
+  the runtime exits 6. The message for a build without the runtime names both
+  causes: the `-noop` artifacts, or a build from before the app added Lustro.
+  `lustro --version` prints `lustro 0.1.0 (protocol 1.16)`, from
+  `PROTOCOL_VERSION` in the CLI, because the library version stays the same
+  for every build from `main`. `./gradlew checkCliVersion` fails when it
+  differs from the server's protocol version, and `lustro ready`, `lustro
+  meta`, and the MCP tool `get_schema` warn when the app's `protocolVersion`
+  is newer. `cli-e2e.sh` uses `lustro ready` in place of its logcat loop. The
+  CLI README, docs/AGENTS.md, and the lustro skill have the table of exit
+  codes. Verified on an API 28 emulator with the sample: `ready --package`
+  exited 4 with the app uninstalled, 5 with the release build (the no-op
+  artifacts) installed, 6 with the debug build stopped and with the launcher in
+  front, and 2 with more than one device and none selected; started 4 s before
+  the app, it printed the endpoint 1 s after the app started; `meta` against a
+  stopped app with a line from its earlier start exited 6 with "is not
+  running"; `ready --token wrong` exited 1 after 1 s; with the app on
+  protocol 1.16, `ready` printed no warning, and a CLI set to 1.15 warned;
+  the CLI end to end passed with `lustro ready`.
 - **Agents learn of a query parameter that a route ignores, `mock sync`
   restores the output of `mock list`, and the CLI says when the app is a
   no-op build (wire protocol 1.15).** A route ignores a query parameter that

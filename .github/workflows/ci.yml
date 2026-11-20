@@ -74,9 +74,10 @@ jobs:
         run: ./gradlew checkDocsVersion checkPluginDocs --console=plain --stacktrace
 
       # A release publishes lustro-cli with the library's version, so its
-      # __version__ must be VERSION_NAME without -SNAPSHOT (see
+      # __version__ must be VERSION_NAME without -SNAPSHOT, and its
+      # PROTOCOL_VERSION must be the server's wire protocol version (see
       # gradle/cli-version.gradle.kts). It also reads text only.
-      - name: The CLI has the library's version
+      - name: The CLI has the library's version and protocol version
         run: ./gradlew checkCliVersion --console=plain --stacktrace
 
       - name: Assemble all modules

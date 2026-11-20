@@ -53,6 +53,7 @@ up to 1,000 of them, and `lustro net list` prints 50 short rows. The wire protoc
 below stays the stable contract, and the curl examples use it directly.
 
 ```bash
+lustro ready --package <package>  # wait until the server answers; prints the endpoint, or the cause and its exit code
 lustro open --print-only          # forward the port; exits 1 when adb forward fails
 lustro net list                   # the newest 50 transactions, newest first
 lustro net get <id> --no-body     # one transaction, without its bodies
@@ -114,6 +115,14 @@ look for them. Without `--token`, the CLI takes the `LUSTRO_TOKEN` environment v
 `adb shell run-as`. `--package PKG` names the app for that last step; without it, the CLI reads
 the app in the foreground. That step finds the token on a device that drops Info log lines.
 
+**Wait until the app is ready.** After a script starts the app, `lustro ready --package <package>
+--timeout 30` runs discovery and `GET /api/v1/_meta` again, once a second, until the server
+answers, and prints the endpoint that the CLI reaches it at. A ready line from an earlier start of
+the app names a token and a port that may not answer, so the CLI does not trust the first line
+that it finds. When the time is over, it prints the cause and exits with its code (see [Exit
+codes](#exit-codes)). A `401` or another `4xx` other than `429` ends the wait at once with exit 1. Pass `--package`: without it, the CLI checks only the app in the
+foreground, which can be the launcher.
+
 `lustro open` forwards a local port to the app's port on the device: 8080, or a free local port
 that adb chooses when another process or a forward to another device holds 8080. `--local-port N`
 forwards port N, and `--local-port 0` keeps a forward to the app that is there, or else lets adb
@@ -126,6 +135,27 @@ command. The CLI then connects only through a forward to that device, so agents 
 the app on their own emulator at the same time do not reach each other's app. Don't pass `--port`
 for a device: `--port N` connects to local port N as it is, which can be a forward to another
 device.
+
+### Exit codes
+
+Each cause has its own code, so a script can act on it without reading the message. Every command
+that finds the app uses them, not only `ready`:
+
+| Code | Cause | What to do |
+| --- | --- | --- |
+| 0 | The command did its work. | |
+| 1 | The app answered with an error, such as `404 not_found`, or the command did not get what it waited for: `net wait` at its timeout, and `open` when `adb forward` fails. | Read the error on stderr. |
+| 2 | The command can't run as given: a bad flag or input, an id that more than one item starts with, a search that the app rejects, or more than one device with none selected. | Change the command, or pass `--device`. |
+| 3 | No device: adb is not installed, or it finds no device, or the device is offline or not authorized. | Connect a device, or start an emulator. |
+| 4 | The app of `--package` is not installed. | Install a debug build that uses the Lustro artifacts. |
+| 5 | The installed build of `--package` does not contain the Lustro runtime: a build with the `-noop` artifacts, or one from before the app added Lustro. | Install a debug build that uses the Lustro artifacts. This replaces the installed build: when the user asked you to look at that build, ask first. |
+| 6 | The app can't be reached: it is not running or not in the foreground, it logged no ready line, or its port does not answer. | Start the app, and keep it in the foreground. |
+
+Without `--package`, an app in the foreground without the runtime exits 6, not 5, because that app
+can be another app than yours. `lustro --version` prints the wire protocol that the CLI implements,
+such as `lustro 0.1.0 (protocol 1.16)`. When the app's `protocolVersion` is newer, `lustro ready`
+and `lustro meta` print a warning on stderr: update the CLI, or it lacks what the newer protocol
+adds.
 
 ### Keep the output small
 
@@ -306,9 +336,11 @@ name, because a zip stores it as plain text; API 28 emulator images have no `unz
 adb shell grep -c -F assets/lustro/ "$(adb shell pm path <package> | grep base.apk | cut -d: -f2 | tr -d '\r')"   # 0: a no-op build
 ```
 
-When the CLI finds no token and knows the app, from `--package` or as the app in the foreground,
-it makes this check, and its error then says that the installed build does not contain the Lustro
-runtime and that a debug build must be installed.
+A build from before the app added Lustro has no such entry either. When the CLI finds no token,
+or the app's port does not answer, it checks, with adb, that there is a device, that the app of
+`--package` is installed, that its build contains the Lustro runtime, that it runs, and that it is
+in the foreground. The error then names the first check that fails, and the exit code says which
+one it is (see [Exit codes](#exit-codes)).
 
 Conventions a client should follow:
 - Honor a `LUSTRO_TOKEN` environment variable when present, falling back to the parsed log line,
@@ -1309,12 +1341,14 @@ Errors use the shared envelope; key statuses:
 - **No log lines**: check `state.reader` in `GET logs/entries`: `failed` with `readerError` when
   logcat could not run, `stopped` when Lustro is stopped, and `state.paused` when the capture is
   paused. Lines from other processes are never shown: the tab reads the app's own process only.
-- **`no token` from the CLI**: discovery found no `LustroToken` line and no token in the app's
-  prefs. When the error says that the installed build does not contain the Lustro runtime, the
-  app is a no-op build: install a debug build. Otherwise start the app (see [Auth and token
-  discovery](#auth-and-token-discovery)).
+- **The CLI exits 3 to 6**: it can't reach the app, and the error names the cause (see [Exit
+  codes](#exit-codes)). Exit 5 says that the installed build does
+  not contain the Lustro runtime: a build with the `-noop` artifacts, or one from before the app
+  added Lustro. Exit 6 with `no token` says that discovery found no `LustroToken` line and no
+  token in the app's prefs (see [Auth and token discovery](#auth-and-token-discovery)).
 - **Connection refused / no response**: the app is in the background (the server listens only
   while the app is in the foreground), or there is no `adb forward`. Re-check the `LustroToken` log line for the live
   endpoint. A connection closed without a response can also mean the server is at its
   open-connection limit (concurrency + queue + 16, 96 by default); close idle connections and retry.
-  The CLI reports both cases as `connection_failed`, with a hint.
+  The CLI reports both cases as `connection_failed`, with a hint, and exit 6, or with the cause
+  that adb finds, such as an app that is not running.

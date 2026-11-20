@@ -89,23 +89,6 @@ adb shell svc power stayon true || true
 adb shell input keyevent KEYCODE_WAKEUP || true
 adb shell wm dismiss-keyguard || true
 
-step "Start the sample and wait for its LustroToken line"
-adb shell am force-stop "$PACKAGE"
-adb shell am start -W -n "$PACKAGE/.MainActivity"
-ready=""
-for _ in $(seq 60); do
-  pid="$(adb shell pidof "$PACKAGE" | tr -d '\r' || true)"
-  if [ -n "$pid" ]; then
-    ready="$(adb logcat -d --pid="$pid" -s LustroToken:I | grep 'Lustro ready' || true)"
-    [ -n "$ready" ] && break
-  fi
-  sleep 1
-done
-if [ -z "$ready" ]; then
-  echo "error: no 'Lustro ready' line from $PACKAGE within 60 s" >&2
-  exit 1
-fi
-
 step "Install the CLI from the checkout"
 "$PYTHON" -m venv "$OUT/venv"
 "$OUT/venv/bin/python" -m pip install --quiet --disable-pip-version-check "./lustro-cli[test]"
@@ -119,6 +102,19 @@ export PATH="$OUT/venv/bin:$PATH"
 lustro() {
   { command lustro "$@" 2>&1 1>&3 3>&- | tee -a "$OUT/stderr.txt" >&2; } 3>&1
 }
+
+# The version names the wire protocol that the CLI implements, which the step of
+# `lustro meta` compares with the app's.
+lustro_to version.txt --version
+check version < "$OUT/version.txt"
+
+# `lustro ready` runs discovery and GET /api/v1/_meta again until the server
+# answers, and at the timeout prints the cause and exits with its code.
+step "Start the sample and wait until its server answers"
+adb shell am force-stop "$PACKAGE"
+adb shell am start -W -n "$PACKAGE/.MainActivity"
+lustro_to ready.txt ready --package "$PACKAGE" --timeout 60
+check ready < "$OUT/ready.txt"
 
 # Also runs `adb forward` to the discovered port, and fails when the forward
 # fails, for example when another process holds CLI_E2E_LOCAL_PORT.

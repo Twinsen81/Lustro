@@ -3,8 +3,10 @@
 Argparse-based dispatch over the Lustro HTTP wire protocol. Every subcommand
 maps to a route in ``network.openapi.json`` or ``screen.openapi.json``, or a framework route
 (``/api/v1/_meta``, ``/api/v1/_schema``, ``/api/v1/<id>/_schema``), except
-``api``, which sends a request to any route, and ``mcp``, which runs an MCP
-server whose tools call these routes (see ``mcp.py``).
+``api``, which sends a request to any route, ``ready``, which waits until the
+server answers, and ``mcp``, which runs an MCP server whose tools call these
+routes (see ``mcp.py``). Each cause of a failure has its own exit code (see
+``exitcodes.py``).
 
 The output is small by default, because agents read all of it: ``net list``
 prints the newest rows only, a row shows a short id, ``net get`` cuts long
@@ -25,7 +27,7 @@ import urllib.parse
 import webbrowser
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
-from . import __version__, wire
+from . import PROTOCOL_VERSION, __version__, exitcodes, wire
 from .client import CursorState, LustroClient, LustroError
 from .discovery import (
     DEFAULT_HOST,
@@ -33,12 +35,15 @@ from .discovery import (
     LOOPBACK_HOSTS,
     DiscoveryError,
     Endpoint,
+    device_problem,
+    diagnose,
     forwarded_ports,
     resolve,
     token_from_prefs,
 )
 
 API_ROOT = "/api/v1/"
+META = API_ROOT + "_meta"
 NETWORK = "/api/v1/network"
 TRANSACTIONS = NETWORK + "/transactions"
 EXPORT = TRANSACTIONS + "/_/export"
@@ -76,6 +81,15 @@ _FULL_ID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]
 
 class UsageError(Exception):
     """A request that the command can't carry out as given. main() prints it and exits 2."""
+
+
+class ForwardFailed(LustroError):
+    """No adb forward reaches the app's port, and adb could make none."""
+
+
+DEFAULT_READY_TIMEOUT = 30.0
+# How long `ready` waits between two tries.
+READY_INTERVAL = 1.0
 
 
 # ── output helpers ────────────────────────────────────────────────────────────
@@ -498,14 +512,16 @@ def _param_pair(value: str) -> Tuple[str, str]:
 # ── client construction (discovery) ───────────────────────────────────────────
 
 
-def _build_endpoint(args: argparse.Namespace) -> Endpoint:
-    """The app's endpoint: from the flags, $LUSTRO_TOKEN, and the LustroToken line."""
+def _build_endpoint(args: argparse.Namespace, *, check_app: bool = True) -> Endpoint:
+    """The app's endpoint: from the flags, $LUSTRO_TOKEN, and the LustroToken line.
+    Without a token, it raises the cause that adb finds, unless ``check_app`` is false."""
     return resolve(
         host=args.host,
         port=args.port,
         token=args.token,
         device=args.device,
         package=getattr(args, "package", None),
+        check_app=check_app,
     )
 
 
@@ -524,8 +540,8 @@ def _with_current_token(args: argparse.Namespace, endpoint: Endpoint) -> Endpoin
     return endpoint._replace(token=current) if current and current != endpoint.token else endpoint
 
 
-def _build_client(args: argparse.Namespace) -> LustroClient:
-    endpoint = _build_endpoint(args)
+def _build_client(args: argparse.Namespace, *, check_app: bool = True) -> LustroClient:
+    endpoint = _build_endpoint(args, check_app=check_app)
     # The app's port is on the device. Without --port, connect through an adb
     # forward to it on the selected device, and make one when there is none: the
     # same port number on the computer can be another device's forward.
@@ -536,6 +552,58 @@ def _build_client(args: argparse.Namespace) -> LustroClient:
     discovered = _token_was_discovered(args)
     refresh = (lambda: token_from_prefs(args.device, getattr(args, "package", None))) if discovered else None
     return LustroClient(endpoint.base_url, endpoint.token, refresh_token=refresh, on_warning=_print_warning)
+
+
+def failure(args: argparse.Namespace, exc: Exception) -> Tuple[int, str]:
+    """The exit code and the message of a command that failed with ``exc``.
+
+    A connection that fails gets the cause that adb finds, such as an app that is
+    not running or a build without the Lustro runtime. Not when --port names the
+    local port, where the server can be on this computer, and not when --host names
+    a host that the CLI reaches without adb, such as a device on the LAN: adb
+    finds nothing about those. A forward that adb can't make gets only the device's
+    cause, such as more than one device: the app's state does not stop a forward.
+    """
+    if isinstance(exc, UsageError):
+        return exitcodes.USAGE, str(exc)
+    if isinstance(exc, DiscoveryError):
+        return exc.exit_code, str(exc)
+    if isinstance(exc, ForwardFailed):
+        cause = device_problem(args.device)
+        return (exitcodes.NOT_REACHABLE, str(exc)) if cause is None else (cause.exit_code, str(cause))
+    if isinstance(exc, LustroError):
+        if exc.error == "connection_failed":
+            without_adb = args.port is not None or (args.host is not None and args.host not in LOOPBACK_HOSTS)
+            cause = None if without_adb else diagnose(args.device, args.package, adb_required=False)
+            return (exitcodes.NOT_REACHABLE, str(exc)) if cause is None else (cause.exit_code, str(cause))
+        # A search that the app rejects is a usage error, like a bad flag.
+        return (exitcodes.USAGE if _is_search_error(exc) else exitcodes.ERROR), str(exc)
+    raise exc
+
+
+def _version_tuple(version: Any) -> Optional[Tuple[int, ...]]:
+    parts = str(version).split(".")
+    return tuple(int(part) for part in parts) if all(part.isdigit() for part in parts) else None
+
+
+def newer_protocol_warning(meta: Any) -> Optional[str]:
+    """A warning when the app's ``protocolVersion`` in ``_meta`` is newer than the one
+    this CLI implements: the CLI then lacks what the newer protocol adds."""
+    app = meta.get("protocolVersion") if isinstance(meta, dict) else None
+    app_version = _version_tuple(app)
+    ours = _version_tuple(PROTOCOL_VERSION)
+    if app_version is None or ours is None or app_version <= ours:
+        return None
+    return (
+        "the app uses wire protocol {}, and lustro {} implements {}: update the CLI to get what the newer "
+        "protocol adds".format(app, __version__, PROTOCOL_VERSION)
+    )
+
+
+def _warn_if_newer_protocol(meta: Any) -> None:
+    warning = newer_protocol_warning(meta)
+    if warning:
+        _print_warning(warning)
 
 
 _printed_warnings: Set[str] = set()
@@ -617,7 +685,7 @@ def _client_local_port(device_port: int, device: Optional[str]) -> int:
         # Without adb there is no device to forward to: the server is local.
         return device_port
     if err:
-        raise LustroError(
+        raise ForwardFailed(
             "connection_failed",
             _no_forward_error(device_port, err),
             hint=(
@@ -710,8 +778,62 @@ def cmd_open(args: argparse.Namespace) -> int:
 
 def cmd_meta(args: argparse.Namespace) -> int:
     client = _build_client(args)
-    _emit(client.get("/api/v1/_meta"), raw_json=args.json)
+    meta = client.get(META)
+    _warn_if_newer_protocol(meta)
+    _emit(meta, raw_json=args.json)
     return 0
+
+
+def cmd_ready(args: argparse.Namespace) -> int:
+    """Wait until the app's server answers ``GET _meta``, print the endpoint, and exit 0.
+    At the timeout, print the cause, from adb, and exit with its code.
+
+    Each try runs discovery again, because the app logs its ready line only when it
+    starts, and a line from an earlier start names a port that does not answer yet.
+    The adb checks of the cause run once, at the end: one reads the whole APK. An
+    error response that a new try can't change, such as a 401, ends the wait.
+    """
+    deadline = time.monotonic() + args.timeout
+    while True:
+        try:
+            client = _build_client(args, check_app=False)
+            # A server that does not answer, such as an app stopped at a breakpoint,
+            # would otherwise hold the request for the client's own timeout.
+            client.timeout = max(deadline - time.monotonic(), READY_INTERVAL)
+            meta = client.get(META)
+        except (DiscoveryError, LustroError) as exc:
+            last: Exception = exc
+            # An error response other than a busy or failing server, such as a 401 for a
+            # --token that is not the app's, does not change when ready tries again.
+            if isinstance(exc, LustroError) and exc.status is not None and exc.status < 500 and exc.status != 429:
+                break
+        else:
+            _warn_if_newer_protocol(meta)
+            if args.json:
+                _emit(
+                    {
+                        "endpoint": client.base_url,
+                        "libraryVersion": meta.get("libraryVersion") if isinstance(meta, dict) else None,
+                        "protocolVersion": meta.get("protocolVersion") if isinstance(meta, dict) else None,
+                    },
+                    raw_json=True,
+                )
+            else:
+                print(client.base_url)
+            return exitcodes.OK
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        time.sleep(min(READY_INTERVAL, remaining))
+    if isinstance(last, DiscoveryError):
+        last = diagnose(args.device, args.package) or last
+    code, message = failure(args, last)
+    if isinstance(last, LustroError) and last.status is not None:
+        # The server answered, with an error.
+        print("error: {}".format(message), file=sys.stderr)
+    else:
+        print("error: the app's server did not answer within {} s: {}".format(_seconds(args.timeout), message), file=sys.stderr)
+    return code
 
 
 def cmd_schema(args: argparse.Namespace) -> int:
@@ -1614,7 +1736,9 @@ def build_parser() -> argparse.ArgumentParser:
         description="CLI client for the Lustro Android debug server (HTTP wire protocol).",
         parents=[common],
     )
-    parser.add_argument("--version", action="version", version="lustro " + __version__)
+    parser.add_argument(
+        "--version", action="version", version="lustro {} (protocol {})".format(__version__, PROTOCOL_VERSION)
+    )
 
     sub = parser.add_subparsers(dest="command", metavar="<command>")
     sub.required = True
@@ -1636,6 +1760,26 @@ def build_parser() -> argparse.ArgumentParser:
     # meta
     p_meta = sub.add_parser("meta", parents=[common], help="GET /api/v1/_meta")
     p_meta.set_defaults(func=cmd_meta)
+
+    # ready
+    p_ready = sub.add_parser(
+        "ready",
+        parents=[common],
+        help="wait until the app's server answers, and print its endpoint",
+        description="Wait until the app's server answers GET /api/v1/_meta, print the endpoint that the CLI "
+        "reaches it at, and exit 0. Each try runs discovery again. At the timeout, print the cause and exit "
+        "with its code: 3 no device, 4 the app of --package is not installed, 5 its build has no Lustro "
+        "runtime, 6 it is not running or not in the foreground, or its port does not answer. Pass --package "
+        "so that the CLI checks your app, and not the app in the foreground.",
+    )
+    p_ready.add_argument(
+        "--timeout",
+        type=_positive_seconds,
+        default=DEFAULT_READY_TIMEOUT,
+        metavar="SECONDS",
+        help="how long to wait (default {:g})".format(DEFAULT_READY_TIMEOUT),
+    )
+    p_ready.set_defaults(func=cmd_ready)
 
     # schema [tabId]
     p_schema = sub.add_parser("schema", parents=[common], help="GET /api/v1/_schema or /api/v1/<tab>/_schema")
@@ -1996,16 +2140,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         # reaches the BrokenPipeError handler below.
         sys.stdout.flush()
         return code
-    except UsageError as exc:
-        print("error: {}".format(exc), file=sys.stderr)
-        return 2
-    except DiscoveryError as exc:
-        print("error: {}".format(exc), file=sys.stderr)
-        return 2
-    except LustroError as exc:
-        print("error: {}".format(exc), file=sys.stderr)
-        # A search that the app rejects is a usage error, like a bad flag.
-        return 2 if _is_search_error(exc) else 1
+    except (UsageError, DiscoveryError, LustroError) as exc:
+        code, message = failure(args, exc)
+        print("error: {}".format(message), file=sys.stderr)
+        return code
     except BrokenPipeError:
         # The reader closed the pipe early, as `head` does. Send the rest of the
         # output to devnull, so that the flush at exit doesn't fail again.

@@ -65,7 +65,7 @@ def server(monkeypatch):
         return holder["client"]
 
     monkeypatch.setattr(cli, "_build_client", build)
-    monkeypatch.setattr(cli, "_build_endpoint", lambda args: Endpoint("127.0.0.1", 8080, "tok"))
+    monkeypatch.setattr(cli, "_build_endpoint", lambda args, **_: Endpoint("127.0.0.1", 8080, "tok"))
     return install
 
 
