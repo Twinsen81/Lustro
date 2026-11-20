@@ -73,7 +73,10 @@ logs.append(Log.DEBUG, "MyApp", message, throwable)
     a tag that the logger never appends, for example in a build that does not install the logger,
     keeps all its logcat lines. Call `append` before the logger writes the line to logcat: when
     the logger writes to logcat first, the first line of a tag can show twice, as the cut copies
-    from logcat and as the appended line.
+    from logcat and as the appended line. Timber calls its trees in the order in which the app
+    planted them, so with Timber, call `append` in the tree that writes to logcat, before
+    `super.log(...)`, or plant the tree that appends before `DebugTree`. When the order can't
+    change, only the first line of each tag shows twice, and no line is lost.
 - **A cap.** An appended text keeps at most 65,536 characters (`MAX_APPENDED_CHARS`), and in a
     small buffer at most an eighth of `bufferBytes`, so that one line can't empty the buffer. A
     longer text ends with `… cut (N more characters)`.

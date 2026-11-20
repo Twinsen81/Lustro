@@ -209,6 +209,8 @@ class LogcatReaderTest {
             logcat.emit(
                 // Before the first append of its tag: the logger could not append it, so it stays.
                 "10-19 14:22:20.000  4321  4330 D AppLog  : early",
+                // After the time of the later append, but before the first one: it stays.
+                "10-19 14:22:20.003  4321  4330 D AppLog  : between",
                 // At the time of the first append, and after it: the logger appends these.
                 "10-19 14:22:20.005  4321  4330 D AppLog  : appended",
                 "10-19 14:22:20.006  4321  4330 I okhttp  : library",
@@ -218,14 +220,14 @@ class LogcatReaderTest {
                 "10-19 14:22:20.008  4321  4330 D Late    : not appended yet",
                 "10-19 14:22:20.008  4321  4330 D AppLog  : appended too",
             )
-            awaitMessages("early", "library", "kept", "not appended yet")
+            awaitMessages("early", "between", "library", "kept", "not appended yet")
 
             appended.appended("Late", now - 1)
             logcat.emit(
                 "10-19 14:22:20.009  4321  4330 D Late    : appended now",
                 "10-19 14:22:20.009  4321  4330 I okhttp  : last",
             )
-            awaitMessages("early", "library", "kept", "not appended yet", "last")
+            awaitMessages("early", "between", "library", "kept", "not appended yet", "last")
             assertEquals("the dropped lines count as read", now - 1, dropping.newestLineAt)
             assertEquals(LogcatReader.Status.RUNNING, dropping.status)
         } finally {

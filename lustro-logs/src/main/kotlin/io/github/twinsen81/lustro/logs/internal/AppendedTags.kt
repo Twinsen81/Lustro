@@ -18,10 +18,24 @@ internal class AppendedTags(private val isAppendedTag: (String) -> Boolean = { f
     // Only the tags that isAppendedTag takes, so that the tags of other appended lines use no memory.
     private val firstAppendedAt = ConcurrentHashMap<String, Long>()
 
-    /** Records that the app appended a line of [tag] at [at], in epoch milliseconds. */
+    // Set while isAppendedTag runs on this thread. A check that logs through the app's
+    // logger comes back here, and must not call itself again without end.
+    private val checking = ThreadLocal<Boolean>()
+
+    /**
+     * Records that the app appended a line of [tag] at [at], in epoch milliseconds.
+     * A call from inside [isAppendedTag] records nothing, so its line keeps its
+     * logcat copy.
+     */
     fun appended(tag: String, at: Long) {
         // After the first line of a tag, a lookup without a lock is enough.
-        if (firstAppendedAt[tag] == null && isAppendedTagSafely(tag)) firstAppendedAt.putIfAbsent(tag, at)
+        if (firstAppendedAt[tag] != null || checking.get() == true) return
+        checking.set(true)
+        try {
+            if (isAppendedTagSafely(tag)) firstAppendedAt.putIfAbsent(tag, at)
+        } finally {
+            checking.remove()
+        }
     }
 
     /** Whether the logcat [line] stays out of the buffer: the app appended a line of its tag at the line's time or before. */
@@ -30,11 +44,12 @@ internal class AppendedTags(private val isAppendedTag: (String) -> Boolean = { f
         return line.at >= since
     }
 
-    // The app's code decides, and a failure there must not reach the app's logger: the tag's lines then stay.
+    // The app's code decides, on the app's thread, and nothing it throws may reach the app's
+    // logger, an Error such as the NotImplementedError of TODO() included: the tag's lines then stay.
     private fun isAppendedTagSafely(tag: String): Boolean =
         try {
             isAppendedTag(tag)
-        } catch (_: RuntimeException) {
+        } catch (_: Throwable) {
             false
         }
 }

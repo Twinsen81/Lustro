@@ -1,5 +1,6 @@
 package io.github.twinsen81.lustro.logs.internal
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -21,12 +22,30 @@ class AppendedTagsTest {
     }
 
     @Test
-    fun `a check that throws keeps the lines of the tag, and the append does not throw`() {
-        val tags = AppendedTags { error("the app's check failed") }
+    fun `a check that throws, also an Error, keeps the lines of the tag, and the append does not throw`() {
+        val tags = AppendedTags { TODO("the app's check") }
 
         tags.appended("AppLog", at = 5)
 
         assertFalse(tags.drops(line("AppLog", at = 6)))
+    }
+
+    @Test
+    fun `a check that logs through the app's logger does not call itself again`() {
+        var calls = 0
+        lateinit var tags: AppendedTags
+        tags =
+            AppendedTags { tag ->
+                calls++
+                // As a check that logs through the logger, which appends the line.
+                tags.appended(tag, at = 6)
+                tag == "AppLog"
+            }
+
+        tags.appended("AppLog", at = 5)
+
+        assertEquals(1, calls)
+        assertTrue(tags.drops(line("AppLog", at = 5)))
     }
 
     private fun line(tag: String, at: Long) = LogLine(at, pid = 1, tid = 1, level = 'D', tag = tag, message = "m")

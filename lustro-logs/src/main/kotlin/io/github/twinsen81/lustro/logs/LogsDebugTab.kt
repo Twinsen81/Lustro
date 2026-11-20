@@ -145,7 +145,9 @@ public class LogsDebugTab private constructor(
          *   line of a tag can show twice: as the cut copies from logcat and as the
          *   appended line. For a fixed set of tags, pass `setOf("A", "B")::contains`.
          *   [append] calls it on the logger's thread, for each line of a tag that
-         *   it has not taken yet, so keep it fast. The default drops no line.
+         *   it has not taken yet, so keep it fast. A line that it logs through the
+         *   logger while it runs does not call it again. When it throws, the tab
+         *   keeps the logcat lines of the tag. The default drops no line.
          * @throws IllegalArgumentException when [bufferBytes] is not positive.
          */
         @JvmStatic
