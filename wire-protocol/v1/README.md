@@ -11,7 +11,7 @@ the protocol a stable public contract independent of the library's Kotlin API.
   A future incompatible revision becomes `/api/v2/`, and the old major stays
   alive for at least one major release.
 - The **minor** protocol version is reported at runtime in
-  `GET /api/v1/_meta` as `_meta.protocolVersion` (currently `1.16`).
+  `GET /api/v1/_meta` as `_meta.protocolVersion` (currently `1.17`).
 
 ## Contents
 
@@ -268,6 +268,21 @@ gives its shape.
   `POST network/rules/toggle` and `POST network/rules/delete` answer `404`
   with `field: id` for an id that no rule has, and change nothing; they
   answered `200`.
+
+- **1.17** - The tab root, `/api/v1/<tab>`, is a path of the tab. The server
+  reads it in the tab's OpenAPI document, generated or static, so a request
+  to it gets the `Lustro-Warning` for a query parameter that the document
+  does not declare, and the server's `405` with `Allow` for a method that the
+  document does not declare there. The `405` message names the tab alone,
+  such as `journals takes GET or POST, not PUT`. Before, the server read only
+  the paths under `/api/v1/<tab>/`, so a root path got neither. One slash at
+  the end of a path does not count, in the document and in the request: the
+  routes of every tab that declares its routes, Lustro's own tabs among them,
+  answer `GET network/transactions/` as `GET network/transactions`, where it
+  was a `404`, and the `Lustro-Warning` and the server's `405` read `items/`
+  as `items`. A path with two slashes at the end, such as `items//`, is still
+  a `404`. The documents and the routes of Lustro's own tabs do not change
+  otherwise.
 
 ## Plugin tabs
 

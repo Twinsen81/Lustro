@@ -30,7 +30,7 @@ The package installs one command under two names, `lustro` and `lustro-cli`; thi
 never install it, and never run `uvx lustro`.
 
 `lustro --version` prints the wire protocol that the CLI implements, such as
-`lustro 0.1.0 (protocol 1.16)`. When `lustro ready` or `lustro meta` warns that the app's protocol
+`lustro 0.1.0 (protocol 1.17)`. When `lustro ready` or `lustro meta` warns that the app's protocol
 is newer, install the CLI again with the command above, with `--force`.
 
 An app on an older protocol ignores an option that its protocol does not have, so the CLI refuses

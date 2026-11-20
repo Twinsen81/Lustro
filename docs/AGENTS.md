@@ -156,7 +156,7 @@ that finds the app uses them, not only `ready`:
 
 Without `--package`, an app in the foreground without the runtime exits 6, not 5, because that app
 can be another app than yours. `lustro --version` prints the wire protocol that the CLI implements,
-such as `lustro 0.1.0 (protocol 1.16)`. When the app's `protocolVersion` is newer, `lustro ready`
+such as `lustro 0.1.0 (protocol 1.17)`. When the app's `protocolVersion` is newer, `lustro ready`
 and `lustro meta` print a warning on stderr: update the CLI, or it lacks what the newer protocol
 adds.
 
@@ -476,7 +476,10 @@ Allow: POST
 The server reads the methods from the tab's OpenAPI document, so every tab with a document
 answers it, an app's own tab too. A `404` means that the document does not declare the path, or
 that the tab has no document: then a wrong method is a `404` too. Send the request again with a
-method from `Allow`.
+method from `Allow`. From protocol 1.17, the tab root, such as `PUT /api/v1/journals`, gets the
+`405` too, with a message that names the tab alone (`journals takes GET or POST, not PUT`), and
+one slash at the end of a path does not count, so `GET network/transactions/` reaches
+`GET network/transactions`.
 
 ## Network tab operations
 

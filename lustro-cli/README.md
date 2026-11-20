@@ -41,7 +41,7 @@ The wheel bundles the wire-protocol schemas, the Network OpenAPI document, and
 the golden fixtures (`lustro_cli/wire/`).
 
 `lustro --version` prints the version of the CLI and the version of the wire
-protocol that it implements, such as `lustro 0.1.0 (protocol 1.16)`. Each
+protocol that it implements, such as `lustro 0.1.0 (protocol 1.17)`. Each
 protocol version adds routes or fields, so two builds of the CLI with the same
 version can differ in what they do: compare the protocol. When an app's protocol,
 `protocolVersion` in `GET /api/v1/_meta`, is newer, `lustro ready` and `lustro
