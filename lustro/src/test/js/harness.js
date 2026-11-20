@@ -75,7 +75,12 @@ function loadSharedJs() {
     sandbox.globalThis = sandbox;
     sandbox.isSecureContext = false;
     sandbox.matchMedia = () => ({ matches: false, addEventListener() {}, addListener() {} });
-    sandbox.addEventListener = () => {};
+    // The listeners shared.js puts on window, by event type, such as hashchange.
+    const windowListeners = {};
+    sandbox.windowListeners = windowListeners;
+    sandbox.addEventListener = (type, listener) => {
+        (windowListeners[type] = windowListeners[type] || []).push(listener);
+    };
 
     vm.createContext(sandbox);
     const source = fs.readFileSync(assetPath('lustro', 'shared.js'), 'utf8');
