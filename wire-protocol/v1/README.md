@@ -75,10 +75,13 @@ Allow: GET, POST
 ```
 
 A path that the document does not declare, a path that it declares with the
-request's method, and every path of a tab without a document are a `404`. The
-path is matched as for the `Lustro-Warning` header, and a literal segment wins
-over a template: when the document has `items/{id}` and `items/special`, the
-methods of `items/special` are its own.
+request's method, and every path of a tab without a document are a `404`. A
+path segment in braces matches any one segment, and a literal segment wins over
+a template, whatever the method: when the document declares `GET items/{id}`
+and `POST items/special`, a `GET items/special` that the tab does not handle
+gets `405` with `Allow: POST`. The `Lustro-Warning` check differs: it looks
+only at the operations with the request's method, so for a `GET items/special`
+that the tab handles, it reads the parameters of `GET items/{id}`.
 
 The two polling envelopes differ in what `delta` carries. In the cursor
 envelope it is the whole current list, which fits a list whose items change. In
@@ -250,7 +253,8 @@ gives its shape.
   `POST network/throttle` answers `400`
   with `field: delayMs` for a missing `delayMs`, and for one that is not a
   whole number from 0 to 600000 (10 minutes), and keeps the delay that it
-  has; it set `0` for a missing or wrong value, and took any larger one.
+  has; it set `0` for a missing or wrong value, and took any larger one. A
+  string such as `"2000"`, which it read as the number, is now a `400` too.
   `POST network/rules/toggle` and `POST network/rules/delete` answer `404`
   with `field: id` for an id that no rule has, and change nothing; they
   answered `200`.

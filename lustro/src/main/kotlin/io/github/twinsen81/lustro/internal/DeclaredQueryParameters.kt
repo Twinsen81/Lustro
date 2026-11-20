@@ -39,7 +39,9 @@ internal class DeclaredQueryParameters private constructor(private val operation
 
     /**
      * The methods, upper case, that the document declares for the path that [subPath]
-     * matches, in the order of [METHODS]. Empty when the document has no such path.
+     * matches, in the order of [METHODS]. Empty when the document has no such path. Unlike
+     * [undeclared], which looks only at the operations with the request's method, the most
+     * literal path wins whatever its methods, as in OpenAPI.
      */
     fun methods(subPath: String): List<String> {
         val segments = subPath.split('/')

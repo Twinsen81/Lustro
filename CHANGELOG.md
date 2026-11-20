@@ -1178,7 +1178,8 @@ see [DECISIONS.md](DECISIONS.md).
   took `99999999`, which holds every OkHttp request of the app for 27 hours.
   It now answers `400` with `field: delayMs` for a missing value and for one
   that is not a whole number from 0 to 600000 (10 minutes), and keeps the
-  delay that it has; the document declares the field as required, with the
+  delay that it has. A string such as `"2000"`, which it read as the number,
+  is now a `400` too. The document declares the field as required, with the
   limit, and so does the MCP tool `set_throttle`. `POST network/rules/toggle`
   and `POST network/rules/delete` answered `{"status":"ok"}` for an id that
   no rule has, so an agent that mistyped the id thought that it changed a
