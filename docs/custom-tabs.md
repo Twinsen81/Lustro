@@ -251,6 +251,8 @@ The tab's script runs after `shared.js`, which gives these helpers:
 - `debugFetch(url, options)` rejects on a status that is not `2xx`, with `err.status` and
     `err.response`. `debugErrorMessage(err)` gives a Promise of the text to show: the `message`
     of the error envelope, or else `err.message`.
+- A `401` answer to either one shows the console's "Signed out" notice above the tab's content,
+    and the next `2xx` answer removes it. The tab does nothing for it.
 - `debugModal(id, { onHide })` shows and hides a `.dc-modal-scrim` of the tab's markup. `onHide`
     runs each time the dialog is hidden: by `hide()`, by Escape, or by a click on the scrim. Use it
     to clear the state of the dialog, such as the id of the item being edited.

@@ -138,6 +138,32 @@ window.debugSetStatus = function(state) {
             });
     }
 
+    // debugFetch and debugPoll call this with true for a 401 and with false for
+    // an answer that is ok. The app answers 401 to a tab that has its content
+    // when it has a new token: after a restart with LAN exposure, or after its
+    // data was cleared. The notice goes above the content and leaves it there: it
+    // can show the last thing the app did, and a second load of the content
+    // would not run the tab's script again.
+    window.lustroSignedOut = function(signedOut) {
+        var notice = document.getElementById('lustro-signed-out');
+        if (!signedOut) {
+            if (notice && notice.parentNode) notice.parentNode.removeChild(notice);
+            return;
+        }
+        window.debugSetStatus('error');
+        var root = contentRoot();
+        if (notice || !root || !root.parentNode) return;
+        notice = document.createElement('div');
+        notice.id = 'lustro-signed-out';
+        notice.className = 'lustro-signed-out';
+        notice.setAttribute('role', 'alert');
+        notice.innerHTML =
+            '<strong>Signed out.</strong> The app has a new token. Open this console via ' +
+            '<code>lustro open</code>, or append <code>#lustro_token=&lt;token&gt;</code> ' +
+            'to the URL. The tab shows what it had before.';
+        root.parentNode.insertBefore(notice, root);
+    };
+
     var authInFlight = false;
 
     function authenticateWithToken(token, reloadContent) {
@@ -149,7 +175,9 @@ window.debugSetStatus = function(state) {
             credentials: 'same-origin',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ token: token })
-        }).then(function() {
+        }).then(function(resp) {
+            // A tab without a poll makes no request that would remove the notice.
+            if (resp && resp.ok) window.lustroSignedOut(false);
             stripHash();
             if (reloadContent !== false) loadTabContent();
         }).catch(function() {
@@ -1200,6 +1228,7 @@ document.addEventListener('keydown', function(e) {
 window.debugFetch = async function(url, options) {
     try {
         var resp = await fetch(url, options || {});
+        if (resp.ok || resp.status === 401) window.lustroSignedOut(!resp.ok);
         if (!resp.ok) {
             // Carry the response along: a rejected request answers with the error
             // envelope, and a caller can show what it says instead of the status.
@@ -1272,6 +1301,7 @@ window.debugPoll = function(endpointOrFn, intervalMs, callback, onRejectedOrOpti
         try {
             var url = typeof endpointOrFn === 'function' ? endpointOrFn() : endpointOrFn;
             var resp = await fetch(url);
+            if (resp.ok || resp.status === 401) window.lustroSignedOut(!resp.ok);
             var handled = false;
             if (!resp.ok) {
                 var envelope = null;

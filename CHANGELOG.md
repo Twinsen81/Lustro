@@ -2561,6 +2561,26 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Security
 
+- **With LAN exposure, each process of the app gets a new token.** The token
+  was made once and stayed valid until the app's data was cleared. With
+  `DebugConfig.bindAddress` set beyond loopback, each request carries the
+  token as plain HTTP, and an app shows the token on screen for a client that
+  has no adb. So a token that recorded traffic, a screenshot, or a log gave
+  away worked on every later run. Now, when the bind address is not loopback,
+  the server makes a new token the first time it listens in a process, and
+  the token of the process before gets `401`. A browser signs in again after
+  the app restarts. A console tab that is open then shows "Signed out" above
+  its content, which stays, and signs in without a reload when the new
+  `#lustro_token=<token>` is added to its URL: before, a `401` looked like a
+  lost connection, with the pill at "Error" and no text. The CLI finds the
+  new token through adb on each call and needs no change; a token given with
+  `--token` or `LUSTRO_TOKEN` is used as it is, so a client without adb, or
+  with a `LUSTRO_TOKEN` in a shell profile, gets `401` after a restart until
+  it has the new one. With the default loopback binding the token stays as
+  it was: from outside the device a client needs adb, which reads the same
+  data of a debuggable app without the token, and an app on the device has no
+  way to get the token. `SECURITY.md` and the LAN page now say that on a
+  network the token does not stop a person who can record the traffic.
 - **Tabs could read the session token.** The server passed every request header
   to `DebugTab.handle()`, including `Authorization: Bearer <token>` and the
   `lustro_token` cookie, so a tab that logged or echoed its request could leak

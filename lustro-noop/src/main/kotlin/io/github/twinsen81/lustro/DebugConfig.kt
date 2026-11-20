@@ -19,7 +19,7 @@ public class DebugConfig private constructor(
     public val allowNonDebuggableBuilds: Boolean,
     /** The TCP port the debug server binds to. Default `8080`. */
     public val serverPort: Int,
-    /** The loopback address to bind. Default `"127.0.0.1"`. */
+    /** The address to bind. Default `"127.0.0.1"`, loopback. */
     public val bindAddress: String,
     /** Whether to fall back to an ephemeral port when [serverPort] is taken. Default `false`. */
     public val bindFallback: Boolean,

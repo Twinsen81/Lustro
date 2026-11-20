@@ -18,11 +18,25 @@ import kotlin.io.encoding.Base64
  * or a fresh install naturally yields a new (empty) prefs file and therefore a
  * new token — no special handling is required.
  *
+ * With [newTokenOnFirstUse], the first [token] call of this instance replaces
+ * the persisted token. A `Lustro` whose server listens beyond loopback sets it,
+ * so each process starts with a new token: on a network the token travels as
+ * plain HTTP and the app must show it to a client that has no adb, so a token
+ * that leaked must not stay valid for the life of the install. The first read
+ * does it, not the constructor, so no caller of this instance ever gets the
+ * token of the process before.
+ *
  * Construction does no disk I/O: the prefs file is opened on first use, so
  * call [token], [rotate], and [reset] off the main thread.
  */
-internal class LustroTokenStore(context: Context) {
+internal class LustroTokenStore(
+    context: Context,
+    private val newTokenOnFirstUse: Boolean = false,
+) {
     private val appContext: Context = context.applicationContext
+
+    // Guarded by LOCK.
+    private var replacedOnFirstUse = false
 
     private val prefs: SharedPreferences by lazy {
         appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -30,11 +44,17 @@ internal class LustroTokenStore(context: Context) {
 
     /**
      * Returns the persisted token, generating and persisting one on first
-     * access. Subsequent calls return the same value until [rotate]/[reset].
+     * access, or a new one in place of it with [newTokenOnFirstUse].
+     * Subsequent calls return the same value until [rotate]/[reset].
      */
     fun token(): String =
         synchronized(LOCK) {
-            prefs.getString(KEY_TOKEN, null)?.takeIf { it.isNotEmpty() } ?: generateAndStore()
+            if (newTokenOnFirstUse && !replacedOnFirstUse) {
+                // Set after the write, so that a failed one is tried again.
+                generateAndStore().also { replacedOnFirstUse = true }
+            } else {
+                prefs.getString(KEY_TOKEN, null)?.takeIf { it.isNotEmpty() } ?: generateAndStore()
+            }
         }
 
     /** Generates, persists, and returns a fresh token, invalidating the old one. */

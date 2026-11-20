@@ -72,6 +72,27 @@ class LustroTokenStoreTest {
         assertNotEquals(before, after)
     }
 
+    @Test
+    fun `with a new token on first use, the first read replaces the persisted token`() {
+        val before = store().token()
+        val perProcess = LustroTokenStore(ApplicationProvider.getApplicationContext(), newTokenOnFirstUse = true)
+
+        val first = perProcess.token()
+
+        assertNotEquals(before, first)
+        assertEquals("later reads keep it", first, perProcess.token())
+        assertEquals("it is the persisted token", first, store().token())
+    }
+
+    @Test
+    fun `with a new token on first use, a store that is never read leaves the persisted token`() {
+        val before = store().token()
+
+        LustroTokenStore(ApplicationProvider.getApplicationContext(), newTokenOnFirstUse = true)
+
+        assertEquals(before, store().token())
+    }
+
     /** Counts how often the prefs file is opened through it. */
     private class PrefsOpenCountingContext(base: Context) : ContextWrapper(base) {
         val opens = AtomicInteger()

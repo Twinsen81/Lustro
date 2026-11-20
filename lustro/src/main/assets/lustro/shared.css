@@ -615,7 +615,21 @@ select.dc-btn {
   text-align: center;
 }
 .lustro-auth-needed strong { color: var(--t1); }
-.lustro-auth-needed code {
+
+/* Shown above a tab's content when a request of the tab gets 401. */
+.lustro-signed-out {
+  flex: none;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--danger-border);
+  background: var(--danger-soft);
+  color: var(--t2);
+  font-size: 13px;
+  line-height: 1.6;
+  text-align: center;
+}
+.lustro-signed-out strong { color: var(--danger); }
+.lustro-auth-needed code,
+.lustro-signed-out code {
   background: var(--field);
   border: 1px solid var(--chip-border);
   color: var(--accent-2);
