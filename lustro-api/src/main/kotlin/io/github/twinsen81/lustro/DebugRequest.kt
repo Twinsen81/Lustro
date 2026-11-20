@@ -11,7 +11,10 @@ import java.net.URLDecoder
  * `/api/v1/<tab-id>/`.
  */
 public class DebugRequest @JvmOverloads constructor(
-    /** The request path after `/api/v1/<tab-id>/`. */
+    /**
+     * The request path after `/api/v1/<tab-id>/`, as the request gave it, such as `items/7` or
+     * `seed/`: `""` for the tab root, both `/api/v1/<tab-id>` and `/api/v1/<tab-id>/`.
+     */
     public val path: String,
     /** The HTTP method, e.g. `GET` or `POST`. */
     public val method: String,

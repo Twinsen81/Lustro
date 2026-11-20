@@ -52,6 +52,7 @@ class LustroServerUnknownParameterTest {
                         "dynamic",
                         """
                         {"openapi":"3.1.0","paths":{
+                          "/api/v1/dynamic":{"get":{"parameters":[{"name":"limit","in":"query"}]}},
                           "/api/v1/dynamic/items/{id}":{
                             "parameters":[{"name":"shared","in":"query"}],
                             "get":{"parameters":[{"${'$'}ref":"#/components/parameters/Fields"},{"name":"id","in":"path"}]}
@@ -147,6 +148,15 @@ class LustroServerUnknownParameterTest {
         assertNull(warning("dynamic/items/special?x=1"))
         assertEquals("unknown query parameter \"shared\"", warning("dynamic/items/special?shared=1"))
         assertEquals("unknown query parameter \"x\"", warning("dynamic/items/7?x=1"))
+    }
+
+    @Test
+    fun `the root path of the tab is read, and one slash at the end of a path does not count`() {
+        assertNull(warning("dynamic?limit=5"))
+        assertEquals("unknown query parameter \"limt\"", warning("dynamic?limt=5"))
+        assertEquals("unknown query parameter \"limt\"", warning("dynamic/?limt=5"))
+        assertNull(warning("dynamic/items/special/?x=1"))
+        assertEquals("unknown query parameter \"y\"", warning("dynamic/items/special/?y=1"))
     }
 
     @Test

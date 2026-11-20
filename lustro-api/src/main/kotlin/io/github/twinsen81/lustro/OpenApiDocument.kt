@@ -29,7 +29,8 @@ internal class OpenApiDocument(private val declared: DebugRoutes) {
         val paths = LinkedHashMap<String, MutableMap<String, Any>>()
         val operationIds = HashSet<String>()
         for (route in declared.declared) {
-            val item = paths.getOrPut("/api/v1/${tab.id}/${route.template}") { LinkedHashMap() }
+            val path = if (route.template.isEmpty()) "/api/v1/${tab.id}" else "/api/v1/${tab.id}/${route.template}"
+            val item = paths.getOrPut(path) { LinkedHashMap() }
             item[route.method.lowercase()] = operation(route, operationIds)
         }
         val info = linkedMapOf<String, Any>("title" to (declared.title ?: "${tab.title} debug tab"), "version" to declared.version.orEmpty())
@@ -116,6 +117,13 @@ internal class OpenApiDocument(private val declared: DebugRoutes) {
                 spec.min?.let { schema["minimum"] = it }
                 spec.max?.let { schema["maximum"] = it }
             }
+            ParamType.DOUBLE -> {
+                val spec = param.spec as DebugNumberSpec
+                schema["type"] = "number"
+                schema["format"] = "double"
+                spec.min?.let { schema["minimum"] = it }
+                spec.max?.let { schema["maximum"] = it }
+            }
             ParamType.BOOLEAN -> schema["type"] = "boolean"
             ParamType.JSON -> Unit
         }
@@ -150,7 +158,7 @@ internal class OpenApiDocument(private val declared: DebugRoutes) {
                     type to linkedMapOf("schema" to fragment("${route.describe()}, the response of $type", schema))
                 }
         }
-        responses["200"] = ok
+        responses[(spec?.status ?: 200).toString()] = ok
         val errors = sortedSetOf(401, 403, 413, 503)
         // Any body can be refused: one that is not JSON, or an empty raw body.
         val body = route.rawBodyType != null || route.params.any { it.location == ParamIn.BODY }
@@ -171,7 +179,7 @@ internal class OpenApiDocument(private val declared: DebugRoutes) {
                 val shortest = if (param.location == ParamIn.PATH) 1 else 0
                 spec.minLength > shortest || spec.maxLength != null || spec.values != null
             }
-            ParamType.INT, ParamType.LONG, ParamType.BOOLEAN -> true
+            ParamType.INT, ParamType.LONG, ParamType.DOUBLE, ParamType.BOOLEAN -> true
             ParamType.JSON -> false
         }
     }
@@ -217,9 +225,13 @@ internal class OpenApiDocument(private val declared: DebugRoutes) {
 
     private fun defaultOperationId(route: DebugRoute): String =
         route.method.lowercase() +
-            route.template.split('/').joinToString("") { segment ->
-                val name = TEMPLATE.matchEntire(segment)?.groupValues?.get(1)
-                if (name != null) "By" + words(name) else words(segment)
+            if (route.template.isEmpty()) {
+                "Root"
+            } else {
+                route.template.split('/').joinToString("") { segment ->
+                    val name = TEMPLATE.matchEntire(segment)?.groupValues?.get(1)
+                    if (name != null) "By" + words(name) else words(segment)
+                }
             }
 
     private fun words(text: String): String =

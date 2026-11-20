@@ -7,13 +7,13 @@ package io.github.twinsen81.lustro
  *
  * A parameter is optional, so its value is `null` when the request does not give it, until
  * [DebugParam.required] or [DebugParam.withDefault] says otherwise. In the query or a form,
- * an empty value of an int, long, or boolean parameter takes the parameter's default, and
- * without a default it gets a `400`, as other text that is not a number or `true` or `false`
- * does: a request such as `?since=` usually comes from a variable that has no value. An empty
- * string is a string, which [DebugStringSpec.minLength] and [DebugStringSpec.values] can
- * refuse. In a JSON body, `null` counts as absent, and the JSON type must match: a string
- * parameter takes a JSON string, an int or long parameter a whole number, and a boolean
- * parameter `true` or `false`.
+ * an empty value of an int, long, double, or boolean parameter takes the parameter's default,
+ * and without a default it gets a `400`, as other text that is not a number or `true` or
+ * `false` does: a request such as `?since=` usually comes from a variable that has no value.
+ * An empty string is a string, which [DebugStringSpec.minLength] and [DebugStringSpec.values]
+ * can refuse. In a JSON body, `null` counts as absent, and the JSON type must match: a string
+ * parameter takes a JSON string, an int or long parameter a whole number, a double parameter
+ * any number, and a boolean parameter `true` or `false`.
  */
 @ExperimentalDebugRoutes
 public open class DebugParams internal constructor(
@@ -42,6 +42,16 @@ public open class DebugParams internal constructor(
     /** Declares a whole-number parameter named [name], as a [Long]. */
     public fun long(name: String, declare: DebugIntegerSpec.() -> Unit = {}): DebugParam<Long?> =
         DebugParam(add(name, ParamType.LONG, DebugIntegerSpec().apply(declare)))
+
+    /**
+     * Declares a decimal parameter named [name], such as `0.35` or `1e-3`, as a [Double], in
+     * the range of [DebugNumberSpec.min] and [DebugNumberSpec.max] when they are set. A whole
+     * number, such as `2`, is a decimal too. `NaN`, the infinities, and a number too large for
+     * a [Double] get a `400`: JSON can't carry them. In the query or a form, the value is
+     * written as a JSON number, optionally with a leading `+`, so `0x1p3` and `1d` get a `400`.
+     */
+    public fun double(name: String, declare: DebugNumberSpec.() -> Unit = {}): DebugParam<Double?> =
+        DebugParam(add(name, ParamType.DOUBLE, DebugNumberSpec().apply(declare)))
 
     /** Declares a parameter named [name] that is `true` or `false`. */
     public fun boolean(name: String, declare: DebugParamSpec.() -> Unit = {}): DebugParam<Boolean?> =
@@ -169,6 +179,16 @@ public class DebugIntegerSpec internal constructor() : DebugParamSpec() {
     public var max: Long? = null
 }
 
+/** The options of a decimal parameter. */
+@ExperimentalDebugRoutes
+public class DebugNumberSpec internal constructor() : DebugParamSpec() {
+    /** The smallest value that the parameter takes, or `null` for no limit. */
+    public var min: Double? = null
+
+    /** The largest value that the parameter takes, or `null` for no limit. */
+    public var max: Double? = null
+}
+
 internal enum class ParamIn(val wire: String) {
     PATH("path"),
     QUERY("query"),
@@ -180,6 +200,7 @@ internal enum class ParamType {
     STRINGS,
     INT,
     LONG,
+    DOUBLE,
     BOOLEAN,
     JSON,
 }

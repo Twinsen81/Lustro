@@ -40,6 +40,15 @@ class LustroServerDeclaredRoutesTest {
 
         override fun routes(routes: DebugRoutes) {
             routes.version = "3.2"
+            routes.get("") {
+                val minScore = query.double("minScore") { min = 0.0; max = 1.0 }
+                handle { call -> DebugResponse.ok("""{"minScore":${call[minScore]}}""") }
+            }
+            routes.post("seed") {
+                val ratio = body.double("ratio").required()
+                response("Seeded.") { status = 201 }
+                handle { call -> DebugResponse.ok("""{"ratio":${call[ratio]}}""", status = 201) }
+            }
             routes.get("items") {
                 val limit = query.int("limit") { min = 1; max = 10 }.withDefault(5)
                 handle { call -> DebugResponse.ok("""{"limit":${call[limit]}}""") }
@@ -142,6 +151,41 @@ class LustroServerDeclaredRoutesTest {
         }
         assertEquals(404, call("GET", "declared/nothing").use { it.code })
         assertEquals(500, call("GET", "broken/items").use { it.code })
+    }
+
+    @Test
+    fun `a route at the tab root, a decimal parameter, and a slash at the end of the path`() {
+        for (path in listOf("declared?minScore=0.35", "declared/?minScore=0.35")) {
+            call("GET", path).use {
+                assertEquals(path, 200, it.code)
+                assertEquals(0.35, JSONObject(it.body!!.string()).getDouble("minScore"), 0.0)
+                assertNull(it.header("Lustro-Warning"))
+            }
+        }
+        call("GET", "declared?minScor=0.35").use {
+            assertEquals(200, it.code)
+            assertEquals("unknown query parameter \"minScor\"", it.header("Lustro-Warning"))
+        }
+        call("GET", "declared?minScore=1.5").use {
+            assertEquals(400, it.code)
+            assertEquals("minScore must be from 0.0 to 1.0, was 1.5", JSONObject(it.body!!.string()).getString("message"))
+        }
+        call("PUT", "declared").use {
+            assertEquals(405, it.code)
+            assertEquals("GET", it.header("Allow"))
+            assertEquals("declared takes GET, not PUT", JSONObject(it.body!!.string()).getString("message"))
+        }
+        call("POST", "declared/seed/", """{"ratio":0.75}""").use {
+            assertEquals(201, it.code)
+            assertEquals(0.75, JSONObject(it.body!!.string()).getDouble("ratio"), 0.0)
+        }
+        call("GET", "declared/items/?limt=3").use {
+            assertEquals(200, it.code)
+            assertEquals("unknown query parameter \"limt\"", it.header("Lustro-Warning"))
+        }
+        val document = JSONObject(call("GET", "declared/_schema").use { it.body!!.string() })
+        val seed = document.getJSONObject("paths").getJSONObject("/api/v1/declared/seed").getJSONObject("post")
+        assertEquals(setOf("201", "400", "401", "403", "413", "503"), seed.getJSONObject("responses").keys().asSequence().toSet())
     }
 
     @Test

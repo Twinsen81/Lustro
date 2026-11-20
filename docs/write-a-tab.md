@@ -147,6 +147,12 @@ From these declarations, Lustro answers the client's mistakes before the handler
     `{"error":"bad_request","message":"id is required","field":"id"}`, and a body that is not a
     JSON object gets `field: "body"`.
 
+Two kinds of declaration are not in the flags tab: a route at the tab root, with the path `""`,
+such as `routes.get("")` for `GET /api/v1/flags`, and a decimal parameter, such as
+`query.double("ratio") { min = 0.0; max = 1.0 }`, which takes `0.35`. The router ignores one slash
+at the end of a path, so `POST flags/toggle/` reaches `toggle`.
+[Custom tabs](custom-tabs.md#declared-routes) lists the types and the rules of the paths.
+
 Only `snapshot` is a `GET`, because it changes nothing. A route that changes state must take
 `POST`, `PUT`, `PATCH`, or `DELETE`: a page on another site can make the browser send a `GET` that
 the server cannot refuse. [Custom tabs](custom-tabs.md) explains why.
@@ -429,8 +435,11 @@ Descriptions and schemas make the document useful to an agent:
 `components/schemas`, and `DebugRoutes.ref(name)` refers to one. For a response that is not JSON,
 such as the bytes of an export, a block after `response(...)` names its content type and its
 headers: `response("The export.") { content("text/csv"); header("Content-Disposition", "attachment.") }`.
-A parameter's `schema` replaces the one made from its type in the document, such as
-`{"const": true}`. The sample's
+A route that answers another success status, such as `201` for a route that creates an item, says
+so in the block, so that the document lists it in place of `200`:
+`response("The new flag.", DebugRoutes.ref("Flag")) { status = 201 }`. The handler still answers it,
+with `DebugResponse.ok(json, status = 201)`. A parameter's `schema` replaces the one made from its
+type in the document, such as `{"const": true}`. The sample's
 [flags tab](https://github.com/Twinsen81/Lustro/blob/main/sample/src/debug/kotlin/io/github/twinsen81/lustro/sample/SampleFlagsTab.kt)
 declares all three routes, with their bodies, responses, and errors.
 

@@ -187,6 +187,124 @@ class DebugRoutesTest {
     }
 
     @Test
+    fun `a route at the tab root takes the path "", and its 405 names the tab alone`() {
+        val seen = ArrayList<Any?>()
+        val tab =
+            tab { routes ->
+                routes.get("") {
+                    val limit = query.int("limit").withDefault(10)
+                    handle { call -> DebugResponse.ok("{}").also { seen += call[limit] } }
+                }
+                routes.post("") {
+                    val name = body.string("name").required()
+                    handle { call -> DebugResponse.ok("{}", status = 201).also { seen += call[name] } }
+                }
+                routes.get("{id}") {
+                    val id = path.string("id")
+                    handle { call -> DebugResponse.ok("{}").also { seen += call[id] } }
+                }
+            }
+
+        assertEquals(200, get(tab, "", "limit" to "3")?.status)
+        assertEquals(201, post(tab, "", """{"name":"Travel"}""")?.status)
+        assertEquals(200, get(tab, "7")?.status)
+        assertEquals(listOf<Any?>(3, "Travel", "7"), seen)
+        val wrong = tab.handle(DebugRequest("", "PUT"))!!
+        assertEquals(405, wrong.status)
+        assertEquals("GET, POST", wrong.headers.get("Allow"))
+        assertEquals("t takes GET or POST, not PUT", wrong.json().getString("message"))
+        assertEquals("name", post(tab, "", "{}")!!.json().getString("field"))
+        // The server gives "" for both /api/v1/t and /api/v1/t/, so "/" came with a second slash.
+        assertNull(get(tab, "/"))
+    }
+
+    @Test
+    fun `one slash at the end of the path does not count`() {
+        val seen = ArrayList<Any?>()
+        val tab =
+            tab { routes ->
+                routes.post("seed") { handle { DebugResponse.ok("{}").also { seen += "seed" } } }
+                routes.get("items/{id}") {
+                    val id = path.long("id")
+                    handle { call -> DebugResponse.ok("{}").also { seen += call[id] } }
+                }
+            }
+
+        assertEquals(200, post(tab, "seed/", null)?.status)
+        assertEquals(200, get(tab, "items/42/")?.status)
+        assertEquals(listOf<Any?>("seed", 42L), seen)
+        assertEquals("t/seed takes POST, not GET", get(tab, "seed/")!!.json().getString("message"))
+        assertNull(post(tab, "seed//", null))
+        assertNull(get(tab, "items/x/"))
+        assertNull(get(tab, "items/"))
+    }
+
+    @Test
+    fun `a decimal parameter comes from the query, a form, or a JSON body, in its range`() {
+        val seen = ArrayList<Any?>()
+        val tab =
+            tab { routes ->
+                routes.get("sample") {
+                    val ratio = query.double("ratio") { min = 0.0; max = 1.0 }.withDefault(0.5)
+                    val offset = query.double("offset")
+                    handle { call -> DebugResponse.ok("{}").also { seen.addAll(listOf(call[ratio], call[offset])) } }
+                }
+                routes.post("threshold") {
+                    acceptsForm = true
+                    val value = body.double("value") { min = -1.5 }.required()
+                    handle { call -> DebugResponse.ok("{}").also { seen += call[value] } }
+                }
+            }
+
+        assertEquals(200, get(tab, "sample", "ratio" to "0.35", "offset" to "-2e3")?.status)
+        assertEquals(200, get(tab, "sample", "ratio" to "1", "offset" to "+0.25")?.status)
+        assertEquals(200, get(tab, "sample", "ratio" to "")?.status)
+        assertEquals(listOf<Any?>(0.35, -2000.0, 1.0, 0.25, 0.5, null), seen)
+        seen.clear()
+        val form = MediaType.parse("application/x-www-form-urlencoded")
+        assertEquals(200, post(tab, "threshold", "value=0.75", form)?.status)
+        assertEquals(200, post(tab, "threshold", """{"value":3}""")?.status)
+        assertEquals(200, post(tab, "threshold", """{"value":-1.5E0}""")?.status)
+        assertEquals(listOf<Any?>(0.75, 3.0, -1.5), seen)
+
+        val queries =
+            listOf(
+                "ratio" to "1.5" to "ratio must be from 0.0 to 1.0, was 1.5",
+                "ratio" to "-0.1" to "ratio must be from 0.0 to 1.0, was -0.1",
+                "offset" to "" to "offset must be a number, was empty",
+                "offset" to "NaN" to "offset must be a number, was NaN",
+                "offset" to "Infinity" to "offset must be a number, was Infinity",
+                "offset" to "0x1p3" to "offset must be a number, was 0x1p3",
+                "offset" to "1d" to "offset must be a number, was 1d",
+                "offset" to " 1" to "offset must be a number, was  1",
+                "offset" to ".5" to "offset must be a number, was .5",
+                "offset" to "1e999" to "offset must be a finite number, was 1e999",
+                "offset" to "-1e400" to "offset must be a finite number, was -1e400",
+            )
+        for ((query, message) in queries) {
+            val response = get(tab, "sample", query)!!
+            assertEquals(message, 400, response.status)
+            assertEquals(message, query.first, response.json().getString("field"))
+            assertEquals(message, response.json().getString("message"))
+        }
+        val bodies =
+            listOf(
+                """{"value":"0.5"}""" to "value must be a number, was \"0.5\"",
+                """{"value":true}""" to "value must be a number, was true",
+                """{"value":-2}""" to "value must be at least -1.5, was -2",
+                """{"value":1e999}""" to "value must be a finite number, was 1e999",
+                """{}""" to "value is required",
+            )
+        for ((body, message) in bodies) {
+            val response = post(tab, "threshold", body)!!
+            assertEquals(body, 400, response.status)
+            assertEquals(body, "value", response.json().getString("field"))
+            assertEquals(body, message, response.json().getString("message"))
+        }
+        assertEquals("value must be a number, was abc", post(tab, "threshold", "value=abc", form)!!.json().getString("message"))
+    }
+
+    @Test
     fun `body fields come from a JSON object, with strict types`() {
         val seen = ArrayList<Any?>()
         val tab =
@@ -373,6 +491,16 @@ class DebugRoutesTest {
                 },
                 "the server answers _schema itself" to { routes -> routes.get("_schema") { handle { DebugResponse.ok("{}") } } },
                 "with no empty segment" to { routes -> routes.get("/a") { handle { DebugResponse.ok("{}") } } },
+                "items/{id} or \"\" for the tab root, with no empty segment" to { routes -> routes.get("/") { handle { DebugResponse.ok("{}") } } },
+                "two routes GET \"\"" to { routes ->
+                    routes.get("") { handle { DebugResponse.ok("{}") } }
+                    routes.get("") { handle { DebugResponse.ok("{}") } }
+                },
+                "Tab t, POST \"\": no handler" to { routes -> routes.post("") {} },
+                "two operations with the operationId getRoot" to { routes ->
+                    routes.get("") { handle { DebugResponse.ok("{}") } }
+                    routes.get("root") { handle { DebugResponse.ok("{}") } }
+                },
                 "a GET route has no body" to { routes ->
                     routes.get("a") {
                         body.string("x")
@@ -403,6 +531,51 @@ class DebugRoutesTest {
                     routes.get("a") {
                         query.int("x") { min = 5; max = 1 }
                         handle { DebugResponse.ok("{}") }
+                    }
+                },
+                "ratio has a min above its max" to { routes ->
+                    routes.get("a") {
+                        query.double("ratio") { min = 1.0; max = 0.5 }
+                        handle { DebugResponse.ok("{}") }
+                    }
+                },
+                "ratio has a bound that is not a finite number" to { routes ->
+                    routes.get("a") {
+                        query.double("ratio") { max = Double.NaN }
+                        handle { DebugResponse.ok("{}") }
+                    }
+                },
+                "the default of ratio is not a value that it takes: ratio must be at most 1.0, was 2.0" to { routes ->
+                    routes.get("a") {
+                        query.double("ratio") { max = 1.0 }.withDefault(2.0)
+                        handle { DebugResponse.ok("{}") }
+                    }
+                },
+                "the default of ratio is not a value that it takes: ratio must be a finite number, was Infinity" to { routes ->
+                    routes.get("a") {
+                        query.double("ratio").withDefault(Double.POSITIVE_INFINITY)
+                        handle { DebugResponse.ok("{}") }
+                    }
+                },
+                "Tab t, POST a: 302 is not a success status" to { routes ->
+                    routes.post("a") { response("Moved.") { status = 302 } }
+                },
+                "Tab t, POST a: 199 is not a success status" to { routes ->
+                    routes.post("a") { response("Early.") { status = 199 } }
+                },
+                "Tab t, DELETE a: a 204 response has no body" to { routes ->
+                    routes.delete("a") {
+                        response("Gone.", "{}") { status = 204 }
+                        handle { DebugResponse.ok("", status = 204) }
+                    }
+                },
+                "Tab t, POST a: a 205 response has no body" to { routes ->
+                    routes.post("a") {
+                        response("Reset.") {
+                            status = 205
+                            content("text/plain")
+                        }
+                        handle { DebugResponse.ok("", status = 205) }
                     }
                 },
                 "is not valid JSON" to { routes -> routes.component("Thing", "{") },

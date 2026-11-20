@@ -19,7 +19,7 @@ SCRIPT = b"export function mount() {}\n"
 
 class _Handler(BaseHTTPRequestHandler):
     # The protocolVersion that _meta answers, and the paths of the requests, in order.
-    protocol = "1.16"
+    protocol = "1.17"
     paths = []
 
     def log_message(self, *args):  # silence
@@ -82,7 +82,7 @@ class _Handler(BaseHTTPRequestHandler):
 
 @pytest.fixture
 def lustro(monkeypatch):
-    monkeypatch.setattr(_Handler, "protocol", "1.16")
+    monkeypatch.setattr(_Handler, "protocol", "1.17")
     monkeypatch.setattr(_Handler, "paths", [])
     httpd = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)

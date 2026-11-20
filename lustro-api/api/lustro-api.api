@@ -27,6 +27,13 @@ public final class io/github/twinsen81/lustro/DebugIntegerSpec : io/github/twins
 	public final fun setMin (Ljava/lang/Long;)V
 }
 
+public final class io/github/twinsen81/lustro/DebugNumberSpec : io/github/twinsen81/lustro/DebugParamSpec {
+	public final fun getMax ()Ljava/lang/Double;
+	public final fun getMin ()Ljava/lang/Double;
+	public final fun setMax (Ljava/lang/Double;)V
+	public final fun setMin (Ljava/lang/Double;)V
+}
+
 public final class io/github/twinsen81/lustro/DebugParam {
 	public final fun getName ()Ljava/lang/String;
 	public final fun required ()Lio/github/twinsen81/lustro/DebugParam;
@@ -43,6 +50,8 @@ public class io/github/twinsen81/lustro/DebugParamSpec {
 public class io/github/twinsen81/lustro/DebugParams {
 	public final fun boolean (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lio/github/twinsen81/lustro/DebugParam;
 	public static synthetic fun boolean$default (Lio/github/twinsen81/lustro/DebugParams;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lio/github/twinsen81/lustro/DebugParam;
+	public final fun double (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lio/github/twinsen81/lustro/DebugParam;
+	public static synthetic fun double$default (Lio/github/twinsen81/lustro/DebugParams;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lio/github/twinsen81/lustro/DebugParam;
 	public final fun int (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lio/github/twinsen81/lustro/DebugParam;
 	public static synthetic fun int$default (Lio/github/twinsen81/lustro/DebugParams;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lio/github/twinsen81/lustro/DebugParam;
 	public final fun long (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lio/github/twinsen81/lustro/DebugParam;
@@ -156,8 +165,10 @@ public final class io/github/twinsen81/lustro/DebugResponseException : java/lang
 public final class io/github/twinsen81/lustro/DebugResponseSpec {
 	public final fun content (Ljava/lang/String;Ljava/lang/String;)V
 	public static synthetic fun content$default (Lio/github/twinsen81/lustro/DebugResponseSpec;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)V
+	public final fun getStatus ()I
 	public final fun header (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
 	public static synthetic fun header$default (Lio/github/twinsen81/lustro/DebugResponseSpec;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)V
+	public final fun setStatus (I)V
 }
 
 public final class io/github/twinsen81/lustro/DebugRoute {

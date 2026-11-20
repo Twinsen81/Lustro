@@ -207,6 +207,72 @@ class OpenApiDocumentTest {
     }
 
     @Test
+    fun `a route at the tab root has the tab's path, a decimal is a number, and a response can have another success status`() {
+        val journals =
+            object : DebugTab() {
+                override val id = "journals"
+                override val title = "Journals"
+                override val icon = ""
+
+                override fun routes(routes: DebugRoutes) {
+                    routes.version = "1"
+                    routes.get("") {
+                        query.double("minScore") { min = 0.0; max = 1.0; description = "The lowest score." }.withDefault(0.35)
+                        query.double("offset")
+                        handle { DebugResponse.ok("[]") }
+                    }
+                    routes.post("") {
+                        acceptsForm = true
+                        body.double("weight") { min = -1.5 }.required()
+                        response("The new journal.", """{"type": "object"}""") { status = 201 }
+                        handle { DebugResponse.ok("{}", status = 201) }
+                    }
+                    routes.delete("") {
+                        response("Every journal is gone.") { status = 204 }
+                        handle { DebugResponse.ok("", status = 204) }
+                    }
+                    routes.get("{id}") {
+                        path.string("id")
+                        handle { DebugResponse.ok("{}") }
+                    }
+                }
+            }
+        val schema = journals.schema()!!
+        val paths = JSONObject(schema).getJSONObject("paths")
+        fun keys(vararg path: String): List<String> =
+            path.fold(Json.parse(schema)) { value, key -> (value as Map<*, *>)[key]!! }.let { (it as Map<*, *>).keys.map(Any?::toString) }
+
+        assertEquals(listOf("/api/v1/journals", "/api/v1/journals/{id}"), keys("paths"))
+        assertEquals(listOf("get", "post", "delete"), keys("paths", "/api/v1/journals"))
+        val list = paths.getJSONObject("/api/v1/journals").getJSONObject("get")
+        assertEquals("getRoot", list.getString("operationId"))
+        assertParameter(
+            list.getJSONArray("parameters").getJSONObject(0),
+            "minScore",
+            "query",
+            false,
+            """{"type":"number","format":"double","minimum":0.0,"maximum":1.0,"default":0.35}""",
+            "The lowest score.",
+        )
+        assertParameter(list.getJSONArray("parameters").getJSONObject(1), "offset", "query", false, """{"type":"number","format":"double"}""", null)
+        // A decimal can be refused, so the route lists 400.
+        assertEquals(listOf("200", "400", "401", "403", "413", "503"), keys("paths", "/api/v1/journals", "get", "responses"))
+
+        val create = paths.getJSONObject("/api/v1/journals").getJSONObject("post")
+        assertEquals("postRoot", create.getString("operationId"))
+        assertJson(
+            """{"type":"object","required":["weight"],"properties":{"weight":{"type":"number","format":"double","minimum":-1.5}}}""",
+            create.getJSONObject("requestBody").getJSONObject("content").getJSONObject("application/x-www-form-urlencoded").getJSONObject("schema"),
+        )
+        assertEquals(listOf("201", "400", "401", "403", "413", "503"), keys("paths", "/api/v1/journals", "post", "responses"))
+        assertEquals("The new journal.", create.getJSONObject("responses").getJSONObject("201").getString("description"))
+        assertEquals(listOf("204", "401", "403", "413", "503"), keys("paths", "/api/v1/journals", "delete", "responses"))
+        assertEquals("deleteRoot", paths.getJSONObject("/api/v1/journals").getJSONObject("delete").getString("operationId"))
+        // The decimal's bounds are written as JSON numbers, which the server's own reader takes.
+        assertTrue(schema.contains("\"minimum\": 0.0") && schema.contains("\"default\": 0.35") && schema.contains("\"minimum\": -1.5"))
+    }
+
+    @Test
     fun `the document is built once and is the same string each time`() {
         assertSame(tab.schema(), tab.schema())
         assertTrue(tab.schema()!!.startsWith("{\n  \"openapi\": \"3.1.0\",\n  \"info\": {\n"))

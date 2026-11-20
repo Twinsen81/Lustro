@@ -16,7 +16,7 @@ __version__ = "0.1.0"
 # The wire protocol version that this CLI implements, which `lustro --version`
 # prints. It is the server's protocolVersion in lustro/build.gradle.kts, and
 # `./gradlew checkCliVersion` fails when not: a change to the protocol updates it.
-PROTOCOL_VERSION = "1.16"
+PROTOCOL_VERSION = "1.17"
 
 from .client import CursorState, LustroClient, LustroError  # noqa: E402
 from .cli import main  # noqa: E402

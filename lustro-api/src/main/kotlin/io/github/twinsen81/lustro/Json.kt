@@ -20,6 +20,11 @@ internal object Json {
             null, JsonNull -> append("null")
             is String -> append('"').append(value.escapeForJson()).append('"')
             is Boolean, is Int, is Long, is JsonNumber -> append(value.toString())
+            is Double -> {
+                // Double.toString gives a JSON number, such as 0.35 or 1.0E-7, for every finite value.
+                require(value.isFinite()) { "JSON has no $value" }
+                append(value.toString())
+            }
             is Map<*, *> -> container('{', '}', value.entries, indent) { entry, inner ->
                 append('"').append((entry.key as String).escapeForJson()).append(if (indent >= 0) "\": " else "\":")
                 append(entry.value, inner)
