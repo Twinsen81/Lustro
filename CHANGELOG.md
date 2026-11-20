@@ -1121,6 +1121,27 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Fixed
 
+- **The no-op halves no longer make R8 keep their classes in a minified release
+  build.** The six `-noop` artifacts shipped consumer rules such as `-keep
+  public class io.github.twinsen81.lustro.Lustro { public *; }`. A `-keep` rule
+  keeps a class and its public members with their names, also when no code of
+  the app uses them, so each minified release build with the no-op halves had
+  the facades and the tabs: 22 classes with their Lustro names, and 14 renamed
+  ones that those classes use. The no-op halves load nothing by reflection, and
+  R8 keeps what the app's release code calls, so the rules are removed. The
+  `-dontwarn` rules for DataStore, androidx.sqlite, and WorkManager stay. R8 now
+  removes the classes that the release code does not call and renames the
+  others: the sample's release build has 8 Lustro classes, all renamed, in place
+  of 36, and its `classes.dex` is 24 KB smaller (2,699,752 to 2,675,248 bytes).
+  A release build whose code does not call Lustro has none. In CI,
+  `checkReleaseHasNoLustroClasses` in the sample and
+  `checkWithLustroReleaseHasNoLustroClasses` in the consumer check read R8's
+  mapping file and fail on a class that has a Lustro name in the APK. With the
+  old rules, both fail with the 22 classes. The release safety page says what a
+  minified release build keeps, and how to check it. Verified on an emulator
+  (API 29): the sample's minified release build, signed with the debug key,
+  starts, logs `Lustro start() returned DISABLED`, and a `GET /get` through its
+  OkHttp client, which has the pass-through interceptor, returns 200.
 - **The debug server no longer compresses its responses, so it no longer leaks
   a `Deflater` for each one.** When a client accepts gzip, as every browser
   does, NanoHTTPD compressed each text and JSON response: every page, style

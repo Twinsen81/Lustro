@@ -1,6 +1,7 @@
 # Consumer R8/ProGuard rules shipped with the :lustro-logs-noop artifact.
 #
-# The no-op tab reads nothing; keep only the entry point that the app's release
-# bootstrap references by name.
--keep public class io.github.twinsen81.lustro.logs.LogsDebugTab { public *; }
--keep public class io.github.twinsen81.lustro.logs.LogsDebugTab$* { public *; }
+# No -keep rule. R8 sees the whole app, so it keeps what the app's release code
+# calls, and the no-op half loads nothing by reflection. A -keep rule would keep
+# the classes, with their names, in every minified release build, also in one
+# that never calls Lustro. The sample's checkReleaseHasNoLustroClasses fails
+# when a class of its release build has a Lustro name.

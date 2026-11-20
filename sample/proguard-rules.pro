@@ -1,8 +1,9 @@
 # Sample app R8 rules.
 #
-# The release variant consumes :lustro-noop (the no-op artifact) and runs R8 to
-# exercise the consumer-rules.pro shipped by the Lustro modules. Library keep
-# rules come from each module's consumer-rules.pro, so this file stays minimal.
+# The release variant takes the no-op halves and runs R8 over them with the
+# consumer-rules.pro that they ship, which keep nothing. The release build must
+# have no class with a Lustro name: see checkReleaseHasNoLustroClasses in
+# build.gradle.kts.
 
 # The Application subclass is referenced from AndroidManifest.xml; AGP keeps
 # manifest-referenced classes automatically, but we keep it explicitly so the

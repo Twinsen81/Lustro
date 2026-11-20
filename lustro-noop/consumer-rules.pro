@@ -1,10 +1,7 @@
 # Consumer R8/ProGuard rules shipped with the :lustro-noop artifact.
 #
-# The no-op build opens no socket, loads no NanoHTTPD engine, and captures
-# nothing, so there is no reflectively-loaded runtime to keep. The facade is
-# free to be shrunk away when unused; we keep only the entry points consumers
-# reference by name so release builds that touch the API still link.
--keep public class io.github.twinsen81.lustro.Lustro { public *; }
--keep public class io.github.twinsen81.lustro.Lustro$* { public *; }
--keep public class io.github.twinsen81.lustro.network.NetworkDebugTab { public *; }
--keep public class io.github.twinsen81.lustro.network.NetworkDebugTab$* { public *; }
+# No -keep rule. R8 sees the whole app, so it keeps what the app's release code
+# calls, and the no-op half loads nothing by reflection. A -keep rule would keep
+# the classes, with their names, in every minified release build, also in one
+# that never calls Lustro. The sample's checkReleaseHasNoLustroClasses fails
+# when a class of its release build has a Lustro name.

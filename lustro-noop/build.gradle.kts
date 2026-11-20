@@ -21,7 +21,7 @@ android {
     defaultConfig {
         // Lower than the runtime's: see noopMinSdk in the version catalog.
         minSdk = libs.versions.noopMinSdk.get().toInt()
-        // R8 rules shipped to consumers (minimal: keep public facade entry points).
+        // R8 rules shipped to consumers. They keep nothing: see the file.
         consumerProguardFiles("consumer-rules.pro")
     }
 }
