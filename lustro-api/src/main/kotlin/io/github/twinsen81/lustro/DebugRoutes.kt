@@ -180,7 +180,9 @@ public class DebugRoute internal constructor(
 
     /**
      * Describes the route's `200` response for the OpenAPI document, with the JSON Schema
-     * [schema] of its body, or none.
+     * [schema] of its `application/json` body, or none. A route that answers another status
+     * or content type, such as `204` or [DebugResponse.text], has no way to say so here: the
+     * tab can change the generated document in its [DebugTab.schema].
      */
     public fun response(description: String, schema: String? = null) {
         checkOpen()

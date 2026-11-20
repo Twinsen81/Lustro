@@ -89,8 +89,8 @@ override fun routes(routes: DebugRoutes) {
     type, such as `DebugRoutes.ref("Store")`.
 - **Empty values.** In the query or a form, an empty int, long, or boolean is absent, and an
     empty string is a string, which `minLength = 1` refuses.
-- **Bodies.** Body fields come from a JSON object, with strict JSON types, and `null` counts as
-    absent. With `acceptsForm = true`, a route also takes them as an
+- **Bodies.** Body fields come from a JSON object in strict JSON (RFC 8259), with strict JSON
+    types, and `null` counts as absent. With `acceptsForm = true`, a route also takes them as an
     `application/x-www-form-urlencoded` form. A route with a required field gets a `400` for an
     empty body. For a body that is not a set of fields, such as an uploaded file, use
     `rawBody(contentType, schema)` and read `call.request.body` in the handler.

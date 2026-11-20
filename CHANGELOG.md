@@ -81,7 +81,10 @@ see [DECISIONS.md](DECISIONS.md).
   one that it replaces, and moved to `lustro-prefs/openapi/prefs.openapi.json`,
   which the wire-schema artifact and the CLI copy. The Preferences routes keep
   their statuses, fields, and codes; a few messages changed, such as `file
-  must not be empty` for `?file=`. Verified on a physical device (API 37)
+  must not be empty` for `?file=`. Their request bodies must now be strict
+  JSON: Android's `JSONObject` took unquoted names, single quotes, comments,
+  `=` or `;` between members, and text after the object, and these now get
+  `400` with `field: body`. Verified on a physical device (API 37)
   with the sample: `_meta` listed `flags` 1.0 and `prefs` 1.2, and
   `GET prefs/_schema` was byte-equal to the committed file; `GET flags/toggle`
   and `GET prefs/edit` answered `405` with `Allow: POST`; `POST flags/toggle`
