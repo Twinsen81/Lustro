@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import socket
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
@@ -254,11 +255,23 @@ def test_ready_with_a_port_that_does_not_answer_and_no_adb_checks(closed_port, m
     assert not any(call.endswith("get-state") or call in (PM_PATH, GREP, PIDOF) for call in adb.calls)
 
 
-def test_ready_when_the_app_answers_with_an_error(server, capsys):
+def test_ready_tries_again_while_the_server_is_busy(server, capsys):
     server.status = 503
     server.meta = {"error": "unavailable", "message": "busy"}
+    started = time.monotonic()
     assert _ready("--port", str(server.server_address[1]), "--token", TOKEN) == exitcodes.ERROR
-    assert _cause(capsys).startswith("503 unavailable: busy")
+    assert time.monotonic() - started >= 0.2
+    # The server answered, so the error is its answer, not "did not answer".
+    assert capsys.readouterr().err == "error: 503 unavailable: busy\n"
+
+
+def test_ready_stops_at_an_error_that_a_new_try_can_not_change(server, capsys):
+    started = time.monotonic()
+    assert cli.main(["ready", "--timeout", "30", "--port", str(server.server_address[1]), "--token", "wrong"]) == (
+        exitcodes.ERROR
+    )
+    assert time.monotonic() - started < 5
+    assert capsys.readouterr().err.startswith("error: 401 unauthorized: missing token")
 
 
 def test_ready_rejects_a_timeout_that_is_not_positive(capsys):

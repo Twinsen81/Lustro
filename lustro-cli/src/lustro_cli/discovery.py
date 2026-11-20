@@ -275,7 +275,10 @@ def device_problem(device: Optional[str] = None) -> Optional[DiscoveryError]:
             "Android SDK Platform-Tools, or pass --token and --port for a server that adb does not reach.",
             exitcodes.NO_DEVICE,
         )
-    if status < 0 or (status == 0 and out.strip() == "device"):
+    # adb can print its own lines first, such as "* daemon started successfully", or
+    # the restart of a server of another adb version: the state is the last line.
+    lines = [line.strip() for line in out.splitlines() if line.strip()]
+    if status < 0 or (status == 0 and lines and lines[-1] == "device"):
         return None
     said = " ".join(out.split()) or "adb get-state exited with status {}".format(status)
     if "more than one" in said:

@@ -558,10 +558,11 @@ def failure(args: argparse.Namespace, exc: Exception) -> Tuple[int, str]:
     """The exit code and the message of a command that failed with ``exc``.
 
     A connection that fails gets the cause that adb finds, such as an app that is
-    not running or a build without the Lustro runtime, unless --port names the
-    local port: then the server can be on this computer, where adb finds nothing.
-    A forward that adb can't make gets only the device's cause, such as more than
-    one device: the app's state does not stop a forward.
+    not running or a build without the Lustro runtime. Not when --port names the
+    local port, where the server can be on this computer, and not when --host names
+    a host that the CLI reaches without adb, such as a device on the LAN: adb
+    finds nothing about those. A forward that adb can't make gets only the device's
+    cause, such as more than one device: the app's state does not stop a forward.
     """
     if isinstance(exc, UsageError):
         return exitcodes.USAGE, str(exc)
@@ -572,7 +573,8 @@ def failure(args: argparse.Namespace, exc: Exception) -> Tuple[int, str]:
         return (exitcodes.NOT_REACHABLE, str(exc)) if cause is None else (cause.exit_code, str(cause))
     if isinstance(exc, LustroError):
         if exc.error == "connection_failed":
-            cause = None if args.port is not None else diagnose(args.device, args.package, adb_required=False)
+            without_adb = args.port is not None or (args.host is not None and args.host not in LOOPBACK_HOSTS)
+            cause = None if without_adb else diagnose(args.device, args.package, adb_required=False)
             return (exitcodes.NOT_REACHABLE, str(exc)) if cause is None else (cause.exit_code, str(cause))
         # A search that the app rejects is a usage error, like a bad flag.
         return (exitcodes.USAGE if _is_search_error(exc) else exitcodes.ERROR), str(exc)
@@ -788,7 +790,8 @@ def cmd_ready(args: argparse.Namespace) -> int:
 
     Each try runs discovery again, because the app logs its ready line only when it
     starts, and a line from an earlier start names a port that does not answer yet.
-    The adb checks of the cause run once, at the end: one reads the whole APK.
+    The adb checks of the cause run once, at the end: one reads the whole APK. An
+    error response that a new try can't change, such as a 401, ends the wait.
     """
     deadline = time.monotonic() + args.timeout
     while True:
@@ -800,6 +803,10 @@ def cmd_ready(args: argparse.Namespace) -> int:
             meta = client.get(META)
         except (DiscoveryError, LustroError) as exc:
             last: Exception = exc
+            # An error response other than a busy or failing server, such as a 401 for a
+            # --token that is not the app's, does not change when ready tries again.
+            if isinstance(exc, LustroError) and exc.status is not None and exc.status < 500 and exc.status != 429:
+                break
         else:
             _warn_if_newer_protocol(meta)
             if args.json:
@@ -821,7 +828,11 @@ def cmd_ready(args: argparse.Namespace) -> int:
     if isinstance(last, DiscoveryError):
         last = diagnose(args.device, args.package) or last
     code, message = failure(args, last)
-    print("error: the app's server did not answer within {} s: {}".format(_seconds(args.timeout), message), file=sys.stderr)
+    if isinstance(last, LustroError) and last.status is not None:
+        # The server answered, with an error.
+        print("error: {}".format(message), file=sys.stderr)
+    else:
+        print("error: the app's server did not answer within {} s: {}".format(_seconds(args.timeout), message), file=sys.stderr)
     return code
 
 

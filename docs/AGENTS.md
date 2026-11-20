@@ -120,7 +120,7 @@ the app in the foreground. That step finds the token on a device that drops Info
 answers, and prints the endpoint that the CLI reaches it at. A ready line from an earlier start of
 the app names a token and a port that may not answer, so the CLI does not trust the first line
 that it finds. When the time is over, it prints the cause and exits with its code (see [Exit
-codes](#exit-codes)). Pass `--package`: without it, the CLI checks only the app in the
+codes](#exit-codes)). A `401` or another `4xx` other than `429` ends the wait at once with exit 1. Pass `--package`: without it, the CLI checks only the app in the
 foreground, which can be the launcher.
 
 `lustro open` forwards a local port to the app's port on the device: 8080, or a free local port

@@ -10,11 +10,12 @@ import struct
 import subprocess
 import sys
 import threading
+import urllib.error
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
-from lustro_cli import cli, exitcodes
+from lustro_cli import cli, discovery, exitcodes
 from lustro_cli.client import LustroClient, LustroError
 from lustro_cli.discovery import Endpoint
 
@@ -147,6 +148,19 @@ def test_open_does_not_forward_for_a_lan_host(monkeypatch, capsys):
     monkeypatch.setattr(cli, "_adb_forward", lambda *args: pytest.fail("adb forward ran"))
     assert cli.main(["open", "--print-only"]) == 0
     assert capsys.readouterr().out.strip() == "http://192.168.1.50:8080/#lustro_token=tok"
+
+
+def test_a_lan_host_that_does_not_answer_gets_no_adb_diagnosis(monkeypatch, capsys):
+    # The CLI reaches a LAN host without adb, so adb says nothing about that server.
+    def refused(self, url, data, method, accept):
+        raise urllib.error.URLError(ConnectionRefusedError(61, "Connection refused"))
+
+    monkeypatch.setattr(LustroClient, "_open", refused)
+    monkeypatch.setattr(discovery, "diagnose", lambda *args, **kwargs: pytest.fail("adb diagnosis ran"))
+    monkeypatch.setattr(cli, "diagnose", lambda *args, **kwargs: pytest.fail("adb diagnosis ran"))
+    assert cli.main(["--host", "192.168.1.50", "--token", TOKEN, "meta"]) == exitcodes.NOT_REACHABLE
+    err = capsys.readouterr().err
+    assert err.startswith("error: connection_failed: could not reach http://192.168.1.50:8080/api/v1/_meta: ")
 
 
 def test_open_no_forward_skips_adb(endpoint, monkeypatch, capsys):

@@ -376,6 +376,18 @@ def test_a_device_that_adb_can_not_use_is_no_device(monkeypatch, said):
     assert not any("pm" in cmd for cmd in calls)
 
 
+@pytest.mark.parametrize(
+    "said",
+    [
+        "* daemon not running; starting now at tcp:5037\n* daemon started successfully\n",
+        "adb server version (41) doesn't match this client (39); killing...\n* daemon started successfully\n",
+    ],
+)
+def test_the_lines_that_adb_prints_about_its_server_do_not_hide_the_device(monkeypatch, said):
+    error, _ = _no_token(monkeypatch, {}, state=(0, said + "device\n"), package="com.example.app")
+    assert error.exit_code == exitcodes.NOT_INSTALLED
+
+
 def test_more_than_one_device_with_none_selected_is_a_usage_error(monkeypatch):
     error, _ = _no_token(monkeypatch, {}, state=(1, "error: more than one device/emulator\n"))
     assert error.exit_code == exitcodes.USAGE

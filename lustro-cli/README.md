@@ -170,7 +170,9 @@ token. When the time is over, it prints the cause and exits with its code: no
 device, an app that is not installed, a build without the Lustro runtime, an app
 that is not running or not in the foreground, or a port that does not answer. It
 makes the checks of the cause once, at the end, because the check of the runtime
-reads the whole APK.
+reads the whole APK. An error response that a new try can't change, such as a
+`401` for a `--token` that is not the app's, ends the wait at once with exit 1;
+`ready` tries again after a `5xx` or a `429`.
 
 ## Exit codes
 
