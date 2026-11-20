@@ -422,16 +422,21 @@ class WorkRoutesTest {
         assertEquals(404, off.status)
         assertEquals("metrics_off", off.json().getString("code"))
         // The declarations check from before the handler finds that the tab has no history.
-        assertEquals(400, WorkFixtures.get(routes, "metrics", "from" to "").status)
+        assertEquals("from", WorkFixtures.get(routes, "metrics", "from" to "").json().getString("field"))
+        assertEquals("to", WorkFixtures.get(routes, "metrics", "to" to "").json().getString("field"))
     }
 
     @Test
     fun `before the app initializes WorkManager, the work routes say so and the events still answer`() {
         val waiting = WorkRoutes(WorkFixtures.source(app, initialized = { null }))
-        for (response in listOf(WorkFixtures.get(waiting, "items"), WorkFixtures.post(waiting, "prune", null))) {
+        // A cancel whose members are wrong gets the 503 too: the handler checks them after WorkManager.
+        val cancels = listOf(JSONObject().put("nmae", "x"), JSONObject().put("id", 3), JSONObject().put("id", "a").put("tag", "b"))
+        for (response in listOf(WorkFixtures.get(waiting, "items"), WorkFixtures.post(waiting, "prune", null)) + cancels.map { WorkFixtures.post(waiting, "cancel", it) }) {
             assertEquals(503, response.status)
             assertEquals("work_not_initialized", response.json().getString("code"))
         }
+        // A body that is not a JSON object is still a 400 first, as before.
+        assertEquals("body", WorkFixtures.postText(waiting, "cancel", "not json").json().getString("field"))
         val events = WorkFixtures.get(waiting, "events").json()
         assertEquals("missing", events.getJSONObject("state").getString("listeners"))
         assertFalse(events.getJSONObject("state").getBoolean("initialized"))

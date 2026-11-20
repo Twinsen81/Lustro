@@ -101,7 +101,8 @@ internal class WorkRoutes(private val source: WorkSource) {
             rawBody("application/json", WorkDocument.CANCEL_BODY_SCHEMA)
             response(WorkDocument.CANCEL_RESPONSE, WorkDocument.CANCEL_RESPONSE_SCHEMA)
             errors(404, 500, 504)
-            handle { call -> guarded { cancel(cancelTarget(body(call.request.bodyAsString().orEmpty())), workManager()) } }
+            // The body is parsed before the 503 of WorkManager, and its members are checked after it, as before.
+            handle { call -> guarded { cancel(body(call.request.bodyAsString().orEmpty()), workManager()) } }
         }
         routes.post("prune") {
             operationId = "pruneWork"
@@ -277,8 +278,8 @@ internal class WorkRoutes(private val source: WorkSource) {
 
     // POST cancel with one of {"id"}, {"name"}, or {"tag"}: the work with the id, the unique
     // work with the name, or all work with the tag. Finished work stays as it is.
-    private fun cancel(target: Pair<String, String>, workManager: WorkManager): DebugResponse {
-        val (key, value) = target
+    private fun cancel(body: JSONObject, workManager: WorkManager): DebugResponse {
+        val (key, value) = cancelTarget(body)
         val id = if (key == "id") uuid(value, field = "id") else null
         val matched: List<WorkInfo> =
             when {
