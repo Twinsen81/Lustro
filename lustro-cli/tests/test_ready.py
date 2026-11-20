@@ -60,8 +60,14 @@ class FakeAdb:
         return answer(earlier) if callable(answer) else answer
 
     def run_status(self, cmd, timeout=10.0):
-        self.calls.append(" ".join(cmd))
-        return self.state
+        key = " ".join(cmd)
+        if cmd[-1] == "get-state":
+            self.calls.append(key)
+            return self.state
+        # A command that is not in the table exits 1 with no output, as `pm path`
+        # does for a package that is not installed.
+        out = self.run(cmd, timeout)
+        return (1, "") if out is None else (0, out)
 
     def count(self, key):
         return sum(1 for call in self.calls if call == key)

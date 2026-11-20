@@ -212,14 +212,21 @@ def foreground_package(device: Optional[str] = None) -> Optional[str]:
 RUNTIME_ASSET_ENTRY = "assets/lustro/"
 
 
-def installed_apk(package: str, device: Optional[str] = None) -> Optional[str]:
-    """The path of the package's ``base.apk`` on the device, or ``None``."""
-    out = _run(_adb_base(device) + ["shell", "pm", "path", package])
-    for line in (out or "").splitlines():
-        line = line.strip()
-        if line.startswith("package:") and line.endswith("/base.apk"):
-            return line[len("package:") :]
-    return None
+def package_paths(package: str, device: Optional[str] = None) -> Optional[List[str]]:
+    """The paths of the package's APKs on the device: empty when it is not installed,
+    and ``None`` when adb can't tell.
+
+    ``pm path`` prints nothing for a package that is not installed, and exits 1 on
+    newer releases. An error text, such as the one of a package manager that does
+    not run yet while the device boots, or an adb that fails, says nothing about
+    the package.
+    """
+    status, out = _run_status(_adb_base(device) + ["shell", "pm", "path", package])
+    lines = [line.strip() for line in out.splitlines() if line.strip()]
+    if not lines:
+        return [] if status in (0, 1) else None
+    paths = [line[len("package:") :] for line in lines if line.startswith("package:")]
+    return paths or None
 
 
 def apk_has_runtime(apk: str, device: Optional[str] = None) -> Optional[bool]:
@@ -303,8 +310,10 @@ def diagnose(
     app = package or foreground_package(device)
     if not app:
         return None
-    apk = installed_apk(app, device)
-    if apk is None:
+    paths = package_paths(app, device)
+    if paths is None:
+        return None
+    if not paths:
         if package:
             return DiscoveryError(
                 "{} is not installed on the device: install a debug build that uses the Lustro artifacts, and "
@@ -312,7 +321,8 @@ def diagnose(
                 exitcodes.NOT_INSTALLED,
             )
         return None
-    if apk_has_runtime(apk, device) is False:
+    apk = next((path for path in paths if path.endswith("/base.apk")), None)
+    if apk is not None and apk_has_runtime(apk, device) is False:
         code = exitcodes.NO_RUNTIME if package else exitcodes.NOT_REACHABLE
         return DiscoveryError(_no_runtime_message(app, from_foreground=not package), code)
     if not package:

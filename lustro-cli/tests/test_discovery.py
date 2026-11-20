@@ -186,17 +186,25 @@ def test_parse_forwards_keeps_the_tcp_forwards_to_the_port_in_order():
 
 def _fake_adb_run(monkeypatch, outputs, state=(0, "device\n")):
     """Answer each adb command from ``outputs``, keyed by its arguments; record them.
-    ``adb get-state`` answers ``state``, its exit status and output: a device."""
+    ``adb get-state`` answers ``state``, its exit status and output: a device. A
+    command with an exit status that is not in ``outputs`` exits 1 with no output,
+    as ``pm path`` does for a package that is not installed. An output that is a
+    tuple is the exit status and the output."""
     calls = []
 
     def run(cmd, timeout=10.0):
         calls.append(cmd)
-        return outputs.get(" ".join(cmd))
+        out = outputs.get(" ".join(cmd))
+        return out[1] if isinstance(out, tuple) else out
 
     def run_status(cmd, timeout=10.0):
         calls.append(cmd)
-        assert cmd[-1] == "get-state", cmd
-        return state
+        if cmd[-1] == "get-state":
+            return state
+        out = outputs.get(" ".join(cmd))
+        if isinstance(out, tuple):
+            return out
+        return (1, "") if out is None else (0, out)
 
     monkeypatch.setattr(discovery, "_run", run)
     monkeypatch.setattr(discovery, "_run_status", run_status)
@@ -384,6 +392,32 @@ def test_a_package_that_is_not_installed(monkeypatch):
     error, _ = _no_token(monkeypatch, {}, package="com.example.app")
     assert error.exit_code == exitcodes.NOT_INSTALLED
     assert str(error).startswith("com.example.app is not installed on the device")
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        (1, "Error: Could not access the Package Manager.  Is the system running?\n"),  # the device boots
+        (-1, ""),  # adb did not finish in time
+        (255, ""),  # adb failed
+    ],
+)
+def test_a_package_query_that_fails_is_not_a_package_that_is_not_installed(monkeypatch, answer):
+    # A script installs a build for exit 4, so a query that says nothing must not give it.
+    error, calls = _no_token(monkeypatch, {"adb shell pm path com.example.app": answer}, package="com.example.app")
+    assert error.exit_code == exitcodes.NOT_REACHABLE
+    assert "not installed" not in str(error)
+    assert not any("grep" in " ".join(cmd) for cmd in calls)
+
+
+def test_an_app_without_a_base_apk_gets_no_runtime_check(monkeypatch):
+    outputs = {
+        "adb shell pm path com.example.app": "package:/system/app/Example/Example.apk\n",
+        "adb shell pidof com.example.app || true": "",
+    }
+    error, calls = _no_token(monkeypatch, outputs, package="com.example.app")
+    assert str(error).startswith("com.example.app is not running")
+    assert not any("grep" in " ".join(cmd) for cmd in calls)
 
 
 def test_a_known_app_without_the_runtime_is_a_build_without_lustro(monkeypatch):
