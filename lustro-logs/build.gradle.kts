@@ -40,6 +40,14 @@ dependencies {
     testImplementation(libs.androidx.test.core)
 }
 
+// LogsOpenApiDocumentTest compares the committed openapi/logs.openapi.json with the document
+// that the route declarations make, and writes it when LUSTRO_UPDATE_OPENAPI=1, so both are
+// inputs of the unit tests.
+tasks.withType<Test>().configureEach {
+    inputs.file("openapi/logs.openapi.json")
+    inputs.property("updateOpenApi", providers.environmentVariable("LUSTRO_UPDATE_OPENAPI").orElse(""))
+}
+
 lustroLibrary {
     // The same name in :lustro-logs-noop, so that an app can't resolve both.
     pairCapability("lustro-logs-runtime")

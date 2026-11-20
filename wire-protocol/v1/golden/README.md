@@ -6,11 +6,11 @@ validate against these to prove they parse the exact shapes the server emits,
 and the fixtures themselves are validated against the JSON Schemas in the parent
 directory (`../*.schema.json`) and the OpenAPI components of the Network tab
 (`lustro/openapi/network.openapi.json`), the Logs tab
-(`lustro-logs/src/main/assets/lustro/logs.openapi.json`), the Preferences
+(`lustro-logs/openapi/logs.openapi.json`), the Preferences
 tab (`lustro-prefs/openapi/prefs.openapi.json`), the SQLite
 tab (`lustro-sqlite/openapi/sqlite.openapi.json`), the
-WorkManager tab (`lustro-work/src/main/assets/lustro/work.openapi.json`), and
-the Screen tab (`lustro-screen/src/main/assets/lustro/screen.openapi.json`).
+WorkManager tab (`lustro-work/openapi/work.openapi.json`), and
+the Screen tab (`lustro-screen/openapi/screen.openapi.json`).
 
 These files are bundled into the `lustro-cli` wheel under
 `lustro_cli/wire/golden/`, so the installed CLI ships its own contract corpus

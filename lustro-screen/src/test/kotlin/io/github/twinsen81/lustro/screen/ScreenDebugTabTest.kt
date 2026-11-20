@@ -22,7 +22,6 @@ class ScreenDebugTabTest {
         assertEquals("Screen", tab.title)
         assertFalse(tab.showInTabBar)
         assertTrue(tab.renderContent().isEmpty())
-        assertNull(tab.schema())
         assertNull(tab.handle(DebugRequest("", "GET")))
     }
 

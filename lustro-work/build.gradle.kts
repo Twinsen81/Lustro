@@ -66,6 +66,14 @@ dependencies {
     testImplementation(libs.work.analytics)
 }
 
+// WorkOpenApiDocumentTest compares the committed openapi/work.openapi.json with the document
+// that the route declarations make, and writes it when LUSTRO_UPDATE_OPENAPI=1, so both are
+// inputs of the unit tests.
+tasks.withType<Test>().configureEach {
+    inputs.file("openapi/work.openapi.json")
+    inputs.property("updateOpenApi", providers.environmentVariable("LUSTRO_UPDATE_OPENAPI").orElse(""))
+}
+
 lustroLibrary {
     // The same name in :lustro-work-noop, so that an app can't resolve both.
     pairCapability("lustro-work-runtime")

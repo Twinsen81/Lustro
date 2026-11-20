@@ -90,7 +90,7 @@ The Screen tab has no console view yet: it is not in the tab bar, and `_meta` li
 `GET /api/v1/screen/tree` returns the windows and their nodes. `merged=false` gives the unmerged
 semantics tree. `settle=MS` goes from 0 to 10000: `0`, the default, reads once, and a larger
 value reads until the screen is at rest, for up to MS. See [Agents and automation](../AGENTS.md#screen-tab-operations) and
-[`screen.openapi.json`](https://github.com/Twinsen81/Lustro/blob/main/lustro-screen/src/main/assets/lustro/screen.openapi.json).
+[`screen.openapi.json`](https://github.com/Twinsen81/Lustro/blob/main/lustro-screen/openapi/screen.openapi.json).
 
 ## CLI examples
 

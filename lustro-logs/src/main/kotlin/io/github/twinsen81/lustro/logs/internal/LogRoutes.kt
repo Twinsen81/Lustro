@@ -1,38 +1,123 @@
 package io.github.twinsen81.lustro.logs.internal
 
-import io.github.twinsen81.lustro.DebugRequest
+import io.github.twinsen81.lustro.DebugCall
+import io.github.twinsen81.lustro.DebugParam
+import io.github.twinsen81.lustro.DebugParams
 import io.github.twinsen81.lustro.DebugResponse
+import io.github.twinsen81.lustro.DebugResponseException
+import io.github.twinsen81.lustro.DebugRoutes
+import io.github.twinsen81.lustro.DebugRoutes.Companion.ref
+import io.github.twinsen81.lustro.ExperimentalDebugRoutes
 import io.github.twinsen81.lustro.escapeForJson
-import org.json.JSONException
-import org.json.JSONObject
 
-/** The routes of the Logs tab, under `/api/v1/logs/`. */
+/**
+ * The routes of the Logs tab, under `/api/v1/logs/`. [declare] declares them, and the tab's
+ * OpenAPI document comes from the declarations, with the text of [LogsDocument].
+ */
+@OptIn(ExperimentalDebugRoutes::class)
 internal class LogRoutes(private val buffer: LogBuffer, private val reader: LogcatReader) {
-    // A wrong method is null too: the server answers 405 from logs.openapi.json.
-    fun handle(request: DebugRequest): DebugResponse? =
-        when ("${request.method.uppercase()} ${request.path}") {
-            "GET entries" -> entries(request)
-            "GET text" -> text(request)
-            "POST clear" -> clear()
-            "POST pause" -> setFlag(request, "paused", { buffer.paused }) { buffer.paused = it }
-            "POST compact" -> setFlag(request, "compact", { buffer.compact }) { buffer.compact = it }
-            else -> null
+    fun declare(routes: DebugRoutes) {
+        routes.title = LogsDocument.TITLE
+        routes.version = "1.1"
+        routes.description = LogsDocument.DESCRIPTION
+        for ((name, schema) in LOGS_SCHEMAS) routes.component(name, schema)
+
+        routes.get("entries") {
+            operationId = "listLogEntries"
+            summary = LogsDocument.ENTRIES_SUMMARY
+            description = LogsDocument.ENTRIES_DESCRIPTION
+            val filters = query.filters()
+            val limit =
+                query.int("limit") {
+                    min = 1
+                    max = MAX_LIMIT.toLong()
+                    description = LogsDocument.ENTRIES_LIMIT
+                }.withDefault(DEFAULT_LIMIT)
+            response(LogsDocument.ENTRIES_RESPONSE, ref("LogStreamEnvelope"))
+            handle { call -> entries(call[filters.cursor], filters.read(call), call[limit]) }
+        }
+        routes.get("text") {
+            operationId = "exportLogText"
+            summary = LogsDocument.TEXT_SUMMARY
+            description = LogsDocument.TEXT_DESCRIPTION
+            val filters = query.filters()
+            val limit =
+                query.int("limit") {
+                    min = 1
+                    description = LogsDocument.TEXT_LIMIT
+                }
+            response(LogsDocument.TEXT_RESPONSE) { content("text/plain", """{"type": "string"}""") }
+            handle { call -> text(call[filters.cursor], filters.read(call), call[limit] ?: Int.MAX_VALUE) }
+        }
+        routes.post("clear") {
+            operationId = "clearLog"
+            summary = LogsDocument.CLEAR_SUMMARY
+            description = LogsDocument.CLEAR_DESCRIPTION
+            response(LogsDocument.CLEAR_RESPONSE, LogsDocument.CLEAR_RESPONSE_SCHEMA)
+            handle { clear() }
+        }
+        routes.post("pause") {
+            operationId = "pauseLog"
+            summary = LogsDocument.PAUSE_SUMMARY
+            description = LogsDocument.PAUSE_DESCRIPTION
+            bodyDescription = LogsDocument.PAUSE_BODY
+            val paused = body.boolean("paused") { description = LogsDocument.PAUSE_FIELD }
+            response(LogsDocument.PAUSE_RESPONSE, LogsDocument.PAUSE_RESPONSE_SCHEMA)
+            handle { call -> setFlag("paused", call[paused], { buffer.paused }) { buffer.paused = it } }
+        }
+        routes.post("compact") {
+            operationId = "setLogCompact"
+            summary = LogsDocument.COMPACT_SUMMARY
+            description = LogsDocument.COMPACT_DESCRIPTION
+            bodyDescription = LogsDocument.COMPACT_BODY
+            val compact = body.boolean("compact") { description = LogsDocument.COMPACT_FIELD }
+            response(LogsDocument.COMPACT_RESPONSE, LogsDocument.COMPACT_RESPONSE_SCHEMA)
+            handle { call -> setFlag("compact", call[compact], { buffer.compact }) { buffer.compact = it } }
+        }
+    }
+
+    /** The parameters that `GET entries` and `GET text` share: the cursor and the filters. */
+    private class FilterParams(
+        val cursor: DebugParam<String?>,
+        val level: DebugParam<String?>,
+        val tag: DebugParam<String?>,
+        val q: DebugParam<String?>,
+        val mq: DebugParam<String?>,
+        val from: DebugParam<Long?>,
+        val to: DebugParam<Long?>,
+    ) {
+        /** The filters of [call]: the checks that the declarations can't make, such as a regex that compiles. */
+        fun read(call: DebugCall): LogFilter =
+            try {
+                LogFilter.from(call[level], call[tag], call[q], call[mq], call[from] ?: Long.MIN_VALUE, call[to] ?: Long.MAX_VALUE)
+            } catch (e: BadParameterException) {
+                fail(e.message.orEmpty(), e.field)
+            }
+    }
+
+    private fun DebugParams.filters(): FilterParams =
+        FilterParams(
+            cursor = string("cursor") { description = LogsDocument.CURSOR },
+            // A lowercase letter works too, and an empty one is no filter, so LogFilter checks the value.
+            level =
+                string("level") {
+                    description = LogsDocument.LEVEL
+                    schema = LogsDocument.LEVEL_SCHEMA
+                },
+            tag = regex("tag", LogsDocument.TAG),
+            q = string("q") { description = LogsDocument.Q },
+            mq = regex("mq", LogsDocument.MQ),
+            from = long("from") { description = LogsDocument.FROM },
+            to = long("to") { description = LogsDocument.TO },
+        )
+
+    private fun DebugParams.regex(name: String, description: String): DebugParam<String?> =
+        string(name) {
+            maxLength = LogFilter.MAX_REGEX_LENGTH
+            this.description = description
         }
 
-    private fun entries(request: DebugRequest): DebugResponse {
-        val limit =
-            when (val given = request.queryParam("limit")?.takeIf { it.isNotEmpty() }) {
-                null -> DEFAULT_LIMIT
-                else -> given.toIntOrNull()?.takeIf { it in 1..MAX_LIMIT }
-                    ?: return DebugResponse.error("limit must be a whole number from 1 to $MAX_LIMIT", field = "limit")
-            }
-        val filter =
-            try {
-                LogFilter.from(request)
-            } catch (e: BadParameterException) {
-                return DebugResponse.error(e.message.orEmpty(), field = e.field)
-            }
-        val cursor = request.queryParam("cursor")
+    private fun entries(cursor: String?, filter: LogFilter, limit: Int): DebugResponse {
         val snapshot = buffer.snapshot(cursor, issuesCursor = true)
         val budget = FilterBudget()
         val format = ThreadtimeFormat()
@@ -75,20 +160,8 @@ internal class LogRoutes(private val buffer: LogBuffer, private val reader: Logc
         }
     }
 
-    private fun text(request: DebugRequest): DebugResponse {
-        val limit =
-            when (val given = request.queryParam("limit")?.takeIf { it.isNotEmpty() }) {
-                null -> Int.MAX_VALUE
-                else -> given.toIntOrNull()?.takeIf { it >= 1 }
-                    ?: return DebugResponse.error("limit must be a whole number, 1 or more", field = "limit")
-            }
-        val filter =
-            try {
-                LogFilter.from(request)
-            } catch (e: BadParameterException) {
-                return DebugResponse.error(e.message.orEmpty(), field = e.field)
-            }
-        val snapshot = buffer.snapshot(request.queryParam("cursor"), issuesCursor = false)
+    private fun text(cursor: String?, filter: LogFilter, limit: Int): DebugResponse {
+        val snapshot = buffer.snapshot(cursor, issuesCursor = false)
         val budget = FilterBudget()
         val picked = ArrayDeque<LogEntry>()
         try {
@@ -112,34 +185,16 @@ internal class LogRoutes(private val buffer: LogBuffer, private val reader: Logc
         return DebugResponse.json { append("{\"status\":\"ok\",\"cursor\":\"").append(cursor.escapeForJson()).append("\"}") }
     }
 
-    // Sets the flag from an optional {"<key>": true|false} body, or toggles it without the key.
+    // Sets the flag to the body's value, or toggles it without one.
     private inline fun setFlag(
-        request: DebugRequest,
         key: String,
+        given: Boolean?,
         current: () -> Boolean,
         set: (Boolean) -> Unit,
     ): DebugResponse {
-        val given =
-            try {
-                flagIn(request, key)
-            } catch (e: BadParameterException) {
-                return DebugResponse.error(e.message.orEmpty(), field = e.field)
-            }
         val value = given ?: !current()
         set(value)
         return DebugResponse.json { append("{\"status\":\"ok\",\"").append(key).append("\":").append(value).append('}') }
-    }
-
-    private fun flagIn(request: DebugRequest, key: String): Boolean? {
-        val text = request.bodyAsString()?.takeIf { it.isNotBlank() } ?: return null
-        val json =
-            try {
-                JSONObject(text)
-            } catch (e: JSONException) {
-                throw BadParameterException("The body is not a JSON object: ${e.message}", key)
-            }
-        if (!json.has(key)) return null
-        return json.get(key) as? Boolean ?: throw BadParameterException("$key must be true or false", key)
     }
 
     private fun stateJson(): String =
@@ -211,3 +266,6 @@ internal class LogRoutes(private val buffer: LogBuffer, private val reader: Logc
         private const val TAG_WIDTH = 8
     }
 }
+
+@OptIn(ExperimentalDebugRoutes::class)
+private fun fail(message: String, field: String): Nothing = throw DebugResponseException(DebugResponse.error(message, field = field))

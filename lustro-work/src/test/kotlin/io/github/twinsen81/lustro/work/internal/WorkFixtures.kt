@@ -70,8 +70,10 @@ internal object WorkFixtures {
         routes.handle(DebugRequest(path, "GET", params.groupBy({ it.first }, { it.second })))
             ?: error("$path is not a route")
 
-    fun post(routes: WorkRoutes, path: String, body: JSONObject?): DebugResponse =
-        routes.handle(DebugRequest(path, "POST", body = body?.toString()?.toByteArray()))
+    fun post(routes: WorkRoutes, path: String, body: JSONObject?): DebugResponse = postText(routes, path, body?.toString())
+
+    fun postText(routes: WorkRoutes, path: String, body: String?): DebugResponse =
+        routes.handle(DebugRequest(path, "POST", body = body?.toByteArray()))
             ?: error("$path is not a route")
 
     fun DebugResponse.text(): String = body.toString(Charsets.UTF_8)

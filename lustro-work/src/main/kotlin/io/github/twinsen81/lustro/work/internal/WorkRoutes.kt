@@ -3,35 +3,130 @@ package io.github.twinsen81.lustro.work.internal
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.WorkQuery
-import io.github.twinsen81.lustro.DebugRequest
+import io.github.twinsen81.lustro.DebugParam
+import io.github.twinsen81.lustro.DebugParams
 import io.github.twinsen81.lustro.DebugResponse
+import io.github.twinsen81.lustro.DebugRoutes
+import io.github.twinsen81.lustro.DebugRoutes.Companion.ref
+import io.github.twinsen81.lustro.ExperimentalDebugRoutes
 import java.util.UUID
 import java.util.concurrent.ExecutionException
 import org.json.JSONException
 import org.json.JSONObject
 
-/** The routes of the WorkManager tab, under `/api/v1/work/`. */
+/**
+ * The routes of the WorkManager tab, under `/api/v1/work/`. [declare] declares them, and the
+ * tab's OpenAPI document comes from the declarations, with the text of [WorkDocument].
+ */
+@OptIn(ExperimentalDebugRoutes::class)
 internal class WorkRoutes(private val source: WorkSource) {
-    // A wrong method is null too: the server answers 405 from work.openapi.json.
-    fun handle(request: DebugRequest): DebugResponse? {
-        val path = if (request.path.startsWith(ITEM_PREFIX)) ITEM else request.path
-        // Picked before it runs: an unknown route stays a 404 also when WorkManager is unsupported.
-        val route: (() -> DebugResponse)? =
-            when ("${request.method.uppercase()} $path") {
-                "GET items" -> { -> items(request, workManager()) }
-                "GET $ITEM" -> { -> item(request.path.removePrefix(ITEM_PREFIX), workManager()) }
-                "GET events" -> { -> events(request) }
-                "GET metrics" -> { -> metrics(request) }
-                "POST cancel" -> { -> cancel(body(request), workManager()) }
-                "POST prune" -> { -> prune(workManager()) }
-                else -> null
-            }
-        if (route == null) return null
+    fun declare(routes: DebugRoutes) {
+        routes.title = WorkDocument.TITLE
+        routes.version = "1.3"
+        routes.description = WorkDocument.DESCRIPTION
+        for ((name, schema) in WORK_SCHEMAS) routes.component(name, schema)
+
+        routes.get("items") {
+            operationId = "listWork"
+            summary = WorkDocument.ITEMS_SUMMARY
+            description = WorkDocument.ITEMS_DESCRIPTION
+            val cursor = query.string("cursor") { description = WorkDocument.CURSOR }
+            val state = query.string("state") { description = WorkDocument.ITEMS_STATE }
+            val tag = query.string("tag") { description = WorkDocument.ITEMS_TAG }
+            val workerClass = query.string("class") { description = WorkDocument.ITEMS_CLASS }
+            val name = query.string("name") { description = WorkDocument.ITEMS_NAME }
+            response(WorkDocument.ITEMS_RESPONSE, ref("WorkCursorEnvelope"))
+            // The handler checks state.
+            errors(400, 500, 504)
+            handle { call -> guarded { items(call[cursor], call[state], call[tag], call[workerClass], call[name], workManager()) } }
+        }
+        routes.get("items/{id}") {
+            operationId = "getWork"
+            summary = WorkDocument.ITEM_SUMMARY
+            description = WorkDocument.ITEM_DESCRIPTION
+            // The handler checks the UUID, for a 400 that names the field, not a 404.
+            val id =
+                path.string("id") {
+                    description = WorkDocument.ITEM_ID
+                    schema = UUID_SCHEMA
+                }
+            response(WorkDocument.ITEM_RESPONSE, WorkDocument.ITEM_RESPONSE_SCHEMA)
+            errors(400, 404, 500, 504)
+            handle { call -> guarded { item(call[id], workManager()) } }
+        }
+        routes.get("events") {
+            operationId = "listWorkEvents"
+            summary = WorkDocument.EVENTS_SUMMARY
+            description = WorkDocument.EVENTS_DESCRIPTION
+            val cursor = query.string("cursor") { description = WorkDocument.CURSOR }
+            val id = query.uuid(WorkDocument.EVENTS_ID)
+            val workerClass = query.string("class") { description = WorkDocument.EVENTS_CLASS }
+            val type = query.string("type") { description = WorkDocument.EVENTS_TYPE }
+            val limit =
+                query.int("limit") {
+                    min = 1
+                    max = MAX_LIMIT.toLong()
+                    description = WorkDocument.EVENTS_LIMIT
+                }.withDefault(DEFAULT_LIMIT)
+            response(WorkDocument.EVENTS_RESPONSE, ref("WorkStreamEnvelope"))
+            handle { call -> guarded { events(call[cursor], call[id], call[workerClass], call[type], call[limit]) } }
+        }
+        routes.get("metrics") {
+            operationId = "listWorkMetrics"
+            summary = WorkDocument.METRICS_SUMMARY
+            description = WorkDocument.METRICS_DESCRIPTION
+            val id = query.uuid(WorkDocument.METRICS_ID)
+            val tag = query.string("tag") { description = WorkDocument.METRICS_TAG }
+            val workerClass = query.string("class") { description = WorkDocument.METRICS_CLASS }
+            val state = query.string("state") { description = WorkDocument.METRICS_STATE }
+            val from =
+                query.long("from") {
+                    min = 0
+                    description = WorkDocument.METRICS_FROM
+                }
+            val to =
+                query.long("to") {
+                    min = 0
+                    description = WorkDocument.METRICS_TO
+                }
+            response(WorkDocument.METRICS_RESPONSE, WorkDocument.METRICS_RESPONSE_SCHEMA)
+            errors(404, 500, 504)
+            handle { call -> guarded { metrics(call[id], call[tag], call[workerClass], call[state], call[from], call[to]) } }
+        }
+        routes.post("cancel") {
+            operationId = "cancelWork"
+            summary = WorkDocument.CANCEL_SUMMARY
+            description = WorkDocument.CANCEL_DESCRIPTION
+            // The router refuses an empty body; the handler checks the rest of the schema, which fields can't say.
+            rawBody("application/json", WorkDocument.CANCEL_BODY_SCHEMA)
+            response(WorkDocument.CANCEL_RESPONSE, WorkDocument.CANCEL_RESPONSE_SCHEMA)
+            errors(404, 500, 504)
+            // The body is parsed before the 503 of WorkManager, and its members are checked after it, as before.
+            handle { call -> guarded { cancel(body(call.request.bodyAsString().orEmpty()), workManager()) } }
+        }
+        routes.post("prune") {
+            operationId = "pruneWork"
+            summary = WorkDocument.PRUNE_SUMMARY
+            description = WorkDocument.PRUNE_DESCRIPTION
+            response(WorkDocument.PRUNE_RESPONSE, WorkDocument.PRUNE_RESPONSE_SCHEMA)
+            errors(500, 504)
+            handle { guarded { prune(workManager()) } }
+        }
+    }
+
+    private fun DebugParams.uuid(description: String): DebugParam<String?> =
+        string("id") {
+            this.description = description
+            schema = UUID_SCHEMA
+        }
+
+    // Without WorkManager 2.12, every route answers 503, after the declarations check the request.
+    private inline fun guarded(answer: () -> DebugResponse): DebugResponse {
         source.unsupported?.let {
             return DebugResponse.error(it, status = 503, code = "work_unsupported", hint = "Add androidx.work:work-runtime ${WorkSupport.MIN_VERSION} or newer")
         }
         return try {
-            route()
+            answer()
         } catch (e: RouteException) {
             DebugResponse.error(e.message.orEmpty(), status = e.status, code = e.code, field = e.field, hint = e.hint)
         } catch (e: ExecutionException) {
@@ -44,11 +139,18 @@ internal class WorkRoutes(private val source: WorkSource) {
         }
     }
 
-    private fun items(request: DebugRequest, workManager: WorkManager): DebugResponse {
-        val states = states(request.queryParam("state"))
-        val tag = request.queryParam("tag")?.takeIf { it.isNotEmpty() }
-        val name = request.queryParam("name")?.takeIf { it.isNotEmpty() }
-        val workerClass = request.queryParam("class")?.takeIf { it.isNotEmpty() }
+    private fun items(
+        cursor: String?,
+        state: String?,
+        tagText: String?,
+        classText: String?,
+        nameText: String?,
+        workManager: WorkManager,
+    ): DebugResponse {
+        val states = states(state)
+        val tag = tagText?.takeIf { it.isNotEmpty() }
+        val name = nameText?.takeIf { it.isNotEmpty() }
+        val workerClass = classText?.takeIf { it.isNotEmpty() }
         val query = WorkQuery.Builder.fromStates(states)
         if (tag != null) query.addTags(listOf(tag))
         if (name != null) query.addUniqueWorkNames(listOf(name))
@@ -64,7 +166,7 @@ internal class WorkRoutes(private val source: WorkSource) {
             }
         // The list is the snapshot of one moment, so the cursor is the hash of what it
         // holds: a poll is `unchanged` while every item stays the same.
-        return DebugResponse.cursorEnvelope(fnv64(items), request.queryParam("cursor"), state = source.stateJson(workManager)) {
+        return DebugResponse.cursorEnvelope(fnv64(items), cursor, state = source.stateJson(workManager)) {
             append(items)
         }
     }
@@ -99,15 +201,13 @@ internal class WorkRoutes(private val source: WorkSource) {
         }
     }
 
-    private fun events(request: DebugRequest): DebugResponse {
-        val limit = limit(request.queryParam("limit"))
-        val id = request.queryParam("id")?.takeIf { it.isNotEmpty() }?.let { uuid(it, field = "id").toString() }
-        val workerClass = request.queryParam("class")?.takeIf { it.isNotEmpty() }
-        val types = types(request.queryParam("type"))
+    private fun events(cursor: String?, idText: String?, classText: String?, typeText: String?, limit: Int): DebugResponse {
+        val id = idText?.takeIf { it.isNotEmpty() }?.let { uuid(it, field = "id").toString() }
+        val workerClass = classText?.takeIf { it.isNotEmpty() }
+        val types = types(typeText)
         val matches = { event: WorkEvent ->
             (id == null || event.id == id) && matchesClass(event.workerClass, workerClass) && (types == null || event.type in types)
         }
-        val cursor = request.queryParam("cursor")
         val snapshot = source.events.snapshot(cursor)
         return DebugResponse.streamEnvelope(
             total = snapshot.total,
@@ -144,7 +244,14 @@ internal class WorkRoutes(private val source: WorkSource) {
         }
     }
 
-    private fun metrics(request: DebugRequest): DebugResponse {
+    private fun metrics(
+        idText: String?,
+        tagText: String?,
+        classText: String?,
+        state: String?,
+        from: Long?,
+        to: Long?,
+    ): DebugResponse {
         val metrics =
             source.metrics ?: throw RouteException(
                 "The app passed no WorkMetricsInfoRepository to WorkDebugTab.create(), so the tab has no history",
@@ -152,11 +259,12 @@ internal class WorkRoutes(private val source: WorkSource) {
                 code = "metrics_off",
                 hint = "Add androidx.work:work-analytics, set its repository as the app's listeners, and pass it as metrics",
             )
-        val ids = request.queryParam("id")?.takeIf { it.isNotEmpty() }?.let { listOf(uuid(it, field = "id")) }.orEmpty()
-        val tags = request.queryParam("tag")?.takeIf { it.isNotEmpty() }?.let { listOf(it) }.orEmpty()
-        val states = metricsStates(request.queryParam("state"))
-        val (from, to) = enqueueRange(request)
-        val workerClass = request.queryParam("class")?.takeIf { it.isNotEmpty() }
+        val ids = idText?.takeIf { it.isNotEmpty() }?.let { listOf(uuid(it, field = "id")) }.orEmpty()
+        val tags = tagText?.takeIf { it.isNotEmpty() }?.let { listOf(it) }.orEmpty()
+        val states = metricsStates(state)
+        // WorkMetricsQuery.Builder.build() throws for a range that ends before it begins.
+        if (from != null && to != null && from > to) throw RouteException("to must not be before from", field = "to")
+        val workerClass = classText?.takeIf { it.isNotEmpty() }
         val periods = metrics.query(ids, tags, states, from, to).filter { matchesClass(it.workerClassName, workerClass) }
         return DebugResponse.json {
             append("{\"items\":[")
@@ -233,15 +341,6 @@ internal class WorkRoutes(private val source: WorkSource) {
         }
     }
 
-    // The enqueue times that GET metrics takes. WorkMetricsQuery.Builder.build() throws for a
-    // range that ends before it begins.
-    private fun enqueueRange(request: DebugRequest): Pair<Long?, Long?> {
-        val from = millis(request.queryParam("from"), "from")
-        val to = millis(request.queryParam("to"), "to")
-        if (from != null && to != null && from > to) throw RouteException("to must not be before from", field = "to")
-        return from to to
-    }
-
     private fun states(text: String?): List<WorkInfo.State> {
         if (text.isNullOrEmpty()) return WorkInfo.State.values().toList()
         val all = WorkInfo.State.values()
@@ -259,17 +358,6 @@ internal class WorkRoutes(private val source: WorkSource) {
         }.toSet()
     }
 
-    private fun limit(text: String?): Int {
-        if (text.isNullOrEmpty()) return DEFAULT_LIMIT
-        return text.toIntOrNull()?.takeIf { it in 1..MAX_LIMIT }
-            ?: throw RouteException("limit must be a whole number from 1 to $MAX_LIMIT", field = "limit")
-    }
-
-    private fun millis(text: String?, field: String): Long? {
-        if (text.isNullOrEmpty()) return null
-        return text.toLongOrNull()?.takeIf { it >= 0 } ?: throw RouteException("$field must be a time in milliseconds since the epoch", field = field)
-    }
-
     private fun uuid(text: String, field: String): UUID =
         try {
             UUID.fromString(text).takeIf { it.toString().equals(text, ignoreCase = true) } ?: throw IllegalArgumentException(text)
@@ -277,14 +365,13 @@ internal class WorkRoutes(private val source: WorkSource) {
             throw RouteException("$field must be a work id, a UUID such as 3f1c2a4e-8b9d-4e2f-a6c1-0d7e5b3a9f12", field = field)
         }
 
-    private fun body(request: DebugRequest): JSONObject {
-        val text = request.bodyAsString()?.takeIf { it.isNotBlank() } ?: throw RouteException("The body must be a JSON object")
-        return try {
+    // Read as org.json reads it, as before the declarations: the router only refuses an empty body.
+    private fun body(text: String): JSONObject =
+        try {
             JSONObject(text)
         } catch (e: JSONException) {
-            throw RouteException("The body is not a JSON object: ${e.message}")
+            throw RouteException("The body is not a JSON object: ${e.message}", field = "body")
         }
-    }
 
     private class RouteException(
         message: String,
@@ -298,8 +385,7 @@ internal class WorkRoutes(private val source: WorkSource) {
         const val DEFAULT_LIMIT: Int = 500
         const val MAX_LIMIT: Int = 5_000
 
-        private const val ITEM_PREFIX = "items/"
-        private const val ITEM = "items/{id}"
+        private const val UUID_SCHEMA = """{"type": "string", "format": "uuid"}"""
 
         private val KEYS = listOf("id", "name", "tag")
 

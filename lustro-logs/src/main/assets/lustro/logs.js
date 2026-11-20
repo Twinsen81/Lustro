@@ -1,6 +1,6 @@
 // The Logs tab: a live tail of the app's own logcat. It polls GET entries in the
 // stream envelope, with the filters as query parameters, so the app filters the
-// whole buffer and the page holds only the lines that pass. logs.openapi.json
+// whole buffer and the page holds only the lines that pass. GET logs/_schema
 // describes the routes.
 (function() {
     var POLL_MS = 500;

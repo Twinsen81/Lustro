@@ -2,7 +2,7 @@
 // cursor envelope with the tag, class, and name filters, and the selected work
 // in a drawer: its details, the timeline of its events, polled from GET events
 // in the stream envelope, and its history, which GET items/{id} carries when the
-// app passed work-analytics. work.openapi.json describes the routes.
+// app passed work-analytics. GET work/_schema describes the routes.
 (function() {
     var ITEMS_POLL_MS = 1000;
     // The answer to an app whose WorkManager is too old changes only with a new build of the app.

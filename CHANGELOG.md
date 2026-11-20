@@ -2256,6 +2256,93 @@ see [DECISIONS.md](DECISIONS.md).
   `field: "body"`; `body/both` and `events/abc/payload` answered `404`; and
   `?cursr=x` got its `Lustro-Warning`. The CLI end to end passed on the same
   emulator.
+- **The WorkManager tab declares its routes once (experimental API).** The
+  WorkManager tab routed its 6 routes by hand in `handle()` and read each
+  parameter and body itself, and `work.openapi.json` described them again by
+  hand. The tab now declares them in `routes()`, so the routing, the checks of
+  the parameters and the bodies, the `405` with `Allow`, and the document of
+  `GET work/_schema` come from one declaration. The document is committed at
+  `lustro-work/openapi/work.openapi.json`, which the wire-schema artifact and
+  the CLI copy, and a test keeps the copy equal to the declarations. It has
+  the paths, methods, parameters, and bodies of the hand-written one, with
+  `limit` as an `int32` and `from` and `to` as `int64`. `POST cancel` declares
+  its whole body with the hand-written schema, because fields can't say that
+  it takes exactly one of `id`, `name`, and `tag`; the handler checks that,
+  and reads the body as before. The routes keep their statuses, `error`
+  types, `field` values, and codes, and the version stays `1.3`, with these
+  differences. An empty body of `POST cancel` gets `400` with
+  `field: "body"`, and so does a body that is not a JSON object, where neither
+  had a `field`. The declarations check the parameters, and refuse an empty
+  body, before the handler, which answers `503` while WorkManager is too old
+  or not initialized, and `404` with code `metrics_off`: so
+  `GET events?limit=0` or a `POST cancel` with no body with WorkManager 2.11
+  now gets `400`, where it got `503`, and `GET metrics?from=-1` without
+  work-analytics `400` for `from`, where it got `404`. `GET items/a/b` and
+  `GET items/` get `404`, where they got `400` with `field: "id"`. An empty
+  `from` or `to` of `GET metrics` gets `400`, as an empty number without a
+  default does on every tab, where it was no limit. Some messages change,
+  such as `from must be at least 0, was -1` and `limit must be from 1 to 5000,
+  was 0`. Verified on a physical device (API 37) with the sample:
+  `GET work/_schema` was byte-equal to the committed file, and `_meta` listed
+  `work` 1.3; `POST items` and `POST items/x` answered `405` with
+  `Allow: GET`, and `GET prune` with `Allow: POST`; `state=DONE`, `items/x`,
+  `events?limit=0`, and `metrics?from=-1` answered `400` with that field;
+  `POST cancel` with a misspelled member answered `400` with that member as
+  `field`, and with no body `400` with `field: "body"`; and `items/a/b`
+  answered `404`. The CLI end to end passed on the same device.
+- **The Logs tab declares its routes once (experimental API).** The Logs tab
+  routed its 5 routes by hand in `handle()` and read each parameter and body
+  itself, and `logs.openapi.json` described them again by hand. The tab now
+  declares them in `routes()`, so the routing, the checks of the parameters
+  and the bodies, the `405` with `Allow`, and the document of
+  `GET logs/_schema` come from one declaration. `GET entries` and `GET text`
+  declare their 7 shared parameters once. The document is committed at
+  `lustro-logs/openapi/logs.openapi.json`, which the wire-schema artifact and
+  the CLI copy, and a test keeps the copy equal to the declarations. It has
+  the paths, methods, parameters, and bodies of the hand-written one, with
+  `limit` as an `int32`. The routes keep their statuses, `error` types, and
+  `field` values, and the version stays `1.1`, with these differences. The
+  bodies of `POST pause` and `compact` must be strict JSON: a body that is not
+  a JSON object, such as `not json` or `[true]`, gets `400` with
+  `field: "body"`, where it named `paused` or `compact`, and `{"paused": null}`
+  toggles, as a body without the key does, where it got `400`. The checks of
+  `tag` and `mq` for length, of `from`, `to`, and `limit`, run before the
+  handler, which checks `level`, `from` after `to`, and the regex: so
+  `?level=X&from=noon` now gets `400` for `from`, where it got it for `level`.
+  An empty `from`, `to`, or `limit` of `GET text` gets `400`, as an empty
+  number without a default does on every tab, such as `since=` on the Network
+  tab, where it was no limit; an empty `limit` of `GET entries` still takes
+  `500`, an empty text parameter is still no filter, and a lowercase `level`
+  still works. Some messages change, such as `from must be a whole number, was noon`,
+  `limit must be from 1 to 5000, was 0`, and `tag must be at most 200
+  characters long`. Verified on a physical device (API 37) with the sample:
+  `GET logs/_schema` was byte-equal to the committed file, and `_meta` listed
+  `logs` 1.1; `GET clear` answered `405` with `Allow: POST`, and `POST
+  entries` with `Allow: GET`; `limit=0`, `level=X`, `tag=(`, `from=`,
+  `from=2&to=1`, and `level=X&from=noon` answered `400` with the field that
+  this entry names, and `level=w` answered `200`; `POST compact` with `not
+  json` answered `400` with `field: "body"`; and `?cursr=x` got its
+  `Lustro-Warning`. The CLI end to end passed on the same device.
+- **The Screen tab declares its route once (experimental API).** The Screen
+  tab routed `GET tree` by hand in `handle()` and read `merged` and `settle`
+  itself, and `screen.openapi.json` described the route again by hand. The tab
+  now declares it in `routes()`, so the routing, the checks of `merged` and
+  `settle`, the `405` with `Allow`, and the document of `GET screen/_schema`
+  come from one declaration. The document is committed at
+  `lustro-screen/openapi/screen.openapi.json`, which the wire-schema artifact
+  and the CLI copy, and a test keeps the copy equal to the declarations. It
+  has the path, method, parameters, and schemas of the hand-written one, with
+  `settle` as an `int32`, and it lists the statuses that the server answers
+  for any route, `403`, `413`, and `503`, in place of `405`. The route keeps its
+  statuses, `error` types, `field` values, and codes, and its version stays
+  `1.0`. Only the messages for `settle` change: `settle must be a whole
+  number, was soon` and `settle must be from 0 to 10000, was -1`, in place of
+  one message for both. Verified on a physical device (API 37) with the
+  sample: `GET screen/_schema` was byte-equal to the committed file, and
+  `_meta` listed `screen` 1.0; `POST tree` answered `405` with `Allow: GET`;
+  `settle=-1`, `settle=soon`, and `merged=yes` answered `400` with that
+  field; `merged=&settle=` took the defaults; and `?sttle=5` got its
+  `Lustro-Warning`. The CLI end to end passed on the same device.
 - **A rules sync with a repeated id is a `400` (protocol 1.11).**
   `POST /api/v1/network/rules/_/sync` kept only the first of two posted rules
   with the same `id`, and still answered `200` with a `count` of the rules

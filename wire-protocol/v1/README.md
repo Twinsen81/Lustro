@@ -23,8 +23,8 @@ the protocol a stable public contract independent of the library's Kotlin API.
   `lustro/openapi/network.openapi.json` for the Network tab and
   `lustro-sqlite/openapi/sqlite.openapi.json` for the SQLite tab, which a test
   keeps equal to the declarations. A tab with a hand-written document keeps it in its
-  assets, such as `lustro-logs/src/main/assets/lustro/logs.openapi.json`, which
-  is bundled into the AAR. A plugin tab's document lives in its own module and
+  assets, at `src/main/assets/lustro/<id>.openapi.json`, which is bundled into
+  the AAR. A plugin tab's document lives in its own module and
   has a version of its own in `info.version` (see "Plugin tabs" below).
 - **Golden response fixtures**: published alongside the schemas for contract
   tests between the server and the CLI.

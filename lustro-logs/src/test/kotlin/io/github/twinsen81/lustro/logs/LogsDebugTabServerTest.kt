@@ -175,7 +175,7 @@ class LogsDebugTabServerTest {
         assertEquals(400, bad.code)
         assertEquals("level", JSONObject(bad.body!!.string()).getString("field"))
         assertEquals(404, get("nothing").code)
-        // The method comes from logs.openapi.json: the routes have no table of their own.
+        // The router of the declarations answers the method, in the server's format.
         val wrongMethod = get("clear")
         assertEquals(405, wrongMethod.code)
         assertEquals("POST", wrongMethod.header("Allow"))

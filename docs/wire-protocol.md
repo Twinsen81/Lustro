@@ -27,15 +27,15 @@ that the document does not declare is a `404`. The schemas and the SemVer
 policy live in [`wire-protocol/v1/`](https://github.com/Twinsen81/Lustro/tree/main/wire-protocol/v1); the Network tab's contract is
 [`lustro/openapi/network.openapi.json`](https://github.com/Twinsen81/Lustro/blob/main/lustro/openapi/network.openapi.json),
 the Logs tab's is
-[`lustro-logs/src/main/assets/lustro/logs.openapi.json`](https://github.com/Twinsen81/Lustro/blob/main/lustro-logs/src/main/assets/lustro/logs.openapi.json),
+[`lustro-logs/openapi/logs.openapi.json`](https://github.com/Twinsen81/Lustro/blob/main/lustro-logs/openapi/logs.openapi.json),
 the Preferences tab's is
 [`lustro-prefs/openapi/prefs.openapi.json`](https://github.com/Twinsen81/Lustro/blob/main/lustro-prefs/openapi/prefs.openapi.json),
 the SQLite tab's is
 [`lustro-sqlite/openapi/sqlite.openapi.json`](https://github.com/Twinsen81/Lustro/blob/main/lustro-sqlite/openapi/sqlite.openapi.json),
 the WorkManager tab's is
-[`lustro-work/src/main/assets/lustro/work.openapi.json`](https://github.com/Twinsen81/Lustro/blob/main/lustro-work/src/main/assets/lustro/work.openapi.json),
+[`lustro-work/openapi/work.openapi.json`](https://github.com/Twinsen81/Lustro/blob/main/lustro-work/openapi/work.openapi.json),
 and the Screen tab's is
-[`lustro-screen/src/main/assets/lustro/screen.openapi.json`](https://github.com/Twinsen81/Lustro/blob/main/lustro-screen/src/main/assets/lustro/screen.openapi.json),
+[`lustro-screen/openapi/screen.openapi.json`](https://github.com/Twinsen81/Lustro/blob/main/lustro-screen/openapi/screen.openapi.json),
 each with a version of its own.
 
 For driving Lustro from agents, scripts, or the `lustro` CLI, see

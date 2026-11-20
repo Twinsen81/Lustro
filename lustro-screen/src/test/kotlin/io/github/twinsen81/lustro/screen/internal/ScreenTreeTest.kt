@@ -265,9 +265,14 @@ class ScreenTreeTest {
     @Test
     fun `the tree takes GET only, merged true or false, and settle from 0 to 10000`() {
         val tab = tab()
-        // The server answers a wrong method with 405, from screen.openapi.json.
-        assertNull(tab.handle(io.github.twinsen81.lustro.DebugRequest("tree", "POST")))
+        val post = tab.handle(io.github.twinsen81.lustro.DebugRequest("tree", "POST"))!!
+        assertEquals(405, post.status)
+        assertEquals("GET", post.headers.get("Allow"))
         assertNull(tab.handle(io.github.twinsen81.lustro.DebugRequest("windows", "GET")))
+        // An empty value takes the default, as before the declarations: merged true, settle 0.
+        val empty = json(get(tab, "tree", "merged" to "", "settle" to ""))
+        assertEquals(json(get(tab, "tree")).toString(), empty.toString())
+        assertFalse(empty.has("settle"))
         val merged = json(get(tab, "tree", "merged" to "yes"))
         assertEquals("bad_request", merged.getString("error"))
         assertEquals("merged", merged.getString("field"))

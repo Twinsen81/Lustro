@@ -2,9 +2,9 @@ package io.github.twinsen81.lustro.screen
 
 import android.app.Application
 import android.content.Context
-import io.github.twinsen81.lustro.DebugRequest
-import io.github.twinsen81.lustro.DebugResponse
+import io.github.twinsen81.lustro.DebugRoutes
 import io.github.twinsen81.lustro.DebugTab
+import io.github.twinsen81.lustro.ExperimentalDebugRoutes
 import io.github.twinsen81.lustro.screen.internal.ActivityTracker
 import io.github.twinsen81.lustro.screen.internal.ScreenRoutes
 import io.github.twinsen81.lustro.screen.internal.ScreenSource
@@ -60,10 +60,13 @@ public class ScreenDebugTab private constructor(private val source: ScreenSource
     /** `false`: the tab has no console view yet. `_meta` lists it, and its routes answer. */
     override val showInTabBar: Boolean = false
 
-    private val routes = ScreenRoutes(source)
+    private val screenRoutes = ScreenRoutes(source)
 
-    /** Serves the routes under `/api/v1/screen/`; the static `screen.openapi.json` describes them. */
-    override fun handle(request: DebugRequest): DebugResponse? = routes.handle(request)
+    /** Declares the routes under `/api/v1/screen/`, which also make the tab's OpenAPI document. */
+    @OptIn(ExperimentalDebugRoutes::class)
+    override fun routes(routes: DebugRoutes) {
+        screenRoutes.declare(routes)
+    }
 
     /** Factory for [ScreenDebugTab]. */
     public companion object {

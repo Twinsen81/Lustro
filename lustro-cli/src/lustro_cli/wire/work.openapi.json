@@ -87,10 +87,10 @@
           "413": {
             "$ref": "#/components/responses/Error"
           },
-          "503": {
+          "500": {
             "$ref": "#/components/responses/Error"
           },
-          "500": {
+          "503": {
             "$ref": "#/components/responses/Error"
           },
           "504": {
@@ -171,10 +171,10 @@
           "403": {
             "$ref": "#/components/responses/Error"
           },
-          "413": {
+          "404": {
             "$ref": "#/components/responses/Error"
           },
-          "404": {
+          "413": {
             "$ref": "#/components/responses/Error"
           },
           "500": {
@@ -238,6 +238,7 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "format": "int32",
               "minimum": 1,
               "maximum": 5000,
               "default": 500
@@ -323,6 +324,7 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "format": "int64",
               "minimum": 0
             },
             "description": "Only periods enqueued at or after this time, in milliseconds since the epoch. 400 with field from when it is not a whole number."
@@ -333,6 +335,7 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "format": "int64",
               "minimum": 0
             },
             "description": "Only periods enqueued at or before this time, in milliseconds since the epoch. 400 with field to when it is not a whole number, or is before from."
@@ -370,10 +373,10 @@
           "403": {
             "$ref": "#/components/responses/Error"
           },
-          "413": {
+          "404": {
             "$ref": "#/components/responses/Error"
           },
-          "404": {
+          "413": {
             "$ref": "#/components/responses/Error"
           },
           "500": {
@@ -455,10 +458,10 @@
           "403": {
             "$ref": "#/components/responses/Error"
           },
-          "413": {
+          "404": {
             "$ref": "#/components/responses/Error"
           },
-          "404": {
+          "413": {
             "$ref": "#/components/responses/Error"
           },
           "500": {
@@ -513,10 +516,10 @@
           "413": {
             "$ref": "#/components/responses/Error"
           },
-          "503": {
+          "500": {
             "$ref": "#/components/responses/Error"
           },
-          "500": {
+          "503": {
             "$ref": "#/components/responses/Error"
           },
           "504": {

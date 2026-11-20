@@ -34,6 +34,7 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "format": "int32",
               "minimum": 0,
               "maximum": 10000,
               "default": 0
@@ -58,10 +59,16 @@
           "401": {
             "$ref": "#/components/responses/Error"
           },
-          "405": {
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
             "$ref": "#/components/responses/Error"
           },
           "500": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
             "$ref": "#/components/responses/Error"
           },
           "504": {
@@ -85,6 +92,47 @@
       }
     },
     "schemas": {
+      "ErrorEnvelope": {
+        "type": "object",
+        "required": [
+          "error",
+          "message"
+        ],
+        "properties": {
+          "error": {
+            "type": "string",
+            "enum": [
+              "bad_request",
+              "unauthorized",
+              "forbidden",
+              "not_found",
+              "method_not_allowed",
+              "conflict",
+              "payload_too_large",
+              "unprocessable_entity",
+              "too_many_requests",
+              "internal_error",
+              "unavailable",
+              "timeout",
+              "error"
+            ],
+            "description": "Machine error type, e.g. bad_request, not_found, timeout."
+          },
+          "message": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "field": {
+            "type": "string"
+          },
+          "hint": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
       "ScreenTree": {
         "type": "object",
         "required": [
@@ -455,47 +503,6 @@
             "type": "integer",
             "minimum": 0,
             "description": "How many frames the tab read after the first read."
-          }
-        },
-        "additionalProperties": false
-      },
-      "ErrorEnvelope": {
-        "type": "object",
-        "required": [
-          "error",
-          "message"
-        ],
-        "properties": {
-          "error": {
-            "type": "string",
-            "enum": [
-              "bad_request",
-              "unauthorized",
-              "forbidden",
-              "not_found",
-              "method_not_allowed",
-              "conflict",
-              "payload_too_large",
-              "unprocessable_entity",
-              "too_many_requests",
-              "internal_error",
-              "unavailable",
-              "timeout",
-              "error"
-            ],
-            "description": "Machine error type, e.g. bad_request, not_found, timeout."
-          },
-          "message": {
-            "type": "string"
-          },
-          "code": {
-            "type": "string"
-          },
-          "field": {
-            "type": "string"
-          },
-          "hint": {
-            "type": "string"
           }
         },
         "additionalProperties": false

@@ -153,6 +153,8 @@ class LogRoutesTest {
         assertBadRequest(get("entries", "from" to "noon"), "from")
         assertBadRequest(get("entries", "to" to "1.5"), "to")
         assertBadRequest(get("entries", "from" to "2", "to" to "1"), "from")
+        // The declarations check from before the handler checks level.
+        assertBadRequest(get("entries", "level" to "X", "from" to "noon"), "from")
     }
 
     @Test
@@ -167,7 +169,7 @@ class LogRoutesTest {
     @Test
     fun `filters that pass their time get a 400`() {
         append("a")
-        val filter = LogFilter.from(get("entries", "mq" to "a"))
+        val filter = LogFilter.from(level = null, tag = null, text = null, message = "a")
         val budget = FilterBudget(timeoutMs = 0)
         try {
             filter.matches(buffer.snapshot(null, issuesCursor = false)[0]!!, budget)
@@ -244,20 +246,44 @@ class LogRoutesTest {
         assertFalse(state.has("readerError"))
 
         assertBadRequest(post("pause", """{"paused":"yes"}"""), "paused")
-        assertBadRequest(post("compact", "not json"), "compact")
+        assertBadRequest(post("compact", "not json"), "body")
+        assertBadRequest(post("pause", "not json"), "body")
+        assertBadRequest(post("compact", "[true]"), "body")
+        // null is no value, so it toggles.
+        assertEquals(true, JSONObject(routes.handle(post("pause", """{"paused":null}"""))!!.text()).getBoolean("paused"))
+        assertEquals(false, JSONObject(routes.handle(post("pause", """{"paused":null}"""))!!.text()).getBoolean("paused"))
         assertFalse(buffer.paused)
     }
 
     @Test
-    fun `a route with the wrong method and an unknown route are not handled, and change nothing`() {
-        // The server answers a wrong method with 405, from logs.openapi.json.
+    fun `a route with the wrong method gets a 405, an unknown route is not handled, and neither changes anything`() {
         append("kept")
-        assertNull(routes.handle(get("clear")))
-        assertNull(routes.handle(get("pause")))
-        assertNull(routes.handle(post("entries")))
+        assertMethodNotAllowed(get("clear"), "POST")
+        assertMethodNotAllowed(get("pause"), "POST")
+        assertMethodNotAllowed(post("entries"), "GET")
+        assertMethodNotAllowed(post("text"), "GET")
         assertNull(routes.handle(get("nothing")))
         assertEquals(1, entries().getJSONArray("items").length())
         assertFalse(buffer.paused)
+    }
+
+    @Test
+    fun `an empty text parameter is no filter, an empty number without a default is a 400, and a lowercase level works`() {
+        buffer.append(line("debug", level = 'D'))
+        buffer.append(line("warning", level = 'W'))
+        val empty = listOf("level", "tag", "q", "mq", "cursor").map { it to "" }.toTypedArray()
+        assertEquals(listOf("debug", "warning"), messages(entries(*empty, "limit" to "")))
+        assertEquals(2, routes.handle(get("text", *empty))!!.text().lines().filter { it.isNotEmpty() }.size)
+        assertBadRequest(get("entries", "from" to ""), "from")
+        assertBadRequest(get("text", "to" to ""), "to")
+        assertBadRequest(get("text", "limit" to ""), "limit")
+        assertEquals(listOf("warning"), messages(entries("level" to "w")))
+    }
+
+    private fun assertMethodNotAllowed(request: DebugRequest, allowed: String) {
+        val response = routes.handle(request)!!
+        assertEquals(response.text(), 405, response.status)
+        assertEquals(allowed, response.headers.get("Allow"))
     }
 
     private fun append(vararg messages: String) = messages.forEach { buffer.append(line(it)) }
