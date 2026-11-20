@@ -770,7 +770,10 @@ class Server:
             # The cause that adb finds, as a command prints it: a build without the
             # Lustro runtime, or an app that is not running, for example.
             _, message = cli.failure(self.args, exc)
-            return _with_warnings(_text_result("error: {}{}".format(message, _adb_note()), is_error=True))
+            # A missing adb can only be why the app was not found or not reached.
+            reached = isinstance(exc, LustroError) and exc.error != "connection_failed"
+            note = "" if reached else _adb_note()
+            return _with_warnings(_text_result("error: {}{}".format(message, note), is_error=True))
         return _with_warnings(_text_result(text))
 
 

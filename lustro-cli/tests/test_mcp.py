@@ -575,6 +575,22 @@ def test_get_schema_reads_meta_without_a_tab_and_the_schema_with_one(app):
     ]
 
 
+def test_the_adb_note_is_only_for_an_app_that_the_server_did_not_reach(app, monkeypatch):
+    monkeypatch.setattr(mcp.shutil, "which", lambda name, path=None: None)
+    note = "note: adb is not on the PATH of the MCP server"
+    answered = app("call_api", method="GET", path="network/nope")
+    assert answered["isError"] is True
+    assert note not in answered["content"][0]["text"]
+    closed = ThreadingHTTPServer(("127.0.0.1", 0), _Recorder)
+    port = closed.server_address[1]
+    closed.server_close()
+    (reply,) = _serve(
+        [_request("tools/call", {"name": "list_mock_rules"})], _args(host="127.0.0.1", port=port, token=TOKEN)
+    )
+    assert reply["result"]["isError"] is True
+    assert note in reply["result"]["content"][0]["text"]
+
+
 def test_a_tool_without_a_token_or_a_device_says_how_to_give_one(monkeypatch):
     monkeypatch.delenv("LUSTRO_TOKEN", raising=False)
     (reply,) = _serve([_request("tools/call", {"name": "list_mock_rules"})])

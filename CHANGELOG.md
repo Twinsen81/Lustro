@@ -34,7 +34,9 @@ see [DECISIONS.md](DECISIONS.md).
   app uses 1.11, which ignores it`, and a hint to update Lustro in the app or
   to leave out the option. `mock sync` rejects two rules with the same `id`
   itself, with exit status 2, because an app before 1.11 kept the first and
-  lost the other without an error. A command without such an option sends no
+  lost the other without an error. An MCP tool's error gets the note that adb
+  is not on the server's `PATH` only when the server did not find or reach the
+  app, not with an error that the app answered. A command without such an option sends no
   extra request, so an app on an older release works as before. `mock sync`
   of the output of `mock list --json` from a newer app, with `"failure": null`
   in each rule, still goes to an older app. `lustro api` and the MCP tool
