@@ -849,6 +849,15 @@ Base path `/api/v1/sqlite`, when the app registers the SQLite plugin
 | Change one row | `POST edit` `{ db, table, rowid \| key, values }` | `{ status: "ok" }`. `values` maps columns to a string, a number, or `null`. Writable databases only. |
 | Delete one row | `POST delete` `{ db, table, rowid \| key }` | `{ status: "ok" }`. Writable databases only. |
 
+**Bodies.** The `POST` routes take one JSON object in strict JSON (RFC 8259). Unquoted names,
+single quotes, comments, and text after the object are a `400` with `field: "body"`. A missing or
+wrong field is a `400` with the field's name in `field`, and this check comes before the checks of
+the database, also for a query parameter that is missing, empty, or out of range: `GET rows?db=nope`
+without `table` gets a `400` with `field: "table"`, not a `404` with `field: "db"`. An empty `sql`
+or `table` in a body is checked after the database, as every other value is: so a write to a
+database that is not writable gets the `403` that the write routes below describe, also with an
+empty `sql` or a `rowid` of `"one"`.
+
 **A row.** `{ rowid?, cells: { <column>: cell } }`, with a cell for each column of `GET schema`,
 in its order. `rowid` is a string, so that a JavaScript client keeps every digit; a view and a
 table `WITHOUT ROWID` have none. SQLite stores any type in any column, so each cell says its
@@ -908,8 +917,8 @@ because a longer read would make the app's writes fail with `SQLITE_BUSY`.
 
 **`POST exec`, `edit`, and `delete` write through the app's handle,** in a transaction of their
 own, and only to a database that the app registers with `writable = true`: any other answers
-`403` with `code: "read_only"` and `field: "db"`, before the other values of the body are checked: only a
-required field that is missing, or a field that is not of its JSON type, is a `400` first. `exec` takes
+`403` with `code: "read_only"` and `field: "db"`, after the strict JSON and the field checks of
+**Bodies** above, and before every other check of the body. `exec` takes
 a statement that returns no rows: one that returns rows, such as a `SELECT` or a write with
 `RETURNING`, is a `400` with `code: "statement_refused"`, and does not run; read it with `query`. `edit` and `delete` name one row by
 `rowid` (as `GET rows` gives it) or by `key`, an object with each primary key column of the table
