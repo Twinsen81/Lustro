@@ -606,10 +606,11 @@ class PrefsRoutesTest {
     }
 
     @Test
-    fun `a route takes one method, and an unknown route is not handled`() {
+    fun `a route with the wrong method and an unknown route are not handled`() {
+        // The server answers a wrong method with 405, from prefs.openapi.json.
         val routes = routes(PrefsFile("settings", settings))
-        assertEquals(405, call(routes, "POST", "files").status)
-        assertEquals(405, call(routes, "GET", "edit").status)
+        assertNull(routes.handle(DebugRequest("files", "POST")))
+        assertNull(routes.handle(DebugRequest("edit", "GET")))
         assertNull(routes.handle(DebugRequest("nothing", "GET")))
     }
 

@@ -31,6 +31,7 @@ import io.github.twinsen81.lustro.internal.network.WebSocketRoutes
 import io.github.twinsen81.lustro.internal.network.WebSocketTrafficStore
 import io.github.twinsen81.lustro.internal.network.appendTransactionJson
 import io.github.twinsen81.lustro.internal.network.respondWithSearch
+import io.github.twinsen81.lustro.internal.network.setThrottle
 import io.github.twinsen81.lustro.DebugTab
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Interceptor
@@ -344,7 +345,7 @@ public class NetworkDebugTab private constructor(
             path == "rules/toggle" && method == "POST" -> handleToggleRule(body)
             path == "pause" && method == "POST" -> handleTogglePause()
             path == "overwrite-mode" && method == "POST" -> handleToggleOverwriteMode()
-            path == "throttle" && method == "POST" -> handleSetThrottle(body)
+            path == "throttle" && method == "POST" -> setThrottle(store, body)
             path == "senders" && method == "GET" -> handleSenders()
             path == "send" && method == "POST" && senders.isNotEmpty() -> handleSendRequest(body)
             else -> null
@@ -573,11 +574,10 @@ public class NetworkDebugTab private constructor(
         try {
             val json = JSONObject(body ?: "{}")
             val ruleId = json.optString("id")
-            if (ruleId.isBlank()) {
-                DebugResponse.error("id is required", field = "id")
-            } else {
-                store.removeMockRule(ruleId)
-                ok()
+            when {
+                ruleId.isBlank() -> DebugResponse.error("id is required", field = "id")
+                store.removeMockRule(ruleId) -> ok()
+                else -> noSuchRule(ruleId)
             }
         } catch (e: Exception) {
             DebugResponse.error("Invalid JSON: ${e.message}")
@@ -587,15 +587,18 @@ public class NetworkDebugTab private constructor(
         try {
             val json = JSONObject(body ?: "{}")
             val ruleId = json.optString("id")
-            if (ruleId.isBlank()) {
-                DebugResponse.error("id is required", field = "id")
-            } else {
-                store.toggleMockRule(ruleId)
-                ok()
+            when {
+                ruleId.isBlank() -> DebugResponse.error("id is required", field = "id")
+                store.toggleMockRule(ruleId) -> ok()
+                else -> noSuchRule(ruleId)
             }
         } catch (e: Exception) {
             DebugResponse.error("Invalid JSON: ${e.message}")
         }
+
+    // A 404, not ok: a client that mistyped the id must not think that it changed a rule.
+    private fun noSuchRule(id: String): DebugResponse =
+        DebugResponse.error("No mock rule has the id $id. GET rules lists them", status = 404, field = "id")
 
     private fun handleTogglePause(): DebugResponse {
         val newState = !store.isPaused()
@@ -608,16 +611,6 @@ public class NetworkDebugTab private constructor(
         store.setOverwriteMode(newState)
         return DebugResponse.json { append("{\"status\":\"ok\",\"overwriteMode\":$newState}") }
     }
-
-    private fun handleSetThrottle(body: String?): DebugResponse =
-        try {
-            val json = JSONObject(body ?: "{}")
-            val delayMs = json.optInt("delayMs", 0).coerceAtLeast(0)
-            store.setThrottleDelayMs(delayMs)
-            DebugResponse.json { append("{\"status\":\"ok\",\"delayMs\":$delayMs}") }
-        } catch (e: Exception) {
-            DebugResponse.error("Invalid JSON: ${e.message}")
-        }
 
     // Throws what a sender's base URL provider throws.
     private fun baseUrlOf(sender: OkHttpSender): String? =

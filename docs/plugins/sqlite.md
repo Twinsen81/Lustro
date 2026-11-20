@@ -138,8 +138,10 @@ val lustro = Lustro.builder(application)
     as a `SELECT`, before it runs: read it with `query`. Both `query` and `exec` refuse the
     statements that would leave a transaction or a setting on the app's connection (`BEGIN`,
     `SAVEPOINT`, and the other transaction statements, `ATTACH`, `DETACH`, `VACUUM`, and, in
-    `exec`, every `PRAGMA`), and `query` refuses the pragmas that set a value for the whole
-    process, such as `hard_heap_limit`.
+    `exec`, every `PRAGMA`), and `query` refuses a pragma with a value, such as
+    `PRAGMA journal_mode=DELETE`, which sets it, and the pragmas that set a value for the whole
+    process, such as `hard_heap_limit`. A pragma whose value names what to read, such as
+    `PRAGMA table_info(notes)`, runs in `query`.
 - **A client's statement reads through a read-only connection.** `POST query` runs it on a
     connection that SQLite opens with `OPEN_READONLY` to the database's file, for one request, and
     never on the app's handle, on which Android's `rawQuery` would run a `DELETE` too. SQLite

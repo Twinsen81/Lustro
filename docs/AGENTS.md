@@ -70,7 +70,7 @@ These commands change the capture and the mock rules of the Network tab:
 lustro net clear                  # remove the transactions and the WebSocket connections
 lustro net pause                  # pause the capture, or resume it (a toggle)
 lustro net overwrite              # turn overwrite mode on or off (a toggle)
-lustro net throttle 2000          # hold each OkHttp request for 2000 ms; 0 turns it off
+lustro net throttle 2000          # hold each OkHttp request for 2000 ms (at most 600000); 0 turns it off
 lustro mock list                  # the mock rules, in the order they are tried
 lustro mock add --id orders-500 --url-pattern /v1/orders --method GET --status 500 \
   --header 'Content-Type: application/json' --body '{"error":"boom"}'
@@ -381,6 +381,7 @@ reported as `_meta.protocolVersion`.
   `reset`** and re-sync the full list. The cursor advances when the route's list changes, and a
   cursor from before an app restart gets a `reset`.
 - **Warning header**: see [Unknown query parameters](#unknown-query-parameters).
+- **Wrong method**: see [A method that a route does not take](#a-method-that-a-route-does-not-take).
 - **Stream** (routes whose list only grows at its end): `{ cursor, status, items?, dropped?, state? }`,
   with the same statuses. Here a `delta` carries only the entries after the cursor, oldest first:
   append them. A `reset` carries the last entries of the list: replace what you have. `dropped`
@@ -403,6 +404,24 @@ the body do not change, so a client that sends an extra parameter keeps working;
 There is no check for a tab without an OpenAPI document, nor for a route that its document does
 not describe. Each `lustro` command prints the warning on stderr.
 
+### A method that a route does not take
+
+A request with a method that the route does not take, such as `GET network/pause`, gets a `405`
+with the type `method_not_allowed` and an `Allow` header that lists the methods of the path
+(protocol 1.16):
+
+```
+HTTP/1.1 405 Method Not Allowed
+Allow: POST
+
+{"error":"method_not_allowed","message":"network/pause takes POST, not GET"}
+```
+
+The server reads the methods from the tab's OpenAPI document, so every tab with a document
+answers it, an app's own tab too. A `404` means that the document does not declare the path, or
+that the tab has no document: then a wrong method is a `404` too. Send the request again with a
+method from `Allow`.
+
 ## Network tab operations
 
 Base path `/api/v1/network`. The authoritative contract is `network.openapi.json`; the table
@@ -422,11 +441,11 @@ below summarizes it. All routes are token-authenticated and use the shared error
 | List rules | `GET rules` | `{ items: [MockRule...] }`, in the order the rules are tried. |
 | Add / upsert rule | `POST rules` | Body `MockRuleInput` (`urlPattern` required). Supplying a stable `id` makes the write **idempotent** (upsert by id); omitting it generates one. A new rule goes first; a rule replaced by id keeps its place. Returns `{ status: "ok", id }`. |
 | Sync rules | `POST rules/_/sync` | **Atomic** full replacement: posts an array; the resulting list equals it, in that order, with no empty window observed by the interceptor. A rule without an `id` gets a new one. Two posted rules with the same `id` are a `400` with `field: "id"`, and the rules stay as they were (protocol 1.11). Returns `{ status: "ok", count }`, where `count` is the number of rules set. |
-| Delete rule | `POST rules/delete` | Body `{ id }`. |
-| Toggle rule | `POST rules/toggle` | Body `{ id }`; flips `enabled`. |
+| Delete rule | `POST rules/delete` | Body `{ id }`. An id that no rule has is a `404` with `field: "id"`, and changes nothing. |
+| Toggle rule | `POST rules/toggle` | Body `{ id }`; flips `enabled`. An id that no rule has is a `404` with `field: "id"`, and changes nothing. |
 | Pause capture | `POST pause` | Toggles capture-only pause. While paused, mocks and throttle **still apply**; only recording into the list stops, for requests and for WebSocket messages. Returns `{ status: "ok", paused }`. |
 | Overwrite mode | `POST overwrite-mode` | Toggles overwrite mode (a new request evicts earlier **completed** transactions with the same method + URL path; in-flight ones are never evicted). The new transaction's `replacedCount` says how many copies it evicted, with the ones those had evicted (protocol 1.10). Returns `{ status: "ok", overwriteMode }`. |
-| Throttle | `POST throttle` | Body `{ delayMs }` (≥ 0); a global pre-request sleep applied to mocked and real OkHttp requests alike; platform `HttpURLConnection` requests are not held. A throttled transaction is listed while it waits and records the wait in `throttledMs`. Returns `{ status: "ok", delayMs }`. |
+| Throttle | `POST throttle` | Body `{ delayMs }`, a whole number from 0 (off) to 600000 (10 minutes); a missing or other value is a `400` with `field: "delayMs"`, and the delay stays as it was. A global pre-request sleep applied to mocked and real OkHttp requests alike; platform `HttpURLConnection` requests are not held. A throttled transaction is listed while it waits and records the wait in `throttledMs`. Returns `{ status: "ok", delayMs }`. |
 | List senders | `GET senders` | `{ items: [{ name, baseUrl }] }`: the OkHttp clients the app registered for `send`, in order; the first is the default. Empty when there are none. |
 | Send request | `POST send` | **Synchronous** send through one of the senders. See below. |
 
@@ -815,9 +834,11 @@ has no such limit: there a read and the app's writes share the app's connection 
 
 **`POST query` is read-only for every database, and SQLite enforces it.** The statement runs on a
 connection that SQLite opens with `OPEN_READONLY` to the database's file, for this request only,
-never on the app's handle. A statement that writes, also one inside a `WITH`, or a pragma that
-sets a value such as `PRAGMA user_version(9)`, is a `403` with `code: "read_only"` and changes
-nothing. A pragma that reads works: `PRAGMA user_version`, `SELECT * FROM pragma_table_info('notes')`.
+never on the app's handle. A statement that writes, also one inside a `WITH`, is a `403` with
+`code: "read_only"` and changes nothing. A pragma with a value, such as `PRAGMA user_version(9)` or
+`PRAGMA journal_mode=DELETE`, sets it, so `query` refuses it before it runs: a `400` with
+`code: "statement_refused"`. A pragma that reads works: `PRAGMA user_version`,
+`PRAGMA table_info(notes)`, `SELECT * FROM pragma_table_info('notes')`.
 A database in memory, and a live handle on another copy of SQLite (such as SQLCipher's), take no
 `query`: `400` with `code: "query_unavailable"`; read them with `GET rows`. Android's cursor steps
 through the whole result once to count it, so put a `LIMIT` on a statement over a large table. On
@@ -842,12 +863,16 @@ committed, so read the data again after a `504` before you send a write again. R
 through Room.
 
 **The statements that both routes refuse.** `BEGIN`, `COMMIT`, `END`, `ROLLBACK`, `SAVEPOINT`,
-`RELEASE`, `ATTACH`, `DETACH`, and `VACUUM`, in `exec` also every `PRAGMA`, and in `query` the
+`RELEASE`, `ATTACH`, `DETACH`, and `VACUUM`, in `exec` also every `PRAGMA`, and in `query` a
+pragma with a value (`= value` or `(value)`), but for those whose value names what to read
+(`table_info`, `table_xinfo`, `table_list`, `index_info`, `index_xinfo`, `index_list`,
+`foreign_key_list`, `foreign_key_check`, `integrity_check`, `quick_check`), and the
 pragmas that set a value for the whole process (`hard_heap_limit`, `soft_heap_limit`,
-`temp_store_directory`, `data_store_directory`): a transaction would stay open on a pooled
+`temp_store_directory`, `data_store_directory`), also without a value: a transaction would stay open on a pooled
 request thread and block the app's writes, a pragma would change a setting of the app's
-connection, or of every connection of the app, `ATTACH` changes the connection's databases, and
-`VACUUM INTO` writes a file. The tab finds the statement's first keyword past comments, white space (a byte order
+connection, or of every connection of the app, `query` only reads (a set of the journal mode
+failed on its read-only connection with a lock error), `ATTACH` changes the connection's
+databases, and `VACUUM INTO` writes a file. The tab finds the statement's first keyword past comments, white space (a byte order
 mark too, as SQLite reads it), empty statements, and `EXPLAIN`, and answers `400` with `code: "statement_refused"`. `exec` also rolls
 back, with the same error, a statement that creates or drops a `TEMP` table, view, index, or
 trigger, which would stay on the app's connection. A `TEMP` trigger that SQLite drops or rewrites
@@ -1242,8 +1267,10 @@ Errors use the shared envelope; key statuses:
 - **`500 internal_error` with `code: "read_failed"`** on `screen/tree`: the read threw on the main
   thread, as with a View of the app whose getter throws. The message names the exception; the app
   goes on.
+- **`405 method_not_allowed`**: the route takes another method; `Allow` lists the methods (see
+  [A method that a route does not take](#a-method-that-a-route-does-not-take)).
 - **`404 not_found`**: an unknown route, missing transaction, a body that wasn't kept, or `send` with
-  no sender configured. Also a WebSocket connection that the app cleared or evicted, and a message
+  no sender configured. Also a mock rule id that no rule has, on `rules/toggle` and `rules/delete`. Also a WebSocket connection that the app cleared or evicted, and a message
   with no stored payload. Also every `network/` route when the app did not register the Network tab
   (`Unknown tab: network`), every `logs/` route without the Logs plugin
   (`Unknown tab: logs`), every `prefs/` route without the Preferences plugin
@@ -1257,7 +1284,7 @@ Errors use the shared envelope; key statuses:
   `PrefsDebugTab.create(...)`. On `sqlite/exec`, `edit`, or `delete`, with `field: "db"`: the
   database is not writable (`GET sqlite/databases` says which are; the app decides it in
   `SqliteDb`). On `sqlite/query`, with `field: "sql"`: SQLite refused a write, because `query`
-  only reads.
+  only reads. A pragma with a value is a `400` with `code: "statement_refused"` instead.
 - **`400 bad_request` on `sqlite/query` or `exec`:** `code: "statement_refused"` for a statement
   that the tab does not run (see above), and in `exec` for a statement that returns rows; `code: "sqlite_error"` with SQLite's message for one that
   SQLite can't run, such as a syntax error or a broken constraint; `code: "query_unavailable"` for

@@ -94,7 +94,11 @@ class WorkDebugTabServerTest {
         val cancel = post("cancel", JSONObject().put("tag", "later"))
         assertEquals(200, cancel.code)
         assertEquals(1, JSONObject(cancel.body!!.string()).getInt("cancelled"))
-        assertEquals(405, get("cancel?tag=later").code)
+        val wrongMethod = get("cancel?tag=later")
+        assertEquals(405, wrongMethod.code)
+        assertEquals("POST", wrongMethod.header("Allow"))
+        // A templated path: items/{id} takes GET.
+        assertEquals("GET", post("items/${java.util.UUID.randomUUID()}", JSONObject()).header("Allow"))
         val error = JSONObject(get("items?state=done").body!!.string())
         assertEquals("bad_request", error.getString("error"))
         assertEquals("state", error.getString("field"))

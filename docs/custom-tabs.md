@@ -29,8 +29,9 @@ class FlagsTab(private val flags: FeatureFlagRepository) : DebugTab() {
 
     override fun renderContent() = """<div id="flags-list"></div>"""
 
-    // request.path is the remainder after /api/v1/flags/; null -> enveloped 404,
-    // anything thrown, even TODO(), -> enveloped 500 (it never escapes into your app).
+    // request.path is the remainder after /api/v1/flags/; null -> enveloped 404, or
+    // 405 when flags.openapi.json declares the path with another method; anything
+    // thrown, even TODO(), -> enveloped 500 (it never escapes into your app).
     override fun handle(request: DebugRequest): DebugResponse? = when (request.path) {
         "list" -> DebugResponse.ok(flags.toJson())
         else -> null
@@ -65,6 +66,9 @@ Lustro.builder(application)
     them looks like the console in both themes, without CSS of its own. The
     [custom tab styleguide](STYLEGUIDE.md) gives the rules, and the sample's flags tab is a
     working example.
+- Return `null` from `handle()` for a method that a route does not take, as for a route that
+    the tab does not have. When the tab's OpenAPI document declares the path with other methods,
+    the client gets a `405` with an `Allow` header that lists them, and otherwise a `404`.
 - JSON routes go through `handle(request)`. Make the responses with the `DebugResponse`
     factories (`ok`, `json { ... }`, `text`, `bytes`, `notFound`, `error`). `error(message,
     status)` gives the error envelope, and its `error` type follows from the status:
@@ -83,6 +87,14 @@ Lustro.builder(application)
     clients poll in its `state`. For a list that only grows at its end, such as a log,
     `DebugResponse.streamEnvelope(...)` gives the stream envelope: a poll gets only the entries
     after its cursor.
+- **Make every cursor with these helpers, also a tab's own `since` or page cursor.** A page
+    keeps its cursor when the app restarts, and sends it again. A cursor of the helpers carries
+    the epoch of the process, so a cursor from before the restart is foreign and gets a `reset`.
+    A tab that sends its own sequence number, such as `?since=42`, gets the old number from the
+    page, while the new process counts from 1 again: the page then skips the new process's first
+    42 items. `cursorEnvelope` and `streamEnvelope` pick the
+    epoch once for each process; a store that the app can make again within one process passes
+    its own `epoch`, made when it is created.
 - **Change state only on `POST`, `PUT`, `PATCH`, or `DELETE`, never on `GET` or `HEAD`.** The
     runtime rejects browser requests from other origins on every method, but for a `GET` or `HEAD`
     it can go only by `Sec-Fetch-Site`, which browsers send only to loopback and HTTPS addresses,

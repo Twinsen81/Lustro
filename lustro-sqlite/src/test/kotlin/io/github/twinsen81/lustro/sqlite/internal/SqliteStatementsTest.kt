@@ -55,8 +55,31 @@ class SqliteStatementsTest {
     fun `exec also refuses every PRAGMA, also one that EXPLAIN compiles, and query reads one`() {
         for (sql in listOf("PRAGMA foreign_keys = OFF", "pragma query_only(1)", "PRAGMA user_version", "/* x */ PRAGMA journal_mode", "EXPLAIN PRAGMA query_only = 1")) {
             assertNotNull(sql, SqliteStatements.refusal(sql, exec = true))
+        }
+        for (sql in listOf("PRAGMA user_version", "/* x */ PRAGMA journal_mode", "EXPLAIN PRAGMA foreign_keys", "PRAGMA main.journal_mode;")) {
             assertNull(sql, SqliteStatements.refusal(sql, exec = false))
         }
+    }
+
+    @Test
+    fun `query refuses a pragma with a value, which sets it, but for those whose value names what to read`() {
+        val sets =
+            listOf(
+                "PRAGMA journal_mode=DELETE", "PRAGMA journal_mode = WAL", "pragma query_only(1)", "PRAGMA user_version(9)", "PRAGMA foreign_keys = OFF",
+                "PRAGMA main.user_version = 9", "PRAGMA \"journal_mode\" = DELETE", "PRAGMA journal_mode /* x */ = DELETE", "EXPLAIN PRAGMA query_only = 1",
+                "PRAGMA wal_checkpoint(TRUNCATE)", "PRAGMA incremental_vacuum(10)",
+            )
+        for (sql in sets) {
+            val refusal = SqliteStatements.refusal(sql, exec = false)
+            assertNotNull(sql, refusal)
+            assertTrue(sql, refusal!!.contains("query only reads"))
+        }
+        val reads =
+            listOf(
+                "PRAGMA table_info(notes)", "PRAGMA table_xinfo = notes", "PRAGMA main.index_list('notes')", "PRAGMA index_info(idx)", "PRAGMA index_xinfo(idx)",
+                "PRAGMA foreign_key_list(notes)", "PRAGMA foreign_key_check(notes)", "PRAGMA integrity_check(10)", "PRAGMA quick_check(notes)", "PRAGMA table_list(notes)",
+            )
+        for (sql in reads) assertNull(sql, SqliteStatements.refusal(sql, exec = false))
     }
 
     @Test

@@ -470,7 +470,7 @@ def test_sqlite_post_fixture_matches_its_route(route, fixture):
 def test_the_sqlite_schema_is_valid_and_has_its_own_version():
     sqlite = wire.load_openapi("sqlite")
     assert sqlite["openapi"].startswith("3.1")
-    assert sqlite["info"]["version"] == "1.1"
+    assert sqlite["info"]["version"] == "1.2"
     for schema in sqlite["components"]["schemas"].values():
         Draft202012Validator.check_schema(schema)
     assert sqlite["components"]["schemas"]["ErrorEnvelope"] == wire.load_openapi()["components"]["schemas"]["ErrorEnvelope"]

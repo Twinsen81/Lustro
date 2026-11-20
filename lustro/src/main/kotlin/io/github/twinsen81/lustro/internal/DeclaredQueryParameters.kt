@@ -5,10 +5,12 @@ import org.json.JSONException
 import org.json.JSONObject
 
 /**
- * The query parameters that a tab's OpenAPI document declares for each of its routes. The
- * server compares a request's query parameters with them, and names each one that the
- * route does not declare in a `Lustro-Warning` header: a route ignores a parameter that it
- * does not know, so a misspelled filter returns everything, with no sign of the mistake.
+ * The methods and the query parameters that a tab's OpenAPI document declares for each of
+ * its routes. The server compares a request's query parameters with them, and names each
+ * one that the route does not declare in a `Lustro-Warning` header: a route ignores a
+ * parameter that it does not know, so a misspelled filter returns everything, with no sign
+ * of the mistake. When the tab has no route for a request, the server answers `405` instead
+ * of `404` if the document declares the path with other [methods].
  *
  * Only the paths under `/api/v1/<tabId>/` count. A path segment in braces, such as `{id}`,
  * matches any one segment, and a literal segment wins over a template.
@@ -33,6 +35,20 @@ internal class DeclaredQueryParameters private constructor(private val operation
                 .maxByOrNull { it.literals }
                 ?: return emptyList()
         return given.filter { it !in operation.names }
+    }
+
+    /**
+     * The methods, upper case, that the document declares for the path that [subPath]
+     * matches, in the order of [METHODS]. Empty when the document has no such path. Unlike
+     * [undeclared], which looks only at the operations with the request's method, the most
+     * literal path wins whatever its methods, as in OpenAPI.
+     */
+    fun methods(subPath: String): List<String> {
+        val segments = subPath.split('/')
+        val matching = operations.filter { matches(it.segments, segments) }
+        val literals = matching.maxOfOrNull { it.literals } ?: return emptyList()
+        val declared = matching.filter { it.literals == literals }.mapTo(HashSet()) { it.method }
+        return METHODS.filter { it in declared }.map { it.uppercase() }
     }
 
     private fun matches(template: List<String?>, segments: List<String>): Boolean =

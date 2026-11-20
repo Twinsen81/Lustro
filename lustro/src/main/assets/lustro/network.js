@@ -2495,7 +2495,7 @@
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({id: id}),
         }).then(reloadAfterRuleChange)
-          .catch(function(e) { debugToast('Failed to toggle rule: ' + e.message, 'error'); });
+          .catch(function(e) { reportRuleActionFailure('Failed to toggle rule: ', e); });
     };
 
     window.deleteRule = function(id) {
@@ -2506,8 +2506,15 @@
         }).then(function() {
             debugToast('Rule deleted', 'info');
             reloadAfterRuleChange();
-        }).catch(function(e) { debugToast('Failed to delete rule: ' + e.message, 'error'); });
+        }).catch(function(e) { reportRuleActionFailure('Failed to delete rule: ', e); });
     };
+
+    // A 404 says that no rule has the id any more, such as after an agent deleted it,
+    // so the list is loaded again to drop the row.
+    function reportRuleActionFailure(prefix, e) {
+        debugErrorMessage(e).then(function(message) { debugToast(prefix + message, 'error'); });
+        if (e && e.status === 404) reloadAfterRuleChange();
+    }
 
     // The rules for the selected request, with a new one filled in from it. The
     // row stays selected.

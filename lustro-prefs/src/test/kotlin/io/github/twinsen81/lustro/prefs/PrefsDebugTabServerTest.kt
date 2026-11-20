@@ -112,6 +112,11 @@ class PrefsDebugTabServerTest {
         assertEquals(403, edit.code)
         assertEquals("read_only", JSONObject(edit.body!!.string()).getString("code"))
         assertEquals("s-1", session.getString("session_id", null))
+        // The method comes from prefs.openapi.json: the routes have no table of their own.
+        val wrongMethod = get("edit")
+        assertEquals(405, wrongMethod.code)
+        assertEquals("POST", wrongMethod.header("Allow"))
+        assertEquals("GET", post("files", "").header("Allow"))
 
         val own = get("entries?file=lustro_debug").body!!.string()
         assertFalse(own, own.contains(TOKEN))

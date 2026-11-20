@@ -12,25 +12,26 @@ import org.json.JSONObject
 
 /** The routes of the WorkManager tab, under `/api/v1/work/`. */
 internal class WorkRoutes(private val source: WorkSource) {
+    // A wrong method is null too: the server answers 405 from work.openapi.json.
     fun handle(request: DebugRequest): DebugResponse? {
-        val route = if (request.path.startsWith(ITEM_PREFIX)) ITEM else request.path
-        val expected = METHODS[route] ?: return null
-        if (request.method.uppercase() != expected) {
-            return DebugResponse.error("${request.path} takes $expected", status = 405)
-        }
+        val path = if (request.path.startsWith(ITEM_PREFIX)) ITEM else request.path
+        // Picked before it runs: an unknown route stays a 404 also when WorkManager is unsupported.
+        val route: (() -> DebugResponse)? =
+            when ("${request.method.uppercase()} $path") {
+                "GET items" -> { -> items(request, workManager()) }
+                "GET $ITEM" -> { -> item(request.path.removePrefix(ITEM_PREFIX), workManager()) }
+                "GET events" -> { -> events(request) }
+                "GET metrics" -> { -> metrics(request) }
+                "POST cancel" -> { -> cancel(body(request), workManager()) }
+                "POST prune" -> { -> prune(workManager()) }
+                else -> null
+            }
+        if (route == null) return null
         source.unsupported?.let {
             return DebugResponse.error(it, status = 503, code = "work_unsupported", hint = "Add androidx.work:work-runtime ${WorkSupport.MIN_VERSION} or newer")
         }
         return try {
-            when (route) {
-                "items" -> items(request, workManager())
-                ITEM -> item(request.path.removePrefix(ITEM_PREFIX), workManager())
-                "events" -> events(request)
-                "metrics" -> metrics(request)
-                "cancel" -> cancel(body(request), workManager())
-                "prune" -> prune(workManager())
-                else -> null
-            }
+            route()
         } catch (e: RouteException) {
             DebugResponse.error(e.message.orEmpty(), status = e.status, code = e.code, field = e.field, hint = e.hint)
         } catch (e: ExecutionException) {
@@ -299,16 +300,6 @@ internal class WorkRoutes(private val source: WorkSource) {
 
         private const val ITEM_PREFIX = "items/"
         private const val ITEM = "items/{id}"
-
-        private val METHODS =
-            mapOf(
-                "items" to "GET",
-                ITEM to "GET",
-                "events" to "GET",
-                "metrics" to "GET",
-                "cancel" to "POST",
-                "prune" to "POST",
-            )
 
         private val KEYS = listOf("id", "name", "tag")
 

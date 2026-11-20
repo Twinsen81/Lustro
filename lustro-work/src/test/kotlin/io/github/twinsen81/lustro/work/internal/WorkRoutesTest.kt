@@ -403,14 +403,16 @@ class WorkRoutesTest {
     }
 
     @Test
-    fun `a parameter the routes can't take is a 400 that names it, and a wrong method is a 405`() {
+    fun `a parameter the routes can't take is a 400 that names it, and a wrong method is not handled`() {
         assertEquals("state", WorkFixtures.get(routes, "items", "state" to "DONE").json().getString("field"))
         assertEquals("limit", WorkFixtures.get(routes, "events", "limit" to "0").json().getString("field"))
         assertEquals("limit", WorkFixtures.get(routes, "events", "limit" to "5001").json().getString("field"))
         assertEquals("type", WorkFixtures.get(routes, "events", "type" to "ran").json().getString("field"))
         assertEquals("id", WorkFixtures.get(routes, "events", "id" to "x").json().getString("field"))
-        assertEquals(405, WorkFixtures.post(routes, "items", null).status)
-        assertEquals(405, WorkFixtures.get(routes, "prune").status)
+        // The server answers a wrong method with 405, from work.openapi.json.
+        assertNull(routes.handle(io.github.twinsen81.lustro.DebugRequest("items", "POST")))
+        assertNull(routes.handle(io.github.twinsen81.lustro.DebugRequest("prune", "GET")))
+        assertNull(routes.handle(io.github.twinsen81.lustro.DebugRequest("items/x", "POST")))
         assertNull(routes.handle(io.github.twinsen81.lustro.DebugRequest("jobs", "GET")))
         val off = WorkFixtures.get(routes, "metrics")
         assertEquals(404, off.status)
@@ -438,6 +440,9 @@ class WorkRoutesTest {
             assertEquals("work_unsupported", response.json().getString("code"))
             assertTrue(response.json().getString("hint").contains("2.12.0"))
         }
+        // An unknown route stays a 404, and a wrong method a 405, which the server answers.
+        assertNull(routes.handle(io.github.twinsen81.lustro.DebugRequest("jobs", "GET")))
+        assertNull(routes.handle(io.github.twinsen81.lustro.DebugRequest("items", "POST")))
         val builder = androidx.work.Configuration.Builder()
         old.configure(builder)
         assertNull(builder.build().getExecutionEventListener())

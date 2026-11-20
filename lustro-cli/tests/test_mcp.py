@@ -274,6 +274,7 @@ def test_a_print_in_a_tool_goes_to_stderr_not_into_the_protocol(monkeypatch, cap
     [
         ("set_throttle", {}, "missing argument: delay_ms"),
         ("set_throttle", {"delay_ms": -1}, "delay_ms must be at least 0"),
+        ("set_throttle", {"delay_ms": 600001}, "delay_ms must be at most 600000"),
         ("set_throttle", {"delay_ms": "2000"}, "delay_ms must be of type integer, not str"),
         ("set_throttle", {"delay_ms": True}, "delay_ms must be of type integer, not bool"),
         ("set_throttle", {"delay_ms": 10, "delay": 10}, "unknown argument delay; the arguments are: delay_ms"),

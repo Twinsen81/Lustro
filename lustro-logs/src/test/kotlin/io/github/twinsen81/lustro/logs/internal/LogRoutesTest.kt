@@ -249,10 +249,15 @@ class LogRoutesTest {
     }
 
     @Test
-    fun `a route with the wrong method gets a 405, and an unknown route a 404`() {
-        assertEquals(405, routes.handle(get("clear"))!!.status)
-        assertEquals(405, routes.handle(post("entries"))!!.status)
+    fun `a route with the wrong method and an unknown route are not handled, and change nothing`() {
+        // The server answers a wrong method with 405, from logs.openapi.json.
+        append("kept")
+        assertNull(routes.handle(get("clear")))
+        assertNull(routes.handle(get("pause")))
+        assertNull(routes.handle(post("entries")))
         assertNull(routes.handle(get("nothing")))
+        assertEquals(1, entries().getJSONArray("items").length())
+        assertFalse(buffer.paused)
     }
 
     private fun append(vararg messages: String) = messages.forEach { buffer.append(line(it)) }

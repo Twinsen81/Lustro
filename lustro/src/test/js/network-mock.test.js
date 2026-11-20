@@ -211,3 +211,29 @@ test('The detail says that a failure rule fails a request, not that it answers i
         assert.match(text(line), /fails with a connection error\.$/);
     });
 });
+
+test('A toggle or a delete of a rule that is gone shows why, and loads the rules again', async (t) => {
+    for (const action of ['toggleRule', 'deleteRule']) {
+        await t.test(action, async () => {
+            const win = loadNetworkJs();
+            const toasts = [];
+            const urls = [];
+            const envelope = { error: 'not_found', field: 'id', message: 'No mock rule has the id gone. GET rules lists them' };
+            const response = (ok, status, body) => {
+                const resp = { ok, status, json: async () => body };
+                resp.clone = () => resp;
+                return resp;
+            };
+            win.debugToast = (message, kind) => toasts.push(kind + ': ' + message);
+            win.fetch = async (url) => {
+                urls.push(String(url));
+                return String(url).endsWith('/rules') ? response(true, 200, { items: [] }) : response(false, 404, envelope);
+            };
+            win[action]('gone');
+            await new Promise((resolve) => setTimeout(resolve, 20));
+            assert.strictEqual(toasts.length, 1);
+            assert.match(toasts[0], /^error: Failed to (toggle|delete) rule: No mock rule has the id gone/);
+            assert.ok(urls.some((url) => url.endsWith('/rules')), urls.join(' '));
+        });
+    }
+});

@@ -503,13 +503,21 @@ internal class NetworkTrafficStore(
         }
     }
 
-    fun removeMockRule(id: String) {
-        updateRules { current -> current.filterNot { it.id == id } }
-    }
+    /** Removes the rule with [id]. Returns `false`, and changes nothing, when no rule has it. */
+    fun removeMockRule(id: String): Boolean =
+        synchronized(rulesLock) {
+            if (rules().none { it.id == id }) return false
+            updateRules { current -> current.filterNot { it.id == id } }
+            true
+        }
 
-    fun toggleMockRule(id: String) {
-        updateRules { current -> current.map { if (it.id == id) it.copy(enabled = !it.enabled) else it } }
-    }
+    /** Turns the rule with [id] on or off. Returns `false`, and changes nothing, when no rule has it. */
+    fun toggleMockRule(id: String): Boolean =
+        synchronized(rulesLock) {
+            if (rules().none { it.id == id }) return false
+            updateRules { current -> current.map { if (it.id == id) it.copy(enabled = !it.enabled) else it } }
+            true
+        }
 
     /** Replaces every rule with [rules], tried in the order given. One list replaces the other: there is no empty window. */
     fun replaceMockRules(rules: List<MockRuleImpl>) {
