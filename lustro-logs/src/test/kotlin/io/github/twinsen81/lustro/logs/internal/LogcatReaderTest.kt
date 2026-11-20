@@ -194,40 +194,75 @@ class LogcatReaderTest {
     }
 
     @Test
-    fun `the lines of an appended tag from the tab's creation on stay out of the buffer, and the others come in`() {
+    fun `the lines of an appended tag stay until the first append of the tag, and the later ones stay out of the buffer`() {
         val logcat = FakeLogcat()
         launcher.add(logcat)
-        val appendedTags = setOf("AppLog", "Broken")
-        val dropping =
-            LogcatReader(
-                buffer,
-                pid = 4321,
-                processStartMs = { now - 60_000 },
-                launch = launcher,
-                parser = ThreadtimeParser(utc) { now },
-                appendedTags = { tag -> if (tag == "Broken") error("the app's check failed") else tag in appendedTags },
-                appendedSince = now - 5,
-            )
+        val appended = AppendedTags { tag -> if (tag == "Broken") error("the app's check failed") else tag in setOf("AppLog", "Late") }
+        val dropping = droppingReader(appended)
         try {
             dropping.start()
             launcher.nextLaunch()
+            appended.appended("Broken", now - 10)
+            appended.appended("AppLog", now - 5)
+            // A later append doesn't move the start of the drop back.
+            appended.appended("AppLog", now - 8)
             logcat.emit(
-                // Before the tab was created: the app could not append it, so it stays.
+                // Before the first append of its tag: the logger could not append it, so it stays.
                 "10-19 14:22:20.000  4321  4330 D AppLog  : early",
+                // After the time of the later append, but before the first one: it stays.
+                "10-19 14:22:20.003  4321  4330 D AppLog  : between",
+                // At the time of the first append, and after it: the logger appends these.
                 "10-19 14:22:20.005  4321  4330 D AppLog  : appended",
                 "10-19 14:22:20.006  4321  4330 I okhttp  : library",
-                // A check that throws keeps the line, and the reader runs on.
+                // A check that throws at the append keeps the lines of the tag.
                 "10-19 14:22:20.007  4321  4330 I Broken  : kept",
+                // A tag that the check takes but that the logger has not appended yet.
+                "10-19 14:22:20.008  4321  4330 D Late    : not appended yet",
                 "10-19 14:22:20.008  4321  4330 D AppLog  : appended too",
+            )
+            awaitMessages("early", "between", "library", "kept", "not appended yet")
+
+            appended.appended("Late", now - 1)
+            logcat.emit(
+                "10-19 14:22:20.009  4321  4330 D Late    : appended now",
                 "10-19 14:22:20.009  4321  4330 I okhttp  : last",
             )
-            awaitMessages("early", "library", "kept", "last")
+            awaitMessages("early", "between", "library", "kept", "not appended yet", "last")
             assertEquals("the dropped lines count as read", now - 1, dropping.newestLineAt)
             assertEquals(LogcatReader.Status.RUNNING, dropping.status)
         } finally {
             dropping.stop()
         }
     }
+
+    @Test
+    fun `when the logger never appends, every line of the appended tags stays`() {
+        val logcat = FakeLogcat()
+        launcher.add(logcat)
+        val dropping = droppingReader(AppendedTags { it == "AppLog" })
+        try {
+            dropping.start()
+            launcher.nextLaunch()
+            logcat.emit(
+                "10-19 14:22:20.000  4321  4330 D AppLog  : one",
+                "10-19 14:22:20.005  4321  4330 D AppLog  : two",
+                "10-19 14:22:20.009  4321  4330 D AppLog  : three",
+            )
+            awaitMessages("one", "two", "three")
+        } finally {
+            dropping.stop()
+        }
+    }
+
+    private fun droppingReader(appended: AppendedTags): LogcatReader =
+        LogcatReader(
+            buffer,
+            pid = 4321,
+            processStartMs = { now - 60_000 },
+            launch = launcher,
+            parser = ThreadtimeParser(utc) { now },
+            appended = appended,
+        )
 
     private fun awaitMessages(vararg expected: String) {
         val deadline = System.currentTimeMillis() + 5_000

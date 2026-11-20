@@ -10,6 +10,7 @@ import androidx.test.core.app.ApplicationProvider
 import io.github.twinsen81.lustro.DebugConfig
 import io.github.twinsen81.lustro.Lustro
 import io.github.twinsen81.lustro.LustroStatus
+import io.github.twinsen81.lustro.logs.internal.AppendedTags
 import io.github.twinsen81.lustro.logs.internal.FakeLauncher
 import io.github.twinsen81.lustro.logs.internal.FakeLogcat
 import io.github.twinsen81.lustro.logs.internal.LogBuffer
@@ -50,6 +51,7 @@ class LogsDebugTabServerTest {
         prefs.edit().putString("lustro_token", TOKEN).commit()
 
         val buffer = LogBuffer(1 shl 20)
+        val appended = AppendedTags { it == APP_TAG }
         val reader =
             LogcatReader(
                 buffer,
@@ -57,10 +59,10 @@ class LogsDebugTabServerTest {
                 processStartMs = { 0L },
                 launch = launcher,
                 parser = ThreadtimeParser(TimeZone.getTimeZone("UTC")) { NOW },
-                appendedTags = { it == APP_TAG },
-                appendedSince = 0L,
+                appended = appended,
             )
-        tab = LogsDebugTab.create(buffer, reader)
+        // The tab appends at the time of the logcat lines that the tests emit after an append.
+        tab = LogsDebugTab.create(buffer, reader, appended, clock = { NOW - 10 })
         lustro =
             Lustro.builder(app)
                 .config(DebugConfig.builder().serverPort(0).build())
@@ -110,8 +112,12 @@ class LogsDebugTabServerTest {
     }
 
     @Test
-    fun `a line that the app appends and also writes to logcat shows once, in full`() {
+    fun `a line of an appended tag from before the first append comes from logcat, and a later one shows once, in full`() {
         launcher.nextLaunch()
+        // The app's logger wrote it before the app gave it the tab, so only logcat has it.
+        logcat.emit("10-19 14:22:19.990  4321  4330 D $APP_TAG  : before the logger appends")
+        awaitItems(1)
+
         val state = "screen state: " + "0123456789".repeat(600)
         tab.append(Log.DEBUG, APP_TAG, state)
         // The app's logger also wrote it to logcat, which keeps about 4 KB: here in two chunks.
@@ -121,17 +127,18 @@ class LogsDebugTabServerTest {
             "10-19 14:22:20.001  4321  4330 I Sync    : after",
         )
 
-        val items = awaitItems(2).getJSONArray("items")
-        assertEquals(2, items.length())
-        val appended = items.getJSONObject(0)
+        val items = awaitItems(3).getJSONArray("items")
+        assertEquals(3, items.length())
+        assertEquals("before the logger appends", items.getJSONObject(0).getString("message"))
+        val appended = items.getJSONObject(1)
         assertEquals(state, appended.getString("message"))
         assertEquals("D", appended.getString("level"))
         assertEquals(APP_TAG, appended.getString("tag"))
-        assertEquals("after", items.getJSONObject(1).getString("message"))
+        assertEquals("after", items.getJSONObject(2).getString("message"))
 
         val text = get("text").body!!.string()
         assertTrue(text, text.contains(" D $APP_TAG  : $state\n"))
-        assertEquals(text, 2, text.lines().count { it.isNotEmpty() })
+        assertEquals(text, 3, text.lines().count { it.isNotEmpty() })
     }
 
     @Test

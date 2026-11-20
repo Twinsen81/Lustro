@@ -54,7 +54,7 @@ tab drops the cut copies that come from logcat:
 ```kotlin
 val logs = LogsDebugTab.create(appendedTags = { it == "MyApp" })
 
-// In the app's logger, after it writes the line to logcat:
+// In the app's logger, before it writes the line to logcat:
 logs.append(Log.DEBUG, "MyApp", message, throwable)
 ```
 
@@ -66,9 +66,17 @@ logs.append(Log.DEBUG, "MyApp", message, throwable)
 - **Each line once.** `appendedTags` takes a tag and says whether the logger appends its lines.
     The tab drops the logcat lines of those tags, so each line shows once, in full. Pass
     `setOf("A", "B")::contains` for a fixed set, or a test on the tag when the logger uses many
-    tags. The lines of the platform and of libraries still come from logcat. The rule holds from
-    `create()` on: older lines of those tags come from logcat, cut, because the app could not
-    append them yet. So create the tab before the logger writes its first line.
+    tags. The lines of the platform and of libraries still come from logcat. For each tag, the rule
+    holds from the first `append` of that tag on: older lines of the tag come from logcat, cut,
+    because the logger could not append them yet. So no line is lost when the app gives the logger
+    the tab some time after it creates the tab, as an app with dependency injection often does, and
+    a tag that the logger never appends, for example in a build that does not install the logger,
+    keeps all its logcat lines. Call `append` before the logger writes the line to logcat: when
+    the logger writes to logcat first, the first line of a tag can show twice, as the cut copies
+    from logcat and as the appended line. Timber calls its trees in the order in which the app
+    planted them, so with Timber, call `append` in the tree that writes to logcat, before
+    `super.log(...)`, or plant the tree that appends before `DebugTree`. When the order can't
+    change, only the first line of each tag shows twice, and no line is lost.
 - **A cap.** An appended text keeps at most 65,536 characters (`MAX_APPENDED_CHARS`), and in a
     small buffer at most an eighth of `bufferBytes`, so that one line can't empty the buffer. A
     longer text ends with `… cut (N more characters)`.
