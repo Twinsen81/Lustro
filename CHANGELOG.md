@@ -1247,6 +1247,51 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Fixed
 
+- **The CLI no longer says "no Lustro runtime" for a debug build on API 30 to
+  33, it names the cause with `--port`, and `lustro ready` waits when another
+  server answers on the app's port.** Three cases gave scripts and agents a
+  wrong cause, or none. First, the check of the runtime searched the installed
+  APK with the device's `grep -c -F assets/lustro/`. A ZIP has binary bytes
+  before each entry name, and the toybox `grep` of API 30 to 33 finds no match
+  after a NUL byte on the same line, so it counted 0 for a debug build. A
+  stopped app then exited 5, "does not contain the Lustro runtime ... Install a
+  debug build", in place of 6, "is not running", and so did every cause that
+  the CLI checks after the runtime, such as an app in the background. The CLI
+  now reads the entry names from the APK's central directory: `adb exec-out
+  "tail -c 65557 <apk>"` gives the end of central directory record, and the
+  central directory of most APKs with it, and a second `tail -c` gets a central
+  directory that is larger. Second, a connection that failed with `--port` got
+  no cause, because the server of a local port can be on the computer. A script
+  that passes the local port of its own forward got exit 6 and "connection
+  failed", also for a no-op build. Now `--device` or `--package` says that the
+  app is on a device, and the CLI checks it with adb also with `--port`. Such a
+  command does not need adb to select a device, so more than one device with
+  none selected still gives exit 6 there, not 2. Third, while the app is
+  stopped, its prefs keep the port of its last bind, and on a shared device the
+  debug server of another app can listen there. `lustro ready` stopped at once
+  with exit 1 and that server's `404 not_found: Endpoint not found: v1`.
+  Every Lustro server has `GET /api/v1/_meta`, so `ready` now takes a `404`
+  there as a port where the app does not answer yet: it waits, and at the
+  timeout it prints the cause that adb finds and says that another server
+  answers on the port, with the code of the cause, or 6. The CLI README and
+  docs/AGENTS.md say that a script gets the token from `lustro open
+  --print-only --json`, which prints `token` and `url`, and docs/AGENTS.md
+  lists the entries of a pulled APK with `unzip -l` in place of the device's
+  `grep`. Verified on emulators on API 28, 31, 33, and 34 with the sample's
+  debug build stopped: the earlier CLI counted 19, 0, 0, and 14 entries with
+  `grep`, and `ready --package` exited 5 on API 31 and 33; now `ready
+  --package` exits 6 with "is not running" on all four, the runtime check takes
+  one read in 0.06 to 0.08 s, and the release build (the no-op artifacts) still
+  exits 5. On API 28, 33, and 34, `net list` with `--package`, `--port` of the
+  script's own forward, and `--token` exited 6 with "is not running" for the
+  stopped app, and 5 for the release build, where the earlier CLI exited 6 with
+  "connection failed" for both. With a server that answers `404` on the app's
+  port 8080 and the app stopped, `ready --package --timeout 3` exited 6 after
+  3 s with "is not running" and "Another server answers on ...", where the
+  earlier CLI exited 1 at once. On API 31, the debug server of another app held
+  port 8080, the sample's server did not start, and `ready` waited and said
+  that another server answers there.
+
 - **The no-op halves no longer make R8 keep their classes in a minified release
   build.** The six `-noop` artifacts shipped consumer rules such as `-keep
   public class io.github.twinsen81.lustro.Lustro { public *; }`. A `-keep` rule

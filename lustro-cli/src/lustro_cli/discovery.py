@@ -33,8 +33,9 @@ from __future__ import annotations
 import os
 import re
 import shlex
+import struct
 import subprocess
-from typing import List, NamedTuple, Optional, Tuple
+from typing import Callable, List, NamedTuple, Optional, Tuple
 
 from . import exitcodes
 
@@ -108,6 +109,12 @@ def _run(cmd: List[str], timeout: float = 10.0) -> Optional[str]:
     Failures (missing adb, no device, non-zero exit) are swallowed so discovery
     can fall through to the next source.
     """
+    out = _run_bytes(cmd, timeout)
+    return None if out is None else out.decode("utf-8", "replace")
+
+
+def _run_bytes(cmd: List[str], timeout: float = 10.0) -> Optional[bytes]:
+    """:func:`_run`, with stdout as the bytes that the command wrote."""
     try:
         proc = subprocess.run(
             cmd,
@@ -123,7 +130,7 @@ def _run(cmd: List[str], timeout: float = 10.0) -> Optional[str]:
         return None
     if proc.returncode != 0:
         return None
-    return proc.stdout.decode("utf-8", "replace")
+    return proc.stdout
 
 
 # The status of a command that could not start, as a shell gives it.
@@ -208,7 +215,7 @@ def foreground_package(device: Optional[str] = None) -> Optional[str]:
 
 
 # Every build with the Lustro runtime has assets under this directory, and a build
-# with only the no-op artifacts has none. A zip stores its entry names as plain text.
+# with only the no-op artifacts has none.
 RUNTIME_ASSET_ENTRY = "assets/lustro/"
 
 
@@ -229,23 +236,80 @@ def package_paths(package: str, device: Optional[str] = None) -> Optional[List[s
     return paths or None
 
 
+# The ZIP records that :func:`zip_entry_names` reads. The end of central directory
+# record (EOCD) is 22 bytes and a comment of up to 65535 bytes, at the end of the file.
+_EOCD_SIGNATURE = b"PK\x05\x06"
+_EOCD_SIZE = 22
+_EOCD_SEARCH = _EOCD_SIZE + 0xFFFF
+_CENTRAL_ENTRY_SIGNATURE = b"PK\x01\x02"
+_CENTRAL_ENTRY_SIZE = 46
+# Far above the central directory of a large APK, which is less than 1 MB: a larger
+# size is a damaged record, and its read would copy most of the APK.
+_MAX_CENTRAL_DIRECTORY = 16 * 1024 * 1024
+
+
+def zip_entry_names(read_tail: Callable[[int], Optional[bytes]]) -> Optional[List[str]]:
+    """The entry names in the central directory of a ZIP, or ``None`` when it can't
+    be read. ``read_tail(n)`` gives the last ``n`` bytes of the file, or the whole
+    file when it is smaller.
+
+    The central directory ends where the EOCD starts: in an APK, the signing block
+    comes before it. One read of 64 KB gets the EOCD, and the central directory of
+    most APKs with it. A second read gets a central directory that is larger. A
+    ZIP64 file, which an APK can't be, gets ``None``.
+    """
+    tail = read_tail(_EOCD_SEARCH)
+    if tail is None or len(tail) < _EOCD_SIZE:
+        return None
+    # The comment can contain the signature, so the EOCD is the one whose comment ends the file.
+    eocd = tail.rfind(_EOCD_SIGNATURE, 0, len(tail) - _EOCD_SIZE + len(_EOCD_SIGNATURE))
+    while eocd >= 0 and eocd + _EOCD_SIZE + struct.unpack_from("<H", tail, eocd + 20)[0] != len(tail):
+        eocd = tail.rfind(_EOCD_SIGNATURE, 0, eocd)
+    if eocd < 0:
+        return None
+    entries, size = struct.unpack_from("<HI", tail, eocd + 10)
+    if size == 0xFFFFFFFF or size > _MAX_CENTRAL_DIRECTORY:
+        return None
+    if size <= eocd:
+        directory = tail[eocd - size : eocd]
+    else:
+        whole = read_tail(size + len(tail) - eocd)
+        if whole is None or len(whole) != size + len(tail) - eocd:
+            return None
+        directory = whole[:size]
+    names = []
+    offset = 0
+    while len(names) < entries:
+        if offset + _CENTRAL_ENTRY_SIZE > size or directory[offset : offset + 4] != _CENTRAL_ENTRY_SIGNATURE:
+            return None
+        name_length, extra_length, comment_length = struct.unpack_from("<HHH", directory, offset + 28)
+        start = offset + _CENTRAL_ENTRY_SIZE
+        names.append(directory[start : start + name_length].decode("utf-8", "replace"))
+        offset = start + name_length + extra_length + comment_length
+    return names
+
+
 def apk_has_runtime(apk: str, device: Optional[str] = None) -> Optional[bool]:
     """Whether the installed APK at ``apk`` on the device contains the Lustro runtime,
     or ``None`` when adb can't tell.
 
-    It searches the APK for the entry name ``assets/lustro/`` with ``grep -c -F``,
-    not ``unzip``: API 28 emulator images have no ``unzip``, and toybox ``grep`` is on
-    every API level. ``|| true`` because grep exits 1 when it counts 0.
+    It reads the entry names from the APK's central directory, with ``tail -c``
+    through ``adb exec-out``, which does not change binary bytes. Toybox ``tail`` is
+    on every API level, and API 28 emulator images have no ``unzip``. A ``grep`` of
+    the whole APK is not reliable: the toybox ``grep`` of API 30 to 33 finds no
+    match after a NUL byte on the same line, and a ZIP has such bytes before each
+    entry name.
     """
-    out = _run(
-        _adb_base(device)
-        + ["shell", "grep -c -F {} {} || true".format(shlex.quote(RUNTIME_ASSET_ENTRY), shlex.quote(apk))],
-        timeout=30.0,
-    )
-    count = (out or "").strip()
-    if not count.isdigit():
+
+    def read_tail(size: int) -> Optional[bytes]:
+        return _run_bytes(
+            _adb_base(device) + ["exec-out", "tail -c {} {}".format(size, shlex.quote(apk))], timeout=30.0
+        )
+
+    names = zip_entry_names(read_tail)
+    if names is None:
         return None
-    return int(count) > 0
+    return any(name.startswith(RUNTIME_ASSET_ENTRY) for name in names)
 
 
 def is_running(package: str, device: Optional[str] = None) -> Optional[bool]:

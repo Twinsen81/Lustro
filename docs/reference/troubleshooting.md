@@ -37,7 +37,8 @@ The request has no valid token.
 - **In a browser:** open the console once with `#lustro_token=<token>` at the end of the URL, or
     with `lustro open`.
 - **In a script:** send `Authorization: Bearer <token>`. Get the token with
-    `adb logcat -d -s LustroToken`.
+    `adb logcat -d -s LustroToken`, or with `lustro open --print-only --json`, which prints
+    `token` and `url`.
 - **After the app's data is cleared:** the app makes a new token. The last `LustroToken` line has
     it.
 - **After the app restarts, with LAN exposure:** when `DebugConfig.bindAddress` is not loopback,

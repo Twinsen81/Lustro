@@ -67,10 +67,11 @@ def golden():
 def _no_adb(monkeypatch):
     """Discovery and the commands' forward run adb, which a test must not reach:
     a forward would stay on the computer's adb server. A test that needs their
-    output patches ``discovery._run``, ``discovery._run_status``, or
-    ``cli._adb_forward`` itself. Without adb, a command connects to the app's port
-    on the computer."""
+    output patches ``discovery._run``, ``discovery._run_bytes``,
+    ``discovery._run_status``, or ``cli._adb_forward`` itself. Without adb, a
+    command connects to the app's port on the computer."""
     monkeypatch.setattr(discovery, "_run", lambda cmd, timeout=10.0: None)
+    monkeypatch.setattr(discovery, "_run_bytes", lambda cmd, timeout=10.0: None)
     monkeypatch.setattr(discovery, "_run_status", lambda cmd, timeout=10.0: (127, ""))
 
     def no_adb(local_port, device_port, device):

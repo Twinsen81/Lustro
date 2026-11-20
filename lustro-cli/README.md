@@ -108,17 +108,22 @@ prints it and exits with its code (see [Exit codes](#exit-codes)). It checks, in
 this order: that adb finds one device that it can use (`adb get-state`), that the
 app of `--package` is installed (`adb shell pm path <pkg>`), that its build
 contains the Lustro runtime, that it runs (`pidof`), and that it is in the
-foreground. For the runtime, it searches the installed `base.apk` for an entry
-under `assets/lustro/` with `grep -c -F` (not `unzip`, which API 28 emulator
-images do not have). Every build with the Lustro runtime has such entries. A build
-without them is a build with the `-noop` artifacts, which has no server, or a build
-from before the app added Lustro: install a debug build that uses the Lustro
+foreground. For the runtime, it reads the entry names in the central directory of
+the installed `base.apk` and looks for an entry under `assets/lustro/`. It reads
+the end of the file with `tail -c` through `adb exec-out`: 64 KB, and a second
+read when the central directory is larger. It does not use `unzip`, which API 28
+emulator images do not have, or `grep`, which does not find the names on API 30
+to 33. Every build with the Lustro runtime has such entries. A build without them
+is a build with the `-noop` artifacts, which has no server, or a build from
+before the app added Lustro: install a debug build that uses the Lustro
 artifacts. Without `--package`, the CLI checks only the runtime of the app in the
 foreground, which can be another app, such as the launcher when your app is not
 running. Pass `--package` in a script, so that the CLI checks your app. A
 connection that fails gets the same checks, because a ready line from an earlier
-start of the app gives a token and a port that no longer answer, unless `--port`
-names the local port: then the server can be on this computer.
+start of the app gives a token and a port that no longer answer. A command with
+`--port` gets them only with `--device` or `--package`, which say that the app is
+on a device, for example behind a forward that the script made itself. Without
+them, the server of `--port` can be on this computer, and adb finds nothing about it.
 
 A token from the ready line can be stale: when the app was installed again and the device
 dropped the new line, the last line in the log is from the earlier install. When the server
@@ -209,10 +214,26 @@ answers, `ready` prints the endpoint that the CLI reaches it at and exits 0;
 token. When the time is over, it prints the cause and exits with its code: no
 device, an app that is not installed, a build without the Lustro runtime, an app
 that is not running or not in the foreground, or a port that does not answer. It
-makes the checks of the cause once, at the end, because the check of the runtime
-reads the whole APK. An error response that a new try can't change, such as a
-`401` for a `--token` that is not the app's, ends the wait at once with exit 1;
-`ready` tries again after a `5xx` or a `429`.
+makes the checks of the cause once, at the end. An error response that a new try
+can't change, such as a `401` for a `--token` that is not the app's, ends the
+wait at once with exit 1; `ready` tries again after a `5xx` or a `429`.
+
+A `404` for `GET /api/v1/_meta` is not from Lustro, which always has that route.
+It comes from another server on the port, such as the debug server of another
+app, on the port that the app's prefs keep from its last start while the app is
+stopped. `ready` waits, as for a port that does not answer. At the timeout, it
+prints the cause that adb finds and says that another server answers on the
+port, and exits with the code of the cause, or 6.
+
+A script that needs the token, for the console URL or a `curl` call, gets it from
+`lustro open --print-only --json`, which prints `url`, `token`, `host`, and
+`port` and opens no browser. Like `lustro open`, it forwards the port; add
+`--no-forward` when the script forwards it itself:
+
+```bash
+lustro ready --package com.example.app
+TOKEN=$(lustro --package com.example.app open --print-only --json | jq -r .token)
+```
 
 ## Exit codes
 
