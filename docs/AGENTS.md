@@ -728,6 +728,12 @@ commands: use `lustro api`.
 | Pause | `POST pause` | Body `{ "paused": true }` or `false`; without a body it toggles. While paused, the tab drops new lines. Returns `{ status: "ok", paused }`. |
 | Compact | `POST compact` | Body `{ "compact": true }` or `false`; without a body it toggles. On by default: a line that repeats the line before (same level, tag, pid, tid, and message) folds into it. Returns `{ status: "ok", compact }`. |
 
+**Bodies.** `POST pause` and `POST compact` take one JSON object in strict JSON (RFC 8259).
+Unquoted names, single quotes, comments, and text after the object are a `400` with
+`field: "body"`, and so is a body that is not a JSON object, such as `[true]`. A field of the wrong
+type is a `400` with the field's name in `field`, such as `{ "paused": "yes" }`. Without a body, or
+without the key, the flag toggles.
+
 **An item.** `{ seq, at, timestamp, pid, tid, level, tag, message }`, and `count` and `lastAt` for a
 repeated line. `at` and `lastAt` are epoch milliseconds, and `timestamp` is `at` as logcat prints
 it, `MM-dd HH:mm:ss.SSS` in the device's time zone. `seq` identifies the line. **A repeated line
@@ -965,8 +971,9 @@ Base path `/api/v1/work`, when the app registers the WorkManager plugin
 work-analytics repository; without it, the routes are an enveloped `404 Unknown tab: work`). The
 authoritative contract is `lustro-work/openapi/work.openapi.json`, version `1.3` (`1.1` names the unique work of every work request, `1.2` adds the `networkRequest` of a work's constraints, and `1.3` the `prerequisites` of a work).
 The CLI has no `work` commands: use `lustro api`. Only `POST cancel` and `POST prune` change
-anything. The app needs WorkManager 2.12.0 or newer: with an older one, every route is a `503`
-with `code: "work_unsupported"`.
+anything. The app needs WorkManager 2.12.0 or newer: with an older one, every route answers `503`
+with `code: "work_unsupported"`, after the checks of the request's parameters and body, so a bad
+parameter, or a `cancel` without a body, still gets its `400`.
 
 | Operation | Route | Notes |
 | --- | --- | --- |
@@ -976,6 +983,13 @@ with `code: "work_unsupported"`.
 | Read the history | `GET metrics?id=&tag=&class=&state=&from=&to=` | `{ items: [period] }` from work-analytics, oldest first by enqueue time; `from` and `to` are enqueue times in epoch ms. `404` with `code: "metrics_off"` when the app passed no repository. |
 | Cancel | `POST cancel` `{ id }` or `{ name }` or `{ tag }` | Exactly one key, and no other (`400` with the key as `field`): `WorkManager.cancelWorkById`, `cancelUniqueWork`, or `cancelAllWorkByTag`. Returns `{ status: "ok", cancelled }`, the number of matched requests that were not finished; finished work stays as it is, and the work that depends on cancelled work is cancelled too, uncounted. `404` with the key as `field` when nothing matches. Cancelling work that is `RUNNING` in an app whose listeners are a work-analytics 2.12.0 repository (`state.metrics` is a hint) ends the app's process, through a bug of work-analytics, unless the app catches it. |
 | Prune | `POST prune` | `WorkManager.pruneWork()`: deletes finished work that no unfinished work depends on. Returns `{ status: "ok", pruned }`. The events stay in the buffer. |
+
+**Bodies.** `POST cancel` takes one JSON object. An empty body, or one that is not a JSON object,
+is a `400` with `field: "body"`. Unlike the bodies of the Preferences and SQLite routes, the JSON
+is not strict: the tab reads it with Android's `JSONObject`, as the Network tab's `rules` routes
+do, so it takes unquoted names, single quotes, and comments. The checks of its members come
+after the `503` with `code: "work_not_initialized"`: while the app has not initialized
+WorkManager, a body with a wrong member, such as `{ "nmae": "x" }`, gets the `503`, not a `400`.
 
 **A work item.** `{ id, workerClass, state, tags, uniqueName?, prerequisites?, runAttempts, generation,
 stopReason: { code, name }, output, progress, constraints, initialDelayMillis, periodicity?,
@@ -1039,7 +1053,8 @@ such as the default initializer's; `unsupported` when the app's WorkManager has 
 that this version of the tab does not forward. Then `reason` says what to change, and `events` is
 empty. `initialized` is `false` until the app calls `WorkManager.getInstance`: the tab never
 initializes WorkManager, so until then `items`, `items/{id}`, `cancel`, and `prune` answer `503`
-with `code: "work_not_initialized"`.
+with `code: "work_not_initialized"`, except a `cancel` without a body or with one that is not a
+JSON object, which gets its `400` first.
 
 **Events live on the heap.** The tab records events in the app's process from `Lustro.start()`
 to `Lustro.stop()`, also in the background, and keeps the newest ones in a buffer of

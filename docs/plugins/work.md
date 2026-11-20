@@ -140,7 +140,8 @@ parameters and the work-analytics repository: see below.
     default initializer is still in the manifest), or `unsupported` when your WorkManager has
     listener methods that this version of Lustro does not forward. `state.reason` says what to
     change. Without WorkManager 2.12.0 or newer, every route answers `503` with code
-    `work_unsupported`, and `configure()` returns the builder as it is. The message names the
+    `work_unsupported`, after the checks of the request: a bad parameter, or a `cancel` without a
+    body, still gets its `400`. `configure()` then returns the builder as it is. The message names the
     version that the app has when the APK has WorkManager's version file,
     `META-INF/androidx.work_work-runtime.version`; a packaging exclude of `META-INF/*.version`
     leaves it out.
