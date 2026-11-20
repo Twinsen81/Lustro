@@ -148,7 +148,7 @@ internal class SqliteRoutes(private val registry: SqliteRegistry, private val li
         }
     }
 
-    // A name that the client gives: a database, a table, or a statement.
+    // A name that the client gives: a database, or a table in a GET route.
     private fun DebugParams.name(name: String, description: String): DebugParam<String> =
         string(name) {
             minLength = 1
