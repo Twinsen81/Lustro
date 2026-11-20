@@ -185,7 +185,8 @@ The wire protocol is versioned under `wire-protocol/v1/`. Each tab's OpenAPI
 document is in its own module: `src/main/assets/lustro/<id>.openapi.json` for a
 plugin with a hand-written document, and `openapi/<id>.openapi.json`, the
 committed copy of the generated document, for a tab that declares its routes
-(`lustro/openapi/network.openapi.json` for the Network tab, and Preferences).
+(`lustro/openapi/network.openapi.json` for the Network tab, and Preferences and
+SQLite).
 
 ### Adding a plugin module pair
 

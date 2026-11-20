@@ -241,6 +241,7 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "format": "int32",
               "minimum": 1,
               "maximum": 500,
               "default": 50
@@ -408,7 +409,7 @@
                   "db": {
                     "type": "string",
                     "minLength": 1,
-                    "description": "The database's name, as GET databases lists it. 400 with field db when it is missing; 404 with field db when there is no database of this name; 500 with code open_failed and field db when the database does not open. 403 with code read_only and field db when the database is not writable, whatever the rest of the body is."
+                    "description": "The database's name, as GET databases lists it. 400 with field db when it is missing; 404 with field db when there is no database of this name; 500 with code open_failed and field db when the database does not open. 403 with code read_only and field db when the database is not writable, before the other values of the body are checked; only a required field that is missing, or a field that is not of its JSON type, is a 400 first."
                   },
                   "sql": {
                     "type": "string",
@@ -479,7 +480,7 @@
                   "db": {
                     "type": "string",
                     "minLength": 1,
-                    "description": "The database's name, as GET databases lists it. 400 with field db when it is missing; 404 with field db when there is no database of this name; 500 with code open_failed and field db when the database does not open. 403 with code read_only and field db when the database is not writable, whatever the rest of the body is."
+                    "description": "The database's name, as GET databases lists it. 400 with field db when it is missing; 404 with field db when there is no database of this name; 500 with code open_failed and field db when the database does not open. 403 with code read_only and field db when the database is not writable, before the other values of the body are checked; only a required field that is missing, or a field that is not of its JSON type, is a 400 first."
                   },
                   "table": {
                     "type": "string",
@@ -572,7 +573,7 @@
                   "db": {
                     "type": "string",
                     "minLength": 1,
-                    "description": "The database's name, as GET databases lists it. 400 with field db when it is missing; 404 with field db when there is no database of this name; 500 with code open_failed and field db when the database does not open. 403 with code read_only and field db when the database is not writable, whatever the rest of the body is."
+                    "description": "The database's name, as GET databases lists it. 400 with field db when it is missing; 404 with field db when there is no database of this name; 500 with code open_failed and field db when the database does not open. 403 with code read_only and field db when the database is not writable, before the other values of the body are checked; only a required field that is missing, or a field that is not of its JSON type, is a 400 first."
                   },
                   "table": {
                     "type": "string",
@@ -639,6 +640,18 @@
     }
   },
   "components": {
+    "responses": {
+      "Error": {
+        "description": "Error envelope.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorEnvelope"
+            }
+          }
+        }
+      }
+    },
     "schemas": {
       "ErrorEnvelope": {
         "type": "object",
@@ -1214,18 +1227,6 @@
           }
         },
         "additionalProperties": false
-      }
-    },
-    "responses": {
-      "Error": {
-        "description": "Error envelope.",
-        "content": {
-          "application/json": {
-            "schema": {
-              "$ref": "#/components/schemas/ErrorEnvelope"
-            }
-          }
-        }
       }
     }
   }

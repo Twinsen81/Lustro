@@ -81,7 +81,9 @@ override fun routes(routes: DebugRoutes) {
     uses it, so it is marked `@ExperimentalDebugRoutes`, and the compiler stops a tab without
     `@OptIn(ExperimentalDebugRoutes::class)`. It is a Kotlin API: Java is not a target.
 - **Parameters.** `path`, `query`, and `body` declare them, as a `string`, `int`, `long`, or
-    `boolean`, and in a body also as `json`, which gives the handler the value's JSON text. In
+    `boolean`, and in a body also as `json`, which gives the handler the value's JSON text: use
+    it for an object, or for a field that takes more than one JSON type, such as the SQLite
+    tab's `rowid`, a whole number or a string of one, and describe it with `schema`. In
     the query and the body, `strings` declares a parameter that the request can repeat, such as
     `?ids=a&ids=b`: its value is the list of every value, and in a JSON body a JSON array of
     strings. Each returns a handle, and the handler reads the value with it: `call[id]`. A

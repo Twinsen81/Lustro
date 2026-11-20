@@ -511,7 +511,7 @@ def test_the_sqlite_routes_are_declared_and_only_the_post_ones_take_sql_or_write
     rows = {p["name"]: p for p in paths["/api/v1/sqlite/rows"]["get"]["parameters"]}
     assert set(rows) == {"db", "table", "cursor", "limit", "filter", "sort", "dir"}
     assert rows["db"]["required"] and rows["table"]["required"]
-    assert rows["limit"]["schema"] == {"type": "integer", "minimum": 1, "maximum": 500, "default": 50}
+    assert rows["limit"]["schema"] == {"type": "integer", "format": "int32", "minimum": 1, "maximum": 500, "default": 50}
     assert rows["dir"]["schema"]["enum"] == ["asc", "desc"]
 
 

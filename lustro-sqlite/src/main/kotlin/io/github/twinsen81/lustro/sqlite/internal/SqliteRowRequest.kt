@@ -1,34 +1,40 @@
 package io.github.twinsen81.lustro.sqlite.internal
 
 import org.json.JSONObject
+import org.json.JSONTokener
 
 /**
  * The row and the values in the body of `POST edit` and `POST delete`. Each
  * name is found in the table's schema, and each value is bound.
+ *
+ * The route gives `rowid`, `key`, and `values` as the JSON text of their
+ * values, or `null` for one that the body does not have or that is `null`:
+ * `rowid` is a whole number or a string of one, and a declared field has one
+ * type. Each is parsed as Android's `JSONObject` reads a body.
  */
 internal object SqliteRowRequest {
-    fun target(body: JSONObject, table: Table, columns: List<Column>, rowid: String?): RowTarget {
-        val hasRowid = present(body, "rowid")
-        if (hasRowid == present(body, "key")) {
+    fun target(rowidJson: String?, keyJson: String?, table: Table, columns: List<Column>, rowid: String?): RowTarget {
+        val hasRowid = rowidJson != null
+        if (hasRowid == (keyJson != null)) {
             throw RouteException(if (hasRowid) "Name the row by rowid or by key, not both" else "rowid or key is required, to name the row", field = "rowid")
         }
-        return if (hasRowid) byRowid(body, table, columns, rowid) else byKey(body, table, columns)
+        return if (rowidJson != null) byRowid(rowidJson, table, columns, rowid) else byKey(keyJson!!, table, columns)
     }
 
-    fun values(body: JSONObject, columns: List<Column>): List<Pair<Column, Any?>> {
+    fun values(valuesJson: String, columns: List<Column>): List<Pair<Column, Any?>> {
         val given =
-            (body.opt("values") as? JSONObject)?.takeIf { it.length() > 0 }
+            (parse(valuesJson) as? JSONObject)?.takeIf { it.length() > 0 }
                 ?: throw RouteException("values is required, as a JSON object with at least one column and its value", field = "values")
         return given.keys().asSequence().map { name -> column(columns, name) to bindable(given, name, "values") }.toList()
     }
 
-    private fun byRowid(body: JSONObject, table: Table, columns: List<Column>, rowid: String?): RowTarget {
+    private fun byRowid(rowidJson: String, table: Table, columns: List<Column>, rowid: String?): RowTarget {
         if (rowid == null) {
             val key = names(primaryKey(columns))
             throw RouteException("${table.name} has no rowid: name the row by key, with the primary key's columns: $key", field = "rowid")
         }
         val id =
-            when (val value = body.get("rowid")) {
+            when (val value = parse(rowidJson)) {
                 is Int -> value.toLong()
                 is Long -> value
                 is String -> value.toLongOrNull()
@@ -37,10 +43,10 @@ internal object SqliteRowRequest {
         return RowTarget(table, "$rowid = ?", arrayOf(id), "rowid")
     }
 
-    private fun byKey(body: JSONObject, table: Table, columns: List<Column>): RowTarget {
+    private fun byKey(keyJson: String, table: Table, columns: List<Column>): RowTarget {
         val key = primaryKey(columns)
         if (key.isEmpty()) throw RouteException("${table.name} has no primary key: name the row by rowid", field = "key")
-        val given = body.opt("key") as? JSONObject
+        val given = parse(keyJson) as? JSONObject
         val names = given?.keys()?.asSequence()?.toList().orEmpty()
         val matched = key.map { column -> find(names, column.name) { it } }
         if (given == null || names.size != key.size || null in matched) {
@@ -68,7 +74,8 @@ internal object SqliteRowRequest {
             else -> throw RouteException("The value of $name must be a string, a number, or null; a blob is written with exec", field = field)
         }
 
-    private fun present(body: JSONObject, name: String): Boolean = body.has(name) && !body.isNull(name)
+    // The router has read the text as strict JSON, so it parses.
+    private fun parse(json: String): Any? = JSONTokener(json).nextValue()
 
     private fun primaryKey(columns: List<Column>): List<Column> = columns.filter { it.primaryKey > 0 }.sortedBy { it.primaryKey }
 

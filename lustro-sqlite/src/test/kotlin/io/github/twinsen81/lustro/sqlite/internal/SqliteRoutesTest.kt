@@ -347,8 +347,14 @@ class SqliteRoutesTest {
         assertError(400, "table", Fixtures.get(routes, "schema", "db" to "app"))
         assertError(404, "table", Fixtures.get(routes, "schema", "db" to "app", "table" to "nope"))
         assertError(404, "table", Fixtures.get(routes, "rows", "db" to "app", "table" to "nope"))
-        // The server answers a wrong method with 405, from sqlite.openapi.json.
-        assertNull(routes.handle(DebugRequest("rows", "POST")))
+        // The router checks the parameters before the handler looks for the database.
+        assertError(400, "table", Fixtures.get(routes, "rows", "db" to "nope"))
+        assertError(400, "table", Fixtures.get(routes, "schema", "db" to "nope", "table" to ""))
+        assertError(400, "limit", Fixtures.get(routes, "rows", "db" to "nope", "table" to "notes", "limit" to "0"))
+        // The router answers a wrong method with 405, and a path that the tab does not declare is the server's 404.
+        val wrongMethod = routes.handle(DebugRequest("rows", "POST"))!!
+        assertEquals(405, wrongMethod.status)
+        assertEquals("GET", wrongMethod.headers.get("Allow"))
         assertNull(routes.handle(DebugRequest("import", "POST")))
     }
 
@@ -372,6 +378,8 @@ class SqliteRoutesTest {
         assertTrue(exact.isNull("nextCursor"))
         // The default page is 50 rows, and a cursor past the end gives an empty last page.
         assertEquals(50, rows().getJSONArray("items").length())
+        // An empty limit, as from a variable with no value, takes the default too.
+        assertEquals(50, rows("limit" to "").getJSONArray("items").length())
         val past = rows("cursor" to CursorCodec.encode(10_000))
         assertEquals(0, past.getJSONArray("items").length())
         assertTrue(past.isNull("nextCursor"))

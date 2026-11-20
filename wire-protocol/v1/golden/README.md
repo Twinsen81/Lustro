@@ -8,7 +8,7 @@ directory (`../*.schema.json`) and the OpenAPI components of the Network tab
 (`lustro/openapi/network.openapi.json`), the Logs tab
 (`lustro-logs/src/main/assets/lustro/logs.openapi.json`), the Preferences
 tab (`lustro-prefs/openapi/prefs.openapi.json`), the SQLite
-tab (`lustro-sqlite/src/main/assets/lustro/sqlite.openapi.json`), the
+tab (`lustro-sqlite/openapi/sqlite.openapi.json`), the
 WorkManager tab (`lustro-work/src/main/assets/lustro/work.openapi.json`), and
 the Screen tab (`lustro-screen/src/main/assets/lustro/screen.openapi.json`).
 

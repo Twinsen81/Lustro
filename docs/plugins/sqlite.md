@@ -211,7 +211,8 @@ internal tables behind **Show internal**, and a ★ to pin a table to the top.
     `{ db, table, rowid }` or `{ db, table, key }`, with `values` for an edit.
 
 See [Agents and automation](../AGENTS.md#sqlite-tab-operations) and
-[`sqlite.openapi.json`](https://github.com/Twinsen81/Lustro/blob/main/lustro-sqlite/src/main/assets/lustro/sqlite.openapi.json).
+[`sqlite.openapi.json`](https://github.com/Twinsen81/Lustro/blob/main/lustro-sqlite/openapi/sqlite.openapi.json),
+the document that the tab's route declarations make.
 
 ## CLI examples
 
