@@ -95,9 +95,11 @@ The CLI resolves the endpoint+token in this order (first hit wins, per field):
 2. The `LUSTRO_TOKEN` environment variable (token only).
 3. With `--package <id>`, the app's prefs: `adb [-s <serial>] shell run-as <id> cat
    shared_prefs/lustro_debug.xml` on debuggable builds gives the token, and the host and port
-   of the app's last bind. Each process of the app writes its token when it makes it, and each
-   bind writes the host and port, so they are those of the app's current process, and of that
-   app only. This read takes about 0.2 s. The dump of the log in step 4 takes longer as the
+   of the app's last bind. They are the named app's own file. Each process of the app writes its
+   token when it makes it, and each bind writes the host and port, so while the app is in the
+   foreground and its server listens, they are the values of its current process. Before the
+   bind, or while the app is in the background, they are those of its last bind. This read takes
+   about 0.2 s. The dump of the log in step 4 takes longer as the
    device keeps more log, and on a physical device with full log buffers it can take 10 s. When
    the prefs give the token, the host, and the port, the CLI runs no `logcat`, also with
    `--token` or `LUSTRO_TOKEN`. When `run-as` fails, as for a build that is not debuggable,
@@ -148,7 +150,10 @@ A token from the ready line can be stale: when the app was installed again and t
 dropped the new line, the last line in the log is from the earlier install. A token from the
 prefs can be stale too, when a new process of an app that listens beyond loopback answers
 before it writes its new token. When the server answers `401` to a token that discovery found,
-the CLI reads the app's prefs and sends the request once more with the token there. `lustro open` compares the two before it prints the
+the CLI reads the app's prefs and sends the request once more with the token there. When that
+gets `401` too, the CLI looks for the cause with adb, as for a connection that fails: the port
+can be that of another app with Lustro, such as the one in the foreground. It prints the cause
+with its exit code, or else the `401` with exit 1. `lustro open` compares the two before it prints the
 URL, because the browser gets no second try.
 
 The port that discovery finds is the app's port on the device. The CLI reaches

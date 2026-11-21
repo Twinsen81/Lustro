@@ -111,15 +111,16 @@ def test_resolve_raises_clear_error_when_no_token(monkeypatch):
     assert "setprop log.tag.LustroToken I" in msg
 
 
-def test_resolve_run_as_fallback(monkeypatch):
-    monkeypatch.setattr(discovery, "discover_from_logcat", lambda device=None, package=None: None)
+def test_resolve_with_package_takes_the_endpoint_from_the_prefs(monkeypatch):
+    monkeypatch.setattr(
+        discovery, "discover_from_logcat", lambda device=None, package=None: pytest.fail("read the log")
+    )
     monkeypatch.setattr(
         discovery,
         "read_prefs",
         lambda package, device=None: discovery.Prefs("ratok", "127.0.0.1", 8080),
     )
-    ep = resolve(env={}, package="com.example.app")
-    assert ep.token == "ratok"
+    assert resolve(env={}, package="com.example.app") == Endpoint("127.0.0.1", 8080, "ratok")
 
 
 def test_discover_from_logcat_parses_subprocess_output(monkeypatch):
@@ -319,9 +320,9 @@ def test_resolve_reads_the_prefs_of_the_foreground_app_when_the_log_has_no_line(
     assert seen == ["com.example.app"]
 
 
-def test_resolve_prefers_package_over_the_foreground_app(monkeypatch):
+def test_resolve_with_package_reads_its_prefs_and_not_those_of_the_foreground_app(monkeypatch):
     monkeypatch.setattr(discovery, "discover_from_logcat", lambda device=None, package=None: None)
-    monkeypatch.setattr(discovery, "foreground_package", lambda device=None: "com.other.app")
+    monkeypatch.setattr(discovery, "foreground_package", lambda device=None: pytest.fail("asked for the foreground app"))
     seen = []
     monkeypatch.setattr(
         discovery, "read_prefs", lambda package, device=None: seen.append(package) or discovery.Prefs("t", "h", 1)

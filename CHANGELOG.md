@@ -1324,9 +1324,10 @@ see [DECISIONS.md](DECISIONS.md).
   the port, and each try of `lustro ready` paid it again. Now, with
   `--package`, the CLI first reads the app's prefs, `adb shell run-as <id> cat
   shared_prefs/lustro_debug.xml`, in about 0.2 s. They hold the token, and the
-  host and port of the app's last bind: each process of the app writes its
-  token, and each bind its host and port, so they are those of the current
-  process, and of the named app only. When they give all three, the CLI runs
+  host and port of the app's last bind, in the named app's own file: each
+  process of the app writes its token, and each bind its host and port, so
+  while the app is in the foreground and its server listens, they are the
+  values of its current process. When they give all three, the CLI runs
   no `logcat`, also with `--token` or `LUSTRO_TOKEN`. The log line of the
   app's current process gives only what the prefs do not: when `run-as`
   fails, as for a build that is not debuggable, or before the app writes its
@@ -1337,7 +1338,12 @@ see [DECISIONS.md](DECISIONS.md).
   writes its new token: the client then reads the prefs again and sends the
   request once more, and `lustro ready` now tries again after a `401` for a
   token that discovery found, where it stopped with exit 1. A `401` for
-  `--token` or `LUSTRO_TOKEN` still ends the wait at once. Without
+  `--token` or `LUSTRO_TOKEN` still ends the wait at once. A `401` for a
+  token that discovery found, after the client's second read of the prefs,
+  now gets the cause from adb, in every command and at the end of `ready`:
+  the prefs can name a port where another app with Lustro answers, such as
+  the one in the foreground, and the CLI printed `401 unauthorized` with exit
+  1 where the cause is that the app is not in the foreground (exit 6). Without
   `--package`, discovery does not change. Checked on a physical device (API
   37) with the sample, with 5 MiB of the main log buffer readable: `lustro
   --device <serial> --package <id> meta` took 0.35 to 0.39 s in five runs, and

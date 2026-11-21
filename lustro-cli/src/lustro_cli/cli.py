@@ -594,8 +594,10 @@ def failure(args: argparse.Namespace, exc: Exception) -> Tuple[int, str]:
     """The exit code and the message of a command that failed with ``exc``.
 
     A connection that fails gets the cause that adb finds, as :func:`_cause_from_adb`
-    describes. A forward that adb can't make gets only the device's cause, such as
-    more than one device: the app's state does not stop a forward.
+    describes, and so does a ``401`` for a token that discovery found: the prefs or the
+    log line can name a port where another app's Lustro server answers, such as the app
+    in the foreground on the same port. A forward that adb can't make gets only the
+    device's cause, such as more than one device: the app's state does not stop a forward.
     """
     if isinstance(exc, UsageError):
         return exitcodes.USAGE, str(exc)
@@ -608,6 +610,10 @@ def failure(args: argparse.Namespace, exc: Exception) -> Tuple[int, str]:
         if exc.error == "connection_failed":
             cause = _cause_from_adb(args)
             return (exitcodes.NOT_REACHABLE, str(exc)) if cause is None else (cause.exit_code, str(cause))
+        if exc.status == 401 and _token_was_discovered(args):
+            cause = _cause_from_adb(args)
+            if cause is not None:
+                return cause.exit_code, "{} The server on the app's port answered: {}".format(cause, exc)
         # A search that the app rejects is a usage error, like a bad flag.
         return (exitcodes.USAGE if _is_search_error(exc) else exitcodes.ERROR), str(exc)
     raise exc

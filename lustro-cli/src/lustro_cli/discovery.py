@@ -546,9 +546,11 @@ def resolve(
         return r_token is None or r_host is None or r_port is None
 
     # With --package, the app's prefs: one run-as read, where the dump of the log
-    # takes seconds on a device with a full log buffer. Each process of the app
-    # writes its token, and each bind its host and port, so they are the current
-    # process's, and the named app's own. A build that is not debuggable fails
+    # takes seconds on a device with a full log buffer. They are the named app's
+    # own. Each process of the app writes its token, and each bind its host and
+    # port, so while its server listens they are the current process's; before
+    # that, a connection to them fails or gets 401, and the caller tries again or
+    # prints the cause. A build that is not debuggable fails
     # run-as, and an app that has not written them yet has none: the log line
     # gives those.
     if package and missing():

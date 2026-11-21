@@ -251,6 +251,38 @@ def test_ready_tries_again_after_a_401_for_the_token_of_the_apps_last_process(se
     assert adb.count(RUN_AS) == 3
 
 
+def test_ready_without_package_tries_again_after_a_401_for_a_token_from_the_log(server, monkeypatch, capsys):
+    # The last line in the log is from an earlier start, with a token that is no longer
+    # valid; the new start logs a line with the current one.
+    port = server.server_address[1]
+    adb = FakeAdb(monkeypatch, {LOGCAT: lambda earlier: _ready_line(port, "old" if earlier < 2 else TOKEN)})
+    assert cli.main(["ready", "--timeout", "5"]) == exitcodes.OK
+    assert capsys.readouterr().out == "http://127.0.0.1:{}\n".format(port)
+    assert adb.count(LOGCAT) == 3
+
+
+def test_ready_with_a_401_until_the_timeout_prints_the_cause_from_adb(server, monkeypatch, capsys):
+    # The app's prefs name the port where another app with Lustro, now in the foreground,
+    # listens: that server answers 401 to the app's token on each try.
+    port = server.server_address[1]
+    FakeAdb(monkeypatch, dict(HEALTHY, **{RUN_AS: _prefs(port, "old"), DUMPSYS: _resumed("com.other.app")}))
+    started = time.monotonic()
+    assert _ready("--package", PACKAGE) == exitcodes.NOT_REACHABLE
+    assert time.monotonic() - started >= 0.2
+    err = capsys.readouterr().err
+    assert err.startswith("error: {} runs, but com.other.app is in the foreground".format(PACKAGE)), err
+    assert "answered: 401 unauthorized" in err
+
+
+def test_ready_with_a_401_until_the_timeout_and_no_cause_from_adb_exits_1(server, monkeypatch, capsys):
+    port = server.server_address[1]
+    FakeAdb(monkeypatch, dict(HEALTHY, **{RUN_AS: _prefs(port, "old")}))
+    started = time.monotonic()
+    assert _ready("--package", PACKAGE) == exitcodes.ERROR
+    assert time.monotonic() - started >= 0.2
+    assert capsys.readouterr().err.startswith("error: 401 unauthorized: missing token")
+
+
 def test_ready_json_has_the_endpoint_and_the_versions_and_no_token(server, capsys):
     port = server.server_address[1]
     assert _ready("--port", str(port), "--token", TOKEN, "--json") == exitcodes.OK
@@ -581,6 +613,21 @@ def test_a_command_with_the_token_of_the_apps_last_process_reads_the_prefs_again
     assert json.loads(capsys.readouterr().out)["libraryVersion"] == "0.1.0"
     assert adb.count(RUN_AS) == 2
     assert adb.count(LOGCAT_PIDS) == 0
+
+
+def test_a_command_with_a_401_for_a_discovered_token_gets_the_cause_from_adb(server, monkeypatch, capsys):
+    port = server.server_address[1]
+    FakeAdb(monkeypatch, dict(HEALTHY, **{RUN_AS: _prefs(port, "old"), DUMPSYS: _resumed("com.other.app")}))
+    assert cli.main(["meta", "--package", PACKAGE]) == exitcodes.NOT_REACHABLE
+    assert capsys.readouterr().err.startswith("error: {} runs, but com.other.app is in the foreground".format(PACKAGE))
+
+
+def test_a_command_with_a_401_for_the_token_flag_gets_no_cause_from_adb(server, monkeypatch, capsys):
+    adb = FakeAdb(monkeypatch, dict(HEALTHY, **{DUMPSYS: _resumed("com.other.app")}))
+    argv = ["meta", "--package", PACKAGE, "--port", str(server.server_address[1]), "--token", "wrong"]
+    assert cli.main(argv) == exitcodes.ERROR
+    assert capsys.readouterr().err.startswith("error: 401 unauthorized")
+    assert "adb get-state" not in adb.calls
 
 
 def test_an_error_response_exits_1(server, capsys):
