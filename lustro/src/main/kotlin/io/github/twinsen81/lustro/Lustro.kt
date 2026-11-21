@@ -25,7 +25,6 @@ import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicInteger
 import okhttp3.Interceptor
 import okhttp3.WebSocket
 
@@ -118,9 +117,10 @@ public class Lustro internal constructor(
     private var bindRetry: ScheduledFuture<*>? = null
     private var bindRetriesLeft = 0
 
-    // The background drains that have not finished: each waits for the in-flight
-    // requests of a server that no longer listens.
-    private val drainsInProgress = AtomicInteger()
+    // The servers whose background drain has not finished: each no longer listens, and
+    // waits for its in-flight requests. A foreground during a drain binds a new server,
+    // so stop() closes these too. Guarded by the monitor.
+    private val draining = mutableSetOf<LustroServer>()
 
     // The process-lifecycle observer installed by start(); foreground binds,
     // background drains+closes. Held so stop() can remove it.
@@ -240,7 +240,10 @@ public class Lustro internal constructor(
         }
     }
 
-    /** DISARMS the server: removes the lifecycle observer and closes the socket. Idempotent. */
+    /**
+     * DISARMS the server: removes the lifecycle observer, and closes the socket and the
+     * connections of a server that still drains after a background. Idempotent.
+     */
     public fun stop() {
         synchronized(this) {
             if (!armed) return
@@ -251,6 +254,7 @@ public class Lustro internal constructor(
             }
             cancelBindRetry()
             closeServer()
+            draining.forEach(::close)
             notifyTabs { it.onStop() }
             armed = false
         }
@@ -287,7 +291,7 @@ public class Lustro internal constructor(
                 if (!armed) return
                 cancelBindRetry()
                 val srv = server ?: return
-                drainsInProgress.incrementAndGet()
+                draining.add(srv)
                 srv.beginDrain()
                 srv
             }
@@ -332,7 +336,7 @@ public class Lustro internal constructor(
     internal fun isBound(): Boolean = server?.isAlive == true
 
     /** True while a server that stopped listening waits for its in-flight requests. Exposed for tests. */
-    internal fun isDraining(): Boolean = drainsInProgress.get() > 0
+    internal fun isDraining(): Boolean = synchronized(this) { draining.isNotEmpty() }
 
     /** The actually-bound port, or `-1` when unbound. Exposed for tests. */
     internal fun boundPort(): Int = server?.listeningPort ?: -1
@@ -509,13 +513,18 @@ public class Lustro internal constructor(
      */
     private fun closeServer() {
         val srv = server ?: return
+        close(srv)
+        server = null
+    }
+
+    /** Closes [srv] and its connections at once, and cancels its handlers. */
+    private fun close(srv: LustroServer) {
         try {
             srv.stop()
             srv.shutdownLimiter()
         } catch (e: Throwable) {
             Log.w(TAG, "Error stopping debug server", e)
         }
-        server = null
     }
 
     /**
@@ -552,7 +561,7 @@ public class Lustro internal constructor(
         } catch (e: Throwable) {
             Log.w(TAG, "Error rebinding debug server after drain", e)
         } finally {
-            drainsInProgress.decrementAndGet()
+            synchronized(this) { draining.remove(toClose) }
         }
     }
 

@@ -251,6 +251,44 @@ class LustroDrainTest {
         assertEquals("the new server answers", 200, code)
     }
 
+    @Test
+    fun `stop closes a server that still drains after a foreground bound a new one`() {
+        val handlerStarted = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val inFlight = AtomicInteger(0)
+        val tabRegistry = DebugTabRegistry().apply { addTab(BlockingTab(handlerStarted, release, inFlight)) }
+        val config = DebugConfig.builder().serverPort(freePort()).build()
+        val lustro = Lustro(app, config, tabRegistry, registry).also { started.add(it) }
+        assertEquals(LustroStatus.ENABLED, lustro.start())
+        registry.currentState = Lifecycle.State.STARTED
+        val request = SlowRequest(lustro.boundPort(), LustroTokenStore(app).token())
+        try {
+            assertTrue("handler did not start in time", handlerStarted.await(5, TimeUnit.SECONDS))
+            registry.currentState = Lifecycle.State.CREATED
+            registry.currentState = Lifecycle.State.STARTED
+            assertTrue(lustro.isDraining())
+
+            // stop() must close the old server too, not leave its handler running until
+            // the end of its drain: the handler is interrupted, and its connection closes.
+            val stopCall = System.currentTimeMillis()
+            lustro.stop()
+            request.join()
+            assertTrue(
+                "the request on the draining server must end at stop()",
+                System.currentTimeMillis() - stopCall < 2_000,
+            )
+            assertEquals("the handler must not answer after stop()", -1, request.code)
+            val deadline = System.currentTimeMillis() + 2_000
+            while (inFlight.get() > 0 && System.currentTimeMillis() < deadline) {
+                Thread.sleep(10)
+            }
+            assertEquals("the handler must be interrupted at stop()", 0, inFlight.get())
+            assertFalse(lustro.isBound())
+        } finally {
+            release.countDown()
+        }
+    }
+
     /** A tab whose handler ignores interrupts and cancellation until [release] opens. */
     private class StuckTab(private val release: CountDownLatch) : DebugTab() {
         override val id: String = "stuck"
