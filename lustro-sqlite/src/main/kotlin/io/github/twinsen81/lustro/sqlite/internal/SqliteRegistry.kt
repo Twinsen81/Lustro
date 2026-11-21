@@ -7,7 +7,10 @@ import io.github.twinsen81.lustro.SensitiveKeys
 import io.github.twinsen81.lustro.sqlite.SqliteDb
 import io.github.twinsen81.lustro.sqlite.SqliteValuePolicy
 import io.github.twinsen81.lustro.sqlite.TableHint
+import java.io.DataInputStream
 import java.io.File
+import java.io.FileInputStream
+import java.io.IOException
 import java.util.Locale
 
 /** A database that the routes can read: a registered one, or a file found on disk. */
@@ -50,15 +53,18 @@ internal class DbEntry(
  * [noBackupDirectory] is named by its file name too, unless a registration or a
  * file in [directory] has that name: then it is `no_backup/<file name>`.
  *
- * [isDatabase] decides whether a file is a database. It runs only on the files that no
- * registration stands for, so the tab opens the app's own databases only through the
- * app's handles.
+ * Discovery decides whether a file is a database only for the files that no registration
+ * stands for, so the tab opens the app's own databases only through the app's handles. A
+ * file that [openFiles] says the process holds open goes to [probe], which asks SQLite. The
+ * tab reads the header of any other file itself, and never gives SQLite a file that is not
+ * a database: some builds of SQLite write the first page of such a file to logcat.
  */
 internal class SqliteRegistry(
     databases: List<SqliteDb>,
     private val directory: File?,
     private val noBackupDirectory: File? = null,
-    private val isDatabase: (File) -> Boolean = ::openable,
+    private val openFiles: () -> OpenFiles = OpenFiles::ofProcess,
+    private val probe: (File) -> Boolean = ::openable,
 ) {
     private val registered =
         databases.map { DbEntry(it.name, registered = true, it.writable, it.tableHints, it.valuePolicy, it.source, it.onWrite, it.unmasked) }
@@ -75,6 +81,10 @@ internal class SqliteRegistry(
         if (primary.isEmpty() && secondary.isEmpty()) return emptyList()
         val names = registered.mapTo(HashSet()) { it.name }
         val covered = registeredFiles()
+        // Once per listing, before the first header read: a read's close() drops the locks only
+        // of a file that the process opened in the meantime.
+        val open by lazy(LazyThreadSafetyMode.NONE) { openFiles() }
+        val isDatabase = { file: File -> file.length() >= HEADER_BYTES && if (open.holds(file)) probe(file) else hasHeader(file) }
         val inDirectory = primary.filter { it.name !in names && it !in covered && isDatabase(it) }.sortedBy { it.name }
         val taken = names + inDirectory.map { it.name }
         val inNoBackup = secondary.filter { it !in covered && isDatabase(it) }.sortedBy { it.name }
@@ -105,25 +115,39 @@ internal class SqliteRegistry(
                 }
         }
 
-    private companion object {
+    internal companion object {
         // The name of a file in noBackupFilesDir whose file name is taken starts with it.
-        const val NO_BACKUP_PREFIX = "no_backup/"
+        private const val NO_BACKUP_PREFIX = "no_backup/"
 
         // SQLite's own files next to a database (rollback journal, WAL, shared memory, super-journal),
         // and lock files, which a process can hold a lock on.
-        val NOT_DATABASES = Regex("""(-journal|-wal|-shm|-mj[0-9A-Fa-f]+|\.lck|\.lock)$""")
+        private val NOT_DATABASES = Regex("""(-journal|-wal|-shm|-mj[0-9A-Fa-f]+|\.lck|\.lock)$""")
 
         // The size of a database file's header: a file of a database has at least that much.
-        const val HEADER_BYTES = 100L
+        private const val HEADER_BYTES = 100L
+
+        // The start of every database file: "SQLite format 3" and a zero byte.
+        private val MAGIC = "SQLite format 3\u0000".toByteArray(Charsets.US_ASCII)
 
         /**
-         * Whether [file] is a SQLite database. SQLite reads it, never a stream of the tab's
-         * own: on Android, a close() of any descriptor of a file drops every POSIX lock that
-         * the process holds on it, also those of the app's SQLite connections, and SQLite
-         * works around that only for the descriptors that it opens itself.
+         * Whether [file] starts as a database file does. Only for a file that the process does
+         * not hold open: on Android, a close() of any descriptor of a file drops every POSIX
+         * lock that the process holds on it, also those of the app's SQLite connections.
+         */
+        private fun hasHeader(file: File): Boolean =
+            try {
+                DataInputStream(FileInputStream(file)).use { input -> ByteArray(MAGIC.size).also(input::readFully).contentEquals(MAGIC) }
+            } catch (_: IOException) {
+                // Shorter than the header, or gone.
+                false
+            }
+
+        /**
+         * Whether SQLite can read [file], for a file that the process holds open. SQLite opens
+         * it, never a stream of the tab's own, because SQLite keeps the locks of its other
+         * connections to the file when it closes its own descriptor.
          */
         fun openable(file: File): Boolean {
-            if (file.length() < HEADER_BYTES) return false
             return try {
                 FileSource(file).open().use { connection ->
                     connection.query("PRAGMA schema_version", emptyArray(), CancellationSignal()).use { it.moveToFirst() }
