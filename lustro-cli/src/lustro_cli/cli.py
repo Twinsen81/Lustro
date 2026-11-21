@@ -784,19 +784,27 @@ def _adb_forward(local_port: int, device_port: int, device: Optional[str]) -> Tu
     return local_port, None
 
 
-def _forward_to_app(device_port: int, device: Optional[str]) -> Tuple[int, Optional[str]]:
+def _forward_to_app(
+    device_port: int, device: Optional[str], *, same_port_first: bool = False
+) -> Tuple[int, Optional[str]]:
     """The local port of a forward to the app's ``device_port`` on the selected
-    device: the first one there is, else a new one on the same port number, else
-    on a free port that adb chooses, as when another program or another device's
-    forward holds the app's port. Returns the error of the last forward when none
-    works. Raises FileNotFoundError when adb isn't installed."""
+    device: the first one there is, else a new one on a free port that adb chooses.
+    Returns the error of the last forward when none works. Raises FileNotFoundError
+    when adb isn't installed.
+
+    A new forward stays until adb restarts, so it takes its local port from any
+    tool that binds the port later, such as a proxy or a development server on
+    8080. Only ``open``, whose URL is for a person, tries the same port number
+    first (``same_port_first``): that gives a URL that does not change. A script
+    finds the forward in ``adb forward --list``."""
     forwarded = forwarded_ports(device_port, device)
     if forwarded:
         return forwarded[0], None
-    local_port, err = _adb_forward(device_port, device_port, device)
-    if err:
-        local_port, err = _adb_forward(0, device_port, device)
-    return local_port, err
+    if same_port_first:
+        local_port, err = _adb_forward(device_port, device_port, device)
+        if not err:
+            return local_port, None
+    return _adb_forward(0, device_port, device)
 
 
 def _no_forward_error(device_port: int, err: str) -> str:
@@ -840,7 +848,7 @@ def _forward_local_port(args: argparse.Namespace, device_port: int) -> Optional[
         return device_port if args.local_port is None else args.local_port
     try:
         if args.local_port is None:
-            local_port, err = _forward_to_app(device_port, args.device)
+            local_port, err = _forward_to_app(device_port, args.device, same_port_first=True)
         else:
             # --local-port 0 keeps an existing forward to the app.
             forwarded = forwarded_ports(device_port, args.device)
@@ -924,10 +932,15 @@ def cmd_ready(args: argparse.Namespace) -> int:
 
     Each try runs discovery again, because the app logs its ready line only when it
     starts, and a line from an earlier start names a port that does not answer yet.
-    The adb checks of the cause run once, at the end. An error response that a new
-    try can't change, such as a 401, ends the wait.
+    The adb checks of the cause run at the end. With --package, they also run once
+    after the first try that fails, and an app that is not installed, or a build
+    without the runtime, ends the wait at once: the installed APK does not change
+    while ``ready`` waits. Without --package, the app is the one in the foreground,
+    which changes while the app starts. An error response that a new try can't
+    change, such as a 401, ends the wait.
     """
     deadline = time.monotonic() + args.timeout
+    checked_early = not args.package
     while True:
         try:
             client, device_port = _client_through_forward(args, check_app=False)
@@ -955,6 +968,12 @@ def cmd_ready(args: argparse.Namespace) -> int:
                 and exc.status != 429
             ):
                 break
+            if not checked_early:
+                checked_early = True
+                cause = _cause_from_adb(args)
+                if cause is not None and cause.exit_code in (exitcodes.NOT_INSTALLED, exitcodes.NO_RUNTIME):
+                    print("error: {}".format(cause), file=sys.stderr)
+                    return cause.exit_code
         else:
             _warn_if_newer_protocol(meta)
             if args.json:
