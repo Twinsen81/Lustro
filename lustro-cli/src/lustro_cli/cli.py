@@ -594,8 +594,10 @@ def failure(args: argparse.Namespace, exc: Exception) -> Tuple[int, str]:
     """The exit code and the message of a command that failed with ``exc``.
 
     A connection that fails gets the cause that adb finds, as :func:`_cause_from_adb`
-    describes. A forward that adb can't make gets only the device's cause, such as
-    more than one device: the app's state does not stop a forward.
+    describes, and so does a ``401`` for a token that discovery found: the prefs or the
+    log line can name a port where another app's Lustro server answers, such as the app
+    in the foreground on the same port. A forward that adb can't make gets only the
+    device's cause, such as more than one device: the app's state does not stop a forward.
     """
     if isinstance(exc, UsageError):
         return exitcodes.USAGE, str(exc)
@@ -608,6 +610,10 @@ def failure(args: argparse.Namespace, exc: Exception) -> Tuple[int, str]:
         if exc.error == "connection_failed":
             cause = _cause_from_adb(args)
             return (exitcodes.NOT_REACHABLE, str(exc)) if cause is None else (cause.exit_code, str(cause))
+        if exc.status == 401 and _token_was_discovered(args):
+            cause = _cause_from_adb(args)
+            if cause is not None:
+                return cause.exit_code, "{} The server on the app's port answered: {}".format(cause, exc)
         # A search that the app rejects is a usage error, like a bad flag.
         return (exitcodes.USAGE if _is_search_error(exc) else exitcodes.ERROR), str(exc)
     raise exc
@@ -944,15 +950,15 @@ def cmd_ready(args: argparse.Namespace) -> int:
     """Wait until the app's server answers ``GET _meta``, print the endpoint, and exit 0.
     At the timeout, print the cause, from adb, and exit with its code.
 
-    Each try runs discovery again, because the app logs its ready line only when it
-    starts, and a line from an earlier start names a port that does not answer yet.
+    Each try runs discovery again, because the app writes its endpoint only when it
+    starts, and the one of an earlier start names a port that does not answer yet.
     The adb checks of the cause run at the end. With --package, they also run once
     after the first try that fails, again on each try until adb reaches the device
     and its package manager answers, and an app that
     is not installed, or a build without the runtime, ends the wait at once: the
     installed APK does not change while ``ready`` waits. Without --package, the app is the one in the foreground,
     which changes while the app starts. An error response that a new try can't
-    change, such as a 401, ends the wait.
+    change, such as a 401 for a token from --token or LUSTRO_TOKEN, ends the wait.
     """
     deadline = time.monotonic() + args.timeout
     checked_early = not args.package
@@ -974,13 +980,16 @@ def cmd_ready(args: argparse.Namespace) -> int:
                 if device_port is not None:
                     other_server = "port {} of the device (through {})".format(device_port, client.base_url)
             # An error response other than a busy or failing server, such as a 401 for a
-            # --token that is not the app's, does not change when ready tries again.
+            # --token that is not the app's, does not change when ready tries again. A
+            # discovered token does: the prefs keep the token of the app's last process
+            # until the new process writes its own.
             if (
                 other_server is None
                 and isinstance(exc, LustroError)
                 and exc.status is not None
                 and exc.status < 500
                 and exc.status != 429
+                and not (exc.status == 401 and _token_was_discovered(args))
             ):
                 break
             if not checked_early:
@@ -1909,7 +1918,7 @@ def _global_options() -> argparse.ArgumentParser:
     )
     group.add_argument("--token", default=argparse.SUPPRESS, help="bearer token (else $LUSTRO_TOKEN, else discovery)")
     group.add_argument("--device", default=argparse.SUPPRESS, metavar="SERIAL", help="adb device serial (adb -s)")
-    group.add_argument("--package", default=argparse.SUPPRESS, help="app package id (for run-as token discovery)")
+    group.add_argument("--package", default=argparse.SUPPRESS, help="app package id: discovery reads its prefs through run-as first, then its own log line")
     group.add_argument("--json", action="store_true", default=argparse.SUPPRESS, help="JSON output")
     return parent
 

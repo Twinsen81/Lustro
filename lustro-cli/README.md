@@ -93,10 +93,24 @@ The CLI resolves the endpoint+token in this order (first hit wins, per field):
 
 1. Explicit `--token` / `--host` / `--port`.
 2. The `LUSTRO_TOKEN` environment variable (token only).
-3. The `LustroToken` logcat ready line — `adb [-s <serial>] logcat -d -s
+3. With `--package <id>`, the app's prefs: `adb [-s <serial>] shell run-as <id> cat
+   shared_prefs/lustro_debug.xml` on debuggable builds gives the token, and the host and port
+   of the app's last bind. They are the named app's own file. Each process of the app writes its
+   token when it makes it, and each bind writes the host and port, so while the app is in the
+   foreground and its server listens, they are the values of its current process. Before the
+   bind, or while the app is in the background, they are those of its last bind. This read takes
+   about 0.2 s. The dump of the log in step 4 takes longer as the
+   device keeps more log, and on a physical device with full log buffers it can take 10 s. When
+   the prefs give the token, the host, and the port, the CLI runs no `logcat`, also with
+   `--token` or `LUSTRO_TOKEN`. When `run-as` fails, as for a build that is not debuggable,
+   or the prefs do not have all three, as before the app writes them, the CLI goes to step 4
+   for the rest. When the app does not run, its prefs keep the values of its last process: the
+   connection then fails, and the CLI prints the cause.
+4. The `LustroToken` logcat ready line: `adb [-s <serial>] logcat -d -s
    LustroToken` is parsed for the most recent
-   `Lustro ready endpoint=http://<host>:<port> token=<token>`. This is the
-   first source for host/port/token, **including a fallback port**. With
+   `Lustro ready endpoint=http://<host>:<port> token=<token>`. Without
+   `--package`, this is the first source for host/port/token, **including a fallback port**,
+   and the last line counts, whatever app logged it. With
    `--package <id>`, only the lines of that app's current process count: the CLI
    gets its process IDs with `adb shell pidof <id>`, reads `adb logcat -d -v
    threadtime -s LustroToken`, which shows the process ID of each line, and takes
@@ -104,14 +118,11 @@ The CLI resolves the endpoint+token in this order (first hit wins, per field):
    build of the same app, and the line of an earlier process of the app are not
    used. That line can name a port that the app no longer uses, and a token that
    is no longer valid: a server that listens beyond loopback gets a new token in
-   each process. When the app does not run, or its current process logged no
-   ready line, the CLI goes to step 4. If that gives no token, it prints the
-   cause. Without `--package`, the last line counts, whatever app logged it.
-4. (best effort) `adb [-s <serial>] shell run-as <pkg> cat shared_prefs/lustro_debug.xml`
-   on debuggable builds: the token, and the host and port of the app's last bind. `<pkg>` is
-   `--package <id>`, or else the app in the foreground, because Lustro listens only while its
-   app is in the foreground. This finds the app on a device that drops Info logs, such as one
-   with `adb shell getprop log.tag` set to `E`, where the ready line never reaches logcat.
+   each process. If this gives no token either, the CLI prints the cause.
+5. (best effort, without `--package`) the `run-as` read of step 3, of the app in the
+   foreground, because Lustro listens only while its app is in the foreground. This finds the
+   app on a device that drops Info logs, such as one with `adb shell getprop log.tag` set to
+   `E`, where the ready line never reaches logcat.
 
 If none of these determine the token, the CLI looks for the cause with adb, and
 prints it and exits with its code (see [Exit codes](#exit-codes)). It checks, in
@@ -129,16 +140,20 @@ before the app added Lustro: install a debug build that uses the Lustro
 artifacts. Without `--package`, the CLI checks only the runtime of the app in the
 foreground, which can be another app, such as the launcher when your app is not
 running. Pass `--package` in a script, so that the CLI checks your app. A
-connection that fails gets the same checks, because a ready line from an earlier
-start of the app gives a token and a port that no longer answer. A command with
+connection that fails gets the same checks, because a ready line or the prefs from an
+earlier start of the app give a token and a port that no longer answer. A command with
 `--port` gets them only with `--device` or `--package`, which say that the app is
 on a device, for example behind a forward that the script made itself. Without
 them, the server of `--port` can be on this computer, and adb finds nothing about it.
 
 A token from the ready line can be stale: when the app was installed again and the device
-dropped the new line, the last line in the log is from the earlier install. When the server
-answers `401` to a token that discovery found, the CLI reads the app's prefs and sends the
-request once more with the token there. `lustro open` compares the two before it prints the
+dropped the new line, the last line in the log is from the earlier install. A token from the
+prefs can be stale too, when a new process of an app that listens beyond loopback answers
+before it writes its new token. When the server answers `401` to a token that discovery found,
+the CLI reads the app's prefs and sends the request once more with the token there. When that
+gets `401` too, the CLI looks for the cause with adb, as for a connection that fails: the port
+can be that of another app with Lustro, such as the one in the foreground. It prints the cause
+with its exit code, or else the `401` with exit 1. `lustro open` compares the two before it prints the
 URL, because the browser gets no second try.
 
 The port that discovery finds is the app's port on the device. The CLI reaches
@@ -220,8 +235,8 @@ lustro ready --package com.example.app --timeout 30   # prints http://127.0.0.1:
 ```
 
 Each try runs discovery again and sends `GET /api/v1/_meta`, once a second,
-because the app logs its ready line only when its server starts, and a line from
-an earlier start names a token and a port that may not answer. When the server
+because the app logs its ready line and writes its prefs only when its server starts, and
+those of an earlier start name a token and a port that may not answer. When the server
 answers, `ready` prints the endpoint that the CLI reaches it at and exits 0;
 `--json` prints `{"endpoint", "libraryVersion", "protocolVersion"}`, without the
 token. When the time is over, it prints the cause and exits with its code: no
@@ -239,7 +254,8 @@ app before `ready`. Without `--package`, the checks run only at the end,
 because the app in the foreground changes while the app starts, and it can be
 the launcher. An error response that a new try
 can't change, such as a `401` for a `--token` that is not the app's, ends the
-wait at once with exit 1; `ready` tries again after a `5xx` or a `429`.
+wait at once with exit 1; `ready` tries again after a `5xx` or a `429`, and after
+a `401` for a token that discovery found, which the next try reads again.
 
 A `404` for `GET /api/v1/_meta` is not from Lustro, which always has that route.
 It comes from another server on the port, such as the debug server of another

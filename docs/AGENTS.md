@@ -113,25 +113,32 @@ before or after the command.
 
 **Global flags.** `--json` prints JSON. `--device SERIAL` selects the device (see below).
 `--token TOKEN`, `--host HOST`, and `--port N` set the token and the endpoint, so the CLI does not
-look for them. Without `--token`, the CLI takes the `LUSTRO_TOKEN` environment variable, then the
-`LustroToken` log line, then the app's private `lustro_debug` prefs file, which it reads with
-`adb shell run-as`. `--package PKG` names the app for that last step; without it, the CLI reads
-the app in the foreground. That step finds the token on a device that drops Info log lines.
-`--package` also limits the log line to the current process of that app: the CLI gets its process
-ID with `adb shell pidof`, and keeps the lines of that process in `adb logcat -v threadtime`. Without it, the CLI takes the last line in the log, and that line can be
-another app's, such as another build of the same app: pass `--package` when the device has more
-than one app with Lustro.
+look for them. Without `--token`, the CLI takes the `LUSTRO_TOKEN` environment variable. With
+`--package PKG`, it then reads the app's private `lustro_debug` prefs file with `adb shell run-as`:
+the token, and the host and port of the app's last bind. While the app is in the foreground and its
+server listens, these are the values of its current process; before the bind they are those of the
+last one.
+When they give all three, the CLI runs no `logcat`, also with `--token`: a dump of the log takes
+seconds on a device with full log buffers, and the prefs read takes about 0.2 s. Only for what
+the prefs do not give, as for a build that is not debuggable, where `run-as` fails, the CLI reads
+the `LustroToken` log line of the current process of that app: it gets its process ID with
+`adb shell pidof`, and keeps the lines of that process in `adb logcat -v threadtime`. Without
+`--package`, the CLI takes the last `LustroToken` log line, then the prefs of the app in the
+foreground, which finds the token on a device that drops Info log lines. That last log line can be
+another app's, such as another build of the same app: pass `--package` in each command, and
+always when the device has more than one app with Lustro.
 
 **Wait until the app is ready.** After a script starts the app, `lustro ready --package <package>
 --timeout 30` runs discovery and `GET /api/v1/_meta` again, once a second, until the server
-answers, and prints the endpoint that the CLI reaches it at. A ready line from an earlier start of
-the app names a token and a port that may not answer, so the CLI does not trust the first line
-that it finds. When the time is over, it prints the cause and exits with its code (see [Exit
+answers, and prints the endpoint that the CLI reaches it at. The prefs or a ready line from an
+earlier start of the app name a token and a port that may not answer, so the CLI does not trust
+the first endpoint that it finds. When the time is over, it prints the cause and exits with its code (see [Exit
 codes](#exit-codes)). With `--package`, it checks the cause once after the first try that fails
 too (while a device starts, once adb reaches it and its package manager answers), and stops at once with exit 4 for an app that is not installed or exit 5 for a build without
 the runtime: the installed APK does not change while it waits. For every other cause, such as an
 app that is not running yet, it waits. So install the app before `ready`: an `adb install` that
-runs at the same time can end it at once with exit 4. A `401` or another `4xx` other than `429` ends the wait at once with exit 1. Pass `--package`: without it, the CLI checks only the app in the
+runs at the same time can end it at once with exit 4. A `401` for `--token` or `LUSTRO_TOKEN`, or another `4xx` other than `429`, ends the wait at once with exit 1; a `401` for a token that the CLI found does not, because the next try reads it again, and at the
+timeout it gets the cause from adb, such as another app in the foreground. Pass `--package`: without it, the CLI checks only the app in the
 foreground, which can be the launcher, and only at the timeout. A `404` for `_meta` does not end the wait: Lustro always has
 that route, so the `404` is from another server on the port, such as the debug server of another
 app on the port that a stopped app's prefs keep. `ready` waits, and at the timeout prints the cause
@@ -391,8 +398,9 @@ in the foreground. The error then names the first check that fails, and the exit
 one it is (see [Exit codes](#exit-codes)).
 
 Conventions a client should follow:
-- Honor a `LUSTRO_TOKEN` environment variable when present, falling back to the parsed log line,
-  then to the app's prefs.
+- Honor a `LUSTRO_TOKEN` environment variable when present. For a known package, read the app's
+  prefs next, and the log line of its current process only for what they do not give. Without a
+  package, fall back to the parsed log line, then to the prefs of the app in the foreground.
 - The port can differ from the configured one: if `bindFallback` is enabled and the configured
   port was taken, the server binds a port that the system chooses. The `endpoint=` field gives
   the port in use, so always use the log line, not the configured port.

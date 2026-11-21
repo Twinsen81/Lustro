@@ -50,11 +50,14 @@ a parameter that the route does not declare, so check the names in `lustro schem
    not installed or the build has no Lustro runtime, so do not run it while `adb install` runs.
    The server listens only while the app is in the foreground: a locked screen or another app in
    front stops it.
-3. `lustro meta` lists the tabs that the app registers. Each command finds the token in logcat, or
-   through `run-as` in the app's prefs, and makes the `adb forward` itself, on a local port that
-   adb chooses (only `lustro open` tries 8080 first). With `--package`, it takes only the log line
-   of that app's current process; without it, the last line in the log, which can be another
-   app's. Pass `--package` in each command.
+3. `lustro meta` lists the tabs that the app registers. Each command finds the token and the port,
+   and makes the `adb forward` itself, on a local port that adb chooses (only `lustro open` tries
+   8080 first). With `--package`, it reads them first through `run-as` in that app's prefs, and
+   runs no `logcat` when they have them, which keeps each command fast on a device with a full log;
+   it reads the log line of that app's current process only for a build that is not debuggable,
+   or before the app writes its prefs. Without `--package`, it takes the last line in the log,
+   which can be another app's, then the prefs of the app in the foreground. Pass `--package` in
+   each command.
 
 When `ready` or another command cannot reach the app, it prints the cause, and its exit code says
 which cause it is:

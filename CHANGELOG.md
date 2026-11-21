@@ -1312,6 +1312,46 @@ see [DECISIONS.md](DECISIONS.md).
   and the sample's last tab, opened at 900 px, is in view; at 1280 px the bar
   is the same as before, pixel for pixel. `docs/STYLEGUIDE.md` describes the bar in a narrow window.
 
+- **With `--package`, the CLI reads the app's prefs before the log, so a
+  command on a device with a full log buffer no longer takes up to 10 s.** A
+  large app's wrapper runs `lustro --package <id> ...` for each command, and
+  on a physical device (API 37) with full log buffers each `meta` took about
+  10.7 s, where `curl` with the token took 0.17 s. Discovery dumped the whole
+  `LustroToken` buffer with `adb logcat -d -v threadtime -s LustroToken`, and
+  the time of that dump grows with the amount of log on the device: 2 to 12 s
+  with 28 MiB readable, often to the 10 s timeout of the adb call. It ran also
+  with `--token` or `LUSTRO_TOKEN`, because the CLI still needed the host and
+  the port, and each try of `lustro ready` paid it again. Now, with
+  `--package`, the CLI first reads the app's prefs, `adb shell run-as <id> cat
+  shared_prefs/lustro_debug.xml`, in about 0.2 s. They hold the token, and the
+  host and port of the app's last bind, in the named app's own file: each
+  process of the app writes its token, and each bind its host and port, so
+  while the app is in the foreground and its server listens, they are the
+  values of its current process. When they give all three, the CLI runs
+  no `logcat`, also with `--token` or `LUSTRO_TOKEN`. The log line of the
+  app's current process gives only what the prefs do not: when `run-as`
+  fails, as for a build that is not debuggable, or before the app writes its
+  prefs, or for an app from before Lustro stored the host and the port. When
+  the app does not run, its prefs keep the values of its last process: the
+  connection then fails, and the CLI prints the cause, as before. A new
+  process of an app that listens beyond loopback can answer `401` before it
+  writes its new token: the client then reads the prefs again and sends the
+  request once more, and `lustro ready` now tries again after a `401` for a
+  token that discovery found, where it stopped with exit 1. A `401` for
+  `--token` or `LUSTRO_TOKEN` still ends the wait at once. A `401` for a
+  token that discovery found, after the client's second read of the prefs,
+  now gets the cause from adb, in every command and at the end of `ready`:
+  the prefs can name a port where another app with Lustro answers, such as
+  the one in the foreground, and the CLI printed `401 unauthorized` with exit
+  1 where the cause is that the app is not in the foreground (exit 6). Without
+  `--package`, discovery does not change. Checked on a physical device (API
+  37) with the sample, with 5 MiB of the main log buffer readable: `lustro
+  --device <serial> --package <id> meta` took 0.35 to 0.39 s in five runs, and
+  0.36 s with `--token`, and ran only `run-as`, `adb forward --list`, and `adb
+  get-serialno`; the earlier CLI took 0.88 to 3.09 s, and 1.24 s with
+  `--token`, and ran `pidof` and `logcat` each time. On that device the dump
+  alone took 0.69 to 1.92 s, and the prefs read 0.14 to 0.15 s.
+
 - **`lustro ready --package` stops at once for an app that is not installed or
   a build without the Lustro runtime.** `ready` ran the adb checks of the cause
   only at the timeout, so a script that installed a build with the `-noop`

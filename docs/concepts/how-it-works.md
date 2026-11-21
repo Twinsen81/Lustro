@@ -116,8 +116,10 @@ sequenceDiagram
 2. After each bind, the server logs one line at the `LustroToken` tag:
     `Lustro ready endpoint=http://127.0.0.1:8080 token=<token>`.
 3. The CLI and agents read the line, or the prefs file through `adb shell run-as` when the device
-    drops Info logs. They send the token in the `Authorization: Bearer <token>` header of each
-    request.
+    drops Info logs. With `--package`, the CLI reads the prefs file first, because one `run-as`
+    read is faster than a dump of a full log, and reads the line only when the prefs can't give
+    the token and the port. They send the token in the `Authorization: Bearer <token>` header of
+    each request.
 4. The browser gets the token in the URL fragment `#lustro_token=<token>`. The console's script
     sends it to `POST /api/v1/_auth`, which sets the `lustro_token` cookie, `HttpOnly` and
     `SameSite=Strict`. The script then removes the fragment from the address bar.

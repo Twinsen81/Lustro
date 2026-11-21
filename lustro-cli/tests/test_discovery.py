@@ -111,15 +111,16 @@ def test_resolve_raises_clear_error_when_no_token(monkeypatch):
     assert "setprop log.tag.LustroToken I" in msg
 
 
-def test_resolve_run_as_fallback(monkeypatch):
-    monkeypatch.setattr(discovery, "discover_from_logcat", lambda device=None, package=None: None)
+def test_resolve_with_package_takes_the_endpoint_from_the_prefs(monkeypatch):
+    monkeypatch.setattr(
+        discovery, "discover_from_logcat", lambda device=None, package=None: pytest.fail("read the log")
+    )
     monkeypatch.setattr(
         discovery,
-        "discover_from_run_as",
-        lambda package, device=None: Endpoint("127.0.0.1", 8080, "ratok"),
+        "read_prefs",
+        lambda package, device=None: discovery.Prefs("ratok", "127.0.0.1", 8080),
     )
-    ep = resolve(env={}, package="com.example.app")
-    assert ep.token == "ratok"
+    assert resolve(env={}, package="com.example.app") == Endpoint("127.0.0.1", 8080, "ratok")
 
 
 def test_discover_from_logcat_parses_subprocess_output(monkeypatch):
@@ -319,12 +320,12 @@ def test_resolve_reads_the_prefs_of_the_foreground_app_when_the_log_has_no_line(
     assert seen == ["com.example.app"]
 
 
-def test_resolve_prefers_package_over_the_foreground_app(monkeypatch):
+def test_resolve_with_package_reads_its_prefs_and_not_those_of_the_foreground_app(monkeypatch):
     monkeypatch.setattr(discovery, "discover_from_logcat", lambda device=None, package=None: None)
-    monkeypatch.setattr(discovery, "foreground_package", lambda device=None: "com.other.app")
+    monkeypatch.setattr(discovery, "foreground_package", lambda device=None: pytest.fail("asked for the foreground app"))
     seen = []
     monkeypatch.setattr(
-        discovery, "discover_from_run_as", lambda package, device=None: seen.append(package) or Endpoint("h", 1, "t")
+        discovery, "read_prefs", lambda package, device=None: seen.append(package) or discovery.Prefs("t", "h", 1)
     )
     resolve(env={}, package="com.example.app")
     assert seen == ["com.example.app"]
@@ -729,3 +730,98 @@ def test_the_package_filter_reads_no_log_when_adb_can_not_tell_the_process(monke
     calls = _fake_adb_run(monkeypatch, {_LOGCAT: _ready("other"), _LOGCAT_PIDS: _line(3000, "other")})
     assert discovery.discover_from_logcat(package="com.example.app") is None
     assert not any(cmd[1:3] == ["logcat", "-d"] for cmd in calls)
+
+
+# ── --package: the app's prefs before the log ─────────────────────────────────
+
+_RUN_AS = "adb shell run-as com.example.app cat shared_prefs/lustro_debug.xml"
+
+
+def _reads_the_log(calls):
+    return any(cmd[1:2] == ["logcat"] or "pidof" in " ".join(cmd) for cmd in calls)
+
+
+def test_with_package_the_prefs_come_first_and_the_log_is_not_read(monkeypatch):
+    # The log has the app's line with another port and token: the prefs win, and the CLI
+    # runs no logcat, whose dump takes seconds on a device with full log buffers.
+    calls = _fake_adb_run(
+        monkeypatch, {_RUN_AS: _PREFS_WITH_ENDPOINT, _PIDOF: "4242\n", _LOGCAT_PIDS: _line(4242, "logtok", 8082)}
+    )
+    assert resolve(env={}, package="com.example.app") == Endpoint("127.0.0.1", 8081, "prefstok")
+    assert calls == [["adb", "shell", "run-as", "com.example.app", "cat", "shared_prefs/lustro_debug.xml"]]
+
+
+@pytest.mark.parametrize(
+    "flags, env",
+    [({"token": "flagtok"}, {}), ({}, {"LUSTRO_TOKEN": "flagtok"})],
+    ids=["--token", "LUSTRO_TOKEN"],
+)
+def test_with_package_and_a_given_token_the_prefs_give_the_host_and_the_port(monkeypatch, flags, env):
+    calls = _fake_adb_run(
+        monkeypatch, {_RUN_AS: _PREFS_WITH_ENDPOINT, _PIDOF: "4242\n", _LOGCAT_PIDS: _line(4242, "logtok", 8082)}
+    )
+    assert resolve(env=env, package="com.example.app", **flags) == Endpoint("127.0.0.1", 8081, "flagtok")
+    assert not _reads_the_log(calls)
+
+
+def test_with_package_the_prefs_read_goes_to_the_selected_device(monkeypatch):
+    calls = _fake_adb_run(
+        monkeypatch,
+        {"adb -s emulator-5554 shell run-as com.example.app cat shared_prefs/lustro_debug.xml": _PREFS_WITH_ENDPOINT},
+    )
+    assert resolve(env={}, device="emulator-5554", package="com.example.app").token == "prefstok"
+    assert calls == [["adb", "-s", "emulator-5554", "shell", "run-as", "com.example.app", "cat",
+                      "shared_prefs/lustro_debug.xml"]]
+
+
+@pytest.mark.parametrize(
+    "prefs",
+    [None, "<map/>", '<map><string name="lustro_host">127.0.0.1</string><int name="lustro_port" value="8081" /></map>'],
+    ids=["run-as fails", "no prefs", "no token"],
+)
+def test_with_package_the_log_of_the_current_process_gives_what_the_prefs_do_not(monkeypatch, prefs):
+    # run-as fails for a build that is not debuggable, and an app that has not written
+    # its token yet has none. The log still keeps only the lines of the current process.
+    calls = _fake_adb_run(
+        monkeypatch,
+        {_RUN_AS: prefs, _PIDOF: "4242\n", _LOGCAT_PIDS: _line(4242, "current", 8082) + _line(3000, "other", 8083)},
+    )
+    assert resolve(env={}, package="com.example.app") == Endpoint("127.0.0.1", 8082, "current")
+    assert ["adb", "logcat", "-d", "-s", "LustroToken"] not in calls
+    assert [cmd for cmd in calls if "run-as" in cmd] == [
+        ["adb", "shell", "run-as", "com.example.app", "cat", "shared_prefs/lustro_debug.xml"]
+    ]
+
+
+def test_with_package_the_log_gives_the_endpoint_that_the_prefs_of_an_older_app_do_not_have(monkeypatch):
+    # An app that predates storing the host and the port has only the token in its prefs.
+    _fake_adb_run(monkeypatch, {_RUN_AS: _PREFS_XML, _PIDOF: "4242\n", _LOGCAT_PIDS: _line(4242, "prefstok", 8082)})
+    assert resolve(env={}, package="com.example.app") == Endpoint("127.0.0.1", 8082, "prefstok")
+
+
+def test_with_package_a_token_only_in_the_prefs_gets_the_default_endpoint(monkeypatch):
+    _fake_adb_run(monkeypatch, {_RUN_AS: _PREFS_XML, _PIDOF: "4242\n", _LOGCAT_PIDS: ""})
+    assert resolve(env={}, package="com.example.app") == Endpoint("127.0.0.1", 8080, "prefstok")
+
+
+def test_with_package_the_prefs_of_an_app_that_does_not_run_are_used(monkeypatch):
+    # They keep the endpoint of the app's last process: the connection then fails, and
+    # diagnose() gives the cause. The log is not read, and pidof does not run.
+    calls = _fake_adb_run(monkeypatch, {_RUN_AS: _PREFS_WITH_ENDPOINT, _PIDOF: "", _LOGCAT: _ready("other")})
+    assert resolve(env={}, package="com.example.app") == Endpoint("127.0.0.1", 8081, "prefstok")
+    assert not _reads_the_log(calls)
+
+
+def test_without_package_the_log_comes_before_the_prefs(monkeypatch):
+    calls = _fake_adb_run(
+        monkeypatch, {_LOGCAT: _ready("logtok", 8082), _RUN_AS: _PREFS_WITH_ENDPOINT, _DUMPSYS: "x"}
+    )
+    assert resolve(env={}) == Endpoint("127.0.0.1", 8082, "logtok")
+    assert calls == [["adb", "logcat", "-d", "-s", "LustroToken"]]
+
+
+def test_read_prefs_keeps_a_missing_host_and_port_unknown(monkeypatch):
+    monkeypatch.setattr(discovery, "_run", lambda cmd, timeout=10.0: _PREFS_XML)
+    assert discovery.read_prefs("com.example.app") == discovery.Prefs("prefstok", None, None)
+    monkeypatch.setattr(discovery, "_run", lambda cmd, timeout=10.0: _PREFS_WITH_ENDPOINT)
+    assert discovery.read_prefs("com.example.app") == discovery.Prefs("prefstok", "127.0.0.1", 8081)
