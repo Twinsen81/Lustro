@@ -117,8 +117,8 @@ look for them. Without `--token`, the CLI takes the `LUSTRO_TOKEN` environment v
 `LustroToken` log line, then the app's private `lustro_debug` prefs file, which it reads with
 `adb shell run-as`. `--package PKG` names the app for that last step; without it, the CLI reads
 the app in the foreground. That step finds the token on a device that drops Info log lines.
-`--package` also limits the log line to the current process of that app (`adb shell pidof`, then
-`adb logcat --pid`). Without it, the CLI takes the last line in the log, and that line can be
+`--package` also limits the log line to the current process of that app: the CLI gets its process
+ID with `adb shell pidof`, and keeps the lines of that process in `adb logcat -v threadtime`. Without it, the CLI takes the last line in the log, and that line can be
 another app's, such as another build of the same app: pass `--package` when the device has more
 than one app with Lustro.
 

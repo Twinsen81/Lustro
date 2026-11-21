@@ -631,7 +631,7 @@ def test_diagnose_without_adb_required_ignores_a_computer_without_adb(monkeypatc
 
 
 def test_a_found_token_needs_no_check(monkeypatch):
-    calls = _fake_adb_run(monkeypatch, {_PIDOF: "4242\n", _LOGCAT_PID.format(4242): _ready("t")})
+    calls = _fake_adb_run(monkeypatch, {_PIDOF: "4242\n", _LOGCAT_PIDS: _line(4242, "t")})
     assert resolve(env={}, package="com.example.app").token == "t"
     assert not any("pm" in cmd or "exec-out" in cmd for cmd in calls)
 
@@ -639,11 +639,18 @@ def test_a_found_token_needs_no_check(monkeypatch):
 # ── --package: only the ready line of the app's current process ───────────────
 
 _LOGCAT = "adb logcat -d -s LustroToken"
-_LOGCAT_PID = _LOGCAT + " --pid={}"
+# With --package, the dump has the PID of each line.
+_LOGCAT_PIDS = "adb logcat -d -v threadtime -s LustroToken"
 
 
 def _ready(token, port=8080):
     return "I LustroToken: Lustro ready endpoint=http://127.0.0.1:{} token={}\n".format(port, token)
+
+
+def _line(pid, token, port=8080):
+    """A ready line in the ``threadtime`` format, which starts with the date, the time,
+    the PID, and the thread ID."""
+    return "11-21 10:59:08.064  {}  {} {}".format(pid, pid + 31, _ready(token, port))
 
 
 def test_without_package_the_last_ready_line_counts_whatever_app_logged_it(monkeypatch):
@@ -654,7 +661,7 @@ def test_without_package_the_last_ready_line_counts_whatever_app_logged_it(monke
 
 def test_the_ready_line_of_another_app_is_not_used_for_a_package_that_is_not_installed(monkeypatch):
     # Another app logged the last line; the named app is not installed, so it has no process.
-    calls = _fake_adb_run(monkeypatch, {_LOGCAT: _ready("other"), _PIDOF: ""})
+    calls = _fake_adb_run(monkeypatch, {_LOGCAT: _ready("other"), _LOGCAT_PIDS: _line(3000, "other"), _PIDOF: ""})
     with pytest.raises(DiscoveryError) as excinfo:
         resolve(env={}, package="com.example.app")
     assert excinfo.value.exit_code == exitcodes.NOT_INSTALLED
@@ -662,10 +669,13 @@ def test_the_ready_line_of_another_app_is_not_used_for_a_package_that_is_not_ins
 
 
 def test_the_ready_line_of_the_apps_current_process_is_used(monkeypatch):
-    # The whole buffer ends with another app's line; --pid keeps the app's own.
+    # The buffer ends with another app's line; the PID keeps the app's own.
     calls = _fake_adb_run(
         monkeypatch,
-        {_LOGCAT: _ready("other", 8081), _PIDOF: "4242\n", _LOGCAT_PID.format(4242): _ready("current", 8082)},
+        {
+            _PIDOF: "4242\n",
+            _LOGCAT_PIDS: "--------- beginning of main\n" + _line(4242, "current", 8082) + _line(3000, "other", 8081),
+        },
     )
     assert resolve(env={}, package="com.example.app") == Endpoint("127.0.0.1", 8082, "current")
     assert ["adb", "shell", "pidof com.example.app || true"] in calls
@@ -678,14 +688,18 @@ def test_the_ready_line_of_an_earlier_process_of_the_app_is_not_used(monkeypatch
     _fake_adb_run(
         monkeypatch,
         {
-            _LOGCAT: _ready("earlier"),
             _PIDOF: "5151\n",
-            _LOGCAT_PID.format(4242): _ready("earlier"),
-            _LOGCAT_PID.format(5151): "--------- beginning of main\n",
+            _LOGCAT_PIDS: _line(4242, "earlier"),
             "adb shell run-as com.example.app cat shared_prefs/lustro_debug.xml": _PREFS_WITH_ENDPOINT,
         },
     )
     assert resolve(env={}, package="com.example.app") == Endpoint("127.0.0.1", 8081, "prefstok")
+
+
+def test_a_pid_that_is_the_thread_id_of_another_line_does_not_match(monkeypatch):
+    # 4273 is the thread ID of the line of process 4242.
+    _fake_adb_run(monkeypatch, {_PIDOF: "4273\n", _LOGCAT_PIDS: _line(4242, "other")})
+    assert discovery.discover_from_logcat(package="com.example.app") is None
 
 
 def test_the_package_filter_reads_the_selected_device(monkeypatch):
@@ -693,24 +707,25 @@ def test_the_package_filter_reads_the_selected_device(monkeypatch):
         monkeypatch,
         {
             "adb -s emulator-5554 shell pidof com.example.app || true": "4242\n",
-            "adb -s emulator-5554 logcat -d -s LustroToken --pid=4242": _ready("t"),
+            "adb -s emulator-5554 logcat -d -v threadtime -s LustroToken": _line(4242, "t"),
         },
     )
     assert resolve(env={}, device="emulator-5554", package="com.example.app").token == "t"
-    assert calls[-1] == ["adb", "-s", "emulator-5554", "logcat", "-d", "-s", "LustroToken", "--pid=4242"]
+    assert calls[-1] == ["adb", "-s", "emulator-5554", "logcat", "-d", "-v", "threadtime", "-s", "LustroToken"]
 
 
-def test_each_process_of_the_app_is_read_until_one_has_a_ready_line(monkeypatch):
-    # While an old process exits, pidof can print both.
-    _fake_adb_run(
-        monkeypatch,
-        {_PIDOF: "4242 5151\n", _LOGCAT_PID.format(4242): "", _LOGCAT_PID.format(5151): _ready("new")},
+@pytest.mark.parametrize("pids", ["4242 5151\n", "5151 4242\n"])
+def test_with_two_processes_of_the_app_the_last_ready_line_in_the_log_counts(monkeypatch, pids):
+    # While an old process exits, pidof can print both, in any order. The newer process
+    # logged after the old one, and its PID can be lower after the PIDs wrap.
+    calls = _fake_adb_run(
+        monkeypatch, {_PIDOF: pids, _LOGCAT_PIDS: _line(5151, "old", 8081) + _line(4242, "new", 8082)}
     )
-    assert discovery.discover_from_logcat(package="com.example.app").token == "new"
+    assert discovery.discover_from_logcat(package="com.example.app") == Endpoint("127.0.0.1", 8082, "new")
+    assert sum(1 for cmd in calls if cmd[1] == "logcat") == 1
 
 
 def test_the_package_filter_reads_no_log_when_adb_can_not_tell_the_process(monkeypatch):
-    calls = _fake_adb_run(monkeypatch, {_LOGCAT: _ready("other")})
+    calls = _fake_adb_run(monkeypatch, {_LOGCAT: _ready("other"), _LOGCAT_PIDS: _line(3000, "other")})
     assert discovery.discover_from_logcat(package="com.example.app") is None
     assert not any(cmd[1:3] == ["logcat", "-d"] for cmd in calls)
-

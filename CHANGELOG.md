@@ -1302,12 +1302,16 @@ see [DECISIONS.md](DECISIONS.md).
   SQLite writes. Neither the line nor `_meta` names the app, so the CLI could
   not see the mistake after it connected. And `--package` of an app that is not
   installed exited 0 with the `_meta` of the other app, in place of exit 4. Now,
-  with `--package`, the CLI gets the app's process ID with `adb shell pidof
-  <package>` and reads `adb logcat -d -s LustroToken --pid=<pid>`. This also
+  with `--package`, the CLI gets the app's process IDs with `adb shell pidof
+  <package>`, reads `adb logcat -d -v threadtime -s LustroToken`, which shows
+  the process ID of each line, and takes the last line of these processes.
+  While an old process of the app still exits, `pidof` can print both, and the
+  last line, the newer one, counts. This also
   skips the line of an earlier process of the app, whose port and token can be
   out of date: a server that listens beyond loopback gets a new token in each
-  process. An app that does not run gets its token from its prefs through
-  `run-as`, or else the cause. `pidof` and `logcat --pid` work on API 24, and
+  process. An app that does not run, or whose current process logged no ready
+  line, gets its token from its prefs through `run-as`. If that gives no token,
+  the CLI prints the cause. `pidof` and `logcat -v threadtime` work on API 24, and
   the ready line does not change, so this works with apps on older Lustro
   versions too. Without `--package`, discovery does not change.
 

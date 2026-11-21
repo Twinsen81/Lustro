@@ -8,9 +8,10 @@ Resolution order (first that yields a value wins, per field):
    LustroToken`` parsed for the most recent
    ``Lustro ready endpoint=http://<host>:<port> token=<token>`` (this is the
    first source for host/port/token, including a fallback port). With
-   ``--package``, only the lines of that app's current process count:
-   ``adb shell pidof <pkg>``, then ``logcat ... --pid=<pid>``. Without it, the
-   last line counts, whatever app logged it.
+   ``--package``, only the lines of that app's current process count: the CLI
+   gets its process IDs with ``adb shell pidof <pkg>``, and keeps the lines with
+   one of these IDs in ``logcat -d -v threadtime -s LustroToken``. Without it,
+   the last line counts, whatever app logged it.
 4. (best effort) ``adb [-s <serial>] shell run-as <pkg> cat`` of the app's
    private ``lustro_debug`` prefs, which hold the token and, from the app's
    last bind, its host and port. ``<pkg>`` is ``--package``, or else the app in
@@ -170,17 +171,29 @@ def discover_from_logcat(device: Optional[str] = None, package: Optional[str] = 
     the app can have a port and a token that are no longer valid. An app that does
     not run, or whose process adb can't tell, gives ``None``.
     """
-    cmd = _adb_base(device) + ["logcat", "-d", "-s", "LustroToken"]
     if not package:
-        out = _run(cmd)
+        out = _run(_adb_base(device) + ["logcat", "-d", "-s", "LustroToken"])
         return None if out is None else parse_ready_line(out)
-    # pidof can print more than one process while an old one exits.
-    for pid in app_pids(package, device) or []:
-        out = _run(cmd + ["--pid={}".format(pid)])
-        found = None if out is None else parse_ready_line(out)
-        if found is not None:
-            return found
-    return None
+    pids = app_pids(package, device)
+    if not pids:
+        return None
+    # One dump with the PID of each line, not one `logcat --pid` per process: pidof
+    # can print an old process that still exits, and the last line in the buffer,
+    # which is the newest, must win.
+    out = _run(_adb_base(device) + ["logcat", "-d", "-v", "threadtime", "-s", "LustroToken"])
+    if out is None:
+        return None
+    own = [line for line in out.splitlines() if _line_pid(line) in pids]
+    return parse_ready_line("\n".join(own))
+
+
+# A ``threadtime`` line: ``<date> <time> <pid> <tid> <level> <tag>: <message>``.
+_THREADTIME_PID = re.compile(r"^\s*\S+\s+\S+\s+(?P<pid>\d+)\s+\d+\s")
+
+
+def _line_pid(line: str) -> Optional[str]:
+    match = _THREADTIME_PID.match(line)
+    return match.group("pid") if match else None
 
 
 def discover_from_run_as(
