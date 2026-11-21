@@ -85,9 +85,10 @@ public class DebugBodyParams internal constructor(route: DebugRoute) : DebugPara
 /**
  * Declares the parameters in a route's path ([DebugRoute.path]): one for each segment in
  * braces, with the name in the braces. A path parameter is always present, so its value is
- * never `null`. A segment that the parameter does not take, such as `x` for an int, or a
- * value that is not one of [DebugStringSpec.values], matches no route: the path names a
- * resource that does not exist, so the client gets `404`, not `400`.
+ * never `null`. For the route's own method, a segment that the parameter does not take, such
+ * as `x` for an int, or a value that is not one of [DebugStringSpec.values], matches no route:
+ * the path names a resource that does not exist, so the client gets `404`, not `400`. The
+ * router checks the method first, so another method gets `405` with an `Allow` header.
  */
 @ExperimentalDebugRoutes
 public class DebugPathParams internal constructor(private val params: DebugParams) {

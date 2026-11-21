@@ -104,9 +104,12 @@ override fun routes(routes: DebugRoutes) {
     is the method and `Root`, such as `getRoot`. The router ignores one
     slash at the end of a request's path, so `POST /api/v1/<tab id>/seed/` reaches the route
     `seed`. A path with two slashes at the end, such as `seed//`, gets `404`.
-- **Path parameters.** A segment that its parameter does not take, such as `items/x` for a
-    `path.long("id")` or a value outside `values`, matches no route, so the client gets `404`, as
-    for an id that names nothing.
+- **Path parameters.** For the route's own method, a segment that its parameter does not take,
+    such as `items/x` for a `path.long("id")` or a value outside `values`, matches no route, so the
+    client gets `404`, as for an id that names nothing. The router checks the method before the
+    path parameters, so another method gets `405` with an `Allow` header: with `routes.get("")`, `routes.post("")`, and `routes.delete("{id}")`
+    with `path.int("id")`, `DELETE journals/abc` gets `404`, but `GET journals/abc` gets `405`,
+    `Allow: DELETE`, and `journals/abc takes DELETE, not GET`.
 - **Bodies.** Body fields come from a JSON object in strict JSON (RFC 8259), with strict JSON
     types, and `null` counts as absent. With `acceptsForm = true`, a route also takes them as an
     `application/x-www-form-urlencoded` form. A route with a required field gets a `400` for an
@@ -126,7 +129,10 @@ override fun routes(routes: DebugRoutes) {
     `response("The file.") { content("image/png"); header("Content-Disposition", "attachment.") }`.
     The success response is `200`; `status` in the block names another success status, from
     `200` to `299`, such as `response("The new item.", schema) { status = 201 }`, and the handler
-    answers it with `DebugResponse.ok(json, status = 201)`. A `204` or `205` has no body, so it
+    answers it with `DebugResponse.ok(json, status = 201)`. Nothing compares the declared status
+    with the status that the handler answers: a handler that answers `DebugResponse.ok(json)` sends
+    `200` while the document says `201`. Use one constant for both, and check the status in a unit
+    test that calls `tab.handle()`. A `204` or `205` has no body, so it
     declares no schema, and its handler answers `DebugResponse.ok("", status = 204)`. `component(name, schema)` adds a schema under `components/schemas`, and
     `DebugRoutes.ref(name)` refers to it; a `$ref` can also point into one, such as
     `#/components/schemas/Envelope/properties/state`. `errors(404, 409)` lists the error statuses
