@@ -275,21 +275,34 @@ window.debugSetStatus = function(state) {
 })();
 
 // The tabs of the top bar scroll inside it when the window is narrower than the
-// bar. The scrollbar is hidden, so a vertical mouse wheel scrolls the tabs, and
-// the active tab is scrolled into view when the page opens. This sets scrollLeft
-// on the bar only: scrollIntoView would also scroll the page's other scrollers.
+// bar. The scrollbar is hidden, so a vertical mouse wheel scrolls the tabs, an
+// edge with tabs past it fades (the dc-nav--more-* classes), and the active tab
+// is scrolled into view when the page opens. This sets scrollLeft on the bar
+// only: scrollIntoView would also scroll the page's other scrollers.
 (function() {
+    // The width of the fade, --fade in shared.css: a tab in it is hard to read.
+    var FADE = 24;
+
     function revealActive(nav) {
         var active = nav.querySelector('.dc-nav__item--active');
         if (!active) return;
         var bar = nav.getBoundingClientRect();
         var item = active.getBoundingClientRect();
-        // A tab wider than the bar shows the start of its title.
-        if (item.left < bar.left || (item.right > bar.right && item.right - item.left > bar.right - bar.left)) {
-            nav.scrollLeft += item.left - bar.left;
-        } else if (item.right > bar.right) {
-            nav.scrollLeft += item.right - bar.right;
+        var left = bar.left + FADE;
+        var right = bar.right - FADE;
+        // A tab wider than the space between the fades shows the start of its title.
+        // The browser clamps scrollLeft, so a tab at either end of the row needs no fade.
+        if (item.left < left || (item.right > right && item.right - item.left > right - left)) {
+            nav.scrollLeft += item.left - left;
+        } else if (item.right > right) {
+            nav.scrollLeft += item.right - right;
         }
+    }
+
+    function updateEdges(nav) {
+        // 1 px of slack: scrollLeft is fractional on a display with a fractional scale.
+        nav.classList.toggle('dc-nav--more-start', nav.scrollLeft > 1);
+        nav.classList.toggle('dc-nav--more-end', nav.scrollLeft + nav.clientWidth < nav.scrollWidth - 1);
     }
 
     function onWheel(e) {
@@ -306,7 +319,15 @@ window.debugSetStatus = function(state) {
         var nav = document.querySelector('.dc-nav');
         if (!nav) return;
         revealActive(nav);
+        updateEdges(nav);
         nav.addEventListener('wheel', onWheel, { passive: false });
+        nav.addEventListener('scroll', function() { updateEdges(nav); }, { passive: true });
+        // The space for the tabs changes with the window, and with the width of the status text.
+        if (typeof ResizeObserver === 'function') {
+            new ResizeObserver(function() { updateEdges(nav); }).observe(nav);
+        } else {
+            window.addEventListener('resize', function() { updateEdges(nav); });
+        }
     }
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', wireNav);

@@ -166,10 +166,13 @@ too. Semantic color is passed via the `--c` custom property where noted:
     the bar, and `.dc-topbar__actions`, the theme toggle and the connection
     status, keep their width at the right end, so they are always visible. The
     page does not get wider than the window. The bar hides the scrollbar,
-    because it would take height from the bar. A swipe on a trackpad or a touch
-    screen, a vertical mouse wheel over the tabs, and the Tab key scroll the
-    tabs. When a page opens, `shared.js` scrolls the tabs so that the active
-    tab is in view.
+    because it would take height from the bar. Instead, an edge with more tabs
+    past it fades out over 24 px: `shared.js` sets `.dc-nav--more-start` and
+    `.dc-nav--more-end` from the scroll position. A swipe on a trackpad or a
+    touch screen, a vertical mouse wheel over the tabs, and the Tab key scroll
+    the tabs. A focused tab has its outline inside its box, because `.dc-nav`
+    clips what is outside a tab. When a page opens, `shared.js` scrolls the
+    tabs so that the active tab is in view and clear of the fade.
 
 ## 5. Showing and hiding
 

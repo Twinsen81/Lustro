@@ -1300,16 +1300,17 @@ see [DECISIONS.md](DECISIONS.md).
   last tab was cut, and the theme toggle and the status were outside the
   window. In a 360 px window the page was 1053 px wide. Now the tabs scroll
   inside the bar, and the actions keep their width at its right end. The bar
-  hides the scrollbar, because it would take height from the bar: a swipe on a
-  trackpad or a touch screen, a vertical mouse wheel over the tabs, and the Tab
-  key scroll the tabs. When a page opens, `shared.js` scrolls the tabs so that
-  the active tab is in view, or the start of its title when the tab is wider
-  than the space for the tabs. A window that fits the whole bar shows it as
-  before. Verified in headless Chrome against the sample on an emulator, in
+  hides the scrollbar, because it would take height from the bar. Instead, an
+  edge with more tabs past it fades out. A swipe on a trackpad or a touch
+  screen, a vertical mouse wheel over the tabs, and the Tab key scroll the
+  tabs, and a focused tab shows its focus ring inside its box. When a page
+  opens, `shared.js` scrolls the tabs so that the active tab is in view and
+  clear of the fade, or the start of its title when the tab is wider than the
+  space for the tabs. A window that fits the whole bar shows it as before. Verified in headless Chrome against the sample on an emulator, in
   the light and the dark theme: at 360 and 900 px the page is as wide as the
-  window, the toggle and the status are in it, and the sample's last tab,
-  opened at 900 px, is in view; at 1280 px the bar is the same as before, pixel
-  for pixel. `docs/STYLEGUIDE.md` describes the bar in a narrow window.
+  window, the toggle and the status are in it, the edges with more tabs fade,
+  and the sample's last tab, opened at 900 px, is in view; at 1280 px the bar
+  is the same as before, pixel for pixel. `docs/STYLEGUIDE.md` describes the bar in a narrow window.
 
 - **`lustro ready --package` stops at once for an app that is not installed or
   a build without the Lustro runtime.** `ready` ran the adb checks of the cause
