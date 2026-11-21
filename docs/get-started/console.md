@@ -25,7 +25,7 @@ adb port forwarding:
     restarts, and the line comes again when the app returns to the foreground. The token, and the
     host and port of the last bind, are also in the app's prefs, which a debuggable app lets you
     read: `adb shell run-as <package> cat shared_prefs/lustro_debug.xml`. The `lustro` CLI reads
-    them on its own when the log has no line.
+    them on its own: first with `--package`, and else when the log has no line.
 
 4. Authenticate the browser with that token, either by:
     - using the `lustro` CLI (`lustro open`, see [The `lustro` CLI](install.md#the-lustro-cli)); or

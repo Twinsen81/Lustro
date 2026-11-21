@@ -4,28 +4,36 @@ Resolution order (first that yields a value wins, per field):
 
 1. Explicit ``--token`` / ``--host`` / ``--port`` flags.
 2. ``LUSTRO_TOKEN`` environment variable (token only).
-3. The ``LustroToken`` logcat ready-line: ``adb [-s <serial>] logcat -d -s
+3. With ``--package``, the app's private ``lustro_debug`` prefs, through ``adb
+   [-s <serial>] shell run-as <pkg> cat``. They hold the token, and the host and
+   port of the app's last bind: each process of the app writes its token, and
+   each bind its host and port. One ``run-as`` read is fast, where the dump of
+   the log in 4 grows with the amount of log on the device, and takes seconds
+   when its buffers are full. A build that is not debuggable fails ``run-as``,
+   and an app that has not written the prefs yet has none: step 4 then gives
+   what they did not.
+4. The ``LustroToken`` logcat ready-line: ``adb [-s <serial>] logcat -d -s
    LustroToken`` parsed for the most recent
-   ``Lustro ready endpoint=http://<host>:<port> token=<token>`` (this is the
-   first source for host/port/token, including a fallback port). With
-   ``--package``, only the lines of that app's current process count: the CLI
-   gets its process IDs with ``adb shell pidof <pkg>``, and keeps the lines with
-   one of these IDs in ``logcat -d -v threadtime -s LustroToken``. Without it,
-   the last line counts, whatever app logged it.
-4. (best effort) ``adb [-s <serial>] shell run-as <pkg> cat`` of the app's
-   private ``lustro_debug`` prefs, which hold the token and, from the app's
-   last bind, its host and port. ``<pkg>`` is ``--package``, or else the app in
-   the foreground, because Lustro listens only while its app is in the
-   foreground. This is what finds the app on a device that drops Info logs
-   (``log.tag`` set to ``E``, for example), which drops the ready line.
+   ``Lustro ready endpoint=http://<host>:<port> token=<token>`` (without
+   ``--package``, this is the first source for host/port/token, including a
+   fallback port). With ``--package``, only the lines of that app's current
+   process count: the CLI gets its process IDs with ``adb shell pidof <pkg>``,
+   and keeps the lines with one of these IDs in ``logcat -d -v threadtime -s
+   LustroToken``. Without it, the last line counts, whatever app logged it.
+5. (best effort, without ``--package``) the ``run-as`` read of step 3, of the
+   prefs of the app in the foreground, because Lustro listens only while its app
+   is in the foreground. This is what finds the app on a device that drops Info
+   logs (``log.tag`` set to ``E``, for example), which drops the ready line.
 
 If none of these determine the endpoint/token, a clear, actionable error is
 raised. :func:`diagnose` first looks for the cause, with the exit code of each:
 no device, an app that is not installed, an installed build without the Lustro
 runtime, or an app that is not running or not in the foreground. A token from
 the ready line can be stale, when the app was installed again and the device
-dropped the new line; :func:`token_from_prefs` reads the current one, for a
-client to retry with after a 401.
+dropped the new line. A token from the prefs can be stale too: until a new
+process of the app writes its token, they keep the one of its last process.
+:func:`token_from_prefs` reads the current one, for a client to retry with
+after a 401.
 
 The port that these give is the app's port. On a device, the CLI reaches it
 through an ``adb forward``, whose local port can differ: :func:`forwarded_ports`
@@ -196,15 +204,19 @@ def _line_pid(line: str) -> Optional[str]:
     return match.group("pid") if match else None
 
 
-def discover_from_run_as(
-    package: str, device: Optional[str] = None
-) -> Optional[Endpoint]:
-    """Best-effort read of the app's private ``lustro_debug`` prefs.
+class Prefs(NamedTuple):
+    """What the app's ``lustro_debug`` prefs hold: the token, and the host and the
+    port of its last bind, ``None`` for an app that stored none."""
 
-    Returns the token, with the host and port the app stored at its last bind,
-    or the defaults for an app that stored none. Works only on debuggable builds
-    where ``run-as <pkg>`` is permitted.
-    """
+    token: str
+    host: Optional[str]
+    port: Optional[int]
+
+
+def read_prefs(package: str, device: Optional[str] = None) -> Optional[Prefs]:
+    """Best-effort read of the app's private ``lustro_debug`` prefs, or ``None`` when
+    they hold no token or ``run-as <pkg>`` fails, as for a build that is not
+    debuggable."""
     if not package:
         return None
     prefs_path = "shared_prefs/lustro_debug.xml"
@@ -221,10 +233,29 @@ def discover_from_run_as(
         return None
     host = re.search(r'<string\s+name="lustro_host">\s*([^<\s]+)\s*</string>', out)
     port = re.search(r'<int\s+name="lustro_port"\s+value="(\d+)"', out)
-    return Endpoint(
-        host=host.group(1) if host else DEFAULT_HOST,
-        port=int(port.group(1)) if port else DEFAULT_PORT,
+    return Prefs(
         token=match.group(1),
+        host=host.group(1) if host else None,
+        port=int(port.group(1)) if port else None,
+    )
+
+
+def discover_from_run_as(
+    package: str, device: Optional[str] = None
+) -> Optional[Endpoint]:
+    """Best-effort read of the app's private ``lustro_debug`` prefs.
+
+    Returns the token, with the host and port the app stored at its last bind,
+    or the defaults for an app that stored none. Works only on debuggable builds
+    where ``run-as <pkg>`` is permitted.
+    """
+    prefs = read_prefs(package, device)
+    if prefs is None:
+        return None
+    return Endpoint(
+        host=prefs.host if prefs.host is not None else DEFAULT_HOST,
+        port=prefs.port if prefs.port is not None else DEFAULT_PORT,
+        token=prefs.token,
     )
 
 
@@ -490,12 +521,14 @@ def resolve(
 ) -> Endpoint:
     """Resolve the active endpoint+token following the documented order.
 
-    Explicit args take precedence; otherwise ``LUSTRO_TOKEN`` (token), then the
-    logcat ready line (host/port/token), of the current process of ``package``
-    when it is given, then ``run-as`` (token). Defaults for
-    host/port are filled in last. Raises :class:`DiscoveryError` if no token can
-    be determined from any source: with the cause that :func:`diagnose` finds, or,
-    with ``check_app`` false, without those adb calls, for a caller that tries again.
+    Explicit args take precedence; otherwise ``LUSTRO_TOKEN`` (token). With
+    ``package``, the app's prefs come next (host/port/token), then the logcat
+    ready line of the app's current process for what the prefs did not give.
+    Without it, the last logcat ready line comes next, then the prefs of the app
+    in the foreground. Defaults for host/port are filled in last. Raises
+    :class:`DiscoveryError` if no token can be determined from any source: with
+    the cause that :func:`diagnose` finds, or, with ``check_app`` false, without
+    those adb calls, for a caller that tries again.
     """
     env = os.environ if env is None else env
 
@@ -509,9 +542,27 @@ def resolve(
         if env_token:
             r_token = env_token
 
+    def missing() -> bool:
+        return r_token is None or r_host is None or r_port is None
+
+    # With --package, the app's prefs: one run-as read, where the dump of the log
+    # takes seconds on a device with a full log buffer. Each process of the app
+    # writes its token, and each bind its host and port, so they are the current
+    # process's, and the named app's own. A build that is not debuggable fails
+    # run-as, and an app that has not written them yet has none: the log line
+    # gives those.
+    if package and missing():
+        prefs = read_prefs(package, device)
+        if prefs is not None:
+            if r_token is None:
+                r_token = prefs.token
+            if r_host is None:
+                r_host = prefs.host
+            if r_port is None:
+                r_port = prefs.port
+
     # Logcat ready line: fills any field still unknown.
-    need_logcat = r_token is None or r_host is None or r_port is None
-    if need_logcat:
+    if missing():
         discovered = discover_from_logcat(device, package)
         if discovered is not None:
             if r_host is None:
@@ -521,14 +572,12 @@ def resolve(
             if r_token is None:
                 r_token = discovered.token
 
-    # The app's prefs, through run-as, for whatever the log line didn't give: a
-    # device that drops Info logs drops the line. They have the host and port of
-    # the last bind too, unless the app predates storing them, so a token from
-    # --token or LUSTRO_TOKEN still gets the app's own port.
-    app = package
-    if r_token is None or r_host is None or r_port is None:
-        app = package or foreground_package(device)
-        ra = discover_from_run_as(app or "", device)
+    # Without --package, the prefs of the app in the foreground, for whatever the
+    # log line didn't give: a device that drops Info logs drops the line. They have
+    # the host and port of the last bind too, unless the app predates storing
+    # them, so a token from --token or LUSTRO_TOKEN still gets the app's own port.
+    if not package and missing():
+        ra = discover_from_run_as(foreground_package(device) or "", device)
         if ra is not None and ra.token:
             if r_token is None:
                 r_token = ra.token
