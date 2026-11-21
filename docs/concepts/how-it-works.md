@@ -193,7 +193,8 @@ gives the rules for the code and the assets.
 | Actions from `request.onCancel { }` | A server thread, when the request times out or the server stops. Such an action can run after `handle` has returned. |
 | Reading the request and writing the response | A `lustro-http-<n>` thread, one for each open connection. |
 | The bind when the app comes to the foreground, and the close of the listening socket when it goes to the background | The main thread, in `Lustro.start()` and in the process lifecycle's callbacks. |
-| The retries of a bind to a taken port, the drain of the requests in progress when the app goes to the background, and the `LustroToken` line | The `lustro-worker` thread. |
+| The retries of a bind to a taken port, and the `LustroToken` line | The `lustro-worker` thread. |
+| The wait for the requests in progress when the app goes to the background, and the close of their connections | The `lustro-drain` thread. |
 
 Thus a tab with mutable state must make it thread-safe. A tab can block on I/O in `handle`,
 because the per-request timeout limits the wait. [Custom tabs](../custom-tabs.md) gives the rules

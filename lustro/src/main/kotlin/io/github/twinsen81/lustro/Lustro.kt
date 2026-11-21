@@ -20,6 +20,7 @@ import io.github.twinsen81.lustro.internal.network.NoOpCaptureSink
 import io.github.twinsen81.lustro.network.MockRule
 import io.github.twinsen81.lustro.network.NetworkCaptureSink
 import io.github.twinsen81.lustro.network.NetworkDebugTab
+import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.ScheduledExecutorService
@@ -103,12 +104,20 @@ public class Lustro internal constructor(
     private var captureEnabled: Boolean = true
 
     // Single daemon thread for the lifecycle work that must stay off the main
-    // thread, where the ProcessLifecycleOwner fires onStart/onStop: the background
-    // drain+close, the endpoint log with its token read, and the retries of a bind to
-    // a taken port. Serial by construction, so overlapping background events drain in order.
+    // thread, where the ProcessLifecycleOwner fires onStart/onStop: the endpoint log
+    // with its token read, and the retries of a bind to a taken port.
     private val workExecutor: ScheduledExecutorService =
         Executors.newSingleThreadScheduledExecutor { runnable ->
             Thread(runnable, "lustro-worker").apply { isDaemon = true }
+        }
+
+    // The background drain+close, on a thread of its own: it waits up to DRAIN_TIMEOUT_MS,
+    // and a foreground during that time binds a new server, whose bind retries and
+    // endpoint log must not wait for it. Serial, so overlapping background events drain
+    // in order.
+    private val drainExecutor: ExecutorService =
+        Executors.newSingleThreadExecutor { runnable ->
+            Thread(runnable, "lustro-drain").apply { isDaemon = true }
         }
 
     // The retries of a bind to the configured port while another process holds it, such
@@ -280,7 +289,7 @@ public class Lustro internal constructor(
      * The listening socket closes here, so that another app with Lustro on the same
      * port, which the user just brought to the front, binds it at its next retry, and
      * so that a rapid re-foreground binds a fresh server. The drain+close runs on
-     * [workExecutor] so this returns IMMEDIATELY: the ProcessLifecycleOwner dispatches
+     * [drainExecutor] so this returns IMMEDIATELY: the ProcessLifecycleOwner dispatches
      * `onStop` on the MAIN thread and a slow in-flight request must never block the UI
      * for the drain budget. We capture the exact server instance to drain so the fresh
      * server is never closed by this drain (see [drainAndClose]).
@@ -296,7 +305,7 @@ public class Lustro internal constructor(
                 srv
             }
         try {
-            workExecutor.execute { drainAndClose(toClose) }
+            drainExecutor.execute { drainAndClose(toClose) }
         } catch (e: RejectedExecutionException) {
             // Executor already shut down (stop() ran). Fall back to a synchronous
             // close so the socket still tears down.
@@ -536,7 +545,7 @@ public class Lustro internal constructor(
      * [server] still points at the instance we just closed, null it, and bind again
      * if we are still armed and foregrounded.
      *
-     * Never throws. It runs as a plain executor task on [workExecutor] (or
+     * Never throws. It runs as a plain executor task on [drainExecutor] (or
      * inline on the main thread), and unlike the limiter's `FutureTask`, nothing
      * there captures a throwable: it would reach the default handler and kill
      * the host app.
