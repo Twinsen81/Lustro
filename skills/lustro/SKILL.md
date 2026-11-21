@@ -49,7 +49,9 @@ a parameter that the route does not declare, so check the names in `lustro schem
    answers, and prints the endpoint. The server listens only while the app is in the foreground:
    a locked screen or another app in front stops it.
 3. `lustro meta` lists the tabs that the app registers. Each command finds the token in logcat, or
-   through `run-as` in the app's prefs, and makes the `adb forward` itself.
+   through `run-as` in the app's prefs, and makes the `adb forward` itself. With `--package`, it
+   takes only the log line of that app's current process; without it, the last line in the log,
+   which can be another app's. Pass `--package` in each command.
 
 When `ready` or another command cannot reach the app, it prints the cause, and its exit code says
 which cause it is:
