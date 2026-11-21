@@ -695,10 +695,12 @@ class SqliteRoutesTest {
             SqliteRegistry(
                 listOf(SqliteDb.framework("app") { live }, SqliteDb.file("named", File(databases, "registered-file.db"))),
                 databases,
-            ) { file ->
-                asked += file.name
-                true
-            }
+                openFiles = { OpenFiles { true } },
+                probe = { file ->
+                    asked += file.name
+                    true
+                },
+            )
 
         val names = registry.list().map { it.name }
 
@@ -709,6 +711,64 @@ class SqliteRoutesTest {
         asked.clear()
         assertEquals("other.db", registry.find("other.db")!!.name)
         assertEquals(listOf("other.db"), asked)
+    }
+
+    @Test
+    fun `discovery lists the same files whether it reads a file's header or asks SQLite about it`() {
+        val noBackup = File(app.dataDir, "no_backup").apply { mkdirs() }
+        val library = Fixtures.file(databases, "library.db")
+        val held = SQLiteDatabase.openOrCreateDatabase(File(databases, "held.db"), null).also { Fixtures.create(it) }
+        // As Firebase keeps its installation, with its tokens, in no_backup.
+        File(noBackup, "PersistedInstallation.FAKE.json").writeText(
+            """{"Fid":"fake-fid","AuthToken":"fake-auth-${"a".repeat(200)}","RefreshToken":"fake-refresh-${"r".repeat(200)}"}""",
+        )
+        // SQLite's header alone: shorter than a database's header, so neither way looks at it.
+        File(databases, "tiny.db").writeBytes("SQLite format 3\u0000".toByteArray() + ByteArray(20))
+        // A journal, with a database's header, of no database: next to its database, a journal is hot.
+        File(databases, "gone.db-journal").writeBytes(library.readBytes())
+        val heldPath = File(held.path).absoluteFile.normalize()
+        fun discover(holds: (File) -> Boolean): Pair<List<String>, List<String>> {
+            val asked = mutableListOf<String>()
+            val registry =
+                SqliteRegistry(listOf(SqliteDb.framework("app") { live }), databases, noBackup, openFiles = { OpenFiles(holds) }) { file ->
+                    asked += file.name
+                    SqliteRegistry.openable(file)
+                }
+            return registry.list().map { it.name } to asked.sorted()
+        }
+
+        val probed = discover { true }
+        val read = discover { false }
+        val mixed = discover { it == heldPath }
+
+        val expected = listOf("app", "held.db", "library.db")
+        assertEquals(expected to listOf("PersistedInstallation.FAKE.json", "held.db", "library.db"), probed)
+        // SQLite opens only a file that the process holds open, so it never sees the JSON file.
+        assertEquals(expected to emptyList<String>(), read)
+        assertEquals(expected to listOf("held.db"), mixed)
+        held.close()
+    }
+
+    @Test
+    fun `discovery lists a file with SQLite's header and a damaged page after it, with the error, and SQLite is not asked`() {
+        File(databases, "damaged.db").writeBytes("SQLite format 3\u0000".toByteArray() + ByteArray(200) { 0x5A })
+        val asked = mutableListOf<String>()
+        val routes =
+            SqliteRoutes(
+                SqliteRegistry(listOf(SqliteDb.framework("app") { live }), databases, openFiles = { OpenFiles { false } }) { file ->
+                    asked += file.name
+                    false
+                },
+            )
+
+        val items = Fixtures.get(routes, "databases").json().getJSONArray("items")
+
+        assertEquals(2, items.length())
+        val damaged = items.getJSONObject(1)
+        assertEquals("damaged.db", damaged.getString("name"))
+        assertTrue(damaged.getString("error").isNotEmpty())
+        assertTrue(damaged.isNull("schemaVersion"))
+        assertEquals(emptyList<String>(), asked)
     }
 
     @Test

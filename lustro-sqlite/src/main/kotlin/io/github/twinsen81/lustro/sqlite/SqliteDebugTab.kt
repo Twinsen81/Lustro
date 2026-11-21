@@ -98,7 +98,10 @@ public class SqliteDebugTab private constructor(registry: SqliteRegistry) : Debu
          *   lists the directories on each request, so it also finds a file that
          *   the app creates later. It leaves out a file that one of [databases]
          *   stands for, SQLite's journal, WAL, and lock files, and a file that is
-         *   not a SQLite database, which the platform's SQLite finds out. Leave
+         *   not a SQLite database. The platform's SQLite checks a file that the
+         *   process holds open; the tab reads the header of any other file
+         *   itself, so that SQLite does not write a part of a file that is not a
+         *   database, such as one with tokens, to logcat. Leave
          *   discovery off when a directory has a database that the app opens
          *   with another copy of SQLite, as [SqliteDb.file] says.
          * @throws IllegalArgumentException when two of [databases] have the

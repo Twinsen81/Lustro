@@ -93,8 +93,13 @@ val lustro = Lustro.builder(application)
     `no_backup/<file name>`. It looks in no other directory. It lists the directories on each
     request, so it finds a file that the app creates later, and leaves out a file that a
     registration stands for, SQLite's journal, WAL, and lock files, and a file that is not a SQLite
-    database. It asks the platform's SQLite about a file, and never reads one itself, and it asks
-    only about the files that no registration stands for. A discovered file is read as a
+    database. It looks only at the files that no registration stands for. For a file that the
+    process holds open, it asks the platform's SQLite. For any other file, it reads the first
+    16 bytes and compares them with SQLite's header, so that SQLite does not see a file that is
+    not a database: Samsung's build of SQLite writes the first page of such a file to logcat,
+    which would put the content of a file such as Firebase's `PersistedInstallation.<id>.json`,
+    with its tokens, into the log. A file with SQLite's header and a damaged page after it is
+    listed, with SQLite's error in its `error` field. A discovered file is read as a
     `SqliteDb.file`, so leave discovery off when a directory has a database that the app opens
     with another copy of SQLite. Discovery is off by default.
 - **Hints.** `tableHints` gives a table the name of the class that maps it and one line on what a

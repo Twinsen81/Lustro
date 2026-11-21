@@ -2750,6 +2750,40 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Security
 
+- **SQLite discovery no longer gives SQLite a file that is not a database,
+  so a file's content does not go to logcat.** With `discoverFrom` set, each
+  `GET sqlite/databases` opened every other file of at least 100 bytes in
+  `databases` and `noBackupFilesDir` with the platform's SQLite, to ask
+  whether it is a database. Samsung's build of SQLite answers a file that is
+  not a database with the file's first page, in hex, in logcat. An app with
+  Firebase keeps `PersistedInstallation.<id>.json` in `noBackupFilesDir`,
+  with the installation's auth token and refresh token, so each listing of
+  the databases put both tokens in the log, where bug reports, CI logs, and
+  the Logs tab get them. Now discovery asks SQLite only about a file that the
+  process holds open, by device and inode in `/proc/self/fd`: such a file is
+  almost always one of the app's own databases, and a read of the tab's own
+  would drop the app's locks on it when it closes. For any other file, the
+  tab reads the first 16 bytes and compares them with SQLite's header,
+  `SQLite format 3` and a zero byte. It looks at `/proc/self/fd` again right
+  before it checks each file. The list of databases is the same, with one
+  difference: a file of 100 bytes or more that starts with SQLite's header
+  but has a damaged page after it, such as a truncated copy, is now listed,
+  and `GET sqlite/databases` shows SQLite's error in its `error` field, where
+  before it was left out.
+  Verified with a JSON file of fake tokens in the sample's `no_backup`
+  directory and one `GET sqlite/databases`. On a physical Samsung device
+  with API 37, the build before wrote 395 `SQLiteLog` lines, with
+  `Invalid MagicHeader!`, the page's hex dump, and 24 lines with the fake
+  tokens, and an event `sqlite_db_corrupt`. The build after wrote no line
+  about the file and no event, and listed the same six databases. The 6
+  `SQLiteLog` lines that it still wrote, `POSIX Error : 9` and `LOCK :
+  Getting lock (4) failed`, come from the read-only connections to the three
+  file databases in rollback-journal mode, also to a registered
+  `SqliteDb.file`, and hold no content of a file. On an emulator with API 36,
+  the build before wrote `SQLiteLog: (26) statement aborts at 2: [PRAGMA
+  schema_version] file is not a database` and the event, and the build after
+  wrote neither. On both, the file kept its inode and its size.
+
 - **With LAN exposure, each process of the app gets a new token.** The token
   was made once and stayed valid until the app's data was cleared. With
   `DebugConfig.bindAddress` set beyond loopback, each request carries the
