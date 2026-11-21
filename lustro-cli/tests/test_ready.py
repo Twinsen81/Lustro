@@ -22,6 +22,9 @@ PM_PATH = "adb shell pm path " + PACKAGE
 APK = "/data/app/~~Xy==/com.example.app-Ab==/base.apk"
 TAIL = "adb exec-out tail -c 65557 '{}'".format(APK)
 PIDOF = "adb shell pidof {} || true".format(PACKAGE)
+# With --package, discovery reads the PID of each line, and keeps the lines of the
+# app's process, 4242 in PIDOF.
+LOGCAT_PIDS = "adb logcat -d -v threadtime -s LustroToken"
 DUMPSYS = "adb shell dumpsys activity activities | grep ResumedActivity"
 
 
@@ -31,6 +34,11 @@ def _resumed(package):
 
 def _ready_line(port, token=TOKEN):
     return "I LustroToken: Lustro ready endpoint=http://127.0.0.1:{} token={}\n".format(port, token)
+
+
+def _app_line(port, token=TOKEN):
+    """The ready line of the app's process in the ``threadtime`` format."""
+    return "11-21 10:59:08.064  4242  4273 " + _ready_line(port, token)
 
 
 WITH_RUNTIME = apk_bytes(APP_ENTRIES + RUNTIME_ENTRIES)
@@ -43,6 +51,17 @@ HEALTHY = {
     PIDOF: "4242\n",
     DUMPSYS: _resumed(PACKAGE),
 }
+
+
+RUN_AS = "adb shell run-as {} cat shared_prefs/lustro_debug.xml".format(PACKAGE)
+
+
+def _prefs(port):
+    """The app's prefs, with the token and the port of its last bind."""
+    return (
+        '<map><string name="lustro_token">{}</string><string name="lustro_host">127.0.0.1</string>'
+        '<int name="lustro_port" value="{}" /></map>'.format(TOKEN, port)
+    )
 
 
 class FakeAdb:
@@ -185,10 +204,10 @@ def test_ready_prints_the_endpoint_when_the_server_answers(server, capsys):
 def test_ready_runs_discovery_again_until_the_app_logs_its_ready_line(server, monkeypatch, capsys):
     port = server.server_address[1]
     # Without adb's forward, a command connects to the app's port on this computer.
-    adb = FakeAdb(monkeypatch, {LOGCAT: lambda earlier: _ready_line(port) if earlier >= 3 else ""})
+    adb = FakeAdb(monkeypatch, {PIDOF: "4242\n", LOGCAT_PIDS: lambda earlier: _app_line(port) if earlier >= 3 else ""})
     assert cli.main(["ready", "--timeout", "5", "--package", PACKAGE]) == exitcodes.OK
     assert capsys.readouterr().out == "http://127.0.0.1:{}\n".format(port)
-    assert adb.count(LOGCAT) == 4
+    assert adb.count(LOGCAT_PIDS) == 4
     # The checks of the cause run only when the time is over.
     assert adb.count(TAIL) == 0
     assert not any(call.endswith("get-state") for call in adb.calls)
@@ -246,6 +265,16 @@ def test_ready_when_the_app_is_not_installed(monkeypatch, capsys):
     assert _cause(capsys).startswith(PACKAGE + " is not installed on the device")
 
 
+@pytest.mark.parametrize("command", [["ready", "--timeout", "0.2"], ["meta"]])
+def test_the_server_of_another_app_is_not_used_for_a_package_that_is_not_installed(server, command, monkeypatch, capsys):
+    # Another app answers on the port of the last ready line in the log, which it logged.
+    FakeAdb(monkeypatch, {LOGCAT: _ready_line(server.server_address[1]), PIDOF: ""})
+    assert cli.main(command + ["--package", PACKAGE]) == exitcodes.NOT_INSTALLED
+    out, err = capsys.readouterr()
+    assert out == ""
+    assert PACKAGE + " is not installed on the device" in err
+
+
 def test_ready_when_the_build_has_no_lustro_runtime(monkeypatch, capsys):
     adb = FakeAdb(monkeypatch, dict(HEALTHY, **{APK: NO_RUNTIME}))
     assert _ready("--package", PACKAGE) == exitcodes.NO_RUNTIME
@@ -254,20 +283,26 @@ def test_ready_when_the_build_has_no_lustro_runtime(monkeypatch, capsys):
     assert "from before the app added Lustro" in cause
     # One read of the APK, at the end, however many tries there were.
     assert adb.count(TAIL) == 1
-    assert adb.count(LOGCAT) > 1
+    assert adb.count(LOGCAT_PIDS) > 1
 
 
-def test_ready_for_a_no_op_build_with_a_ready_line_from_an_earlier_debug_build(closed_port, monkeypatch, capsys):
-    # The line names a port where nothing listens now: the cause is the build, not the port.
-    FakeAdb(monkeypatch, dict(HEALTHY, **{APK: NO_RUNTIME, LOGCAT: _ready_line(closed_port)}))
+def test_ready_for_a_no_op_build_with_the_prefs_of_an_earlier_debug_build(closed_port, monkeypatch, capsys):
+    # The earlier build's prefs, which an install over it keeps, name a port where nothing
+    # listens now: the cause is the build, not the port.
+    adb = FakeAdb(monkeypatch, dict(HEALTHY, **{APK: NO_RUNTIME, RUN_AS: _prefs(closed_port)}))
     assert _ready("--package", PACKAGE) == exitcodes.NO_RUNTIME
     assert "does not contain the Lustro runtime" in _cause(capsys)
+    assert adb.count(RUN_AS) > 1
 
 
 def test_ready_when_the_app_is_not_running(closed_port, monkeypatch, capsys):
-    FakeAdb(monkeypatch, dict(HEALTHY, **{PIDOF: "", LOGCAT: _ready_line(closed_port)}))
+    # The prefs keep the token and the port of the app's last start. The ready line in the
+    # log is of a process that no longer runs, so the CLI does not read the log.
+    adb = FakeAdb(monkeypatch, dict(HEALTHY, **{PIDOF: "", LOGCAT: _ready_line(closed_port), RUN_AS: _prefs(closed_port)}))
     assert _ready("--package", PACKAGE) == exitcodes.NOT_REACHABLE
     assert _cause(capsys).startswith(PACKAGE + " is not running")
+    assert adb.count(LOGCAT) == 0
+    assert adb.count(RUN_AS) > 1
 
 
 def test_ready_when_the_app_is_in_the_background(monkeypatch, capsys):
@@ -277,7 +312,7 @@ def test_ready_when_the_app_is_in_the_background(monkeypatch, capsys):
 
 
 def test_ready_when_the_port_does_not_answer(closed_port, monkeypatch, capsys):
-    FakeAdb(monkeypatch, dict(HEALTHY, **{LOGCAT: _ready_line(closed_port)}))
+    FakeAdb(monkeypatch, dict(HEALTHY, **{LOGCAT_PIDS: _app_line(closed_port)}))
     assert _ready("--package", PACKAGE) == exitcodes.NOT_REACHABLE
     assert _cause(capsys).startswith("connection_failed: could not reach http://127.0.0.1:{}/".format(closed_port))
 
@@ -294,17 +329,6 @@ def test_ready_with_a_port_that_does_not_answer_and_no_adb_checks(closed_port, m
     assert _ready("--port", str(closed_port), "--token", TOKEN) == exitcodes.NOT_REACHABLE
     assert _cause(capsys).startswith("connection_failed:")
     assert not any(call.endswith("get-state") or call in (PM_PATH, TAIL, PIDOF) for call in adb.calls)
-
-
-RUN_AS = "adb shell run-as {} cat shared_prefs/lustro_debug.xml".format(PACKAGE)
-
-
-def _prefs(port):
-    """The app's prefs, with the token and the port of its last bind."""
-    return (
-        '<map><string name="lustro_token">{}</string><string name="lustro_host">127.0.0.1</string>'
-        '<int name="lustro_port" value="{}" /></map>'.format(TOKEN, port)
-    )
 
 
 def _other_server_text(where):
@@ -396,7 +420,7 @@ def test_a_command_exits_with_the_code_of_the_cause(monkeypatch, capsys):
 
 
 def test_a_command_whose_connection_fails_gets_the_cause_from_adb(closed_port, monkeypatch, capsys):
-    FakeAdb(monkeypatch, dict(HEALTHY, **{PIDOF: "", LOGCAT: _ready_line(closed_port)}))
+    FakeAdb(monkeypatch, dict(HEALTHY, **{PIDOF: "", RUN_AS: _prefs(closed_port)}))
     assert cli.main(["meta", "--package", PACKAGE]) == exitcodes.NOT_REACHABLE
     assert capsys.readouterr().err.startswith("error: {} is not running".format(PACKAGE))
 
