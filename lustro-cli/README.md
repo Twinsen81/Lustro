@@ -96,7 +96,16 @@ The CLI resolves the endpoint+token in this order (first hit wins, per field):
 3. The `LustroToken` logcat ready line — `adb [-s <serial>] logcat -d -s
    LustroToken` is parsed for the most recent
    `Lustro ready endpoint=http://<host>:<port> token=<token>`. This is the
-   first source for host/port/token, **including a fallback port**.
+   first source for host/port/token, **including a fallback port**. With
+   `--package <id>`, only the lines of that app's current process count: the CLI
+   gets its process ID with `adb shell pidof <id>`, and reads `adb logcat -d -s
+   LustroToken --pid=<pid>`. The line of another app, such as another build of
+   the same app, and the line of an earlier process of the app are not used. That
+   line can name a port that the app no longer uses, and a token that is no
+   longer valid: a server that listens beyond loopback gets a new token in each
+   process. When the app does not run, the CLI goes to step 4,
+   and else gives the cause. Without `--package`, the last line counts, whatever
+   app logged it.
 4. (best effort) `adb [-s <serial>] shell run-as <pkg> cat shared_prefs/lustro_debug.xml`
    on debuggable builds: the token, and the host and port of the app's last bind. `<pkg>` is
    `--package <id>`, or else the app in the foreground, because Lustro listens only while its

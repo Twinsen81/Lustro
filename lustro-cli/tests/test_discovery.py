@@ -60,14 +60,14 @@ def test_parse_ready_line_none_when_absent():
 def test_resolve_prefers_explicit_flags(monkeypatch):
     # Even if logcat would return something, explicit flags win and adb isn't called.
     monkeypatch.setattr(
-        discovery, "discover_from_logcat", lambda device=None: Endpoint("9.9.9.9", 1, "x")
+        discovery, "discover_from_logcat", lambda device=None, package=None: Endpoint("9.9.9.9", 1, "x")
     )
     ep = resolve(host="10.0.0.5", port=9000, token="explicit", env={})
     assert ep == Endpoint("10.0.0.5", 9000, "explicit")
 
 
 def test_resolve_uses_env_token_with_default_host_port(monkeypatch):
-    monkeypatch.setattr(discovery, "discover_from_logcat", lambda device=None: None)
+    monkeypatch.setattr(discovery, "discover_from_logcat", lambda device=None, package=None: None)
     ep = resolve(env={"LUSTRO_TOKEN": "envtok"})
     assert ep.token == "envtok"
     assert ep.host == "127.0.0.1"
@@ -78,7 +78,7 @@ def test_resolve_fills_from_logcat(monkeypatch):
     monkeypatch.setattr(
         discovery,
         "discover_from_logcat",
-        lambda device=None: Endpoint("127.0.0.1", 54321, "logtok"),
+        lambda device=None, package=None: Endpoint("127.0.0.1", 54321, "logtok"),
     )
     ep = resolve(env={})
     assert ep.port == 54321
@@ -90,7 +90,7 @@ def test_resolve_env_token_but_logcat_host_port(monkeypatch):
     monkeypatch.setattr(
         discovery,
         "discover_from_logcat",
-        lambda device=None: Endpoint("127.0.0.1", 7777, "logtok"),
+        lambda device=None, package=None: Endpoint("127.0.0.1", 7777, "logtok"),
     )
     ep = resolve(env={"LUSTRO_TOKEN": "envtok"})
     assert ep.token == "envtok"
@@ -98,7 +98,7 @@ def test_resolve_env_token_but_logcat_host_port(monkeypatch):
 
 
 def test_resolve_raises_clear_error_when_no_token(monkeypatch):
-    monkeypatch.setattr(discovery, "discover_from_logcat", lambda device=None: None)
+    monkeypatch.setattr(discovery, "discover_from_logcat", lambda device=None, package=None: None)
     monkeypatch.setattr(discovery, "_run_status", lambda cmd, timeout=10.0: (0, "device\n"))
     with pytest.raises(DiscoveryError) as excinfo:
         resolve(env={})
@@ -112,7 +112,7 @@ def test_resolve_raises_clear_error_when_no_token(monkeypatch):
 
 
 def test_resolve_run_as_fallback(monkeypatch):
-    monkeypatch.setattr(discovery, "discover_from_logcat", lambda device=None: None)
+    monkeypatch.setattr(discovery, "discover_from_logcat", lambda device=None, package=None: None)
     monkeypatch.setattr(
         discovery,
         "discover_from_run_as",
@@ -306,7 +306,7 @@ def test_foreground_package_is_none_when_adb_cannot_tell(monkeypatch):
 
 
 def test_resolve_reads_the_prefs_of_the_foreground_app_when_the_log_has_no_line(monkeypatch):
-    monkeypatch.setattr(discovery, "discover_from_logcat", lambda device=None: None)
+    monkeypatch.setattr(discovery, "discover_from_logcat", lambda device=None, package=None: None)
     monkeypatch.setattr(discovery, "foreground_package", lambda device=None: "com.example.app")
     seen = []
 
@@ -320,7 +320,7 @@ def test_resolve_reads_the_prefs_of_the_foreground_app_when_the_log_has_no_line(
 
 
 def test_resolve_prefers_package_over_the_foreground_app(monkeypatch):
-    monkeypatch.setattr(discovery, "discover_from_logcat", lambda device=None: None)
+    monkeypatch.setattr(discovery, "discover_from_logcat", lambda device=None, package=None: None)
     monkeypatch.setattr(discovery, "foreground_package", lambda device=None: "com.other.app")
     seen = []
     monkeypatch.setattr(
@@ -340,7 +340,7 @@ def test_token_from_prefs(monkeypatch):
 
 
 def test_resolve_takes_the_port_from_the_prefs_for_a_token_from_the_environment(monkeypatch):
-    monkeypatch.setattr(discovery, "discover_from_logcat", lambda device=None: None)
+    monkeypatch.setattr(discovery, "discover_from_logcat", lambda device=None, package=None: None)
     monkeypatch.setattr(discovery, "foreground_package", lambda device=None: "com.example.app")
     monkeypatch.setattr(discovery, "discover_from_run_as", lambda package, device=None: Endpoint("127.0.0.1", 8081, "prefstok"))
     assert resolve(env={"LUSTRO_TOKEN": "envtok"}) == Endpoint("127.0.0.1", 8081, "envtok")
@@ -631,7 +631,86 @@ def test_diagnose_without_adb_required_ignores_a_computer_without_adb(monkeypatc
 
 
 def test_a_found_token_needs_no_check(monkeypatch):
-    calls = _fake_adb_run(monkeypatch, {"adb logcat -d -s LustroToken": "Lustro ready endpoint=http://127.0.0.1:8080 token=t"})
+    calls = _fake_adb_run(monkeypatch, {_PIDOF: "4242\n", _LOGCAT_PID.format(4242): _ready("t")})
     assert resolve(env={}, package="com.example.app").token == "t"
     assert not any("pm" in cmd or "exec-out" in cmd for cmd in calls)
+
+
+# ── --package: only the ready line of the app's current process ───────────────
+
+_LOGCAT = "adb logcat -d -s LustroToken"
+_LOGCAT_PID = _LOGCAT + " --pid={}"
+
+
+def _ready(token, port=8080):
+    return "I LustroToken: Lustro ready endpoint=http://127.0.0.1:{} token={}\n".format(port, token)
+
+
+def test_without_package_the_last_ready_line_counts_whatever_app_logged_it(monkeypatch):
+    calls = _fake_adb_run(monkeypatch, {_LOGCAT: _ready("first") + _ready("other", 8081)})
+    assert resolve(env={}) == Endpoint("127.0.0.1", 8081, "other")
+    assert not any("pidof" in " ".join(cmd) for cmd in calls)
+
+
+def test_the_ready_line_of_another_app_is_not_used_for_a_package_that_is_not_installed(monkeypatch):
+    # Another app logged the last line; the named app is not installed, so it has no process.
+    calls = _fake_adb_run(monkeypatch, {_LOGCAT: _ready("other"), _PIDOF: ""})
+    with pytest.raises(DiscoveryError) as excinfo:
+        resolve(env={}, package="com.example.app")
+    assert excinfo.value.exit_code == exitcodes.NOT_INSTALLED
+    assert not any(cmd[1:3] == ["logcat", "-d"] for cmd in calls)
+
+
+def test_the_ready_line_of_the_apps_current_process_is_used(monkeypatch):
+    # The whole buffer ends with another app's line; --pid keeps the app's own.
+    calls = _fake_adb_run(
+        monkeypatch,
+        {_LOGCAT: _ready("other", 8081), _PIDOF: "4242\n", _LOGCAT_PID.format(4242): _ready("current", 8082)},
+    )
+    assert resolve(env={}, package="com.example.app") == Endpoint("127.0.0.1", 8082, "current")
+    assert ["adb", "shell", "pidof com.example.app || true"] in calls
+    assert ["adb", "logcat", "-d", "-s", "LustroToken"] not in calls
+
+
+def test_the_ready_line_of_an_earlier_process_of_the_app_is_not_used(monkeypatch):
+    # The earlier process logged a line with its token; the current one logged none, as on a
+    # device that drops Info logs. The prefs have the current token.
+    _fake_adb_run(
+        monkeypatch,
+        {
+            _LOGCAT: _ready("earlier"),
+            _PIDOF: "5151\n",
+            _LOGCAT_PID.format(4242): _ready("earlier"),
+            _LOGCAT_PID.format(5151): "--------- beginning of main\n",
+            "adb shell run-as com.example.app cat shared_prefs/lustro_debug.xml": _PREFS_WITH_ENDPOINT,
+        },
+    )
+    assert resolve(env={}, package="com.example.app") == Endpoint("127.0.0.1", 8081, "prefstok")
+
+
+def test_the_package_filter_reads_the_selected_device(monkeypatch):
+    calls = _fake_adb_run(
+        monkeypatch,
+        {
+            "adb -s emulator-5554 shell pidof com.example.app || true": "4242\n",
+            "adb -s emulator-5554 logcat -d -s LustroToken --pid=4242": _ready("t"),
+        },
+    )
+    assert resolve(env={}, device="emulator-5554", package="com.example.app").token == "t"
+    assert calls[-1] == ["adb", "-s", "emulator-5554", "logcat", "-d", "-s", "LustroToken", "--pid=4242"]
+
+
+def test_each_process_of_the_app_is_read_until_one_has_a_ready_line(monkeypatch):
+    # While an old process exits, pidof can print both.
+    _fake_adb_run(
+        monkeypatch,
+        {_PIDOF: "4242 5151\n", _LOGCAT_PID.format(4242): "", _LOGCAT_PID.format(5151): _ready("new")},
+    )
+    assert discovery.discover_from_logcat(package="com.example.app").token == "new"
+
+
+def test_the_package_filter_reads_no_log_when_adb_can_not_tell_the_process(monkeypatch):
+    calls = _fake_adb_run(monkeypatch, {_LOGCAT: _ready("other")})
+    assert discovery.discover_from_logcat(package="com.example.app") is None
+    assert not any(cmd[1:3] == ["logcat", "-d"] for cmd in calls)
 
