@@ -438,8 +438,9 @@ headers: `response("The export.") { content("text/csv"); header("Content-Disposi
 A route that answers another success status, such as `201` for a route that creates an item, says
 so in the block, so that the document lists it in place of `200`:
 `response("The new flag.", DebugRoutes.ref("Flag")) { status = 201 }`. The handler still answers it,
-with `DebugResponse.ok(json, status = 201)`. A parameter's `schema` replaces the one made from its
-type in the document, such as `{"const": true}`. The sample's
+with `DebugResponse.ok(json, status = 201)`, and nothing compares the two statuses: use one constant
+for both, and check the status in a unit test that calls `tab.handle()`. A parameter's `schema`
+replaces the one made from its type in the document, such as `{"const": true}`. The sample's
 [flags tab](https://github.com/Twinsen81/Lustro/blob/main/sample/src/debug/kotlin/io/github/twinsen81/lustro/sample/SampleFlagsTab.kt)
 declares all three routes, with their bodies, responses, and errors.
 

@@ -15,9 +15,10 @@ internal class RouteTable private constructor(
      * Answers [request], or returns `null` when no declared path matches it, so that the
      * server answers `404`. A path that matches with another method gets `405` with an
      * `Allow` header, in the server's format. As in the server, the path that matches with
-     * the most literal segments wins, whatever its methods. A segment that its path parameter
-     * does not take also returns `null`: the path names a resource that does not exist. One
-     * slash at the end of the path does not count, so `seed/` matches `seed`.
+     * the most literal segments wins, whatever its methods. For the route's own method, a
+     * segment that its path parameter does not take also returns `null`: the path names a
+     * resource that does not exist. The method check comes first, so another method gets
+     * `405`. One slash at the end of the path does not count, so `seed/` matches `seed`.
      */
     fun handle(request: DebugRequest): DebugResponse? {
         val path = withoutTrailingSlash(request.path)

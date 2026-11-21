@@ -2307,9 +2307,10 @@ see [DECISIONS.md](DECISIONS.md).
   description)` for its headers; `strings()` declares a query or body
   parameter that a request can repeat, such as `?ids=a&ids=b`; a path segment
   that its parameter does not take, such as `body/both` for `{direction}` or
-  `events/x/payload` for an integer `{seq}`, matches no route, so `404`, not
-  `400`; an empty query or form value of an int, long, or boolean takes the
-  parameter's default, and without one gets `400`, where it was absent before;
+  `events/x/payload` for an integer `{seq}`, matches no route for the route's
+  own method, so `404`, not `400`, and another method gets `405` with `Allow`,
+  because the router checks the method first; an empty query or form value of
+  an int, long, or boolean takes the parameter's default, and without one gets `400`, where it was absent before;
   a `$ref` can point into a component, such as
   `#/components/schemas/TransactionCursorEnvelope/properties/state`; the
   document lists `400` only when the router can refuse a query parameter or
