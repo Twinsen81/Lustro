@@ -46,8 +46,8 @@ function openPage(bar) {
     return shared;
 }
 
-function wheel(nav, { deltaX = 0, deltaY = 0, deltaMode = 0 }) {
-    const event = { currentTarget: nav, deltaX, deltaY, deltaMode, prevented: false };
+function wheel(nav, { deltaX = 0, deltaY = 0, deltaMode = 0, ctrlKey = false }) {
+    const event = { currentTarget: nav, deltaX, deltaY, deltaMode, ctrlKey, prevented: false };
     event.preventDefault = () => { event.prevented = true; };
     return event;
 }
@@ -97,6 +97,15 @@ test('a vertical wheel scrolls the tabs sideways and does not scroll the page', 
 
     listener(wheel(bar.nav, { deltaY: 3, deltaMode: 1 }));
     assert.strictEqual(bar.nav.scrollLeft, 168, 'a wheel in lines scrolls 16 px a line');
+});
+
+test('a pinch or a Ctrl-wheel over the tabs is left to the browser, which zooms', () => {
+    const bar = navBar({ active: [0, 100] });
+    openPage(bar);
+    const zoom = wheel(bar.nav, { deltaY: 120, ctrlKey: true });
+    bar.listeners.wheel.listener(zoom);
+    assert.strictEqual(bar.nav.scrollLeft, 0);
+    assert.strictEqual(zoom.prevented, false);
 });
 
 test('a sideways wheel, or a wheel on tabs that fit, is left to the browser', () => {

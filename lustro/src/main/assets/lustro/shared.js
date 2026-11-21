@@ -294,7 +294,8 @@ window.debugSetStatus = function(state) {
 
     function onWheel(e) {
         var nav = e.currentTarget;
-        if (nav.scrollWidth <= nav.clientWidth) return;
+        // A trackpad pinch, and Ctrl with the wheel, are wheel events with ctrlKey: the browser zooms.
+        if (e.ctrlKey || nav.scrollWidth <= nav.clientWidth) return;
         if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
         // Firefox reports a mouse wheel in lines (deltaMode 1), not pixels.
         nav.scrollLeft += e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
