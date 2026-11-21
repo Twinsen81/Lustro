@@ -750,6 +750,28 @@ class SqliteRoutesTest {
     }
 
     @Test
+    fun `discovery lists a file with SQLite's header and a damaged page after it, with the error, and SQLite is not asked`() {
+        File(databases, "damaged.db").writeBytes("SQLite format 3\u0000".toByteArray() + ByteArray(200) { 0x5A })
+        val asked = mutableListOf<String>()
+        val routes =
+            SqliteRoutes(
+                SqliteRegistry(listOf(SqliteDb.framework("app") { live }), databases, openFiles = { OpenFiles { false } }) { file ->
+                    asked += file.name
+                    false
+                },
+            )
+
+        val items = Fixtures.get(routes, "databases").json().getJSONArray("items")
+
+        assertEquals(2, items.length())
+        val damaged = items.getJSONObject(1)
+        assertEquals("damaged.db", damaged.getString("name"))
+        assertTrue(damaged.getString("error").isNotEmpty())
+        assertTrue(damaged.isNull("schemaVersion"))
+        assertEquals(emptyList<String>(), asked)
+    }
+
+    @Test
     fun `discovery lists the databases in noBackupFilesDir after the others, and names one whose name is taken by its directory`() {
         val noBackup = File(app.dataDir, "no_backup")
         Fixtures.file(databases, "library.db")

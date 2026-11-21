@@ -81,10 +81,9 @@ internal class SqliteRegistry(
         if (primary.isEmpty() && secondary.isEmpty()) return emptyList()
         val names = registered.mapTo(HashSet()) { it.name }
         val covered = registeredFiles()
-        // Once per listing, before the first header read: a read's close() drops the locks only
-        // of a file that the process opened in the meantime.
-        val open by lazy(LazyThreadSafetyMode.NONE) { openFiles() }
-        val isDatabase = { file: File -> file.length() >= HEADER_BYTES && if (open.holds(file)) probe(file) else hasHeader(file) }
+        // A new look at the open files right before each file's check: a header read's close()
+        // drops the locks of a file that the process opened since that look.
+        val isDatabase = { file: File -> file.length() >= HEADER_BYTES && if (openFiles().holds(file)) probe(file) else hasHeader(file) }
         val inDirectory = primary.filter { it.name !in names && it !in covered && isDatabase(it) }.sortedBy { it.name }
         val taken = names + inDirectory.map { it.name }
         val inNoBackup = secondary.filter { it !in covered && isDatabase(it) }.sortedBy { it.name }

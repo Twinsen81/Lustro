@@ -2744,7 +2744,12 @@ see [DECISIONS.md](DECISIONS.md).
   almost always one of the app's own databases, and a read of the tab's own
   would drop the app's locks on it when it closes. For any other file, the
   tab reads the first 16 bytes and compares them with SQLite's header,
-  `SQLite format 3` and a zero byte. The list of databases does not change.
+  `SQLite format 3` and a zero byte. It looks at `/proc/self/fd` again right
+  before it checks each file. The list of databases is the same, with one
+  difference: a file of 100 bytes or more that starts with SQLite's header
+  but has a damaged page after it, such as a truncated copy, is now listed,
+  and `GET sqlite/databases` shows SQLite's error in its `error` field, where
+  before it was left out.
   Verified with a JSON file of fake tokens in the sample's `no_backup`
   directory and one `GET sqlite/databases`. On a physical Samsung device
   with API 37, the build before wrote 395 `SQLiteLog` lines, with

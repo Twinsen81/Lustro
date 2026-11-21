@@ -98,9 +98,10 @@ val lustro = Lustro.builder(application)
     16 bytes and compares them with SQLite's header, so that SQLite does not see a file that is
     not a database: Samsung's build of SQLite writes the first page of such a file to logcat,
     which would put the content of a file such as Firebase's `PersistedInstallation.<id>.json`,
-    with its tokens, into the log. A discovered file is read as a `SqliteDb.file`, so leave
-    discovery off when a directory has a database that the app opens with another copy of
-    SQLite. Discovery is off by default.
+    with its tokens, into the log. A file with SQLite's header and a damaged page after it is
+    listed, with SQLite's error in its `error` field. A discovered file is read as a
+    `SqliteDb.file`, so leave discovery off when a directory has a database that the app opens
+    with another copy of SQLite. Discovery is off by default.
 - **Hints.** `tableHints` gives a table the name of the class that maps it and one line on what a
     row is, for an agent that reads the database without your code.
 - **The app's observers.** Room's `InvalidationTracker` looks for changes after Room's own
