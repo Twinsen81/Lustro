@@ -139,6 +139,21 @@ class LustroDrainTest {
             true
         }
 
+    /**
+     * Waits up to [timeoutMs] for [condition]. The kernel drops a closed listening socket only
+     * once NanoHTTPD's accept thread has left accept(), which can take some ms on a busy
+     * machine: until then, a connection gets through and a bind of the port fails, and the
+     * bind tries again after 250 ms.
+     */
+    private fun eventually(timeoutMs: Long = 2_000, condition: () -> Boolean): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (!condition()) {
+            if (System.currentTimeMillis() >= deadline) return false
+            Thread.sleep(10)
+        }
+        return true
+    }
+
     /** A port that was free a moment ago, for a test that binds the same port again. */
     private fun freePort(): Int = ServerSocket(0).use { it.localPort }
 
@@ -192,7 +207,7 @@ class LustroDrainTest {
         // from this server, and another app can bind the port. The drain still waits
         // for the in-flight request.
         assertFalse("the server must stop listening at once", lustro.isBound())
-        assertTrue("a new connection must be refused while draining", refusesConnections(port))
+        assertTrue("a new connection must be refused while draining", eventually { refusesConnections(port) })
         Thread.sleep(300)
         assertTrue("the drain must wait for the in-flight request", lustro.isDraining())
         assertEquals("request still in-flight while draining", 1, inFlight.get())
@@ -232,7 +247,7 @@ class LustroDrainTest {
 
             // The old server still holds the connection of its in-flight request, and
             // the new one listens on the same port.
-            assertTrue("a foreground during the drain must bind at once", lustro.isBound())
+            assertTrue("a foreground during the drain must bind the port", eventually { lustro.isBound() })
             assertEquals(port, lustro.boundPort())
             assertTrue(lustro.isDraining())
         } finally {
@@ -287,6 +302,63 @@ class LustroDrainTest {
         } finally {
             release.countDown()
         }
+    }
+
+    /** A tab whose handler waits for [release], then answers [size] bytes of JSON. */
+    private class LargeAnswerTab(
+        private val started: CountDownLatch,
+        private val release: CountDownLatch,
+        private val size: Int,
+    ) : DebugTab() {
+        override val id: String = "large"
+        override val title: String = "Large"
+        override val icon: String = "L"
+
+        override fun renderContent(): String = "<div>large</div>"
+
+        override fun handle(request: DebugRequest): DebugResponse {
+            started.countDown()
+            release.await(10, TimeUnit.SECONDS)
+            return DebugResponse.ok("\"" + "x".repeat(size - 2) + "\"")
+        }
+    }
+
+    @Test
+    fun `the drain waits until a response is sent, not only until its handler returns`() {
+        val handlerStarted = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        // Larger than the socket buffers of loopback, so that the server is still writing
+        // the response while the client does not read.
+        val size = 32 * 1024 * 1024
+        val tabRegistry = DebugTabRegistry().apply { addTab(LargeAnswerTab(handlerStarted, release, size)) }
+        val lustro = Lustro(app, DebugConfig.builder().serverPort(0).build(), tabRegistry, registry).also { started.add(it) }
+        assertEquals(LustroStatus.ENABLED, lustro.start())
+        registry.currentState = Lifecycle.State.STARTED
+        val port = lustro.boundPort()
+        val token = LustroTokenStore(app).token()
+
+        val received = AtomicInteger(-1)
+        val reader =
+            Thread {
+                runCatching {
+                    client.newCall(
+                        Request.Builder().url("http://127.0.0.1:$port/api/v1/large/x").header("Authorization", "Bearer $token").build(),
+                    ).execute().use { response ->
+                        // The handler has returned, and the drain would end now if it waited
+                        // only for the handler.
+                        Thread.sleep(500)
+                        received.set(response.body!!.bytes().size)
+                    }
+                }
+            }.apply { isDaemon = true; start() }
+        assertTrue("handler did not start in time", handlerStarted.await(5, TimeUnit.SECONDS))
+        registry.currentState = Lifecycle.State.CREATED
+        release.countDown()
+
+        reader.join(TimeUnit.SECONDS.toMillis(10))
+        assertEquals("the whole response must arrive", size, received.get())
+        awaitDrainEnd(lustro)
+        assertFalse(lustro.isDraining())
     }
 
     /** A tab whose handler ignores interrupts and cancellation until [release] opens. */

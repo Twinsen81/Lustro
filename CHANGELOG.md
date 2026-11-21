@@ -1308,7 +1308,10 @@ see [DECISIONS.md](DECISIONS.md).
   and the next app binds the port at its next retry, every 250 ms. The
   requests that the server accepted before still get their answers, on their
   own connections, within the 5 s, and a foreground during that time binds a
-  new server at once. On the same emulator, the `401` now ends at the other
+  new server at once. The drain now also waits until each response is sent:
+  it ended when the handlers returned, and could close a connection while a
+  large response was still being written. `Lustro.stop()` also closes a
+  server that still drains. On the same emulator, the `401` now ends at the other
   app's `onStop`, after 0.8 s, also while it answers that request, which still
   gets its answer. With `--package`, when a `401` answers a token that
   discovery found and adb finds no other cause, the CLI reads the uid that

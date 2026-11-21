@@ -565,10 +565,13 @@ public class Lustro internal constructor(
         }
     }
 
-    /** Spins up to [DRAIN_TIMEOUT_MS] for the server's in-flight request count to hit 0. */
+    /**
+     * Spins up to [DRAIN_TIMEOUT_MS] until the server has no handler running and has sent
+     * every response: a handler returns before its response is written.
+     */
     private fun awaitInFlightDrain(srv: LustroServer) {
         val deadline = System.currentTimeMillis() + DRAIN_TIMEOUT_MS
-        while (srv.inFlightCount() > 0 && System.currentTimeMillis() < deadline) {
+        while ((srv.inFlightCount() > 0 || srv.unanswered.count() > 0) && System.currentTimeMillis() < deadline) {
             try {
                 Thread.sleep(DRAIN_POLL_MS)
             } catch (_: InterruptedException) {

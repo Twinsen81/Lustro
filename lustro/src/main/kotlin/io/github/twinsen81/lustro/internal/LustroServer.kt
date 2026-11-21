@@ -116,7 +116,10 @@ internal class LustroServer(
             /* fair = */ true,
         )
 
-    private val listeningSockets = ListeningSocketFactory(serverSocketFactory)
+    private val listeningSockets = ListeningSocketFactory(this)
+
+    /** The requests whose response the server has not sent yet. Used by the lifecycle drain. */
+    val unanswered = UnansweredRequests()
 
     init {
         // Every request in the limiter, running or queued, holds its connection,
@@ -127,7 +130,6 @@ internal class LustroServer(
                 .coerceIn(1, Int.MAX_VALUE.toLong())
                 .toInt()
         setAsyncRunner(ContainedAsyncRunner(maxConnections))
-        serverSocketFactory = listeningSockets
     }
 
     override fun createClientHandler(finalAccept: Socket, inputStream: InputStream): ClientHandler {
@@ -178,33 +180,35 @@ internal class LustroServer(
         limiter.shutdown()
     }
 
-    override fun serve(session: IHTTPSession): Response {
-        val body = IncomingBody(session)
-        val response =
-            try {
-                if (body.headersFit) route(session, body) else headersTooLarge()
-            } catch (_: IncomingBody.Incomplete) {
-                // The client stopped sending partway through its body, so there's
-                // no request to answer. NanoHTTPD ends a connection whose headers
-                // never finish the same way.
-                throw connectionEnd()
-            } catch (t: Throwable) {
-                // Nothing a route throws may escape into the host app, Errors included:
-                // NanoHTTPD catches only Exception, and an uncaught Error on its thread
-                // kills the app. A 500 beats a crash even for an OutOfMemoryError: the
-                // failed request's allocations are unreachable once it unwinds.
-                Log.w(TAG, "Error serving request: ${session.uri}", t)
-                toNanoResponse(DebugResponse.error("Internal error", status = 500))
+    // Counted until NanoHTTPD has sent the response: see [UnansweredRequests].
+    override fun serve(session: IHTTPSession): Response =
+        unanswered.track {
+            val body = IncomingBody(session)
+            val response =
+                try {
+                    if (body.headersFit) route(session, body) else headersTooLarge()
+                } catch (_: IncomingBody.Incomplete) {
+                    // The client stopped sending partway through its body, so there's
+                    // no request to answer. NanoHTTPD ends a connection whose headers
+                    // never finish the same way.
+                    throw connectionEnd()
+                } catch (t: Throwable) {
+                    // Nothing a route throws may escape into the host app, Errors included:
+                    // NanoHTTPD catches only Exception, and an uncaught Error on its thread
+                    // kills the app. A 500 beats a crash even for an OutOfMemoryError: the
+                    // failed request's allocations are unreachable once it unwinds.
+                    Log.w(TAG, "Error serving request: ${session.uri}", t)
+                    toNanoResponse(DebugResponse.error("Internal error", status = 500))
+                }
+            // NanoHTTPD would parse whatever is left of the body as the start of this
+            // connection's next request, so end the connection instead, once the
+            // response is out and the rest of the body dropped.
+            if (!body.isConsumed) {
+                response.closeConnection(true)
+                response.data = body.discardAfterSending(response.data)
             }
-        // NanoHTTPD would parse whatever is left of the body as the start of this
-        // connection's next request, so end the connection instead, once the
-        // response is out and the rest of the body dropped.
-        if (!body.isConsumed) {
-            response.closeConnection(true)
-            response.data = body.discardAfterSending(response.data)
+            withSecurityHeaders(response)
         }
-        return withSecurityHeaders(response)
-    }
 
     private fun route(session: IHTTPSession, body: IncomingBody): Response {
         val uri = session.uri ?: "/"

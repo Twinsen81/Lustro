@@ -6,12 +6,18 @@ import java.io.IOException
 import java.net.ServerSocket
 
 /**
- * Makes NanoHTTPD's listening socket with [delegate] and keeps it, so that [close] can
- * close it while the server's connections stay open: NanoHTTPD keeps the socket in a
- * private field, and its `stop()` closes the connections too.
+ * Becomes the socket factory of [server], makes its listening socket with the factory
+ * that it had, and keeps the socket, so that [close] can close it while the server's
+ * connections stay open: NanoHTTPD keeps the socket in a private field, and its `stop()`
+ * closes the connections too.
  */
-internal class ListeningSocketFactory(private val delegate: NanoHTTPD.ServerSocketFactory) :
-    NanoHTTPD.ServerSocketFactory {
+internal class ListeningSocketFactory(server: NanoHTTPD) : NanoHTTPD.ServerSocketFactory {
+    private val delegate = server.serverSocketFactory
+
+    init {
+        server.serverSocketFactory = this
+    }
+
     @Volatile
     private var socket: ServerSocket? = null
 
