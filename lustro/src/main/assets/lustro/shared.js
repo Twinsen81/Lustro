@@ -274,6 +274,46 @@ window.debugSetStatus = function(state) {
     }
 })();
 
+// The tabs of the top bar scroll inside it when the window is narrower than the
+// bar. The scrollbar is hidden, so a vertical mouse wheel scrolls the tabs, and
+// the active tab is scrolled into view when the page opens. This sets scrollLeft
+// on the bar only: scrollIntoView would also scroll the page's other scrollers.
+(function() {
+    function revealActive(nav) {
+        var active = nav.querySelector('.dc-nav__item--active');
+        if (!active) return;
+        var bar = nav.getBoundingClientRect();
+        var item = active.getBoundingClientRect();
+        // A tab wider than the bar shows the start of its title.
+        if (item.left < bar.left || (item.right > bar.right && item.right - item.left > bar.right - bar.left)) {
+            nav.scrollLeft += item.left - bar.left;
+        } else if (item.right > bar.right) {
+            nav.scrollLeft += item.right - bar.right;
+        }
+    }
+
+    function onWheel(e) {
+        var nav = e.currentTarget;
+        if (nav.scrollWidth <= nav.clientWidth) return;
+        if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+        // Firefox reports a mouse wheel in lines (deltaMode 1), not pixels.
+        nav.scrollLeft += e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+        e.preventDefault();
+    }
+
+    function wireNav() {
+        var nav = document.querySelector('.dc-nav');
+        if (!nav) return;
+        revealActive(nav);
+        nav.addEventListener('wheel', onWheel, { passive: false });
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', wireNav);
+    } else {
+        wireNav();
+    }
+})();
+
 // Compatibility hook for older tab scripts; restart detection uses fetch failures.
 window.debugCheckSession = function() { /* no-op */ };
 

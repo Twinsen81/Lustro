@@ -326,11 +326,15 @@ mark { background: var(--search-highlight); color: inherit; border-radius: 2px; 
 
 /* ---------- Top nav bar ---------- */
 .dc-topbar {
-  height: 52px; flex: none; display: flex; align-items: stretch; justify-content: space-between;
+  height: 52px; flex: none; display: flex; align-items: stretch; justify-content: space-between; gap: 16px;
   padding: 0 22px; background: var(--header); border-bottom: 1px solid var(--border);
 }
-.dc-topbar__actions { display: flex; align-items: center; gap: 8px; }
-.dc-nav { display: flex; align-items: stretch; }
+.dc-topbar__actions { flex: none; display: flex; align-items: center; gap: 8px; }
+/* In a window narrower than the bar, the tabs scroll inside the bar and the actions keep their width.
+   The scrollbar is hidden because it would take height from the 52px bar; shared.js scrolls the tabs
+   with a vertical mouse wheel and shows the active tab when the page opens. */
+.dc-nav { min-width: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; display: flex; align-items: stretch; }
+.dc-nav::-webkit-scrollbar { display: none; }
 .dc-nav__item {
   display: flex; align-items: center; gap: 8px; padding: 0 16px; white-space: nowrap;
   font-size: 12px; font-weight: 500; letter-spacing: .1em; text-transform: uppercase; color: var(--t3); cursor: pointer;

@@ -1292,6 +1292,25 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Fixed
 
+- **The console's top bar fits a narrow window: the tabs scroll inside the bar,
+  and the theme toggle and the connection status stay visible.** The bar was
+  as wide as all its tabs and its actions together, and the page does not
+  scroll sideways, so in a narrower window the end of the bar was cut off. The
+  sample's bar needs 1113 px, so at 900 px, about half of a 1920 px screen, the
+  last tab was cut, and the theme toggle and the status were outside the
+  window. In a 360 px window the page was 1053 px wide. Now the tabs scroll
+  inside the bar, and the actions keep their width at its right end. The bar
+  hides the scrollbar, because it would take height from the bar: a swipe on a
+  trackpad or a touch screen, a vertical mouse wheel over the tabs, and the Tab
+  key scroll the tabs. When a page opens, `shared.js` scrolls the tabs so that
+  the active tab is in view, or the start of its title when the tab is wider
+  than the space for the tabs. A window that fits the whole bar shows it as
+  before. Verified in headless Chrome against the sample on an emulator, in
+  the light and the dark theme: at 360 and 900 px the page is as wide as the
+  window, the toggle and the status are in it, and the sample's last tab,
+  opened at 900 px, is in view; at 1280 px the bar is the same as before, pixel
+  for pixel. `docs/STYLEGUIDE.md` describes the bar in a narrow window.
+
 - **`lustro ready --package` stops at once for an app that is not installed or
   a build without the Lustro runtime.** `ready` ran the adb checks of the cause
   only at the timeout, so a script that installed a build with the `-noop`
