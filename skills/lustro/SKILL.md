@@ -45,13 +45,16 @@ a parameter that the route does not declare, so check the names in `lustro schem
 
 1. With more than one device, `export ANDROID_SERIAL=<serial>`: the CLI and `adb` both use it.
    `--device <serial>` selects the device for one `lustro` command.
-2. Start the app, then `lustro ready --package <package>`. It waits up to 30 s until the server
-   answers, and prints the endpoint. The server listens only while the app is in the foreground:
-   a locked screen or another app in front stops it.
+2. Install and start the app, then `lustro ready --package <package>`. It waits up to 30 s until
+   the server answers, and prints the endpoint. It stops at once with exit 4 or 5 when the app is
+   not installed or the build has no Lustro runtime, so do not run it while `adb install` runs.
+   The server listens only while the app is in the foreground: a locked screen or another app in
+   front stops it.
 3. `lustro meta` lists the tabs that the app registers. Each command finds the token in logcat, or
-   through `run-as` in the app's prefs, and makes the `adb forward` itself. With `--package`, it
-   takes only the log line of that app's current process; without it, the last line in the log,
-   which can be another app's. Pass `--package` in each command.
+   through `run-as` in the app's prefs, and makes the `adb forward` itself, on a local port that
+   adb chooses (only `lustro open` tries 8080 first). With `--package`, it takes only the log line
+   of that app's current process; without it, the last line in the log, which can be another
+   app's. Pass `--package` in each command.
 
 When `ready` or another command cannot reach the app, it prints the cause, and its exit code says
 which cause it is:

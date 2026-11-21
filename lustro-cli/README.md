@@ -146,9 +146,12 @@ it through an `adb forward`, and the local port of the forward can be a
 different number. So when the host is a loopback address and `--port` is not
 given, the CLI reads `adb forward --list` and connects to the local port of the
 first forward to the app's port on the selected device: `--device`, else
-`ANDROID_SERIAL`, else the only device. Without such a forward, it makes one,
-as `lustro open` does (see [The local port](#the-local-port)), and exits 1 with
-`connection_failed` when adb can't make it. It does not connect to the same
+`ANDROID_SERIAL`, else the only device. Without such a forward, it makes one
+on a local port that adb chooses (see [The local port](#the-local-port)). When
+adb can't make it, the command prints the device's cause and exits with its
+code: 2 for more than one device with none selected, 3 for no device. Without
+such a cause, it prints `connection_failed` and exits 6. It does not connect to
+the same
 port number on the computer instead: with several devices, that port can be a
 forward to the app on another device. Without adb installed, there is no device
 to forward to, and a command connects to that port on the computer. A command
@@ -168,7 +171,7 @@ discovery), `--json` (JSON output). They go before or after the command:
 | Command | Route |
 | --- | --- |
 | `lustro open [--local-port N]` | discovery + `adb forward` + print/open `…/#lustro_token=<token>`; exits 1 when `adb forward` fails |
-| `lustro ready [--timeout SECONDS]` | `GET /api/v1/_meta` until the server answers, then prints the endpoint; at the timeout (30 s by default), prints the cause and exits with its code (see [Wait until the app is ready](#wait-until-the-app-is-ready)) |
+| `lustro ready [--timeout SECONDS]` | `GET /api/v1/_meta` until the server answers, then prints the endpoint; at the timeout (30 s by default), prints the cause and exits with its code, and with `--package` exits 4 or 5 at once (see [Wait until the app is ready](#wait-until-the-app-is-ready)) |
 | `lustro meta` | `GET /api/v1/_meta` |
 | `lustro schema [tabId]` | `GET /api/v1/_schema` or `/api/v1/<tab>/_schema` |
 | `lustro net list` | `GET network/transactions` (one poll): the newest 50 transactions, newest first |
@@ -224,7 +227,17 @@ answers, `ready` prints the endpoint that the CLI reaches it at and exits 0;
 token. When the time is over, it prints the cause and exits with its code: no
 device, an app that is not installed, a build without the Lustro runtime, an app
 that is not running or not in the foreground, or a port that does not answer. It
-makes the checks of the cause once, at the end. An error response that a new try
+makes the checks of the cause at the end. With `--package`, it also makes them
+once after the first try that fails (while a device starts, after the first try
+on which adb reaches it and its package manager answers), and stops at once
+with exit 4 for an app
+that is not installed, or exit 5 for a build without the Lustro runtime: the
+installed APK does not change while `ready` waits. For every other cause, such
+as an app that is not running yet, it waits. So an `adb install` that runs at
+the same time as `ready --package` can end it at once with exit 4: install the
+app before `ready`. Without `--package`, the checks run only at the end,
+because the app in the foreground changes while the app starts, and it can be
+the launcher. An error response that a new try
 can't change, such as a `401` for a `--token` that is not the app's, ends the
 wait at once with exit 1; `ready` tries again after a `5xx` or a `429`.
 
@@ -272,11 +285,14 @@ the same cause.
 ## The local port
 
 `lustro open` forwards a local port to the app's port on the device, and prints
-the console URL with the local port. It keeps an existing forward to the app.
-Without one, it forwards the same port number, 8080 by default. When another
+the console URL with the local port. It uses the same port number, 8080 by
+default: a forward on it, or else a new one. So a person gets the same URL each
+time, also after an earlier command, such as `lustro ready`, made a forward on
+a port that adb chose. That matters because the console keeps its state in the
+browser for each origin, and the port is part of the origin. When another
 process, such as a local development server or a forward to another device,
-holds that port on the computer, adb chooses a free local port. To choose the
-local port yourself:
+holds that port on the computer, `open` uses an existing forward to the app, or
+else a free local port that adb chooses. To choose the local port yourself:
 
 ```bash
 lustro open --local-port 18080   # forward local port 18080 to the app's port
@@ -288,8 +304,11 @@ lustro net list                  # connects through the forward, without --port
 the forward in `adb forward --list`, as
 [discovery](#endpoint-and-token-discovery) describes, so they need no `--port`.
 This also applies to a forward that you make yourself, such as
-`adb forward tcp:18080 tcp:8080`. Without a forward, a command makes one the
-way `open` does, so it needs no `open` first. The CLI runs
+`adb forward tcp:18080 tcp:8080`. Without a forward, a command makes one on a
+local port that adb chooses, so it needs no `open` first. It does not take the
+app's port number: the forward stays until adb restarts, and on local port 8080
+it would keep a tool that starts later, such as a proxy or a development server,
+from binding 8080. Only `open` prefers the same port number. The CLI runs
 `adb forward --no-rebind`, so it does not take over a local port that a forward
 of another device holds. `--no-forward` skips the forward, and the URL then
 uses `--local-port N`, else the app's port.

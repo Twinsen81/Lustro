@@ -8,10 +8,11 @@
 #
 # Needs adb, one connected device (set ANDROID_SERIAL when there are more), and
 # Python 3.9 or later. The CLI goes into a virtual environment in the output
-# directory. `lustro open` forwards local port 8080 to the app, or a free port
-# when 8080 is taken, or CLI_E2E_LOCAL_PORT when it is set; 0 lets adb choose a
-# free port. The other commands find that forward, so none of them passes
-# --port. The run replaces the sample's mock rules with its own and sets the
+# directory. `lustro ready` forwards a local port that adb chooses to the app.
+# `lustro open` forwards local port 8080 too, or uses the forward of `ready` when
+# 8080 is taken, or forwards CLI_E2E_LOCAL_PORT when it is set; 0 lets adb choose
+# a free port. The other commands find a forward to the app in
+# `adb forward --list`, so none of them passes --port. The run replaces the sample's mock rules with its own and sets the
 # device to stay awake while it charges. The output directory keeps each
 # command's output and, at exit, logcat.
 set -euo pipefail
