@@ -286,7 +286,52 @@ def test_ready_stops_at_once_when_the_app_is_not_installed(monkeypatch, capsys):
     code, cause = _stops_at_once(["--package", PACKAGE], capsys)
     assert code == exitcodes.NOT_INSTALLED
     assert cause.startswith(PACKAGE + " is not installed on the device")
-    assert adb.count(PM_PATH) == 1
+    assert adb.count(PM_PATH) == 2
+
+
+def test_ready_checks_again_when_the_first_try_finds_no_device(monkeypatch, capsys):
+    # An emulator that starts: adb finds no device on the first try, and then finds it.
+    adb = FakeAdb(monkeypatch, {})
+    states = iter([(1, "error: no devices/emulators found\n")])
+    run_status = adb.run_status
+
+    def changing_state(cmd, timeout=10.0):
+        if cmd[-1] == "get-state":
+            adb.state = next(states, (0, "device\n"))
+        return run_status(cmd, timeout)
+
+    monkeypatch.setattr(discovery, "_run_status", changing_state)
+    code, cause = _stops_at_once(["--package", PACKAGE], capsys)
+    assert code == exitcodes.NOT_INSTALLED
+    assert cause.startswith(PACKAGE + " is not installed on the device")
+    assert adb.count("adb get-state") == 2
+
+
+def test_ready_checks_again_while_the_package_manager_does_not_answer(monkeypatch, capsys):
+    # The device boots: `pm path` fails with an error text, and then answers with nothing.
+    adb = FakeAdb(monkeypatch, {PM_PATH: lambda earlier: "Error: Can't find service: package\n" if earlier < 4 else None})
+    code, cause = _stops_at_once(["--package", PACKAGE], capsys)
+    assert code == exitcodes.NOT_INSTALLED
+    assert cause.startswith(PACKAGE + " is not installed on the device")
+
+
+def test_ready_stops_at_once_when_the_package_manager_starts_during_the_early_check(monkeypatch, capsys):
+    # The package manager does not run yet when the early check asks it, and answers when
+    # the checks run just after.
+    answers = ["Error: Can't find service: package\n"]
+    adb = FakeAdb(monkeypatch, {PM_PATH: lambda earlier: answers[earlier] if earlier < len(answers) else None})
+    code, cause = _stops_at_once(["--package", PACKAGE], capsys)
+    assert code == exitcodes.NOT_INSTALLED
+    assert cause.startswith(PACKAGE + " is not installed on the device")
+
+
+def test_ready_checks_only_once_when_the_package_manager_answers(monkeypatch, capsys):
+    # The app is installed and does not run yet: nothing in the checks ends the wait.
+    adb = FakeAdb(monkeypatch, dict(HEALTHY, **{PIDOF: ""}))
+    assert _ready("--package", PACKAGE) == exitcodes.NOT_REACHABLE
+    assert _cause(capsys).startswith(PACKAGE + " is not running")
+    # The early check asks the package manager, then checks; and the check at the timeout.
+    assert adb.count(PM_PATH) == 3
 
 
 def test_ready_with_a_short_timeout_when_the_app_is_not_installed(monkeypatch, capsys):

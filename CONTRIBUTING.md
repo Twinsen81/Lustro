@@ -91,9 +91,9 @@ fails it, update the expectation in `PlatformHttpCaptureTest`.
 connected device. It installs the sample, installs the CLI from the checkout
 into a virtual environment, and checks the output of the main commands against
 the CLI's wire schemas. No command passes `--token`, so it also tests discovery
-through logcat. It needs `adb`, Python 3.9 or later, and a free host port 8080
-for `adb forward`, or another free port in `CLI_E2E_LOCAL_PORT`; `0` lets adb
-choose one. The run changes the device and does not change it back: it
+through logcat. It needs `adb` and Python 3.9 or later. `lustro open` forwards
+host port 8080 when it is free, or else uses a forward on a port that adb chose;
+`CLI_E2E_LOCAL_PORT` names another port for it, and `0` lets adb choose one. The run changes the device and does not change it back: it
 replaces the sample's mock rules with one rule that mocks `GET /get`, and it
 sets the device to stay awake while it charges. CI runs `connectedCheck` on API
 24, 35, and 36 emulators, and the end to end on API 24 and 35: on API 36 the
