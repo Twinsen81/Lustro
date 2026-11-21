@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import pytest
 
-from lustro_cli import cli, discovery, exitcodes
+from lustro_cli import cli, discovery, exitcodes, mcp
 from lustro_cli.discovery import Endpoint
 
 TOKEN = "tok"
@@ -242,23 +242,36 @@ def test_commands_connect_through_the_forward_to_the_app(app, monkeypatch, base_
     assert adb.forwards == []
 
 
-def test_commands_forward_the_app_port_without_a_forward(app, monkeypatch, base_urls):
-    adb = _Adb(monkeypatch)
+def test_commands_without_a_forward_forward_a_port_that_adb_chooses(app, monkeypatch, base_urls):
+    # The forward stays until adb restarts: on local port 8080, it would keep a proxy or a
+    # development server that starts later from binding 8080.
+    adb = _Adb(monkeypatch, chosen=51234)
     assert cli.main(["--device", "emulator-5554", "meta"]) == 0
-    assert base_urls == ["http://127.0.0.1:8080"]
-    assert adb.forwards == [(8080, 8080, "emulator-5554")]
+    assert base_urls == ["http://127.0.0.1:51234"]
+    assert adb.forwards == [(0, 8080, "emulator-5554")]
 
 
-def test_commands_forward_a_free_port_when_another_device_holds_the_app_port(app, monkeypatch, base_urls):
+def test_commands_do_not_connect_to_another_devices_forward_on_the_app_port(app, monkeypatch, base_urls):
     # Local port 8080 reaches another device's app, so the command must not connect to it.
     adb = _Adb(monkeypatch, taken=[8080], chosen=51234)
     assert cli.main(["--device", "emulator-5556", "meta"]) == 0
     assert base_urls == ["http://127.0.0.1:51234"]
-    assert adb.forwards == [(8080, 8080, "emulator-5556"), (0, 8080, "emulator-5556")]
+    assert adb.forwards == [(0, 8080, "emulator-5556")]
+
+
+def test_mcp_tools_forward_a_port_that_adb_chooses(app, monkeypatch, base_urls):
+    adb = _Adb(monkeypatch, chosen=51234)
+    args = cli.build_parser().parse_args(["mcp"])
+    for name, default in cli.GLOBAL_DEFAULTS.items():
+        setattr(args, name, getattr(args, name, default))
+    result = mcp.Server(args)._tools_call({"name": "get_schema", "arguments": {}})
+    assert result["isError"] is False
+    assert base_urls == ["http://127.0.0.1:51234"]
+    assert adb.forwards == [(0, 8080, None)]
 
 
 def test_commands_fail_when_no_forward_works(app, monkeypatch, base_urls, capsys):
-    _Adb(monkeypatch, error="adb: error: cannot bind listener")
+    adb = _Adb(monkeypatch, error="adb: error: cannot bind listener")
     monkeypatch.setattr(discovery, "_run_status", lambda cmd, timeout=10.0: (0, "device\n"))
     assert cli.main(["meta"]) == exitcodes.NOT_REACHABLE
     assert base_urls == []
@@ -269,6 +282,7 @@ def test_commands_fail_when_no_forward_works(app, monkeypatch, base_urls, capsys
     )
     assert "--device SERIAL" in err
     assert "--port N" in err
+    assert adb.forwards == [(0, 8080, None)]
 
 
 def test_a_forward_that_fails_for_more_than_one_device_is_a_usage_error(app, monkeypatch, base_urls, capsys):

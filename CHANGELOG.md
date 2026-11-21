@@ -1292,6 +1292,30 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Fixed
 
+- **`lustro ready --package` stops at once for an app that is not installed or
+  a build without the Lustro runtime.** `ready` ran the adb checks of the cause
+  only at the timeout, so a script that installed a build with the `-noop`
+  artifacts, or named a package that is not installed, waited the whole
+  timeout, 30 s by default, for an exit 5 or 4 that was certain after the first
+  try: the installed APK does not change while `ready` waits. The checks were
+  at the end because the runtime check read the whole APK. It reads only the
+  ZIP central directory now (see the API 30 to 33 entry below), so the checks
+  take about 0.5 s. With `--package`, `ready` now runs the
+  checks once after the first try that fails, and exits 4 or 5 at once. For
+  every other cause, such as an app that is not running yet, it waits as
+  before. Without `--package`, the checks still run only at the timeout,
+  because the app in the foreground changes while the app starts, and it can
+  be the launcher. An `adb install` that runs at the same time as `ready
+  --package` can now end it at once with exit 4, which the docs say. The CLI
+  README also gave the wrong exit code for a forward that adb can't make: a
+  command other than `open` exits with the device's cause, 2 or 3, or else 6,
+  not 1. Verified on an emulator (API 34) with the sample: `ready --package
+  --timeout 10` exited 4 after 0.3 s for the package not installed and 5 after
+  0.4 s for the release build, which uses the `-noop` artifacts, where it
+  exited after 10.3 s and 10.4 s before; with the debug build installed and not
+  started, it still waited the 5 s of `--timeout 5` and exited 6, and it exited
+  0 when the app started during the wait.
+
 - **With `--package`, the CLI takes the token and the port only from the ready
   line of that app's current process.** Discovery took the last `Lustro ready`
   line in `adb logcat -d -s LustroToken`, whatever app logged it, and
@@ -2262,6 +2286,23 @@ see [DECISIONS.md](DECISIONS.md).
   body, and a gzip response over `HttpURLConnection`.
 
 ### Changed
+
+- **The CLI makes a new adb forward on a local port that adb chooses, except
+  for `lustro open`.** When the selected device had no forward to the app's
+  port, every command made one on the same port number, 8080 by default, and
+  on a port that adb chooses only when 8080 was taken. The forward stays until
+  adb restarts, so any command, also one in a script, took local port 8080
+  without a message, and a tool that bound 8080 later, such as a SOCKS proxy
+  from `ssh -D 8080` or a local development server, failed with "Address
+  already in use". The commands find the forward in `adb forward --list`, so
+  port 8080 gave them nothing. Now `lustro ready`, `lustro mcp`, and the other
+  commands make a new forward with `tcp:0`. `lustro open` still tries the same
+  port number first, because a person gets the same console URL each time, and
+  `--local-port` chooses another port. An existing forward to the app is used
+  as before. Verified on an emulator (API 34) with an adb that logged each
+  `adb forward`: `meta` and `ready` without a forward ran `forward --no-rebind
+  tcp:8080 tcp:8080` first before the change, and now run only `tcp:0`; `open`
+  still runs `tcp:8080` first.
 
 - **The SQLite tab declares its routes once, with no change to the
   declared-routes API (experimental).** The SQLite tab routed each request by
