@@ -8,7 +8,7 @@ them.
 Start with `lustro ready --package <your.app.id>`. It waits until the server answers and prints
 its endpoint, or it names the cause and exits with its code: no device (3), the app is not
 installed (4), the build has no Lustro runtime (5), or the app is not running, not in the
-foreground, or its port does not answer (6). [Exit codes](../AGENTS.md#exit-codes) says what to do
+foreground, its port does not answer, or another app's server holds its port (6). [Exit codes](../AGENTS.md#exit-codes) says what to do
 for each. When it names no cause that helps, check these steps by hand:
 
 1. Keep the app in the **foreground**. The server listens only while the app is in the
@@ -23,8 +23,8 @@ for each. When it names no cause that helps, check these steps by hand:
 
     With `bindFallback`, a server whose port was taken binds a port that the system chooses, and
     this line gives it. Without `bindFallback`, the server tries the taken port again every
-    250 ms for 10 s. A port can be taken by another app with Lustro that still holds it while it
-    goes to the background. After 10 s, `adb logcat -d -s Lustro` has
+    250 ms for 10 s. A port can be taken by another app with Lustro, whose server holds it until
+    that app goes to the background (see [`401 unauthorized`](#401-unauthorized)). After 10 s, `adb logcat -d -s Lustro` has
     `is taken and bindFallback=false; not starting`, and the server tries again only when the app
     comes to the foreground again.
 4. When the log has no `LustroToken` line, the device can drop Info logs. See
@@ -39,6 +39,28 @@ The request has no valid token.
 - **In a script:** send `Authorization: Bearer <token>`. Get the token with
     `adb logcat -d -s LustroToken`, or with `lustro open --print-only --json`, which prints
     `token` and `url`.
+- **Right after the app starts, with another app with Lustro on the device:** both apps bind
+    port 8080 by default. The server of the app that was in the foreground keeps the port until
+    that app goes to the background: Android tells it so about 0.7 s after the new app shows its
+    first screen, or later. Until then, that server answers the requests for the new app, with a
+    `401` for the new app's token. Then the new app's server binds the port, at its next retry,
+    every 250 ms. With `--package`, the CLI tells this `401` from one for a wrong token: it exits
+    with code 6, and names the app that listens on the port. `lustro ready --package
+    <your.app.id>` waits until the app's own server answers. A client that is not the CLI, such
+    as a script with `curl`, can't tell the two apart: run `lustro ready --package <your.app.id>`
+    before its first request, or compare the uid that listens on the port with the uid of the
+    app:
+
+    ```bash
+    # The uid that listens on port 8080 (1F90 in hex): the state of a listening socket is 0A.
+    adb shell cat /proc/net/tcp /proc/net/tcp6 | awk '$4 == "0A" && $2 ~ /:1F90$/ {print $8}'
+    # The uid of the app's process.
+    adb shell 'stat -c %u /proc/$(pidof <your.app.id>)'
+    ```
+
+    To prevent this, give each app with Lustro on the device its own `serverPort`, such as 8080
+    for the debug build and 8081 for a staging build (see
+    [Configuration](configuration.md#server)).
 - **After the app's data is cleared:** the app makes a new token. The last `LustroToken` line has
     it.
 - **After the app restarts, with LAN exposure:** when `DebugConfig.bindAddress` is not loopback,

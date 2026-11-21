@@ -138,11 +138,26 @@ too (while a device starts, once adb reaches it and its package manager answers)
 the runtime: the installed APK does not change while it waits. For every other cause, such as an
 app that is not running yet, it waits. So install the app before `ready`: an `adb install` that
 runs at the same time can end it at once with exit 4. A `401` for `--token` or `LUSTRO_TOKEN`, or another `4xx` other than `429`, ends the wait at once with exit 1; a `401` for a token that the CLI found does not, because the next try reads it again, and at the
-timeout it gets the cause from adb, such as another app in the foreground. Pass `--package`: without it, the CLI checks only the app in the
+timeout it gets the cause from adb, such as another app in the foreground, or another app with Lustro whose server still
+holds the port (see "Two apps with Lustro on one device" below). Pass `--package`: without it, the CLI checks only the app in the
 foreground, which can be the launcher, and only at the timeout. A `404` for `_meta` does not end the wait: Lustro always has
 that route, so the `404` is from another server on the port, such as the debug server of another
 app on the port that a stopped app's prefs keep. `ready` waits, and at the timeout prints the cause
 and says that another server answers on the port.
+
+**Two apps with Lustro on one device.** Both bind port 8080 by default, so they take turns: the
+server of the app that starts binds the port when the server of the other app closes, when that
+app goes to the background, about 0.7 s after the new app shows its first screen. Until then, the
+other app's server answers the requests for the new app, with a `401` for its token. With
+`--package`, a command then exits 6 and names that app, such as `port 8080 of the device is held by
+com.example.other (uid 10217), not by com.example.app (uid 10213)`, and `lustro ready --package`
+waits until the app's own server answers. The CLI reads the uid that listens on the app's port in
+`/proc/net/tcp` and `/proc/net/tcp6`, compares it with the uid of the app's process, and gets the
+name from `pm list packages -U`, or before API 26 from `dumpsys package packages`. A client that is not the CLI can't tell this `401` from one for a
+wrong token: run `lustro ready --package <package>` before its first request, or compare the two
+uids in the same way (see [Troubleshooting](reference/troubleshooting.md#401-unauthorized)). Give
+each app with Lustro on the device its own `serverPort`, such as 8080 for the debug build and 8081
+for a staging build: then the window does not occur.
 
 **The token in a script.** `lustro ready` does not print the token. A script that needs it, for the
 console URL or a `curl` call, runs `lustro open --print-only --json`: it prints `url`, `token`,
@@ -182,7 +197,7 @@ that finds the app uses them, not only `ready`:
 | 3 | No device: adb is not installed, or it finds no device, or the device is offline or not authorized. | Connect a device, or start an emulator. |
 | 4 | The app of `--package` is not installed. | Install a debug build that uses the Lustro artifacts. |
 | 5 | The installed build of `--package` does not contain the Lustro runtime: a build with the `-noop` artifacts, or one from before the app added Lustro. | Install a debug build that uses the Lustro artifacts. This replaces the installed build: when the user asked you to look at that build, ask first. |
-| 6 | The app can't be reached: it is not running or not in the foreground, it logged no ready line, or its port does not answer. | Start the app, and keep it in the foreground. |
+| 6 | The app can't be reached: it is not running or not in the foreground, it logged no ready line, its port does not answer, or, with `--package`, another app's server holds its port and answered `401`. | Start the app, and keep it in the foreground. For another app on the port, run `lustro ready --package`, which waits for the app's own server, and give each app its own `serverPort`. |
 
 Without `--package`, an app in the foreground without the runtime exits 6, not 5, because that app
 can be another app than yours. `lustro --version` prints the wire protocol that the CLI implements,

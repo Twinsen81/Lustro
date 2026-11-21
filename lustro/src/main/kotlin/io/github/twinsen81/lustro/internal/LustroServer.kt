@@ -70,8 +70,8 @@ import org.json.JSONObject
  *   ([ShutdownOnEofInputStream]) instead of wedging its thread.
  *
  * Lifecycle binding is driven from [io.github.twinsen81.lustro.Lustro]; the
- * [beginDrain]/[shutdownLimiter] hooks below let it stop accepting new requests
- * and wait for in-flight work before closing the socket.
+ * [beginDrain]/[shutdownLimiter] hooks below let it stop accepting new connections
+ * and requests, and wait for in-flight work before it closes their connections.
  */
 internal class LustroServer(
     hostname: String,
@@ -116,6 +116,8 @@ internal class LustroServer(
             /* fair = */ true,
         )
 
+    private val listeningSockets = ListeningSocketFactory(serverSocketFactory)
+
     init {
         // Every request in the limiter, running or queued, holds its connection,
         // so the cap leaves room for all of them plus page loads and idle
@@ -125,6 +127,7 @@ internal class LustroServer(
                 .coerceIn(1, Int.MAX_VALUE.toLong())
                 .toInt()
         setAsyncRunner(ContainedAsyncRunner(maxConnections))
+        serverSocketFactory = listeningSockets
     }
 
     override fun createClientHandler(finalAccept: Socket, inputStream: InputStream): ClientHandler {
@@ -152,8 +155,18 @@ internal class LustroServer(
      */
     fun inFlightCount(): Int = limiter.activeCount()
 
-    /** Stops admitting new API requests; in-flight work keeps running. */
+    /**
+     * Closes the listening socket and stops admitting new API requests. The requests
+     * that the server accepted before keep running, and their connections stay open
+     * until [stop].
+     *
+     * Another app with Lustro on the same port binds it while this app goes to the
+     * background. Until the socket closes, this server answers that app's clients, with
+     * a 401 for their token, and that app can't bind the port. [isAlive] is false from
+     * now on, so the next foreground binds a new server.
+     */
     fun beginDrain() {
+        listeningSockets.close()
         limiter.beginDrain()
     }
 

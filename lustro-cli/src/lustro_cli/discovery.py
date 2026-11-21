@@ -47,7 +47,7 @@ import re
 import shlex
 import struct
 import subprocess
-from typing import Callable, List, NamedTuple, Optional, Tuple
+from typing import Callable, Iterable, List, NamedTuple, Optional, Tuple
 
 from . import exitcodes
 
@@ -473,6 +473,125 @@ def diagnose(
             exitcodes.NOT_REACHABLE,
         )
     return None
+
+
+# A listening socket in /proc/net/tcp and /proc/net/tcp6. A line is
+# ``<sl>: <local address>:<port> <remote address>:<port> <state> ... <uid> ...``,
+# with the port in hex, and the uid in the eighth column.
+_TCP_LISTEN = "0A"
+_TCP_UID_COLUMN = 7
+
+
+def parse_listening_uids(text: str, port: int) -> List[int]:
+    """The uids of the sockets in ``/proc/net/tcp`` or ``/proc/net/tcp6`` text that
+    listen on TCP ``port``, in the order of the lines, each once."""
+    suffix = ":{:04X}".format(port)
+    uids: List[int] = []
+    for line in text.splitlines():
+        fields = line.split()
+        if len(fields) <= _TCP_UID_COLUMN or fields[3] != _TCP_LISTEN or not fields[1].upper().endswith(suffix):
+            continue
+        if fields[_TCP_UID_COLUMN].isdigit() and int(fields[_TCP_UID_COLUMN]) not in uids:
+            uids.append(int(fields[_TCP_UID_COLUMN]))
+    return uids
+
+
+def listening_uids(port: int, device: Optional[str] = None) -> Optional[List[int]]:
+    """The uids of the sockets that listen on TCP ``port`` of the device, empty when
+    none does, or ``None`` when adb can't tell. A server bound to 127.0.0.1 shows in
+    ``tcp6`` as an IPv4-mapped address."""
+    out = _run(_adb_base(device) + ["shell", "cat /proc/net/tcp /proc/net/tcp6 2>/dev/null; true"])
+    if not out or "local_address" not in out:
+        return None
+    return parse_listening_uids(out, port)
+
+
+def process_uids(package: str, device: Optional[str] = None) -> Optional[List[int]]:
+    """The uids of the processes of ``package`` on the device, or ``None`` when no
+    process runs or adb can't tell. The uid of a process is the app's uid in the
+    user that runs it."""
+    pids = app_pids(package, device)
+    if not pids:
+        return None
+    paths = " ".join("/proc/{}".format(pid) for pid in pids)
+    out = _run(_adb_base(device) + ["shell", "stat -c %u {} 2>/dev/null; true".format(paths)])
+    uids = sorted({int(word) for word in (out or "").split() if word.isdigit()})
+    return uids or None
+
+
+# A line of ``pm list packages -U``: ``package:<name> uid:<uid>``, with one uid for
+# each user that has the app, comma-separated, such as ``uid:10773,9510773``.
+_PACKAGE_UIDS = re.compile(r"^package:(?P<package>\S+)\s+uid:(?P<uids>[\d,]+)\s*$")
+
+# A package in ``dumpsys package packages``: ``Package [<name>] (<hash>):``, and some
+# lines later its app ID, the uid in user 0, as ``userId=<id>`` (``appId=`` on newer
+# releases). The uid in user N is N * 100000 + the app ID.
+_DUMPSYS_PACKAGE = re.compile(r"^\s*Package \[(?P<package>[^\]]+)\]")
+_DUMPSYS_APP_ID = re.compile(r"^\s*(?:userId|appId)=(?P<id>\d+)")
+_PER_USER_RANGE = 100000
+
+
+def packages_of_uid(uid: int, device: Optional[str] = None) -> List[str]:
+    """The packages that have ``uid``: more than one for a shared uid, and none when
+    adb can't tell, as for a uid that is not an app's.
+
+    ``pm list packages -U`` lists them from API 26. It can print an error first, such
+    as a ``SecurityException`` for a user that the shell can't access, and then the
+    packages of the other users. An older ``pm`` prints ``Unknown option: -U``: then
+    ``dumpsys package packages`` gives the app ID of each package."""
+    _, out = _run_status(_adb_base(device) + ["shell", "pm", "list", "packages", "-U"])
+    listed = [match for match in (_PACKAGE_UIDS.match(line.strip()) for line in out.splitlines()) if match]
+    if listed:
+        return _unique(match.group("package") for match in listed if str(uid) in match.group("uids").split(","))
+    packages = []
+    current = None
+    for line in (_run(_adb_base(device) + ["shell", "dumpsys", "package", "packages"]) or "").splitlines():
+        package = _DUMPSYS_PACKAGE.match(line)
+        app_id = _DUMPSYS_APP_ID.match(line) if current else None
+        if package:
+            current = package.group("package")
+        elif app_id:
+            if int(app_id.group("id")) == uid % _PER_USER_RANGE:
+                packages.append(current)
+            current = None
+    return _unique(packages)
+
+
+def _unique(items: Iterable[str]) -> List[str]:
+    return list(dict.fromkeys(items))
+
+
+class PortHolder(NamedTuple):
+    """Another app that listens on the app's port of the device: its uid, and its
+    packages, empty when ``pm`` can't tell. ``app_uids`` are the uids of the app."""
+
+    uid: int
+    packages: List[str]
+    app_uids: List[int]
+
+    @property
+    def name(self) -> str:
+        if not self.packages:
+            return "a process with uid {}".format(self.uid)
+        return "{} (uid {})".format(", ".join(self.packages), self.uid)
+
+
+def other_app_on_port(package: str, holders: Optional[List[int]], device: Optional[str] = None) -> Optional[PortHolder]:
+    """The other app among ``holders``, the uids that :func:`listening_uids` found on the
+    app's port, when no process of ``package`` is one of them, or ``None``: the app
+    listens there, no socket listens, or adb can't tell.
+
+    Two apps with Lustro that use the same port take turns: the server of the app in
+    the foreground binds the port when the server of the other app closes, when that
+    app goes to the background. Until then, the other app's server answers the
+    requests for the app, and a 401 for the app's token is its answer. That server
+    closes soon, so read ``holders`` first, right after the 401."""
+    if not holders:
+        return None
+    app_uids = process_uids(package, device)
+    if app_uids is None or any(uid in app_uids for uid in holders):
+        return None
+    return PortHolder(uid=holders[0], packages=packages_of_uid(holders[0], device), app_uids=app_uids)
 
 
 def token_from_prefs(device: Optional[str] = None, package: Optional[str] = None) -> Optional[str]:

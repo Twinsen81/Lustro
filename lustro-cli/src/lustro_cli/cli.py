@@ -38,6 +38,8 @@ from .discovery import (
     device_problem,
     diagnose,
     forwarded_ports,
+    listening_uids,
+    other_app_on_port,
     package_paths,
     resolve,
     token_from_prefs,
@@ -551,6 +553,9 @@ def _client_through_forward(
     """The client of :func:`_build_client`, and the app's port on the device when the
     client connects to it through an adb forward, else ``None``."""
     endpoint = _build_endpoint(args, check_app=check_app)
+    # The app's port on the device, for failure() to check who listens there after a 401.
+    # With --port, the CLI does not know it: N can be the local port of a script's forward.
+    args.app_port = endpoint.port if args.port is None and endpoint.host in LOOPBACK_HOSTS else None
     device_port = None
     # The app's port is on the device. Without --port, connect through an adb
     # forward to it on the selected device, and make one when there is none: the
@@ -590,14 +595,47 @@ def _cause_from_adb(args: argparse.Namespace) -> Optional[DiscoveryError]:
     return cause
 
 
-def failure(args: argparse.Namespace, exc: Exception) -> Tuple[int, str]:
+def _app_port_listeners(args: argparse.Namespace) -> Optional[List[int]]:
+    """With --package, the uids that listen on the app's port of the device, or ``None``."""
+    port = getattr(args, "app_port", None)
+    if not args.package or port is None:
+        return None
+    return listening_uids(port, args.device)
+
+
+def _other_app_on_app_port(
+    args: argparse.Namespace, listeners: Optional[List[int]], ready_timeout: Optional[float]
+) -> Optional[str]:
+    """The message for a 401 when another app is among the ``listeners`` of the app's port,
+    as :func:`other_app_on_port` finds it, or ``None``. ``ready_timeout`` is the timeout of
+    ``ready``, which waited for that app's server to close."""
+    holder = other_app_on_port(args.package, listeners, args.device)
+    if holder is None:
+        return None
+    port = args.app_port
+    message = (
+        "port {port} of the device is held by {other}, not by {pkg} (uid {uids}), so the 401 is the other app's "
+        "answer to the token of {pkg}. Both apps use port {port}: the server of {pkg} binds it when the other app's "
+        "server closes, which it does when that app goes to the background."
+    ).format(port=port, other=holder.name, pkg=args.package, uids=", ".join(str(uid) for uid in holder.app_uids))
+    if ready_timeout is None:
+        message += " `lustro ready --package {}` waits for that.".format(args.package)
+    else:
+        message = "the app's server did not answer within {} s: {}".format(_seconds(ready_timeout), message)
+    return message + " To prevent this, give each app with Lustro on the device its own serverPort."
+
+
+def failure(args: argparse.Namespace, exc: Exception, *, ready_timeout: Optional[float] = None) -> Tuple[int, str]:
     """The exit code and the message of a command that failed with ``exc``.
 
     A connection that fails gets the cause that adb finds, as :func:`_cause_from_adb`
     describes, and so does a ``401`` for a token that discovery found: the prefs or the
     log line can name a port where another app's Lustro server answers, such as the app
-    in the foreground on the same port. A forward that adb can't make gets only the
-    device's cause, such as more than one device: the app's state does not stop a forward.
+    in the foreground on the same port. When adb finds no cause, a 401 with --package gets
+    the name of another app that listens on the app's port: right after the app starts,
+    that app's server can still hold the port. A forward that adb can't make gets only
+    the device's cause, such as more than one device: the app's state does not stop a
+    forward. ``ready`` passes its ``ready_timeout``.
     """
     if isinstance(exc, UsageError):
         return exitcodes.USAGE, str(exc)
@@ -611,9 +649,15 @@ def failure(args: argparse.Namespace, exc: Exception) -> Tuple[int, str]:
             cause = _cause_from_adb(args)
             return (exitcodes.NOT_REACHABLE, str(exc)) if cause is None else (cause.exit_code, str(cause))
         if exc.status == 401 and _token_was_discovered(args):
+            # Before the checks of the cause, which take about 0.5 s: the other app's server
+            # closes soon after the app starts.
+            listeners = _app_port_listeners(args)
             cause = _cause_from_adb(args)
             if cause is not None:
                 return cause.exit_code, "{} The server on the app's port answered: {}".format(cause, exc)
+            other_app = _other_app_on_app_port(args, listeners, ready_timeout)
+            if other_app is not None:
+                return exitcodes.NOT_REACHABLE, other_app
         # A search that the app rejects is a usage error, like a bad flag.
         return (exitcodes.USAGE if _is_search_error(exc) else exitcodes.ERROR), str(exc)
     raise exc
@@ -959,6 +1003,9 @@ def cmd_ready(args: argparse.Namespace) -> int:
     installed APK does not change while ``ready`` waits. Without --package, the app is the one in the foreground,
     which changes while the app starts. An error response that a new try can't
     change, such as a 401 for a token from --token or LUSTRO_TOKEN, ends the wait.
+    A 401 for a token that discovery found does not: right after the app starts,
+    another app with Lustro on the same port can still listen there, and at the
+    timeout the message names it.
     """
     deadline = time.monotonic() + args.timeout
     checked_early = not args.package
@@ -1032,7 +1079,7 @@ def cmd_ready(args: argparse.Namespace) -> int:
         return code
     if isinstance(last, DiscoveryError):
         last = diagnose(args.device, args.package) or last
-    code, message = failure(args, last)
+    code, message = failure(args, last, ready_timeout=args.timeout)
     if isinstance(last, LustroError) and last.status is not None:
         # The server answered, with an error.
         print("error: {}".format(message), file=sys.stderr)
@@ -2014,8 +2061,9 @@ def build_parser() -> argparse.ArgumentParser:
         description="Wait until the app's server answers GET /api/v1/_meta, print the endpoint that the CLI "
         "reaches it at, and exit 0. Each try runs discovery again. At the timeout, print the cause and exit "
         "with its code: 3 no device, 4 the app of --package is not installed, 5 its build has no Lustro "
-        "runtime, 6 it is not running or not in the foreground, or its port does not answer. Pass --package "
-        "so that the CLI checks your app, and not the app in the foreground.",
+        "runtime, 6 it is not running or not in the foreground, its port does not answer, or another app's "
+        "server holds its port. Pass --package so that the CLI checks your app, and not the app in the "
+        "foreground.",
     )
     p_ready.add_argument(
         "--timeout",

@@ -1292,6 +1292,37 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Fixed
 
+- **Two apps with Lustro on one device: right after one app starts, the CLI
+  says that the `401` is the other app's, and that app's server frees the port
+  at once when it goes to the background.** Both apps bind port 8080 by
+  default. The server of the app that was in the foreground kept the port
+  until that app went to the background, which Android tells it about 0.7 s
+  after the new app shows its first screen, and then until its requests in
+  flight ended, for up to 5 s. Until then, it answered the new app's requests
+  with `401` for the new app's token, and `lustro --package <app> meta` exited 1
+  with the hint to send a Bearer token, as for a wrong token. On an API 36
+  emulator, with the other app in front, the new app got `401` for 0.8 s, and
+  for 3.0 s while the other app answered a request that ended 3.1 s after the
+  start. Now the
+  server closes its listening socket in `onStop`: a new connection is refused,
+  and the next app binds the port at its next retry, every 250 ms. The
+  requests that the server accepted before still get their answers, on their
+  own connections, within the 5 s, and a foreground during that time binds a
+  new server at once. On the same emulator, the `401` now ends at the other
+  app's `onStop`, after 0.8 s, also while it answers that request, which still
+  gets its answer. With `--package`, when a `401` answers a token that
+  discovery found and adb finds no other cause, the CLI reads the uid that
+  listens on the app's port of the device in `/proc/net/tcp` and
+  `/proc/net/tcp6`, and compares it with the uid of the app's process. When
+  another app holds the port, the CLI exits 6, names that app from `pm list
+  packages -U`, or before API 26 from `dumpsys package packages`, and says that `lustro ready --package` waits for the app's own
+  server; `ready` waits, and names that app at its timeout. A `401` from the
+  app's own uid stays a `401` with exit 1. The troubleshooting page, the agent
+  guide, the CLI README, and `serverPort` in the configuration reference now
+  describe the window, how a client that is not the CLI checks the uid, and
+  the advice to give each app with Lustro on one device its own `serverPort`,
+  such as 8081 for a staging build, which prevents the window.
+
 - **The console's top bar fits a narrow window: the tabs scroll inside the bar,
   and the theme toggle and the connection status stay visible.** The bar was
   as wide as all its tabs and its actions together, and the page does not

@@ -46,8 +46,10 @@ and the server listens only while the app is in the foreground:
 
 - When the app comes to the foreground, the server binds its port and logs the `LustroToken`
   line again.
-- When the app goes to the background, the server stops taking new requests, waits up to 5 s for
-  the requests in progress, and closes the socket.
+- When the app goes to the background, the server closes its listening socket at once, so that a
+  new connection is refused and another app can bind the port. It answers the requests in
+  progress on their own connections, waits up to 5 s for them, and then closes those
+  connections.
 - `Lustro.stop()` removes the observer and closes the socket at once.
 
 While the app is in the background, a request through the forward gets no response: adb closes
@@ -190,8 +192,8 @@ gives the rules for the code and the assets.
 | `DebugTab.handle(request)`, `renderContent()`, `renderScript()`, `renderStyles()`, `schema()` | A `lustro-request-worker` thread, never the main thread. Calls can run at the same time on different threads. |
 | Actions from `request.onCancel { }` | A server thread, when the request times out or the server stops. Such an action can run after `handle` has returned. |
 | Reading the request and writing the response | A `lustro-http-<n>` thread, one for each open connection. |
-| The bind when the app comes to the foreground | The main thread, in `Lustro.start()` and in the process lifecycle's callback. |
-| The retries of a bind to a taken port, the drain and close when the app goes to the background, and the `LustroToken` line | The `lustro-worker` thread. |
+| The bind when the app comes to the foreground, and the close of the listening socket when it goes to the background | The main thread, in `Lustro.start()` and in the process lifecycle's callbacks. |
+| The retries of a bind to a taken port, the drain of the requests in progress when the app goes to the background, and the `LustroToken` line | The `lustro-worker` thread. |
 
 Thus a tab with mutable state must make it thread-safe. A tab can block on I/O in `handle`,
 because the per-request timeout limits the wait. [Custom tabs](../custom-tabs.md) gives the rules

@@ -19,6 +19,7 @@ NOT_INSTALLED = 4
 # The installed build of --package has no Lustro runtime: a build with the -noop
 # artifacts, or one from before the app added Lustro.
 NO_RUNTIME = 5
-# The app is not running or not in the foreground, it logged no ready line, or
-# its port does not answer.
+# The app is not running or not in the foreground, it logged no ready line, its
+# port does not answer, or, with --package, another app's server holds its port
+# and answered 401.
 NOT_REACHABLE = 6
