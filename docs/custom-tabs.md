@@ -107,8 +107,7 @@ override fun routes(routes: DebugRoutes) {
 - **Path parameters.** For the route's own method, a segment that its parameter does not take,
     such as `items/x` for a `path.long("id")` or a value outside `values`, matches no route, so the
     client gets `404`, as for an id that names nothing. The router checks the method before the
-    path parameters, as the server's lookup in the document does, so another method gets `405`
-    with an `Allow` header: with `routes.get("")`, `routes.post("")`, and `routes.delete("{id}")`
+    path parameters, so another method gets `405` with an `Allow` header: with `routes.get("")`, `routes.post("")`, and `routes.delete("{id}")`
     with `path.int("id")`, `DELETE journals/abc` gets `404`, but `GET journals/abc` gets `405`,
     `Allow: DELETE`, and `journals/abc takes DELETE, not GET`.
 - **Bodies.** Body fields come from a JSON object in strict JSON (RFC 8259), with strict JSON

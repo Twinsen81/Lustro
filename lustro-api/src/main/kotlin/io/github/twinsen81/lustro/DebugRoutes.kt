@@ -25,9 +25,8 @@ package io.github.twinsen81.lustro
  * literal segment wins over a parameter, so `items/new` and `items/{id}` can both exist. For
  * the route's own method, a segment that its parameter does not take, such as `items/x` for an
  * int `{id}`, matches no route, so the client gets `404`. The router checks the method before
- * the path parameters, as the server's lookup in the document does, so another method gets
- * `405` with an `Allow` header: with only `DELETE items/{id}`, `GET items/x` gets
- * `Allow: DELETE`. The path `""` declares the route at the tab root,
+ * the path parameters, so another method gets `405` with an `Allow` header: with only
+ * `DELETE items/{id}`, `GET items/x` gets `Allow: DELETE`. The path `""` declares the route at the tab root,
  * `/api/v1/<tab id>`, such as the list and the create of a collection. The router ignores one
  * slash at the end of a request's path, so `seed/` reaches the route `seed`.
  *
