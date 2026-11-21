@@ -148,9 +148,10 @@ given, the CLI reads `adb forward --list` and connects to the local port of the
 first forward to the app's port on the selected device: `--device`, else
 `ANDROID_SERIAL`, else the only device. Without such a forward, it makes one
 on a local port that adb chooses (see [The local port](#the-local-port)). When
-adb can't make it, the command prints `connection_failed` and exits with the
-device's cause: 2 for more than one device with none selected, 3 for no device,
-or else 6. It does not connect to the same
+adb can't make it, the command prints the device's cause and exits with its
+code: 2 for more than one device with none selected, 3 for no device. Without
+such a cause, it prints `connection_failed` and exits 6. It does not connect to
+the same
 port number on the computer instead: with several devices, that port can be a
 forward to the app on another device. Without adb installed, there is no device
 to forward to, and a command connects to that port on the computer. A command
