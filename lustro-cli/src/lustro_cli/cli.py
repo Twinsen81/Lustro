@@ -38,6 +38,7 @@ from .discovery import (
     device_problem,
     diagnose,
     forwarded_ports,
+    package_paths,
     resolve,
     token_from_prefs,
 )
@@ -794,16 +795,21 @@ def _forward_to_app(
 
     A new forward stays until adb restarts, so it takes its local port from any
     tool that binds the port later, such as a proxy or a development server on
-    8080. Only ``open``, whose URL is for a person, tries the same port number
-    first (``same_port_first``): that gives a URL that does not change. A script
-    finds the forward in ``adb forward --list``."""
+    8080. Only ``open``, whose URL is for a person, prefers the same port number
+    (``same_port_first``): a forward on it, else a new one on it, and only then
+    the first forward there is. The console keeps its state in the browser for
+    each origin, which includes the port, so the URL must not change after an
+    earlier command made a forward on a port that adb chose. A script finds the
+    forward in ``adb forward --list``."""
     forwarded = forwarded_ports(device_port, device)
-    if forwarded:
-        return forwarded[0], None
     if same_port_first:
+        if device_port in forwarded:
+            return device_port, None
         local_port, err = _adb_forward(device_port, device_port, device)
         if not err:
             return local_port, None
+    if forwarded:
+        return forwarded[0], None
     return _adb_forward(0, device_port, device)
 
 
@@ -926,6 +932,14 @@ def cmd_meta(args: argparse.Namespace) -> int:
     return 0
 
 
+def _package_manager_answers(args: argparse.Namespace) -> bool:
+    """Whether the device's package manager answers about the package of --package,
+    or adb has nothing to say about the app, as for a --host on the LAN."""
+    if args.host is not None and args.host not in LOOPBACK_HOSTS:
+        return True
+    return package_paths(args.package, args.device) is not None
+
+
 def cmd_ready(args: argparse.Namespace) -> int:
     """Wait until the app's server answers ``GET _meta``, print the endpoint, and exit 0.
     At the timeout, print the cause, from adb, and exit with its code.
@@ -933,9 +947,10 @@ def cmd_ready(args: argparse.Namespace) -> int:
     Each try runs discovery again, because the app logs its ready line only when it
     starts, and a line from an earlier start names a port that does not answer yet.
     The adb checks of the cause run at the end. With --package, they also run once
-    after the first try that fails, and an app that is not installed, or a build
-    without the runtime, ends the wait at once: the installed APK does not change
-    while ``ready`` waits. Without --package, the app is the one in the foreground,
+    after the first try that fails, again on each try until adb reaches the device
+    and its package manager answers, and an app that
+    is not installed, or a build without the runtime, ends the wait at once: the
+    installed APK does not change while ``ready`` waits. Without --package, the app is the one in the foreground,
     which changes while the app starts. An error response that a new try can't
     change, such as a 401, ends the wait.
     """
@@ -969,11 +984,16 @@ def cmd_ready(args: argparse.Namespace) -> int:
             ):
                 break
             if not checked_early:
-                checked_early = True
+                # Asked before the checks: a package manager that answers then also
+                # answered the checks.
+                answers = _package_manager_answers(args)
                 cause = _cause_from_adb(args)
                 if cause is not None and cause.exit_code in (exitcodes.NOT_INSTALLED, exitcodes.NO_RUNTIME):
                     print("error: {}".format(cause), file=sys.stderr)
                     return cause.exit_code
+                # While an emulator starts, adb first finds no device, and then a package
+                # manager that does not answer yet: the checks then run again on the next try.
+                checked_early = answers if cause is None else cause.exit_code != exitcodes.NO_DEVICE
         else:
             _warn_if_newer_protocol(meta)
             if args.json:

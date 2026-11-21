@@ -228,7 +228,9 @@ token. When the time is over, it prints the cause and exits with its code: no
 device, an app that is not installed, a build without the Lustro runtime, an app
 that is not running or not in the foreground, or a port that does not answer. It
 makes the checks of the cause at the end. With `--package`, it also makes them
-once after the first try that fails, and stops at once with exit 4 for an app
+once after the first try that fails (while a device starts, after the first try
+on which adb reaches it and its package manager answers), and stops at once
+with exit 4 for an app
 that is not installed, or exit 5 for a build without the Lustro runtime: the
 installed APK does not change while `ready` waits. For every other cause, such
 as an app that is not running yet, it waits. So an `adb install` that runs at
@@ -283,11 +285,14 @@ the same cause.
 ## The local port
 
 `lustro open` forwards a local port to the app's port on the device, and prints
-the console URL with the local port. It keeps an existing forward to the app.
-Without one, it forwards the same port number, 8080 by default, so that a person
-gets the same URL each time. When another process, such as a local development
-server or a forward to another device, holds that port on the computer, adb
-chooses a free local port. To choose the local port yourself:
+the console URL with the local port. It uses the same port number, 8080 by
+default: a forward on it, or else a new one. So a person gets the same URL each
+time, also after an earlier command, such as `lustro ready`, made a forward on
+a port that adb chose. That matters because the console keeps its state in the
+browser for each origin, and the port is part of the origin. When another
+process, such as a local development server or a forward to another device,
+holds that port on the computer, `open` uses an existing forward to the app, or
+else a free local port that adb chooses. To choose the local port yourself:
 
 ```bash
 lustro open --local-port 18080   # forward local port 18080 to the app's port
@@ -303,7 +308,7 @@ This also applies to a forward that you make yourself, such as
 local port that adb chooses, so it needs no `open` first. It does not take the
 app's port number: the forward stays until adb restarts, and on local port 8080
 it would keep a tool that starts later, such as a proxy or a development server,
-from binding 8080. Only `open` tries the same port number first. The CLI runs
+from binding 8080. Only `open` prefers the same port number. The CLI runs
 `adb forward --no-rebind`, so it does not take over a local port that a forward
 of another device holds. `--no-forward` skips the forward, and the URL then
 uses `--local-port N`, else the app's port.
