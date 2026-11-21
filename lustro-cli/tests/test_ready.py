@@ -204,11 +204,21 @@ def test_ready_prints_the_endpoint_when_the_server_answers(server, capsys):
 def test_ready_runs_discovery_again_until_the_app_logs_its_ready_line(server, monkeypatch, capsys):
     port = server.server_address[1]
     # Without adb's forward, a command connects to the app's port on this computer.
-    adb = FakeAdb(monkeypatch, {PIDOF: "4242\n", LOGCAT_PIDS: lambda earlier: _app_line(port) if earlier >= 3 else ""})
+    adb = FakeAdb(monkeypatch, dict(HEALTHY, **{LOGCAT_PIDS: lambda earlier: _app_line(port) if earlier >= 3 else ""}))
     assert cli.main(["ready", "--timeout", "5", "--package", PACKAGE]) == exitcodes.OK
     assert capsys.readouterr().out == "http://127.0.0.1:{}\n".format(port)
     assert adb.count(LOGCAT_PIDS) == 4
-    # The checks of the cause run only when the time is over.
+    # With --package, the checks of the cause run once, after the first try, and find
+    # nothing that ends the wait.
+    assert adb.count(TAIL) == 1
+    assert adb.count("adb get-state") == 1
+
+
+def test_ready_without_package_makes_no_checks_while_it_waits(server, monkeypatch, capsys):
+    port = server.server_address[1]
+    adb = FakeAdb(monkeypatch, dict(HEALTHY, **{LOGCAT: lambda earlier: _ready_line(port) if earlier >= 3 else ""}))
+    assert cli.main(["ready", "--timeout", "5"]) == exitcodes.OK
+    assert capsys.readouterr().out == "http://127.0.0.1:{}\n".format(port)
     assert adb.count(TAIL) == 0
     assert not any(call.endswith("get-state") for call in adb.calls)
 
@@ -259,13 +269,78 @@ def test_ready_with_more_than_one_device_and_none_selected(monkeypatch, capsys):
     assert "--device SERIAL" in _cause(capsys)
 
 
-def test_ready_when_the_app_is_not_installed(monkeypatch, capsys):
+def _stops_at_once(argv, capsys):
+    """Runs ``ready`` with a long timeout, checks that it ends at once, and returns
+    its exit code and the cause that it prints."""
+    started = time.monotonic()
+    code = cli.main(["ready", "--timeout", "30", *argv])
+    assert time.monotonic() - started < 5
+    out, err = capsys.readouterr()
+    assert out == ""
+    assert err.startswith("error: "), err
+    return code, err[len("error: ") :]
+
+
+def test_ready_stops_at_once_when_the_app_is_not_installed(monkeypatch, capsys):
+    adb = FakeAdb(monkeypatch, {})
+    code, cause = _stops_at_once(["--package", PACKAGE], capsys)
+    assert code == exitcodes.NOT_INSTALLED
+    assert cause.startswith(PACKAGE + " is not installed on the device")
+    assert adb.count(PM_PATH) == 2
+
+
+def test_ready_checks_again_when_the_first_try_finds_no_device(monkeypatch, capsys):
+    # An emulator that starts: adb finds no device on the first try, and then finds it.
+    adb = FakeAdb(monkeypatch, {})
+    states = iter([(1, "error: no devices/emulators found\n")])
+    run_status = adb.run_status
+
+    def changing_state(cmd, timeout=10.0):
+        if cmd[-1] == "get-state":
+            adb.state = next(states, (0, "device\n"))
+        return run_status(cmd, timeout)
+
+    monkeypatch.setattr(discovery, "_run_status", changing_state)
+    code, cause = _stops_at_once(["--package", PACKAGE], capsys)
+    assert code == exitcodes.NOT_INSTALLED
+    assert cause.startswith(PACKAGE + " is not installed on the device")
+    assert adb.count("adb get-state") == 2
+
+
+def test_ready_checks_again_while_the_package_manager_does_not_answer(monkeypatch, capsys):
+    # The device boots: `pm path` fails with an error text, and then answers with nothing.
+    adb = FakeAdb(monkeypatch, {PM_PATH: lambda earlier: "Error: Can't find service: package\n" if earlier < 4 else None})
+    code, cause = _stops_at_once(["--package", PACKAGE], capsys)
+    assert code == exitcodes.NOT_INSTALLED
+    assert cause.startswith(PACKAGE + " is not installed on the device")
+
+
+def test_ready_stops_at_once_when_the_package_manager_starts_during_the_early_check(monkeypatch, capsys):
+    # The package manager does not run yet when the early check asks it, and answers when
+    # the checks run just after.
+    answers = ["Error: Can't find service: package\n"]
+    adb = FakeAdb(monkeypatch, {PM_PATH: lambda earlier: answers[earlier] if earlier < len(answers) else None})
+    code, cause = _stops_at_once(["--package", PACKAGE], capsys)
+    assert code == exitcodes.NOT_INSTALLED
+    assert cause.startswith(PACKAGE + " is not installed on the device")
+
+
+def test_ready_checks_only_once_when_the_package_manager_answers(monkeypatch, capsys):
+    # The app is installed and does not run yet: nothing in the checks ends the wait.
+    adb = FakeAdb(monkeypatch, dict(HEALTHY, **{PIDOF: ""}))
+    assert _ready("--package", PACKAGE) == exitcodes.NOT_REACHABLE
+    assert _cause(capsys).startswith(PACKAGE + " is not running")
+    # The early check asks the package manager, then checks; and the check at the timeout.
+    assert adb.count(PM_PATH) == 3
+
+
+def test_ready_with_a_short_timeout_when_the_app_is_not_installed(monkeypatch, capsys):
     FakeAdb(monkeypatch, {})
     assert _ready("--package", PACKAGE) == exitcodes.NOT_INSTALLED
-    assert _cause(capsys).startswith(PACKAGE + " is not installed on the device")
+    assert capsys.readouterr().err.startswith("error: {} is not installed on the device".format(PACKAGE))
 
 
-@pytest.mark.parametrize("command", [["ready", "--timeout", "0.2"], ["meta"]])
+@pytest.mark.parametrize("command", [["ready", "--timeout", "30"], ["meta"]])
 def test_the_server_of_another_app_is_not_used_for_a_package_that_is_not_installed(server, command, monkeypatch, capsys):
     # Another app answers on the port of the last ready line in the log, which it logged.
     FakeAdb(monkeypatch, {LOGCAT: _ready_line(server.server_address[1]), PIDOF: ""})
@@ -275,31 +350,61 @@ def test_the_server_of_another_app_is_not_used_for_a_package_that_is_not_install
     assert PACKAGE + " is not installed on the device" in err
 
 
-def test_ready_when_the_build_has_no_lustro_runtime(monkeypatch, capsys):
+def test_ready_stops_at_once_when_the_build_has_no_lustro_runtime(monkeypatch, capsys):
     adb = FakeAdb(monkeypatch, dict(HEALTHY, **{APK: NO_RUNTIME}))
-    assert _ready("--package", PACKAGE) == exitcodes.NO_RUNTIME
-    cause = _cause(capsys)
+    code, cause = _stops_at_once(["--package", PACKAGE], capsys)
+    assert code == exitcodes.NO_RUNTIME
     assert cause.startswith("the installed build of {} does not contain the Lustro runtime".format(PACKAGE))
     assert "from before the app added Lustro" in cause
-    # One read of the APK, at the end, however many tries there were.
+    # One try, and one read of the APK.
     assert adb.count(TAIL) == 1
-    assert adb.count(LOGCAT_PIDS) > 1
+    assert adb.count(LOGCAT_PIDS) == 1
 
 
 def test_ready_for_a_no_op_build_with_the_prefs_of_an_earlier_debug_build(closed_port, monkeypatch, capsys):
     # The earlier build's prefs, which an install over it keeps, name a port where nothing
     # listens now: the cause is the build, not the port.
     adb = FakeAdb(monkeypatch, dict(HEALTHY, **{APK: NO_RUNTIME, RUN_AS: _prefs(closed_port)}))
-    assert _ready("--package", PACKAGE) == exitcodes.NO_RUNTIME
-    assert "does not contain the Lustro runtime" in _cause(capsys)
-    assert adb.count(RUN_AS) > 1
+    code, cause = _stops_at_once(["--package", PACKAGE], capsys)
+    assert code == exitcodes.NO_RUNTIME
+    assert "does not contain the Lustro runtime" in cause
+    assert adb.count(RUN_AS) == 1
 
 
-def test_ready_when_the_app_is_not_running(closed_port, monkeypatch, capsys):
+def test_ready_stops_at_once_for_a_build_without_the_runtime_behind_another_server(other_server, monkeypatch, capsys):
+    port = other_server.server_address[1]
+    FakeAdb(monkeypatch, dict(HEALTHY, **{APK: NO_RUNTIME, RUN_AS: _prefs(port)}))
+    code, cause = _stops_at_once(["--package", PACKAGE], capsys)
+    assert code == exitcodes.NO_RUNTIME
+    assert "does not contain the Lustro runtime" in cause
+    assert other_server.requests == 1
+
+
+def test_ready_stops_at_once_with_the_port_of_a_scripts_forward(closed_port, monkeypatch, capsys):
+    FakeAdb(monkeypatch, dict(HEALTHY, **{APK: NO_RUNTIME}))
+    code, cause = _stops_at_once(["--package", PACKAGE, "--port", str(closed_port), "--token", TOKEN], capsys)
+    assert code == exitcodes.NO_RUNTIME
+    assert "does not contain the Lustro runtime" in cause
+
+
+def test_ready_without_package_waits_for_a_foreground_app_without_the_runtime(monkeypatch, capsys):
+    # The app in the foreground can be the launcher while the user's app starts.
+    adb = FakeAdb(monkeypatch, {DUMPSYS: _resumed("com.android.launcher3"), "adb shell pm path com.android.launcher3":
+                                "package:{}\n".format(APK), APK: NO_RUNTIME})
+    started = time.monotonic()
+    assert _ready() == exitcodes.NOT_REACHABLE
+    assert time.monotonic() - started >= 0.2
+    assert _cause(capsys).startswith("the app in the foreground, com.android.launcher3, does not contain")
+    assert adb.count(TAIL) == 1
+
+
+def test_ready_waits_for_an_app_that_is_not_running(closed_port, monkeypatch, capsys):
     # The prefs keep the token and the port of the app's last start. The ready line in the
     # log is of a process that no longer runs, so the CLI does not read the log.
     adb = FakeAdb(monkeypatch, dict(HEALTHY, **{PIDOF: "", LOGCAT: _ready_line(closed_port), RUN_AS: _prefs(closed_port)}))
+    started = time.monotonic()
     assert _ready("--package", PACKAGE) == exitcodes.NOT_REACHABLE
+    assert time.monotonic() - started >= 0.2
     assert _cause(capsys).startswith(PACKAGE + " is not running")
     assert adb.count(LOGCAT) == 0
     assert adb.count(RUN_AS) > 1

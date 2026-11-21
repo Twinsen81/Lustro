@@ -127,8 +127,12 @@ than one app with Lustro.
 answers, and prints the endpoint that the CLI reaches it at. A ready line from an earlier start of
 the app names a token and a port that may not answer, so the CLI does not trust the first line
 that it finds. When the time is over, it prints the cause and exits with its code (see [Exit
-codes](#exit-codes)). A `401` or another `4xx` other than `429` ends the wait at once with exit 1. Pass `--package`: without it, the CLI checks only the app in the
-foreground, which can be the launcher. A `404` for `_meta` does not end the wait: Lustro always has
+codes](#exit-codes)). With `--package`, it checks the cause once after the first try that fails
+too (while a device starts, once adb reaches it and its package manager answers), and stops at once with exit 4 for an app that is not installed or exit 5 for a build without
+the runtime: the installed APK does not change while it waits. For every other cause, such as an
+app that is not running yet, it waits. So install the app before `ready`: an `adb install` that
+runs at the same time can end it at once with exit 4. A `401` or another `4xx` other than `429` ends the wait at once with exit 1. Pass `--package`: without it, the CLI checks only the app in the
+foreground, which can be the launcher, and only at the timeout. A `404` for `_meta` does not end the wait: Lustro always has
 that route, so the `404` is from another server on the port, such as the debug server of another
 app on the port that a stopped app's prefs keep. `ready` waits, and at the timeout prints the cause
 and says that another server answers on the port.
@@ -138,12 +142,18 @@ console URL or a `curl` call, runs `lustro open --print-only --json`: it prints 
 `host`, and `port`, and opens no browser. It forwards the port as `lustro open` does; add
 `--no-forward` when the script forwards it itself.
 
-`lustro open` forwards a local port to the app's port on the device: 8080, or a free local port
-that adb chooses when another process or a forward to another device holds 8080. `--local-port N`
+`lustro open` forwards a local port to the app's port on the device: 8080, also when an earlier
+command made a forward on another port, so that the console URL and the state that the browser keeps
+for it do not change. When another process or a forward to another device holds 8080, it uses an
+existing forward to the app, or else a free local port that adb chooses. `--local-port N`
 forwards port N, and `--local-port 0` keeps a forward to the app that is there, or else lets adb
 choose a free port. `--no-forward` makes no forward, for when you forward the port yourself, and
 `--print-only` prints the URL without opening a browser. The other commands find the forward in
-`adb forward --list`, also one that you made yourself, so they need no `--port`. Without a forward, they make one the same way.
+`adb forward --list`, also one that you made yourself, so they need no `--port`. Without a
+forward, they make one on a local port that adb chooses, not on 8080: the forward stays until adb
+restarts, and on 8080 it would keep a proxy or a development server that starts later from binding
+8080. When adb can't make the forward, they exit with the device's cause, 2 or 3, or else 6; only
+`open` exits 1.
 
 With more than one device connected, pass `--device <serial>` (or set `ANDROID_SERIAL`) on every
 command. The CLI then connects only through a forward to that device, so agents that each drive
