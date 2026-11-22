@@ -7,11 +7,12 @@ BASE and HEAD are commits; HEAD is HEAD when not given. When a file under
 lustro-cli/src/ differs between them, REVISION in lustro-cli/src/lustro_cli/__init__.py
 at HEAD must be the one at BASE plus one. A BASE without REVISION counts as 0.
 
-In CI, BASE is the base branch of the pull request and HEAD is the merge commit that
-GitHub makes, so the diff holds only the pull request's changes. Two pull requests
-that both increase the revision change the same line, so the second one gets a
-conflict. After its rebase, the check compares with the new base and asks for the
-next number.
+In a pull request, CI passes the base of the pull request and the merge commit that
+GitHub makes, so the diff holds only the pull request's changes. On a push to main,
+it passes the commit before the push and the pushed commit. Two pull requests that
+both set the next number do not conflict, because git merges two identical edits of
+a line, and both pass their own check. The second one to merge fails the check on
+main: its pull request, or the next one, sets the next number.
 
 Python standard library only.
 """

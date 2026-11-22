@@ -131,3 +131,23 @@ def test_it_runs_from_a_subdirectory(repo):
     base = repo.commit(_files(1))
     head = repo.commit(_files(1, cli="print('b')\n"))
     assert repo.check(base, head, cwd=repo.root / "lustro-cli").returncode == 1
+
+
+def test_two_branches_with_the_same_increase_merge_without_a_conflict_and_the_check_on_main_fails(repo):
+    base = repo.commit(_files(1))
+    repo.git("checkout", "-q", "-b", "first")
+    first = repo.commit({INIT: _init_text(2), "lustro-cli/src/lustro_cli/a.py": "a\n"})
+    repo.git("checkout", "-q", "-b", "second", base)
+    second = repo.commit({INIT: _init_text(2), "lustro-cli/src/lustro_cli/b.py": "b\n"})
+    # Each pull request passes its own check against the base it started from.
+    assert repo.check(base, first).returncode == 0
+    assert repo.check(base, second).returncode == 0
+    repo.git("checkout", "-q", "main")
+    repo.git("merge", "-q", "--no-ff", "-m", "first", "first")
+    before = repo.git("rev-parse", "HEAD")
+    repo.git("merge", "-q", "--no-ff", "-m", "second", "second")
+    assert (repo.root / INIT).read_text() == _init_text(2)
+    # The push of the second merge to main.
+    result = repo.check(before, "HEAD")
+    assert result.returncode == 1
+    assert "Set REVISION = 3" in result.stderr

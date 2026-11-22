@@ -58,8 +58,12 @@ not the base branch's plus one; run the same check before you push:
 python3 .github/scripts/check_cli_revision.py origin/main
 ```
 
-When another pull request with a change to the CLI merges first, the line of
-`REVISION` conflicts at the rebase: take the next number.
+When another pull request with a change to the CLI merges first, update your
+branch with `main` and take the next number before you merge. Git does not
+report a conflict when both pull requests set the same number, so the check
+also runs on each push to `main`, and fails there when the push did not
+increase the revision by one. Then increase it in a new pull request, and
+correct the revision in the CHANGELOG entry of the change.
 
 The modules compile against OkHttp 4.12.0, the floor an app can stay on. To run
 the suite with OkHttp 5 on the test runtime classpath, as CI does:

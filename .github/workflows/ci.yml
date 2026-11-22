@@ -234,19 +234,21 @@ jobs:
 
       # A wrapper script that installs the CLI from main requires the revision of
       # a fix, so each pull request that changes a file under lustro-cli/src/
-      # increases REVISION in src/lustro_cli/__init__.py by one. The checkout is
-      # the merge commit of the pull request, so its diff with the base holds
-      # only the pull request's changes. The checkout has one commit: fetch the
-      # base too.
+      # increases REVISION in src/lustro_cli/__init__.py by one. In a pull
+      # request, the checkout is its merge commit, so the diff with the base
+      # holds only the pull request's changes. Two pull requests that both set
+      # the next number do not conflict, because git merges two identical edits
+      # of a line, and the required checks are not strict. So the check also
+      # runs on each push to main, from the commit before the push: the second
+      # of the two fails there. The checkout has one commit: fetch the base too.
       - name: The revision check's own tests
         working-directory: .
         run: python -m pytest -q .github/scripts
 
       - name: A change to the CLI increases its revision
-        if: ${{ github.event_name == 'pull_request' }}
         working-directory: .
         env:
-          BASE: ${{ github.event.pull_request.base.sha }}
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
         run: |
           git fetch --no-tags --depth=1 origin "$BASE"
           python .github/scripts/check_cli_revision.py "$BASE" HEAD

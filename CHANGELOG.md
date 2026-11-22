@@ -29,7 +29,10 @@ see [DECISIONS.md](DECISIONS.md).
   `"revision": 1` in its server info, next to `version`. A new CI step in the
   job of the CLI's tests, `.github/scripts/check_cli_revision.py`, fails a
   pull request that changes a file under `lustro-cli/src/` when its
-  `REVISION` is not the base branch's plus one. The CLI README, docs/AGENTS.md,
+  `REVISION` is not the base branch's plus one. It runs on each push to
+  `main` too, from the commit before the push: two pull requests that set the
+  same number merge without a conflict, because git merges two identical
+  edits of a line, and the second one fails there. The CLI README, docs/AGENTS.md,
   the lustro skill, and CONTRIBUTING say what the revision is, and how a
   wrapper requires "revision 1 or later"; from here on, the entry of each
   change to the CLI names its revision. Verified with the CLI installed from
