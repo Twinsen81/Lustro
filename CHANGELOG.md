@@ -14,6 +14,35 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Added
 
+- **`lustro --version` prints a revision of the CLI, so that a wrapper script
+  can require a CLI with a given fix (CLI revision 1).** Every build from
+  `main` printed `lustro 0.1.0 (protocol 1.17)`: the version follows the
+  library's and changes only at a release, and the protocol changes only with
+  the wire protocol, so a CLI from before a fix to the CLI alone and a CLI
+  from after it printed the same text. A wrapper script that installs the CLI
+  from `main` could not check that it has the fixes it needs. `REVISION` in
+  `lustro-cli/src/lustro_cli/__init__.py` is a whole number that each pull
+  request that changes the CLI increases by one, and `lustro --version`
+  prints it: `lustro 0.1.0 (protocol 1.17, revision 1)`. `lustro --version
+  --json`, with the options in either order, prints
+  `{"version":"0.1.0","protocol":"1.17","revision":1}`, and `lustro mcp` has
+  `"revision": 1` in its server info, next to `version`. A new CI step in the
+  job of the CLI's tests, `.github/scripts/check_cli_revision.py`, fails a
+  pull request that changes a file under `lustro-cli/src/` when its
+  `REVISION` is not the base branch's plus one. It runs on each push to
+  `main` too, from the commit before the push: two pull requests that set the
+  same number merge without a conflict, because git merges two identical
+  edits of a line, and the second one fails there. The CLI README, docs/AGENTS.md,
+  the lustro skill, and CONTRIBUTING say what the revision is, and how a
+  wrapper requires "revision 1 or later"; from here on, the entry of each
+  change to the CLI names its revision. Verified with the CLI installed from
+  the checkout: `lustro --version` printed the line above, `--version --json`
+  and `--json --version` printed the object, `lustro` without a command still
+  exited 2 with `the following arguments are required: <command>`, and
+  `initialize` and `server/discover` of `lustro mcp` returned `{"name":
+  "lustro", "title": "Lustro", "version": "0.1.0", "revision": 1}`. The check
+  passed this pull request, which adds `REVISION`: a base without it counts as
+  0.
 - **Declared routes take a route at the tab root, a decimal parameter, a
   success status other than `200`, and a slash at the end of the path
   (experimental, wire protocol 1.17).** A large app that moved its tabs to

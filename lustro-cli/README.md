@@ -40,12 +40,33 @@ pip install -e 'lustro-cli[test]'    # to work on the CLI: adds pytest and jsons
 The wheel bundles the wire-protocol schemas, the Network OpenAPI document, and
 the golden fixtures (`lustro_cli/wire/`).
 
-`lustro --version` prints the version of the CLI and the version of the wire
-protocol that it implements, such as `lustro 0.1.0 (protocol 1.17)`. Each
-protocol version adds routes or fields, so two builds of the CLI with the same
-version can differ in what they do: compare the protocol. When an app's protocol,
-`protocolVersion` in `GET /api/v1/_meta`, is newer, `lustro ready` and `lustro
-meta` print a warning on stderr: update the CLI.
+`lustro --version` prints the version of the CLI, the version of the wire
+protocol that it implements, and the revision of the CLI, such as `lustro 0.1.0
+(protocol 1.17, revision 1)`. Each protocol version adds routes or fields, so two
+builds of the CLI with the same version can differ in what they do: compare the
+protocol. When an app's protocol, `protocolVersion` in `GET /api/v1/_meta`, is
+newer, `lustro ready` and `lustro meta` print a warning on stderr: update the CLI.
+
+The revision is a whole number that each change to the CLI on `main` increases
+by one. The version changes only at a release, and the protocol only with the
+wire protocol, so a fix to the CLI alone changes only the revision. A script that
+needs a fix requires the revision of that fix or a later one, such as "revision 1
+or later". The [CHANGELOG](../CHANGELOG.md) names the revision of each change to
+the CLI:
+
+```bash
+revision=$(lustro --version | sed -n 's/.*revision \([0-9][0-9]*\).*/\1/p')
+if [ "${revision:-0}" -lt 1 ]; then
+  echo "lustro is older than revision 1: install it again" >&2
+  exit 1
+fi
+```
+
+A CLI from before the revision prints no revision: count it as 0. `lustro
+--version --json`, with the options in either order, prints the three values as
+a JSON object, such as `{"version":"0.1.0","protocol":"1.17","revision":1}`; a
+CLI from before the revision prints the line of text there too. `lustro mcp`
+reports the revision in its server info, next to the version.
 
 ### An app on an older protocol
 

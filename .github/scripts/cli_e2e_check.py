@@ -71,7 +71,9 @@ def check_open(text: str, rules: List[dict]) -> None:
 
 
 def check_version(text: str, rules: List[dict]) -> None:
-    expected = "lustro {} (protocol {})".format(lustro_cli.__version__, lustro_cli.PROTOCOL_VERSION)
+    expected = "lustro {} (protocol {}, revision {})".format(
+        lustro_cli.__version__, lustro_cli.PROTOCOL_VERSION, lustro_cli.REVISION
+    )
     expect(text.strip() == expected, "expected {!r}, got {!r}".format(expected, text.strip()))
 
 

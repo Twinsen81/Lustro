@@ -27,7 +27,7 @@ import urllib.parse
 import webbrowser
 from typing import Any, Dict, Iterable, List, NamedTuple, Optional, Set, Tuple
 
-from . import PROTOCOL_VERSION, __version__, exitcodes, wire
+from . import PROTOCOL_VERSION, REVISION, __version__, exitcodes, wire
 from .client import CursorState, LustroClient, LustroError
 from .discovery import (
     DEFAULT_HOST,
@@ -2028,12 +2028,17 @@ def build_parser() -> argparse.ArgumentParser:
         description="CLI client for the Lustro Android debug server (HTTP wire protocol).",
         parents=[common],
     )
+    # Not action="version": that prints and exits as soon as argparse reads it, before a
+    # --json after it. main() prints the version once all options are read.
     parser.add_argument(
-        "--version", action="version", version="lustro {} (protocol {})".format(__version__, PROTOCOL_VERSION)
+        "--version",
+        action="store_true",
+        help="print the version of the CLI, the wire protocol that it implements, and its revision, and exit; "
+        "with --json, as a JSON object",
     )
 
+    # Not required here, so that --version works without a command: main() requires it.
     sub = parser.add_subparsers(dest="command", metavar="<command>")
-    sub.required = True
 
     # open
     p_open = sub.add_parser("open", parents=[common], help="discover endpoint+token, adb-forward, open browser URL")
@@ -2419,9 +2424,26 @@ def _join_search_values(argv: List[str]) -> List[str]:
     return joined
 
 
+def version_info() -> Dict[str, Any]:
+    """What ``lustro --version --json`` prints."""
+    return {"version": __version__, "protocol": PROTOCOL_VERSION, "revision": REVISION}
+
+
+def version_line() -> str:
+    return "lustro {} (protocol {}, revision {})".format(__version__, PROTOCOL_VERSION, REVISION)
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     parser = build_parser()
     args = parser.parse_args(_join_search_values(sys.argv[1:] if argv is None else list(argv)))
+    if args.version:
+        if getattr(args, "json", False):
+            _emit(version_info(), raw_json=True)
+        else:
+            print(version_line())
+        return exitcodes.OK
+    if args.command is None:
+        parser.error("the following arguments are required: <command>")
     if getattr(args, "regex", False) and not getattr(args, "search", None):
         parser.error("--regex makes --search TEXT a regular expression, so it needs --search")
     for name, default in GLOBAL_DEFAULTS.items():

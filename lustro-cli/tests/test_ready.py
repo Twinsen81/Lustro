@@ -815,13 +815,32 @@ def test_an_error_response_exits_1(server, capsys):
 # ── the protocol version ───────────────────────────────────────────────────────
 
 
-def test_version_prints_the_protocol_that_the_cli_implements(capsys):
-    with pytest.raises(SystemExit) as excinfo:
-        cli.main(["--version"])
-    assert excinfo.value.code == 0
-    assert capsys.readouterr().out == "lustro {} (protocol {})\n".format(
-        lustro_cli.__version__, lustro_cli.PROTOCOL_VERSION
+def test_version_prints_the_protocol_that_the_cli_implements_and_the_revision(capsys):
+    assert cli.main(["--version"]) == exitcodes.OK
+    assert capsys.readouterr().out == "lustro {} (protocol {}, revision {})\n".format(
+        lustro_cli.__version__, lustro_cli.PROTOCOL_VERSION, lustro_cli.REVISION
     )
+
+
+def test_the_revision_is_a_whole_number_from_1():
+    assert type(lustro_cli.REVISION) is int and lustro_cli.REVISION >= 1
+
+
+@pytest.mark.parametrize("argv", [["--version", "--json"], ["--json", "--version"]])
+def test_version_with_json_prints_an_object_in_either_order(argv, capsys):
+    assert cli.main(argv) == exitcodes.OK
+    assert json.loads(capsys.readouterr().out) == {
+        "version": lustro_cli.__version__,
+        "protocol": lustro_cli.PROTOCOL_VERSION,
+        "revision": lustro_cli.REVISION,
+    }
+
+
+def test_no_command_is_a_usage_error(capsys):
+    with pytest.raises(SystemExit) as excinfo:
+        cli.main([])
+    assert excinfo.value.code == 2
+    assert "the following arguments are required: <command>" in capsys.readouterr().err
 
 
 def _newer(version):

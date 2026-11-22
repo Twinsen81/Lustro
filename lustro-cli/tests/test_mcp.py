@@ -30,6 +30,8 @@ MODERN_META = {
     mcp.META_CLIENT_CAPABILITIES: {},
     "io.modelcontextprotocol/clientInfo": {"name": "test", "version": "1"},
 }
+# A wrapper that starts `lustro mcp` reads the revision here, as from `lustro --version --json`.
+SERVER_INFO = {"name": "lustro", "title": "Lustro", "version": lustro_cli.__version__, "revision": lustro_cli.REVISION}
 
 
 LOG_TEXT = (
@@ -76,7 +78,7 @@ def test_initialize_answers_with_the_version_that_the_client_asked_for():
     assert reply["id"] == 1
     assert result["protocolVersion"] == "2025-06-18"
     assert result["capabilities"] == {"tools": {"listChanged": False}}
-    assert result["serverInfo"]["name"] == "lustro"
+    assert result["serverInfo"] == SERVER_INFO
     assert "list_requests" in result["instructions"]
 
 
@@ -173,7 +175,7 @@ def test_server_discover_names_the_versions_capabilities_and_server():
     assert result["supportedVersions"][0] == "2026-07-28"
     assert set(mcp.LEGACY_VERSIONS) <= set(result["supportedVersions"])
     assert result["capabilities"] == {"tools": {"listChanged": False}}
-    assert result["_meta"][mcp.META_SERVER_INFO]["name"] == "lustro"
+    assert result["_meta"][mcp.META_SERVER_INFO] == SERVER_INFO
     assert result["ttlMs"] > 0 and result["cacheScope"] == "public"
 
 
@@ -187,7 +189,7 @@ def test_a_modern_request_gets_the_server_info_and_a_cacheable_tool_list():
     (reply,) = _serve([_request("tools/list", {"_meta": MODERN_META})])
     result = reply["result"]
     assert result["resultType"] == "complete"
-    assert result["_meta"][mcp.META_SERVER_INFO]["version"]
+    assert result["_meta"][mcp.META_SERVER_INFO] == SERVER_INFO
     assert result["ttlMs"] > 0 and result["cacheScope"] == "public"
 
 
