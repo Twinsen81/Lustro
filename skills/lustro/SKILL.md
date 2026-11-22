@@ -69,7 +69,7 @@ which cause it is:
 | 3 | No device, or adb is not installed. | Connect a device, or start an emulator. |
 | 4 | The app of `--package` is not installed. | Install a debug build with Lustro. |
 | 5 | The installed build has no Lustro runtime: a build with the `-noop` artifacts, or one from before the app added Lustro. | Install a debug build with Lustro. This replaces the installed build: if the user asked you to look at that build, ask first. |
-| 6 | The app is not running or not in the foreground, or its port does not answer. | Start the app, and keep it in front. |
+| 6 | The app is not running or not in the foreground, its port does not answer, or another app's server holds its port. | Start the app, and keep it in front. For another app on the port, run `lustro ready --package`, which waits for the app's own server. |
 
 Without `--package`, the CLI checks only the app in the foreground, and an app there without the
 runtime exits 6: it can be another app. `adb logcat -d -s LustroToken` shows the line of each

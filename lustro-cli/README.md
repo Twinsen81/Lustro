@@ -153,7 +153,15 @@ before it writes its new token. When the server answers `401` to a token that di
 the CLI reads the app's prefs and sends the request once more with the token there. When that
 gets `401` too, the CLI looks for the cause with adb, as for a connection that fails: the port
 can be that of another app with Lustro, such as the one in the foreground. It prints the cause
-with its exit code, or else the `401` with exit 1. `lustro open` compares the two before it prints the
+with its exit code. When adb finds no cause, with `--package`, the CLI reads the uid that listens
+on the app's port of the device in `/proc/net/tcp` and `/proc/net/tcp6`, and compares it with the
+uid of the app's process (`stat -c %u /proc/<pid>`). When another app holds the port, as right
+after the app starts while the server of another app with Lustro on the same port still listens,
+the `401` is that app's answer: the CLI names it, from `pm list packages -U`, or before API 26
+from `dumpsys package packages`, and exits 6. That
+server closes when its app goes to the background, and the app's own server then binds the port;
+`lustro ready --package` waits for it. Give each app with Lustro on one device its own
+`serverPort` to prevent this. In every other case, the CLI prints the `401` with exit 1. `lustro open` compares the two before it prints the
 URL, because the browser gets no second try.
 
 The port that discovery finds is the app's port on the device. The CLI reaches
@@ -255,7 +263,9 @@ because the app in the foreground changes while the app starts, and it can be
 the launcher. An error response that a new try
 can't change, such as a `401` for a `--token` that is not the app's, ends the
 wait at once with exit 1; `ready` tries again after a `5xx` or a `429`, and after
-a `401` for a token that discovery found, which the next try reads again.
+a `401` for a token that discovery found, which the next try reads again. When
+that `401` comes from another app's server on the app's port until the timeout,
+`ready` names that app and exits 6.
 
 A `404` for `GET /api/v1/_meta` is not from Lustro, which always has that route.
 It comes from another server on the port, such as the debug server of another
@@ -287,7 +297,7 @@ the message:
 | 3 | No device: adb is not installed, or it finds no device, or the device is offline or not authorized. | Connect a device, or start an emulator. |
 | 4 | The app of `--package` is not installed. | Install a debug build that uses the Lustro artifacts. |
 | 5 | The installed build of `--package` does not contain the Lustro runtime: a build with the `-noop` artifacts, or one from before the app added Lustro. | Install a debug build that uses the Lustro artifacts. This replaces the installed build. |
-| 6 | The app can't be reached: it is not running or not in the foreground, it logged no ready line, or its port does not answer. | Start the app, and keep it in the foreground. |
+| 6 | The app can't be reached: it is not running or not in the foreground, it logged no ready line, its port does not answer, or, with `--package`, another app's server holds its port and answered `401`. | Start the app, and keep it in the foreground. For another app on the port, run `lustro ready --package`, which waits for the app's own server, and give each app its own `serverPort`. |
 
 Without `--package`, an app in the foreground without the runtime exits 6, not 5:
 that app can be the launcher, or another app than yours. Every command that

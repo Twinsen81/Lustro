@@ -20,6 +20,7 @@ import io.github.twinsen81.lustro.internal.network.NoOpCaptureSink
 import io.github.twinsen81.lustro.network.MockRule
 import io.github.twinsen81.lustro.network.NetworkCaptureSink
 import io.github.twinsen81.lustro.network.NetworkDebugTab
+import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.ScheduledExecutorService
@@ -46,7 +47,8 @@ import okhttp3.WebSocket
  * Lifecycle: [start] registers a process-lifecycle observer
  * and returns [LustroStatus.ENABLED] once armed. The socket binds when the app is
  * in the foreground (and re-binds on each foreground); when the app goes to the
- * background the server DRAINS in-flight requests and closes the socket. [stop]
+ * background the server closes the socket, DRAINS in-flight requests, and closes
+ * their connections. [stop]
  * disarms (removes the observer) and closes the socket. Both are idempotent.
  *
  * Binding: the socket binds to [DebugConfig.bindAddress]
@@ -102,19 +104,32 @@ public class Lustro internal constructor(
     private var captureEnabled: Boolean = true
 
     // Single daemon thread for the lifecycle work that must stay off the main
-    // thread, where the ProcessLifecycleOwner fires onStart/onStop: the background
-    // drain+close, the endpoint log with its token read, and the retries of a bind to
-    // a taken port. Serial by construction, so overlapping background events drain in order.
+    // thread, where the ProcessLifecycleOwner fires onStart/onStop: the endpoint log
+    // with its token read, and the retries of a bind to a taken port.
     private val workExecutor: ScheduledExecutorService =
         Executors.newSingleThreadScheduledExecutor { runnable ->
             Thread(runnable, "lustro-worker").apply { isDaemon = true }
         }
 
+    // The background drain+close, on a thread of its own: it waits up to DRAIN_TIMEOUT_MS,
+    // and a foreground during that time binds a new server, whose bind retries and
+    // endpoint log must not wait for it. Serial, so overlapping background events drain
+    // in order.
+    private val drainExecutor: ExecutorService =
+        Executors.newSingleThreadExecutor { runnable ->
+            Thread(runnable, "lustro-drain").apply { isDaemon = true }
+        }
+
     // The retries of a bind to the configured port while another process holds it, such
-    // as another app with Lustro, which closes its server only after its own onStop: a
-    // cold start of this app can come first. Guarded by the monitor.
+    // as another app with Lustro, which closes its listening socket only at its own onStop:
+    // a cold start of this app can come first. Guarded by the monitor.
     private var bindRetry: ScheduledFuture<*>? = null
     private var bindRetriesLeft = 0
+
+    // The servers whose background drain has not finished: each no longer listens, and
+    // waits for its in-flight requests. A foreground during a drain binds a new server,
+    // so stop() closes these too. Guarded by the monitor.
+    private val draining = mutableSetOf<LustroServer>()
 
     // The process-lifecycle observer installed by start(); foreground binds,
     // background drains+closes. Held so stop() can remove it.
@@ -234,7 +249,10 @@ public class Lustro internal constructor(
         }
     }
 
-    /** DISARMS the server: removes the lifecycle observer and closes the socket. Idempotent. */
+    /**
+     * DISARMS the server: removes the lifecycle observer, and closes the socket and the
+     * connections of a server that still drains after a background. Idempotent.
+     */
     public fun stop() {
         synchronized(this) {
             if (!armed) return
@@ -245,6 +263,7 @@ public class Lustro internal constructor(
             }
             cancelBindRetry()
             closeServer()
+            draining.forEach(::close)
             notifyTabs { it.onStop() }
             armed = false
         }
@@ -263,24 +282,30 @@ public class Lustro internal constructor(
     }
 
     /**
-     * Background lifecycle hook: DRAINS in-flight requests
-     * (up to [DRAIN_TIMEOUT_MS]) and closes the socket. Internal for tests.
+     * Background lifecycle hook: closes the listening socket at once, then DRAINS
+     * in-flight requests (up to [DRAIN_TIMEOUT_MS]) and closes their connections.
+     * Internal for tests.
      *
-     * The drain+close runs on [workExecutor] so this returns IMMEDIATELY: the
-     * ProcessLifecycleOwner dispatches `onStop` on the MAIN thread and a slow
-     * in-flight request must never block the UI for the drain budget. We capture
-     * the exact server instance to drain so a rapid re-foreground that rebinds a
-     * fresh server is never closed by this drain (see [drainAndClose]).
+     * The listening socket closes here, so that another app with Lustro on the same
+     * port, which the user just brought to the front, binds it at its next retry, and
+     * so that a rapid re-foreground binds a fresh server. The drain+close runs on
+     * [drainExecutor] so this returns IMMEDIATELY: the ProcessLifecycleOwner dispatches
+     * `onStop` on the MAIN thread and a slow in-flight request must never block the UI
+     * for the drain budget. We capture the exact server instance to drain so the fresh
+     * server is never closed by this drain (see [drainAndClose]).
      */
     internal fun onBackground() {
         val toClose =
             synchronized(this) {
                 if (!armed) return
                 cancelBindRetry()
-                server ?: return
+                val srv = server ?: return
+                draining.add(srv)
+                srv.beginDrain()
+                srv
             }
         try {
-            workExecutor.execute { drainAndClose(toClose) }
+            drainExecutor.execute { drainAndClose(toClose) }
         } catch (e: RejectedExecutionException) {
             // Executor already shut down (stop() ran). Fall back to a synchronous
             // close so the socket still tears down.
@@ -318,6 +343,9 @@ public class Lustro internal constructor(
 
     /** True once the socket is bound and listening. Exposed for tests. */
     internal fun isBound(): Boolean = server?.isAlive == true
+
+    /** True while a server that stopped listening waits for its in-flight requests. Exposed for tests. */
+    internal fun isDraining(): Boolean = synchronized(this) { draining.isNotEmpty() }
 
     /** The actually-bound port, or `-1` when unbound. Exposed for tests. */
     internal fun boundPort(): Int = server?.listeningPort ?: -1
@@ -494,33 +522,36 @@ public class Lustro internal constructor(
      */
     private fun closeServer() {
         val srv = server ?: return
+        close(srv)
+        server = null
+    }
+
+    /** Closes [srv] and its connections at once, and cancels its handlers. */
+    private fun close(srv: LustroServer) {
         try {
             srv.stop()
             srv.shutdownLimiter()
         } catch (e: Throwable) {
             Log.w(TAG, "Error stopping debug server", e)
         }
-        server = null
     }
 
     /**
-     * Drains in-flight requests on [toClose] and closes it, OFF the monitor so a
-     * concurrent foreground is not blocked for the drain budget. Only the final
-     * state reconciliation takes the monitor: if [server] still points at the
-     * instance we just closed (no re-foreground rebound a new one), null it and —
-     * when we are still armed and foregrounded — rebind so a background→foreground
-     * straddling a slow drain ends up bound again. If a newer server was bound in
-     * the meantime, we leave [server] untouched (we only ever close the instance
-     * we captured).
+     * Drains in-flight requests on [toClose], whose listening socket [onBackground]
+     * closed, and closes it, OFF the monitor so a concurrent foreground is not
+     * blocked for the drain budget. A foreground during the drain binds a new server
+     * at once, and we leave [server] untouched then (we only ever close the instance
+     * we captured). Only the final state reconciliation takes the monitor: if
+     * [server] still points at the instance we just closed, null it, and bind again
+     * if we are still armed and foregrounded.
      *
-     * Never throws. It runs as a plain executor task on [workExecutor] (or
+     * Never throws. It runs as a plain executor task on [drainExecutor] (or
      * inline on the main thread), and unlike the limiter's `FutureTask`, nothing
      * there captures a throwable: it would reach the default handler and kill
      * the host app.
      */
     private fun drainAndClose(toClose: LustroServer) {
         try {
-            toClose.beginDrain()
             awaitInFlightDrain(toClose)
             toClose.stop()
             toClose.shutdownLimiter()
@@ -538,13 +569,18 @@ public class Lustro internal constructor(
             }
         } catch (e: Throwable) {
             Log.w(TAG, "Error rebinding debug server after drain", e)
+        } finally {
+            synchronized(this) { draining.remove(toClose) }
         }
     }
 
-    /** Spins up to [DRAIN_TIMEOUT_MS] for the server's in-flight request count to hit 0. */
+    /**
+     * Spins up to [DRAIN_TIMEOUT_MS] until the server has no handler running and has sent
+     * every response: a handler returns before its response is written.
+     */
     private fun awaitInFlightDrain(srv: LustroServer) {
         val deadline = System.currentTimeMillis() + DRAIN_TIMEOUT_MS
-        while (srv.inFlightCount() > 0 && System.currentTimeMillis() < deadline) {
+        while ((srv.inFlightCount() > 0 || srv.unanswered.count() > 0) && System.currentTimeMillis() < deadline) {
             try {
                 Thread.sleep(DRAIN_POLL_MS)
             } catch (_: InterruptedException) {
@@ -587,13 +623,13 @@ public class Lustro internal constructor(
         private const val EPHEMERAL_PORT = 0
 
         // Background drain budget: wait this long for in-flight requests to
-        // finish before force-closing the socket.
+        // finish before closing their connections.
         private const val DRAIN_TIMEOUT_MS = 5_000L
         private const val DRAIN_POLL_MS = 25L
 
         // How long, and how often, a bind to a taken port tries again without the fallback.
-        // Another app with Lustro closes its server after its onStop, which Android sends some
-        // time after this app's activity shows, and the process lifecycle 700 ms after that.
+        // Another app with Lustro closes its listening socket at its onStop, which Android sends
+        // some time after this app's activity shows, and the process lifecycle 700 ms after that.
         private const val BIND_RETRY_WINDOW_MS = 10_000L
         private const val BIND_RETRY_MS = 250L
         private const val MILLIS_PER_SECOND = 1_000L

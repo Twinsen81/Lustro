@@ -630,6 +630,182 @@ def test_a_command_with_a_401_for_the_token_flag_gets_no_cause_from_adb(server, 
     assert "adb get-state" not in adb.calls
 
 
+# ── a 401 from another app's server on the app's port ─────────────────────────
+
+PROC_NET = "adb shell cat /proc/net/tcp /proc/net/tcp6 2>/dev/null; true"
+STAT = "adb shell stat -c %u /proc/4242 2>/dev/null; true"
+PM_LIST = "adb shell pm list packages -U"
+APP_UID = 10213
+OTHER_UID = 10217
+OTHER = "com.other.app"
+TCP_HEADER = (
+    "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n"
+)
+
+
+def _proc_net(port, uid):
+    """/proc/net/tcp and tcp6 with a socket of ``uid`` that listens on 127.0.0.1:``port``,
+    and a connection on that port, which does not listen."""
+    tcp6 = (
+        "   0: 0000000000000000FFFF00000100007F:{port:04X} 00000000000000000000000000000000:0000 0A "
+        "00000000:00000000 00:00000000 00000000 {uid}        0 98765 1 0000000000000000 100 0 0 10 0\n"
+        "   1: 0000000000000000FFFF00000100007F:{port:04X} 0000000000000000FFFF00000100007F:9C40 01 "
+        "00000000:00000000 00:00000000 00000000 {app}        0 98766 1 0000000000000000 20 4 30 10 -1\n"
+    ).format(port=port, uid=uid, app=APP_UID)
+    return TCP_HEADER + TCP_HEADER + tcp6
+
+
+def _packages(*lines):
+    return "".join(line + "\n" for line in lines)
+
+
+def _two_apps(port, listener=OTHER_UID, packages=None):
+    """adb's answers while ``listener`` holds the app's port, right after the app started:
+    the app runs in the foreground, and its prefs have its token."""
+    if packages is None:
+        packages = _packages("package:{} uid:{}".format(PACKAGE, APP_UID), "package:{} uid:{}".format(OTHER, OTHER_UID))
+    return dict(
+        HEALTHY,
+        **{RUN_AS: _prefs(port, "old"), PROC_NET: _proc_net(port, listener), STAT: "{}\n".format(APP_UID), PM_LIST: packages}
+    )
+
+
+def test_a_401_from_another_apps_server_on_the_apps_port_names_that_app_and_exits_6(server, monkeypatch, capsys):
+    port = server.server_address[1]
+    adb = FakeAdb(monkeypatch, _two_apps(port))
+    assert cli.main(["meta", "--package", PACKAGE]) == exitcodes.NOT_REACHABLE
+    err = capsys.readouterr().err
+    assert err.startswith(
+        "error: port {} of the device is held by {} (uid {}), not by {} (uid {}), so the 401 is the other app's "
+        "answer to the token of {}.".format(port, OTHER, OTHER_UID, PACKAGE, APP_UID, PACKAGE)
+    ), err
+    assert "`lustro ready --package {}` waits for that.".format(PACKAGE) in err
+    assert "its own serverPort" in err
+    # Not the hint of the 401, which says that the token is wrong.
+    assert "Bearer" not in err
+    # The other app's server closes soon, so the CLI reads who listens before the checks of the cause.
+    assert adb.calls.index(PROC_NET) < adb.calls.index("adb get-state")
+
+
+def test_a_401_from_the_apps_own_server_stays_a_401_with_exit_1(server, monkeypatch, capsys):
+    port = server.server_address[1]
+    FakeAdb(monkeypatch, _two_apps(port, listener=APP_UID))
+    assert cli.main(["meta", "--package", PACKAGE]) == exitcodes.ERROR
+    assert capsys.readouterr().err.startswith("error: 401 unauthorized: missing token")
+
+
+def test_a_401_when_no_socket_listens_on_the_port_any_more_stays_a_401(server, monkeypatch, capsys):
+    port = server.server_address[1]
+    FakeAdb(monkeypatch, dict(_two_apps(port), **{PROC_NET: TCP_HEADER}))
+    assert cli.main(["meta", "--package", PACKAGE]) == exitcodes.ERROR
+    assert capsys.readouterr().err.startswith("error: 401 unauthorized: missing token")
+
+
+def test_a_401_from_a_uid_that_pm_does_not_list_names_the_uid(server, monkeypatch, capsys):
+    port = server.server_address[1]
+    FakeAdb(monkeypatch, _two_apps(port, packages=_packages("package:{} uid:{}".format(PACKAGE, APP_UID))))
+    assert cli.main(["meta", "--package", PACKAGE]) == exitcodes.NOT_REACHABLE
+    assert "held by a process with uid {}, not by {}".format(OTHER_UID, PACKAGE) in capsys.readouterr().err
+
+
+def test_the_name_of_the_other_app_comes_from_pm_also_after_an_error_for_another_user(server, monkeypatch, capsys):
+    # A device with a second user that the shell can't access: pm prints the error, and
+    # then the packages of the other users, with a uid for each user that has the app.
+    port = server.server_address[1]
+    packages = _packages(
+        "java.lang.SecurityException: Shell does not have permission to access user 150",
+        "package:{} uid:{},9510213".format(PACKAGE, APP_UID),
+        "package:{} uid:{},9510217".format(OTHER, OTHER_UID),
+    )
+    FakeAdb(monkeypatch, _two_apps(port, packages=packages))
+    assert cli.main(["meta", "--package", PACKAGE]) == exitcodes.NOT_REACHABLE
+    assert "held by {} (uid {})".format(OTHER, OTHER_UID) in capsys.readouterr().err
+
+
+DUMPSYS_PACKAGES = "adb shell dumpsys package packages"
+
+
+def test_the_name_of_the_other_app_comes_from_dumpsys_where_pm_has_no_uids(server, monkeypatch, capsys):
+    # pm of API 24 and 25 has no -U. The app ID in dumpsys is the uid in user 0, and the
+    # uid in user 10 is 10 * 100000 more.
+    port = server.server_address[1]
+    dumpsys = (
+        "Packages:\n"
+        "  Package [{app}] (2f1a):\n    userId={app_uid}\n    pkg=Package{{1 {app}}}\n"
+        "  Package [{other}] (3b2c):\n    userId={other_uid}\n    sharedUser=null\n"
+    ).format(app=PACKAGE, app_uid=APP_UID, other=OTHER, other_uid=OTHER_UID)
+    outputs = dict(
+        _two_apps(port, listener=1000000 + OTHER_UID, packages="Error: Unknown option: -U\n"),
+        **{DUMPSYS_PACKAGES: dumpsys, STAT: "{}\n".format(1000000 + APP_UID)}
+    )
+    FakeAdb(monkeypatch, outputs)
+    assert cli.main(["meta", "--package", PACKAGE]) == exitcodes.NOT_REACHABLE
+    assert "held by {} (uid {})".format(OTHER, 1000000 + OTHER_UID) in capsys.readouterr().err
+
+
+def test_a_401_from_another_app_with_the_token_flag_is_not_checked(server, monkeypatch, capsys):
+    port = server.server_address[1]
+    adb = FakeAdb(monkeypatch, _two_apps(port))
+    argv = ["meta", "--package", PACKAGE, "--token", "wrong"]
+    assert cli.main(argv) == exitcodes.ERROR
+    assert capsys.readouterr().err.startswith("error: 401 unauthorized")
+    assert PROC_NET not in adb.calls
+
+
+def test_a_401_without_package_is_not_checked(server, monkeypatch, capsys):
+    port = server.server_address[1]
+    adb = FakeAdb(monkeypatch, dict(_two_apps(port), **{LOGCAT: _ready_line(port, "old")}))
+    assert cli.main(["meta"]) == exitcodes.ERROR
+    assert capsys.readouterr().err.startswith("error: 401 unauthorized")
+    assert PROC_NET not in adb.calls
+
+
+def test_ready_waits_while_another_app_holds_the_port_and_names_it_at_the_timeout(server, monkeypatch, capsys):
+    port = server.server_address[1]
+    FakeAdb(monkeypatch, _two_apps(port))
+    started = time.monotonic()
+    assert _ready("--package", PACKAGE) == exitcodes.NOT_REACHABLE
+    assert time.monotonic() - started >= 0.2
+    err = capsys.readouterr().err
+    assert err.startswith(
+        "error: the app's server did not answer within 0.2 s: port {} of the device is held by {} (uid {})".format(
+            port, OTHER, OTHER_UID
+        )
+    ), err
+    assert "lustro ready" not in err
+
+
+def test_ready_answers_once_the_app_binds_the_port_after_the_other_app(server, monkeypatch, capsys):
+    # The prefs have the token of the app from the start; the other app's server answers
+    # 401 to it on the first tries, and then the app's own server answers.
+    port = server.server_address[1]
+    FakeAdb(monkeypatch, dict(_two_apps(port), **{RUN_AS: lambda earlier: _prefs(port, "old" if earlier < 4 else TOKEN)}))
+    assert cli.main(["ready", "--timeout", "5", "--package", PACKAGE]) == exitcodes.OK
+    assert capsys.readouterr().out == "http://127.0.0.1:{}\n".format(port)
+
+
+@pytest.mark.parametrize(
+    "line, port, uids",
+    [
+        # 127.0.0.1:8080 in tcp, as a server bound to IPv4 only shows.
+        ("   0: 0100007F:1F90 00000000:0000 0A 00000000:00000000 00:00000000 00000000 10217 0 1 1", 8080, [10217]),
+        # 0.0.0.0:8080 in tcp6 as an IPv4-mapped address, in lower case.
+        (
+            "   0: 0000000000000000ffff000000000000:1f90 00000000000000000000000000000000:0000 0A "
+            "00000000:00000000 00:00000000 00000000 10217 0 1 1",
+            8080,
+            [10217],
+        ),
+        # A connection on the port, which does not listen.
+        ("   0: 0100007F:1F90 0100007F:9C40 01 00000000:00000000 00:00000000 00000000 10213 0 1 1", 8080, []),
+        # Another port.
+        ("   0: 0100007F:1F91 00000000:0000 0A 00000000:00000000 00:00000000 00000000 10217 0 1 1", 8080, []),
+    ],
+)
+def test_the_uids_that_listen_on_a_port(line, port, uids):
+    assert discovery.parse_listening_uids(TCP_HEADER + line + "\n", port) == uids
+
+
 def test_an_error_response_exits_1(server, capsys):
     server.status = 404
     server.meta = {"error": "not_found", "message": "no route"}
