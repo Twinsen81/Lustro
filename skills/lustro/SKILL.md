@@ -29,9 +29,14 @@ The package installs one command under two names, `lustro` and `lustro-cli`; thi
 `lustro`. The PyPI package `lustro` is a different project with a `lustro` command of its own:
 never install it, and never run `uvx lustro`.
 
-`lustro --version` prints the wire protocol that the CLI implements, such as
-`lustro 0.1.0 (protocol 1.17)`. When `lustro ready` or `lustro meta` warns that the app's protocol
-is newer, install the CLI again with the command above, with `--force`.
+`lustro --version` prints the wire protocol that the CLI implements and the revision of the CLI,
+such as `lustro 0.1.0 (protocol 1.17, revision 1)`. When `lustro ready` or `lustro meta` warns that
+the app's protocol is newer, install the CLI again with the command above, with `--force`.
+
+The revision is a whole number that each change to the CLI increases by one, also a fix that does
+not change the version or the protocol. When a project's notes or wrapper script require a
+revision, such as "revision 1 or later", and `lustro --version` prints a lower one or none, install
+the CLI again with `--force`. `lustro --version --json` prints the three values as a JSON object.
 
 An app on an older protocol ignores an option that its protocol does not have, so the CLI refuses
 such a command before it changes anything, with exit status 1 and `error: protocol_too_old:

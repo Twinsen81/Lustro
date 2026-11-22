@@ -30,7 +30,7 @@ import traceback
 import urllib.parse
 from typing import Any, BinaryIO, Callable, Dict, List, MutableMapping, NamedTuple, Optional, Tuple
 
-from . import __version__, cli
+from . import REVISION, __version__, cli
 from .client import LustroClient, LustroError, RawBody
 from .discovery import DiscoveryError
 
@@ -49,7 +49,9 @@ INVALID_PARAMS = -32602
 INTERNAL_ERROR = -32603
 UNSUPPORTED_PROTOCOL_VERSION = -32022
 
-SERVER_INFO = {"name": "lustro", "title": "Lustro", "version": __version__}
+# MCP's Implementation has no field for the revision, and clients ignore a field
+# that they do not know: the TypeScript and Python SDKs keep or drop it.
+SERVER_INFO = {"name": "lustro", "title": "Lustro", "version": __version__, "revision": REVISION}
 # The tools are the same for the life of the process.
 CACHE = {"ttlMs": 3_600_000, "cacheScope": "public"}
 
@@ -841,7 +843,7 @@ def serve(args: argparse.Namespace, stdin: Optional[BinaryIO] = None, stdout: Op
     """Answer the messages on stdin until it closes."""
     in_stream = stdin if stdin is not None else sys.stdin.buffer
     out_stream = stdout if stdout is not None else sys.stdout.buffer
-    print("lustro {}: MCP server on stdin and stdout".format(__version__), file=sys.stderr)
+    print("{}: MCP server on stdin and stdout".format(cli.version_line()), file=sys.stderr)
     added = add_sdk_adb_to_path()
     if added:
         print("adb is not on the PATH: using {}".format(added), file=sys.stderr)

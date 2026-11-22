@@ -48,6 +48,19 @@ A change of the wire protocol version in `lustro/build.gradle.kts` also sets
 `lustro --version` prints: `./gradlew checkCliVersion` fails until the two are
 the same.
 
+A pull request that changes a file under `lustro-cli/src/` increases `REVISION`
+in `lustro-cli/src/lustro_cli/__init__.py` by one, and its CHANGELOG entry names
+the new revision. A wrapper script that installs the CLI from `main` requires the
+revision of the fix that it needs. CI fails the pull request when the revision is
+not the base branch's plus one; run the same check before you push:
+
+```bash
+python3 .github/scripts/check_cli_revision.py origin/main
+```
+
+When another pull request with a change to the CLI merges first, the line of
+`REVISION` conflicts at the rebase: take the next number.
+
 The modules compile against OkHttp 4.12.0, the floor an app can stay on. To run
 the suite with OkHttp 5 on the test runtime classpath, as CI does:
 

@@ -200,10 +200,18 @@ that finds the app uses them, not only `ready`:
 | 6 | The app can't be reached: it is not running or not in the foreground, it logged no ready line, its port does not answer, or, with `--package`, another app's server holds its port and answered `401`. | Start the app, and keep it in the foreground. For another app on the port, run `lustro ready --package`, which waits for the app's own server, and give each app its own `serverPort`. |
 
 Without `--package`, an app in the foreground without the runtime exits 6, not 5, because that app
-can be another app than yours. `lustro --version` prints the wire protocol that the CLI implements,
-such as `lustro 0.1.0 (protocol 1.17)`. When the app's `protocolVersion` is newer, `lustro ready`
-and `lustro meta` print a warning on stderr: update the CLI, or it lacks what the newer protocol
-adds.
+can be another app than yours. `lustro --version` prints the wire protocol that the CLI implements
+and the revision of the CLI, such as `lustro 0.1.0 (protocol 1.17, revision 1)`. When the app's
+`protocolVersion` is newer, `lustro ready` and `lustro meta` print a warning on stderr: update the
+CLI, or it lacks what the newer protocol adds.
+
+The revision is a whole number that each change to the CLI on `main` increases by one, also a fix
+that changes neither the version nor the protocol. A wrapper script that needs a fix requires the
+revision of that fix or a later one, such as "revision 1 or later", and installs the CLI again
+when the revision is lower. `lustro --version --json`, with the options in either order, prints
+`{"version":"0.1.0","protocol":"1.17","revision":1}`, and `lustro mcp` reports `revision` in
+its server info. A CLI from before the revision prints no revision, and prints the line of text
+also with `--json`: count it as revision 0.
 
 An app on an older protocol ignores a request field or a query parameter that its protocol does
 not have, and answers `200`. So a command with one of these options reads `protocolVersion` from

@@ -232,6 +232,25 @@ jobs:
       - name: Run pytest
         run: pytest -q
 
+      # A wrapper script that installs the CLI from main requires the revision of
+      # a fix, so each pull request that changes a file under lustro-cli/src/
+      # increases REVISION in src/lustro_cli/__init__.py by one. The checkout is
+      # the merge commit of the pull request, so its diff with the base holds
+      # only the pull request's changes. The checkout has one commit: fetch the
+      # base too.
+      - name: The revision check's own tests
+        working-directory: .
+        run: python -m pytest -q .github/scripts
+
+      - name: A change to the CLI increases its revision
+        if: ${{ github.event_name == 'pull_request' }}
+        working-directory: .
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git fetch --no-tags --depth=1 origin "$BASE"
+          python .github/scripts/check_cli_revision.py "$BASE" HEAD
+
       # Guard against drift between the canonical wire sources and the copies the
       # CLI vendors under src/lustro_cli/wire/. sync.py locates the repo root
       # relative to its own file, so it must run from the source tree (PYTHONPATH=src),
