@@ -121,7 +121,9 @@ too. Semantic color is passed via the `--c` custom property where noted:
 - `.dc-badge` (soft tinted fill) and `.dc-tag` (outlined), colored via
   `style="--c: var(--method-get)"`; `.dc-tag--mock` is the dashed purple MOCK.
 - `.dc-pill` (+ `--live`, `--danger`, `.dc-pill__dot`): the theme toggle (a
-  `<button>`) and the LIVE / ERROR status pill in the top bar.
+  `<button>`) and the LIVE / ERROR status pill in the top bar. The pill shows
+  whether the console reaches the app: an error answer of the app leaves it
+  LIVE, and `debugFetch` and `debugPoll` set it, not the tab.
 - `.dc-menu` family: dropdowns with single-select `✓` or multi-select
   checkboxes; close via a `.dc-menu-scrim` layer.
 - `.dc-modal` family: keep the `.dc-modal-scrim` in your markup with the

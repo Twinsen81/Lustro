@@ -724,8 +724,7 @@ def resolve(
             "A device with `adb shell getprop log.tag` set to E drops that line: "
             "`adb shell setprop log.tag.LustroToken I` lets it through until the device "
             "restarts. For a debuggable app, `--package <id>` reads the token through run-as. "
-            "For a device, also try `--device <serial>` and "
-            "`adb forward tcp:<port> tcp:<port>`."
+            "For a device, also try `--device <serial>`."
         )
 
     return Endpoint(host=r_host, port=int(r_port), token=r_token)

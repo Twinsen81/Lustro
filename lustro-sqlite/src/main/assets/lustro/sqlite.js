@@ -839,14 +839,9 @@
         return Promise.resolve({ status: 0, envelope: null });
     }
 
-    // debugFetch shows a response that isn't ok as a lost connection, but a
-    // refused statement or a read-only database is an answer of the app.
     function request(path, options) {
         return window.debugFetch(window.lustroApiUrl(path), options).then(function(r) { return r.json(); }, function(e) {
-            return failure(e).then(function(f) {
-                if (f.status) window.debugSetStatus('connected');
-                throw f;
-            });
+            return failure(e).then(function(f) { throw f; });
         });
     }
 
