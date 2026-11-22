@@ -1321,6 +1321,40 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Fixed
 
+- **The console's status pill stays "Live" when the app answers with an error,
+  and a running poll sets it back to "Live".** The pill shows whether the
+  console reaches the app, but `debugFetch` in `shared.js` set it to "Error"
+  for each answer that was not `2xx`, as if the connection had failed: a `400`
+  for bad SQL in the SQLite tab, a `404` when the WorkManager tab cancels a
+  work that is gone, or a `409` from an app's own tab. The pill then stayed
+  "Error", because `debugPoll` wrote it only when its own connection state
+  changed. A large app's tab kept "Error" after an expected `409` for this
+  reason. Now `debugFetch` sets "Live" at each answer of the app except a
+  `401`, which keeps its "Signed out" notice and "Error", and sets "Error"
+  only when `fetch` itself rejects. It still rejects for an answer that is not
+  `2xx`, with `err.status` and `err.response`, so the tab shows the text of
+  `debugErrorMessage()` next to its action. `debugPoll` sets "Live" at each
+  answer that it counts as connected, so an "Error" from another request goes
+  away at the next poll, and three failed polls in a row still set "Error".
+  The SQLite and WorkManager tabs had their own code that set "Live" again
+  after an error answer; it is gone, because `shared.js` does it now, and it
+  also set "Live" after a `401`. Custom tabs, Write a tab, and the style guide
+  say what the pill shows. Verified in headless Chrome with the sample on an
+  API 28 emulator: before the fix, a `404` of the Feature Flags tab's toggle
+  set "Error", which stayed through four polls; after it, the tab showed
+  "Failed to toggle: Unknown flag: no-such-flag" and the pill stayed "Live".
+  Bad SQL in the SQLite tab showed `400 BAD_REQUEST · SQLITE_ERROR` while the
+  pill stayed "Live", an "Error" set by hand went back to "Live" at the next
+  poll, and a removed cookie gave the "Signed out" notice with "Error".
+
+- **The CLI's error for no token no longer tells you to run `adb forward`
+  (CLI revision 2).** The message ended with "For a device, also try
+  `--device <serial>` and `adb forward tcp:<port> tcp:<port>`". A forward
+  cannot give a token, and the CLI makes its own forward on a local port that
+  adb chooses. A forward on the app's port number also fails when another
+  tool uses that local port, such as 8080. The message now ends with "For a
+  device, also try `--device <serial>`."
+
 - **Two apps with Lustro on one device: right after one app starts, the CLI
   says that the `401` is the other app's, and that app's server frees the port
   at once when it goes to the background.** Both apps bind port 8080 by

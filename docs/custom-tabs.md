@@ -275,6 +275,12 @@ The tab's script runs after `shared.js`, which gives these helpers:
 - `debugFetch(url, options)` rejects on a status that is not `2xx`, with `err.status` and
     `err.response`. `debugErrorMessage(err)` gives a Promise of the text to show: the `message`
     of the error envelope, or else `err.message`.
+- The status pill in the top bar shows whether the console reaches the app. `debugFetch` sets
+    "Live" at each answer of the app, also at an error answer such as a `400` or a `409`: the
+    app answered, and the tab shows the error next to its action. `debugPoll` sets "Live" at
+    each answer that it counts as connected: a `2xx`, or a rejection that `onRejected` handled.
+    "Error" means that a request of `debugFetch` got no answer, that three polls in a row failed,
+    or that the app answered `401`. The tab does nothing for the pill.
 - A `401` answer to either one shows the console's "Signed out" notice above the tab's content,
     and the next `2xx` answer removes it. The tab does nothing for it.
 - `debugModal(id, { onHide })` shows and hides a `.dc-modal-scrim` of the tab's markup. `onHide`

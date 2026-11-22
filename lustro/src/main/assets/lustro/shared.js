@@ -1287,24 +1287,33 @@ document.addEventListener('keydown', function(e) {
     }
 });
 
+// The status pill shows whether the console reaches the app. So an error answer,
+// such as a 400 or a 409, sets "Live": the caller shows the error next to its
+// action. "Error" means that fetch got no answer, and a 401 sets it through the
+// signed-out notice.
 window.debugFetch = async function(url, options) {
+    var resp;
     try {
-        var resp = await fetch(url, options || {});
-        if (resp.ok || resp.status === 401) window.lustroSignedOut(!resp.ok);
-        if (!resp.ok) {
-            // Carry the response along: a rejected request answers with the error
-            // envelope, and a caller can show what it says instead of the status.
-            var err = new Error('HTTP ' + resp.status);
-            err.status = resp.status;
-            err.response = resp;
-            throw err;
-        }
-        window.debugSetStatus('connected');
-        return resp;
+        resp = await fetch(url, options || {});
     } catch(e) {
         window.debugSetStatus('error');
         throw e;
     }
+    if (resp.status === 401) {
+        window.lustroSignedOut(true);
+    } else {
+        if (resp.ok) window.lustroSignedOut(false);
+        window.debugSetStatus('connected');
+    }
+    if (!resp.ok) {
+        // Carry the response along: a rejected request answers with the error
+        // envelope, and a caller can show what it says instead of the status.
+        var err = new Error('HTTP ' + resp.status);
+        err.status = resp.status;
+        err.response = resp;
+        throw err;
+    }
+    return resp;
 };
 
 // The message to show for a rejected debugFetch: the message of the error
@@ -1337,9 +1346,13 @@ window.debugErrorMessage = function(err) {
 // the response as an answer from a connected app, not as a lost connection.
 //
 // onConnectionChange(connected), when given, runs when the poll's connection
-// state changes, at the same time as the status pill in the top bar: with true
-// at the first answer and at the first answer after a lost connection, and with
-// false after three failed polls in a row. The poll starts as not connected.
+// state changes: with true at the first answer and at the first answer after a
+// lost connection, and with false after three failed polls in a row. The poll
+// starts as not connected.
+//
+// The poll sets the status pill in the top bar to "Live" at each answer that it
+// counts as connected, so that an "Error" from another request goes away at the
+// next poll, and to "Error" after three failed polls in a row.
 window.debugPoll = function(endpointOrFn, intervalMs, callback, onRejectedOrOptions) {
     var options = onRejectedOrOptions && typeof onRejectedOrOptions === 'object' ? onRejectedOrOptions : {};
     var onRejected = typeof onRejectedOrOptions === 'function' ? onRejectedOrOptions : options.onRejected;
@@ -1352,7 +1365,7 @@ window.debugPoll = function(endpointOrFn, intervalMs, callback, onRejectedOrOpti
 
     function setConnected(connected) {
         isConnected = connected;
-        window.debugSetStatus(connected ? 'connected' : 'error');
+        if (!connected) window.debugSetStatus('error');
         if (onConnectionChange && !stopped) {
             try { onConnectionChange(connected); } catch (e) { console.error('debugPoll onConnectionChange failed', e); }
         }
@@ -1375,6 +1388,8 @@ window.debugPoll = function(endpointOrFn, intervalMs, callback, onRejectedOrOpti
             }
             var data = handled ? null : await resp.json();
             consecutiveFailures = 0;
+            // A 401 that onRejected handled keeps the "Error" of the signed-out notice.
+            if (resp.status !== 401) window.debugSetStatus('connected');
             if (!isConnected) setConnected(true);
             if (!handled) callback(data);
         } catch(e) {

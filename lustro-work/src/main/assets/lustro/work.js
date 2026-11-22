@@ -1075,8 +1075,6 @@
                 renderHistory();
             })
             .catch(function(e) {
-                // A refusal is an answer of the app: it does not mean a lost connection.
-                if (e && e.response) window.debugSetStatus('connected');
                 if (requestSelection !== selection) return;
                 if (e && e.status === 404) {
                     detail = { item: null, events: [] };
@@ -1210,8 +1208,6 @@
                     window.debugToast(fallback, 'error');
                     return;
                 }
-                // A refusal is an answer of the app: it does not mean a lost connection.
-                window.debugSetStatus('connected');
                 e.response.json().then(function(envelope) {
                     window.debugToast(envelope && envelope.message ? envelope.message : fallback, 'error');
                 }, function() {

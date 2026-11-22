@@ -309,10 +309,13 @@ The console loads `flags.js` after `shared.js`, so the script can use the helper
 - `lustroOnContentReady(fn)` runs `fn` when the view is in the page.
 - `debugPoll(urlOrFunction, intervalMs, callback, options)` polls a route, and shows the
     connection state in the top bar. `options.onConnectionChange(connected)` runs when that state
-    changes, so the tab can react when the app goes away.
+    changes, so the tab can react when the app goes away. The poll sets the status pill in the
+    top bar to "Live" at each `2xx` answer, and to "Error" after three failed polls in a row.
 - `debugFetch(url, options)` rejects on a status that is not `2xx`. `debugErrorMessage(err)`
     gives a Promise of the text to show for the rejection: the `message` of the error envelope,
-    or else `err.message`.
+    or else `err.message`. The status pill shows whether the console reaches the app, so an
+    error answer, such as a `409`, leaves it "Live": show the error next to the action. A
+    request that gets no answer sets "Error".
 - `debugModal(id, { onHide })` shows and hides a dialog of the tab's markup. `onHide` runs when
     the dialog is hidden, also by Escape or a click on the scrim.
 - `debugEscapeHtml(text)` escapes a value for HTML.
