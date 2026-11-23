@@ -455,6 +455,48 @@ own its security lifecycle:
   auth, and absent from release builds, the practical exposure of any NanoHTTPD
   defect is limited to a developer's local debug session.
 
+## Release Publishing
+
+Lustro's artifacts go to Maven Central signed with the project's key, and the
+CLI goes to PyPI through trusted publishing. The signing key and the Central
+credentials never reach a Gradle build:
+
+- **A Gradle build gets no secrets.** A Gradle build loads every build plugin,
+  and one hijacked plugin release that a Dependabot pull request brings in
+  could copy what its job gets. The Central credentials alone are enough to
+  publish a release under the group, because Central checks that a signature
+  is valid, not that the key is the project's key. So in `release.yml` and
+  `snapshot.yml`, the build job runs Gradle with no secrets: it writes the
+  unsigned publications of all published modules to a local Maven repository
+  and uploads them as a workflow artifact. Its checkout keeps no Git token.
+- **The publish job runs no Gradle.** It downloads the artifact, and
+  `.github/scripts/central_publish.py`, which uses only the Python standard
+  library and the runner's `gpg`, checks that the files are the publications
+  of the group and version of `gradle.properties` (and of the tag, for a
+  release), signs each file with the primary key in a new GnuPG home that it
+  deletes after the signing, writes the checksums, and uploads a release
+  through the Central Publisher API, or a snapshot to the Central snapshot
+  repository. The signing step gets only the signing key, and the upload step
+  only the Central credentials.
+- **Environments hold the secrets.** The publish job of a release runs in the
+  environment `release`, and the publish job of a snapshot in the environment
+  `snapshot`, which only `main` can use. Until the maintainer moves the five
+  publishing secrets into these environments, the publish jobs read them from
+  the repository secrets, and the build jobs still get none. The `pypi` job
+  has no secret: PyPI's trusted publisher names `release.yml` and the
+  environment `pypi`. It builds nothing, and uploads only the wheel and the
+  sdist of the build job with the pinned `pypa/gh-action-pypi-publish`.
+- **CI enforces it.** `.github/scripts/check_workflow_secrets.py`, which `ci.yml`
+  runs, fails when a job that runs Gradle references a secret.
+- **Pinned tools.** The two workflows pin each action to a full commit SHA, and
+  install Python packages only from `.github/requirements/release-build.txt`,
+  which locks them with hashes.
+
+This does not make the files themselves trustworthy: a bad plugin in the build
+job can still change what the publish job signs. The builds are not
+reproducible, and nothing checks that the artifacts match the sources. See
+[DECISIONS.md](DECISIONS.md#release-publishing-no-secrets-in-a-job-that-runs-gradle).
+
 ## Disclosure Policy
 
 We follow coordinated disclosure:

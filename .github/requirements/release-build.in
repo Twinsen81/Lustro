@@ -1,0 +1,10 @@
+# What the build job of release.yml installs to make the wheel and the sdist of
+# lustro-cli with `python -m build --no-isolation`: the build frontend, and the
+# build backend that lustro-cli/pyproject.toml names. The job installs
+# release-build.txt, which locks these and their dependencies with hashes. To
+# lock them again, in a virtual environment with pip-tools:
+#
+#   pip-compile --generate-hashes --allow-unsafe --strip-extras \
+#     .github/requirements/release-build.in
+build
+hatchling

@@ -8,14 +8,15 @@ import com.vanniktech.maven.publish.MavenPublishBaseExtension
 import org.gradle.api.GradleException
 import org.gradle.api.Plugin
 import org.gradle.api.Project
+import org.gradle.api.publish.PublishingExtension
 import org.gradle.api.publish.tasks.GenerateModuleMetadata
 import org.gradle.kotlin.dsl.configure
 import org.gradle.kotlin.dsl.register
 
 /**
- * `lustro.publishing`: publishes the module to the Sonatype Central Portal with the vanniktech
- * plugin. The POM takes the root `POM_*` properties, and `POM_NAME` and `POM_DESCRIPTION` from
- * the module's own gradle.properties; the artifactId is the project name.
+ * `lustro.publishing`: makes the module's Maven publication with the vanniktech plugin. The POM
+ * takes the root `POM_*` properties, and `POM_NAME` and `POM_DESCRIPTION` from the module's own
+ * gradle.properties; the artifactId is the project name.
  *
  * Apply it after the plugin that makes the module a library, which decides what it publishes:
  *  - `lustro.android-library`: the AAR of the single "release" variant, a sources jar, and a
@@ -27,8 +28,11 @@ import org.gradle.kotlin.dsl.register
  * The root build adds every module with this plugin to the Dokka site and to the files of the
  * GitHub Release (collectReleaseArtifacts).
  *
- * Signing is opt-in, for CI only: it starts when the in-memory signing key is set, so that
- * `publishToMavenLocal` works without GPG keys.
+ * Gradle neither signs nor uploads: `publishAllPublicationsToStagingRepository` writes the
+ * unsigned publication to `build/staging-deploy` of the root project. In release.yml and
+ * snapshot.yml, a job that runs no Gradle signs those files with gpg and uploads them to Central
+ * with `.github/scripts/central_publish.py`. So the signing key and the Central credentials never
+ * reach a build that loads the build plugins (see SECURITY.md, "Release Publishing").
  */
 class PublishingPlugin : Plugin<Project> {
     override fun apply(target: Project): Unit = with(target) {
@@ -49,12 +53,12 @@ class PublishingPlugin : Plugin<Project> {
         alignLustroVersions()
         pluginManager.apply("com.vanniktech.maven.publish")
         extensions.configure<MavenPublishBaseExtension> {
-            publishToMavenCentral()
             configure(platform)
-            if (providers.gradleProperty("signingInMemoryKey").isPresent ||
-                providers.environmentVariable("ORG_GRADLE_PROJECT_signingInMemoryKey").isPresent
-            ) {
-                signAllPublications()
+        }
+        extensions.configure<PublishingExtension> {
+            repositories.maven {
+                name = "staging"
+                url = uri(rootProject.layout.buildDirectory.dir("staging-deploy"))
             }
         }
     }

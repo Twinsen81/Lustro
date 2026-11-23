@@ -3110,6 +3110,49 @@ below list every change since the first snapshot.
 
 ### Security
 
+- **No job that runs Gradle gets a publishing secret: a job without Gradle
+  signs and uploads.** On each push to `main`, `snapshot.yml` gave the five
+  publishing secrets to `./gradlew publishToMavenCentral`, and `release.yml`
+  gave them to `./gradlew publishAndReleaseToMavenCentral` on a tag. That
+  Gradle run loads every build plugin, so one hijacked release of a plugin,
+  such as detekt, Dokka, or Kover, that a Dependabot pull request brings in
+  could copy the signing key and the Central credentials. The Central
+  credentials alone are enough to publish a release under the group, because
+  Central checks that a signature is valid, not that the key is the project's
+  key. The `pypi` job also installed the newest `build` and hatchling from
+  PyPI in the job with `id-token: write`. Now each of the two workflows has a
+  build job and a publish job. The build job gets no secrets:
+  `./gradlew publishAllPublicationsToStagingRepository` writes the unsigned
+  publications of the 14 published modules to `build/staging-deploy`, and the
+  job uploads that directory as a workflow artifact. The publish job runs no
+  Gradle. `.github/scripts/central_publish.py`, which uses only the Python
+  standard library and `gpg`, checks the files and their POMs against what
+  Central requires, signs each file with the primary key, which is the only
+  key that Central verifies with, and writes the checksums. It uploads a
+  release as one bundle through the Central Publisher API, and a snapshot to
+  the snapshot repository, with the next build number of each module and the
+  `maven-metadata.xml` files that it writes after the files of all modules.
+  Only the publish jobs get the secrets, in the environment `release`, or in
+  the new environment `snapshot` for a snapshot. The GitHub Release and the
+  `pypi` job take their files only from the build's artifacts, and the `pypi`
+  job only uploads them. The build job installs the CLI's build tools from
+  `.github/requirements/release-build.txt`, which locks them with hashes, and
+  the two workflows pin each action to a full commit SHA. A new CI step runs
+  `.github/scripts/check_workflow_secrets.py`, which fails when a job that
+  runs Gradle references a secret. The `lustro.publishing` plugin no longer
+  publishes to Central or signs: the 14 POMs are the same as before. pytest
+  tests run the script against a fake Central on localhost, for a release
+  bundle and for a snapshot with its metadata, and sign with a throwaway key.
+  Verified: a local dry run of version 0.1.0 signed the 70 files of the 14
+  modules with a throwaway key that has a signing subkey, and `gpg --verify`
+  found each signature good and made by the primary key. The bundle had the
+  POM, the Gradle module metadata, the AAR or jar, and the sources and
+  Javadoc jars of each module, each with its `.asc`, `.md5`, and `.sha1`, and
+  the fake Publisher API took it. A snapshot dry run uploaded to a fake
+  snapshot repository twice, as builds 1 and 2, and a Gradle build resolved
+  `lustro-api` and `lustro-wire-schema` `0.1.0-SNAPSHOT` from it, at build 2.
+  SECURITY.md, DECISIONS.md, and CONTRIBUTING describe the jobs.
+
 - **Dependabot waits a week for a new release, the workflows use each action
   at a commit SHA, and CI installs Python packages only from locks with
   hashes.** Most hijacked releases are found and removed within days, so each

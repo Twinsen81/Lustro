@@ -264,6 +264,14 @@ jobs:
         working-directory: .
         run: python -m pytest -q .github/scripts
 
+      # release.yml and snapshot.yml give the signing key and the Central
+      # credentials only to a job that runs no Gradle, because a Gradle build
+      # loads every build plugin (see SECURITY.md, "Release Publishing"). The
+      # step above runs the tests of this check and of central_publish.py.
+      - name: No job that runs Gradle references a secret
+        working-directory: .
+        run: python .github/scripts/check_workflow_secrets.py .github/workflows
+
       - name: A change to the CLI increases its revision
         working-directory: .
         env:

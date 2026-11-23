@@ -528,7 +528,10 @@ version. `main` takes changes only through pull requests.
    in the `release` environment, so it waits for the protection rules of that
    environment, such as a required reviewer. Those rules, and a ruleset that
    limits who can push `v*` tags, are repository settings: the workflow can't
-   set them.
+   set them. When the step that releases to Central fails after the upload,
+   look at the deployment on the
+   [Central Portal](https://central.sonatype.com/publishing/deployments) before
+   you run the job again: a second upload of the same version fails.
 3. In the next pull request, set `VERSION_NAME` to the next `-SNAPSHOT`, such as
    `0.2.1-SNAPSHOT`, and `__version__` to the same version without `-SNAPSHOT`.
    The docs can keep the release until the next release.
@@ -538,6 +541,33 @@ file by one, because `check_cli_revision.py` fails each change under
 `lustro-cli/src/` that does not.
 
 `lustro-cli/README.md` is also the CLI's page on PyPI.
+
+`release.yml` runs these jobs in order: `verify`; `build`, which runs Gradle
+with no secrets and uploads the unsigned publications, the AARs and jars, and
+the CLI's wheel and sdist as workflow artifacts; `publish`, which runs no
+Gradle, signs the publications with gpg, and releases them to Central through
+the Publisher API with `.github/scripts/central_publish.py`; `github-release`;
+and `pypi`. `snapshot.yml` publishes each push to `main` with a `-SNAPSHOT`
+version in the same way, with its publish job in the environment `snapshot`.
+Only the publish jobs get the signing key and the Central credentials. A job
+that runs Gradle must not reference a secret, and CI fails when one does
+(`.github/scripts/check_workflow_secrets.py`; see
+[SECURITY.md](SECURITY.md#release-publishing)).
+
+To try the signing and the bundle without publishing anything, use a throwaway
+key, and for a release bundle, a release version in `gradle.properties` for the
+try:
+
+```bash
+rm -rf build/staging-deploy build/central
+./gradlew publishAllPublicationsToStagingRepository
+SIGNING_KEY="$(gpg --armor --export-secret-keys <throwaway key id>)" SIGNING_KEY_PASSWORD=<its passphrase> \
+  python3 .github/scripts/central_publish.py prepare --repo build/staging-deploy --out build/central --properties gradle.properties
+python3 .github/scripts/central_publish.py bundle --dir build/central --out build/central-bundle.zip
+```
+
+The tests of the script, `python -m pytest -q .github/scripts`, upload to a
+fake Central on localhost.
 
 ## Code of Conduct
 

@@ -8,6 +8,21 @@ on:
 permissions:
   contents: read
 
+# The jobs, in order: verify, build, publish, github-release, pypi.
+#
+# A Gradle build loads every build plugin, and a hijacked release of one, which a
+# Dependabot pull request can bring in, could copy what the job gets. So the
+# job that runs Gradle, build, gets no secrets, and the job that gets the
+# signing key and the Central credentials, publish, runs no Gradle and no other
+# third-party build code: it signs the files of the build with gpg and uploads
+# them with a script that uses only the Python standard library.
+# .github/scripts/check_workflow_secrets.py, which ci.yml runs, fails when a
+# job that runs Gradle references a secret. See SECURITY.md, "Release
+# Publishing".
+#
+# Each action is pinned to a full commit SHA, with its version in a comment,
+# and Python packages come only from files that lock them with hashes.
+
 jobs:
   # --- The tag's commit is on main, and CI passed for it ----------------------
   # Maven Central keeps every release, so a release from a wrong commit can't be
@@ -23,7 +38,7 @@ jobs:
       contents: read
       actions: read # gh run list
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0 # the history of main, to find the tag's commit in it
 
@@ -35,18 +50,17 @@ jobs:
           git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
           python3 .github/scripts/check_release_commit.py "$GITHUB_SHA" --branch main --main-ref origin/main
 
-  # --- Signed Central release + GitHub Release with artifacts -----------------
-  # The `release` environment holds the job until its protection rules, which
-  # the repository settings define, let it run.
-  publish:
-    name: Publish release to Central + GitHub Release
+  # --- Build: the unsigned publications and the release files, no secrets ----
+  build:
+    name: Build the publications and the release files
     runs-on: ubuntu-latest
     needs: verify
-    environment: release
     permissions:
-      contents: write # create the GitHub Release and upload assets
+      contents: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up JDK + Gradle
         uses: ./.github/actions/setup
@@ -68,47 +82,137 @@ jobs:
             exit 1
           fi
 
-      # The pypi job publishes lustro-cli with its own __version__, after this
-      # job has published to Central. PyPI refuses a version that it has, so
-      # check the CLI's version before anything is published.
+      # The pypi job publishes lustro-cli with its own __version__, after the
+      # publish job has published to Central. PyPI refuses a version that it
+      # has, so check the CLI's version before anything is published.
       - name: Verify the CLI version
         run: ./gradlew checkCliVersion --console=plain --stacktrace
 
-      # Signed staging + automatic release on the Central Portal. This is the
-      # release counterpart of snapshot.yml's publishToMavenCentral.
-      - name: Publish + release to Central (signed)
-        run: ./gradlew publishAndReleaseToMavenCentral --no-configuration-cache --console=plain --stacktrace
-        env:
-          ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
-          ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
-          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_IN_MEMORY_KEY }}
-          ORG_GRADLE_PROJECT_signingInMemoryKeyId: ${{ secrets.SIGNING_IN_MEMORY_KEY_ID }}
-          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_IN_MEMORY_KEY_PASSWORD }}
+      # The publications of every module that applies the lustro.publishing
+      # convention plugin, unsigned, in build/staging-deploy: the POM, the Gradle
+      # module metadata, the AAR or jar, and the sources and Javadoc jars. And
+      # the AAR or jar of each one in build/release-artifacts, for the GitHub
+      # Release (see the root build.gradle.kts).
+      - name: Build the publications and the release artifacts
+        run: ./gradlew publishAllPublicationsToStagingRepository collectReleaseArtifacts --console=plain --stacktrace
 
-      # Assemble the artifacts to attach to the GitHub Release: the AAR or jar of
-      # every module that applies the lustro.publishing convention plugin (see the
-      # root build.gradle.kts), and the CLI wheel/sdist.
-      - name: Assemble release artifacts
-        run: ./gradlew collectReleaseArtifacts --console=plain --stacktrace
-
+      # `python -m build` installs the build backend from PyPI, with no hashes,
+      # in an isolated environment. So the job installs the frontend and the
+      # backend from the locked file, in a virtual environment, and builds with
+      # them: the runner's Python refuses a pip install of its own (PEP 668).
       - name: Build CLI distributions
         run: |
-          python -m pip install --upgrade build
-          python -m build lustro-cli --outdir dist-cli
+          python3 -m venv "$RUNNER_TEMP/build-venv"
+          "$RUNNER_TEMP/build-venv/bin/python" -m pip install --require-hashes -r .github/requirements/release-build.txt
+          "$RUNNER_TEMP/build-venv/bin/python" -m build --no-isolation lustro-cli --outdir dist-cli
 
-      - name: Collect release files
-        # Fail the job if any REQUIRED artifact is missing: shipping a partial
-        # GitHub Release (e.g. an AAR or the wheel silently absent) is worse than
-        # failing the release. `set -euo pipefail` makes a failed `cp` abort, and
-        # collectReleaseArtifacts fails when a module's AAR or jar does not build.
+      - name: Upload the unsigned publications
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: maven-staging
+          path: build/staging-deploy/
+          if-no-files-found: error
+
+      - name: Upload the release artifacts
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-artifacts
+          path: build/release-artifacts/
+          if-no-files-found: error
+
+      - name: Upload the CLI distributions
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cli-dist
+          path: dist-cli/
+          if-no-files-found: error
+
+  # --- Publish: sign and release to Central, with no Gradle -------------------
+  # The `release` environment holds the job until its protection rules, which
+  # the repository settings define, let it run, and it holds the secrets. Until
+  # the maintainer moves them there, the job reads the repository secrets.
+  # Gradle wrote the files; the job takes them only from the build's artifact.
+  # It checks out only .github/scripts and the files at the root, for
+  # gradle.properties, and runs only the runner's own python3 and gpg.
+  publish:
+    name: Sign and release to Central
+    runs-on: ubuntu-latest
+    needs: build
+    environment: release
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/scripts
+
+      - name: Download the unsigned publications
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: maven-staging
+          path: staging-deploy
+
+      # Fails unless the files are the publications of GROUP at VERSION_NAME of
+      # gradle.properties, the version is the tag's, and each module has the
+      # files and the POM elements that Central requires. The key is imported
+      # into a new GnuPG home, which the script deletes after the signing.
+      - name: Sign the publications and write their checksums
+        env:
+          SIGNING_KEY: ${{ secrets.SIGNING_IN_MEMORY_KEY }}
+          SIGNING_KEY_ID: ${{ secrets.SIGNING_IN_MEMORY_KEY_ID }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_IN_MEMORY_KEY_PASSWORD }}
+        run: >-
+          python3 .github/scripts/central_publish.py prepare --repo staging-deploy
+          --out central --properties gradle.properties --expect-version "${GITHUB_REF_NAME#v}"
+
+      - name: Make the bundle
+        run: python3 .github/scripts/central_publish.py bundle --dir central --out "lustro-${GITHUB_REF_NAME#v}.zip"
+
+      # Uploads the bundle through the Central Publisher API with the publishing
+      # type AUTOMATIC, and waits until Central has validated it and publishes
+      # it. A second upload of the same version fails: when this step stopped
+      # after the upload, see the deployment on the Central Portal before you run
+      # the job again.
+      - name: Release to Central
+        env:
+          CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+        run: >-
+          python3 .github/scripts/central_publish.py release
+          --bundle "lustro-${GITHUB_REF_NAME#v}.zip" --name "lustro ${GITHUB_REF_NAME#v}"
+
+  # --- GitHub Release with the files of the build -----------------------------
+  github-release:
+    name: GitHub Release
+    runs-on: ubuntu-latest
+    needs: publish
+    permissions:
+      contents: write # create the GitHub Release and upload assets
+    steps:
+      - name: Download the release artifacts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-artifacts
+          path: release-files
+
+      - name: Download the CLI distributions
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: cli-dist
+          path: release-files
+
+      # Fail the job if any REQUIRED artifact is missing: shipping a partial
+      # GitHub Release (e.g. an AAR or the wheel silently absent) is worse than
+      # failing the release. collectReleaseArtifacts fails when a module's AAR or
+      # jar does not build, and the build job fails when an artifact is empty.
+      - name: Check the release files
         run: |
           set -euo pipefail
-          mkdir -p release-files
-          # Required: the AARs and jars of the published modules.
-          cp build/release-artifacts/* release-files/
-          # Required: the CLI distributions (wheel + sdist from `python -m build`).
-          cp dist-cli/* release-files/
           ls -l release-files
+          ls release-files/*.aar release-files/*.jar >/dev/null
+          ls release-files/*.whl release-files/*.tar.gz >/dev/null
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
@@ -117,31 +221,28 @@ jobs:
           files: release-files/*
 
   # --- PyPI publish of the CLI ------------------------------------------------
+  # PyPI's trusted publisher names this workflow file, release.yml, and the
+  # environment `pypi`: keep both names.
   pypi:
     name: Publish lustro-cli to PyPI
     runs-on: ubuntu-latest
-    needs: publish
+    needs: github-release
     # Trusted publishing (OIDC) needs id-token: write; the environment gate lets
     # PyPI scope the trusted publisher to this workflow/environment.
     permissions:
       id-token: write
     environment: pypi
     steps:
-      - uses: actions/checkout@v7
-
-      - name: Set up Python
-        uses: actions/setup-python@v7
+      # The wheel and the sdist that the build job built: this job builds
+      # nothing and checks out nothing.
+      - name: Download the CLI distributions
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          python-version: "3.x"
+          name: cli-dist
+          path: dist
 
-      - name: Build CLI distributions
-        run: |
-          python -m pip install --upgrade build
-          python -m build lustro-cli --outdir dist
-
-      # Trusted publishing: no API token in secrets. If you prefer a token,
-      # set `password: ${{ secrets.PYPI_API_TOKEN }}` instead and drop id-token.
+      # Trusted publishing: no API token in secrets.
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # release/v1
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
         with:
           packages-dir: dist
