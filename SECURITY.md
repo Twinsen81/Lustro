@@ -427,10 +427,24 @@ own its security lifecycle:
   reports them. Dependabot's version updates leave NanoHTTPD out on purpose:
   `.github/dependabot.yml` ignores `org.nanohttpd:*`, because the pin is a
   dependency floor that moves by hand, and NanoHTTPD has had no release since
-  2.3.1, in 2016. Dependabot alerts report an advisory whatever
-  `dependabot.yml` ignores, but they are off for this repository:
-  `gh api repos/{owner}/{repo}/vulnerability-alerts` answers `404`, and it
-  answers `204` when they are on.
+  2.3.1, in 2016. Dependabot alerts are on for this repository
+  (`gh api repos/{owner}/{repo}/vulnerability-alerts` answers `204`), and an
+  alert reports an advisory whatever `dependabot.yml` ignores. But an alert
+  can only name a package of the repository's dependency graph, and the graph
+  has the Python packages and the GitHub Actions, not the dependencies of the
+  Gradle build: no alert reports an advisory for NanoHTTPD.
+
+  Three measures make it less likely that a hijacked release of a dependency
+  reaches CI or the docs site. A Dependabot version update waits until the
+  release is 7 days old, and 14 days for a new major version, because most
+  hijacked releases are found and removed within days. For GitHub Actions,
+  Dependabot has no cooldown by version type, so each new version waits 7 days.
+  The workflows and the composite action use each action at a full commit SHA,
+  which, unlike a tag, its owner cannot move to other code, and a CI step fails
+  on a `uses:` with a tag or a branch. The step skips `release.yml` and
+  `snapshot.yml` until their actions are pinned too. CI and the docs build
+  install Python packages only from lock files with hashes:
+  `lustro-cli/requirements-test.txt` and `docs/requirements.txt`.
 - **Patching.** When a relevant security fix is needed:
   1. If upstream ships a patched release, we bump the pin and run the
      wire-protocol contract tests and emulator matrix before publishing.

@@ -444,6 +444,52 @@ cd consumer-check
 ./gradlew :app:assembleWithLustroDebug :app:assembleWithLustroRelease :app:checkLustroKeepsAppVersions
 ```
 
+### Pinned actions
+
+A workflow or a composite action uses an action at the full commit SHA of a
+release, with the version in a comment:
+
+```yaml
+- uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+```
+
+Take the SHA from the action's own repository. `gh api
+repos/<owner>/<repo>/git/ref/tags/<tag>` gives the object of the tag. When its
+type is `tag`, the tag is annotated: `gh api
+repos/<owner>/<repo>/git/tags/<sha>` gives the commit. Dependabot updates the
+SHA and the comment. `python3 .github/scripts/check_action_pins.py` fails on a
+`uses:` with a tag or a branch, and CI runs it.
+
+### Python lock files
+
+CI and the docs build install Python packages only from lock files with
+hashes. Each lock is the output of `pip-compile`, from
+[pip-tools](https://pip-tools.readthedocs.io), for the `.in` file next to it,
+and Dependabot updates both:
+
+| Lock | Its `.in` file has | Installed by |
+|---|---|---|
+| `lustro-cli/requirements-test.txt` | the test extras of `pyproject.toml`, and hatchling, the build backend | the CLI's job in `ci.yml`, and the CLI end to end |
+| `docs/requirements.txt` | Zensical | `docs.yml` |
+
+To change a version or add a package, edit the `.in` file, and compile the lock
+again in its directory. Use the newest Python release, which CI uses: pip-compile
+resolves for the Python that runs it, and leaves out a package that only an
+older Python needs.
+
+```bash
+python -m pip install pip-tools   # in a virtual environment
+cd lustro-cli
+pip-compile --generate-hashes --strip-extras --output-file=requirements-test.txt requirements-test.in
+cd ../docs
+pip-compile --generate-hashes --strip-extras --output-file=requirements.txt requirements.in
+```
+
+pip-compile keeps each locked version that still fits, so the diff shows only
+what changed. `--upgrade-package <name>` moves one package to its newest
+version. A new test dependency goes into `pyproject.toml` and
+`requirements-test.in`, because CI installs the CLI with `--no-deps`.
+
 ## Releasing
 
 One tag publishes the library to Maven Central and the CLI to PyPI, with one

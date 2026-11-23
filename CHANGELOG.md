@@ -3026,6 +3026,36 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Security
 
+- **Dependabot waits a week for a new release, the workflows use each action
+  at a commit SHA, and CI installs Python packages only from locks with
+  hashes.** Most hijacked releases are found and removed within days, so each
+  ecosystem in `.github/dependabot.yml` has a cooldown: a version update waits
+  until the release is 7 days old, and 14 days for a new major version, except
+  for GitHub Actions, where Dependabot has no cooldown by version type and each
+  version waits 7 days. Eight actions were used at a tag, which their owner can
+  move to other code without a change in this repository, among them
+  `gradle/actions/setup-gradle`, which adds init scripts to each later Gradle
+  run of its job. `ci.yml`, `docs.yml`, and the composite action now use each
+  action at the commit SHA of its current release, with the version in a
+  comment, and the comment of the emulator runner names its exact version,
+  v2.38.0. A new step of the CLI's job, `check_action_pins.py`, fails on a
+  `uses:` with a tag or a branch; it skips `release.yml` and `snapshot.yml`
+  until their actions are pinned too. The CLI's job installed the newest
+  `pytest` and `jsonschema` at each run, and the end to end did the same, and
+  the docs build pinned Zensical but not its dependencies. Now
+  `lustro-cli/requirements-test.txt` and `docs/requirements.txt` lock every
+  package with hashes, as pip-compile makes them from a `.in` file, and CI
+  installs them with `--require-hashes`. The CLI's lock also has hatchling, so
+  pip builds the CLI with `--no-build-isolation --no-index` and downloads
+  nothing else. Dependabot updates the pins and the locks, and CONTRIBUTING.md
+  says how to compile a lock again. SECURITY.md said that Dependabot alerts are
+  off: they are on, and it now says that they cover the Python packages and the
+  actions, not the Gradle dependencies such as NanoHTTPD, which are still
+  monitored by hand. Verified: the check fails on each of the 18 `uses:` that
+  had a tag, and passes after the pins; on Python 3.15, the CLI's 697 tests and
+  the 39 tests of `.github/scripts` pass with the lock installed, and the strict
+  docs build passes with the docs lock.
+
 - **The CLI sends a token that it found only to a server of the app that owns
   it (CLI revision 4).** On loopback, the token is the only protection against
   the other apps on the device, which can connect to the server's port. The

@@ -1,9 +1,17 @@
 version: 2
+# Each ecosystem has a cooldown: a version update waits until the release is 7
+# days old, and 14 days for a new major version, because a hijacked release is
+# usually found and removed within days. Security updates do not wait. For
+# GitHub Actions, Dependabot has no cooldown by version type: each new version
+# of an action waits 7 days.
 updates:
   - package-ecosystem: "gradle"
     directory: "/"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
+      semver-major-days: 14
     open-pull-requests-limit: 5
     # Kotlin is upgraded deliberately, not on the automated cadence: KSP is
     # version-locked to the exact Kotlin release, and the Android modules' Kotlin
@@ -61,6 +69,8 @@ updates:
       - "/.github/actions/setup"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 5
     groups:
       github-actions:
@@ -70,10 +80,16 @@ updates:
           - "minor"
           - "patch"
 
+  # The CLI's pyproject.toml, and the lock of what CI installs for its tests:
+  # requirements-test.in, and requirements-test.txt, which pip-compile makes
+  # from it with hashes. Dependabot runs pip-compile again for an update.
   - package-ecosystem: "pip"
     directory: "/lustro-cli"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
+      semver-major-days: 14
     open-pull-requests-limit: 5
     groups:
       python-dependencies:
@@ -83,9 +99,13 @@ updates:
           - "minor"
           - "patch"
 
-  # The Zensical pin of the docs site build (docs.yml).
+  # The lock of the docs site build (docs.yml): requirements.in, and
+  # requirements.txt, which pip-compile makes from it with hashes.
   - package-ecosystem: "pip"
     directory: "/docs"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
+      semver-major-days: 14
     open-pull-requests-limit: 5
