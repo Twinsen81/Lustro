@@ -1,9 +1,9 @@
 [versions]
 # Build toolchain.
-agp = "9.5.1"
+agp = "9.5.2"
 kotlin = "2.3.21"
 # The sample's Room code generation.
-ksp = "2.3.13"
+ksp = "2.3.14"
 # lint = AGP major + 23; shipped to consumers via :lustro-lint.
 lint = "32.2.1"
 
@@ -75,14 +75,14 @@ detekt = "1.23.8"
 bcv = "0.18.2"
 # What BCV reads class files with. BCV runs its API dump in a worker with these on the
 # worker's classpath, and build-logic does the same for the Android modules.
-asm = "9.6"
+asm = "9.11.1"
 vanniktech = "0.37.0"
 dokka = "2.3.0"
 kover = "0.9.11"
 
 # Test.
 junit = "4.13.2"
-robolectric = "4.17"
+robolectric = "4.18"
 json = "20260814"
 androidxTestCore = "1.7.0"
 androidxTestRunner = "1.7.0"
