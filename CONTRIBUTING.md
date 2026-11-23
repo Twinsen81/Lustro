@@ -484,20 +484,23 @@ and Dependabot updates both:
 |---|---|---|
 | `lustro-cli/requirements-test.txt` | the test extras of `pyproject.toml`, and hatchling, the build backend | the CLI's job in `ci.yml`, and the CLI end to end |
 | `docs/requirements.txt` | Zensical | `docs.yml` |
+| `lustro-cli/requirements-release.txt` | build, the build frontend, and hatchling, the build backend | the build job of `release.yml`, for the CLI's wheel and sdist |
 
 To change a version or add a package, edit the `.in` file, and compile the lock
 again in its directory, with Python 3.15. That is the `python-version` of the
-three jobs that install from a lock: the CLI's job and the instrumented tests in
-`ci.yml`, and the build in `docs.yml`. pip-compile resolves for the Python that
-runs it, and some locked packages, such as rpds-py, markupsafe, pyyaml, and
-zensical, have compiled wheels for each Python version. So the Python of those
-jobs and the locks move together: a pull request that changes that
-`python-version` also compiles both locks again with the new version.
+four jobs that install from a lock: the CLI's job and the instrumented tests in
+`ci.yml`, the build in `docs.yml`, and the build job of `release.yml`.
+pip-compile resolves for the Python that runs it, and some locked packages, such
+as rpds-py, markupsafe, pyyaml, and zensical, have compiled wheels for each
+Python version. So the Python of those jobs and the locks move together: a pull
+request that changes that `python-version` also compiles each lock again with
+the new version.
 
 ```bash
 python -m pip install pip-tools   # in a virtual environment
 cd lustro-cli
 pip-compile --generate-hashes --strip-extras --output-file=requirements-test.txt requirements-test.in
+pip-compile --generate-hashes --strip-extras --output-file=requirements-release.txt requirements-release.in
 cd ../docs
 pip-compile --generate-hashes --strip-extras --output-file=requirements.txt requirements.in
 ```

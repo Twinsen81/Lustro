@@ -283,8 +283,7 @@ jobs:
       # The owner of an action can move a tag or a branch to other code without
       # a change in this repository, and a commit SHA always names the same
       # code. So each `uses:` of a workflow or a composite action must name a
-      # full commit SHA, a local path, or an image digest. The script skips
-      # release.yml and snapshot.yml until they are pinned (see SKIPPED there).
+      # full commit SHA, a local path, or an image digest.
       - name: Workflows use each action at a commit SHA
         working-directory: .
         run: python .github/scripts/check_action_pins.py

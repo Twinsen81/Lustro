@@ -372,10 +372,11 @@ release under the group, and Central keeps each release forever.
   from the build's artifacts. The `pypi` job builds nothing: it uploads the
   wheel and the sdist with the pinned `pypa/gh-action-pypi-publish`.
 - The two workflows pin each action to a full commit SHA, and install Python
-  packages only from `.github/requirements/release-build.txt`, which locks the
+  packages only from `lustro-cli/requirements-release.txt`, which locks the
   CLI's build frontend and backend with hashes. The build job runs
   `python -m build --no-isolation` with them, because an isolated build
-  installs the backend from PyPI with no hashes.
+  installs the backend from PyPI with no hashes. The publish job installs no
+  Python package and runs on the runner's `python3`.
 - `.github/scripts/check_workflow_secrets.py`, which CI runs, fails when a job
   that runs Gradle references a secret.
 
@@ -389,5 +390,4 @@ trustworthy.
 Gradle; `check_workflow_secrets.py` fails otherwise. When Central changes its
 Publisher API or the snapshot repository, change `central_publish.py` and its
 tests, which run the script against a fake Central on localhost. To lock the
-build tools again, run the `pip-compile` command in
-`.github/requirements/release-build.in`.
+build tools again, see CONTRIBUTING.md, "Python lock files".

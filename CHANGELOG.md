@@ -3136,8 +3136,9 @@ below list every change since the first snapshot.
   the new environment `snapshot` for a snapshot. The GitHub Release and the
   `pypi` job take their files only from the build's artifacts, and the `pypi`
   job only uploads them. The build job installs the CLI's build tools from
-  `.github/requirements/release-build.txt`, which locks them with hashes, and
-  the two workflows pin each action to a full commit SHA. A new CI step runs
+  `lustro-cli/requirements-release.txt`, which locks them with hashes, and
+  the two workflows pin each action to a full commit SHA, so the pin check no
+  longer skips them. A new CI step runs
   `.github/scripts/check_workflow_secrets.py`, which fails when a job that
   runs Gradle references a secret. The `lustro.publishing` plugin no longer
   publishes to Central or signs: the 14 POMs are the same as before. pytest

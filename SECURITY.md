@@ -440,10 +440,10 @@ own its security lifecycle:
   Dependabot has no cooldown by version type, so each new version waits 7 days.
   The workflows and the composite action use each action at a full commit SHA,
   which, unlike a tag, its owner cannot move to other code, and a CI step fails
-  on a `uses:` with a tag or a branch. The step skips `release.yml` and
-  `snapshot.yml` until their actions are pinned too. CI and the docs build
-  install Python packages only from lock files with hashes:
-  `lustro-cli/requirements-test.txt` and `docs/requirements.txt`.
+  on a `uses:` with a tag or a branch. CI, the docs build, and the release
+  build install Python packages only from lock files with hashes:
+  `lustro-cli/requirements-test.txt`, `docs/requirements.txt`, and
+  `lustro-cli/requirements-release.txt`.
 - **Patching.** When a relevant security fix is needed:
   1. If upstream ships a patched release, we bump the pin and run the
      wire-protocol contract tests and emulator matrix before publishing.
@@ -489,8 +489,8 @@ credentials never reach a Gradle build:
 - **CI enforces it.** `.github/scripts/check_workflow_secrets.py`, which `ci.yml`
   runs, fails when a job that runs Gradle references a secret.
 - **Pinned tools.** The two workflows pin each action to a full commit SHA, and
-  install Python packages only from `.github/requirements/release-build.txt`,
-  which locks them with hashes.
+  install Python packages only from `lustro-cli/requirements-release.txt`,
+  which locks them with hashes. The publish job installs no Python package.
 
 This does not make the files themselves trustworthy: a bad plugin in the build
 job can still change what the publish job signs. The builds are not

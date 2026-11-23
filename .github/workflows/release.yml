@@ -21,7 +21,11 @@ permissions:
 # Publishing".
 #
 # Each action is pinned to a full commit SHA, with its version in a comment,
-# and Python packages come only from files that lock them with hashes.
+# and Python packages come only from files that lock them with hashes (see
+# CONTRIBUTING.md, "Pinned actions" and "Python lock files"). The publish job
+# installs no Python package: its script uses only the standard library, so it
+# runs on the runner's python3, with no setup action in the job that has the
+# secrets.
 
 jobs:
   # --- The tag's commit is on main, and CI passed for it ----------------------
@@ -96,15 +100,19 @@ jobs:
       - name: Build the publications and the release artifacts
         run: ./gradlew publishAllPublicationsToStagingRepository collectReleaseArtifacts --console=plain --stacktrace
 
-      # `python -m build` installs the build backend from PyPI, with no hashes,
-      # in an isolated environment. So the job installs the frontend and the
-      # backend from the locked file, in a virtual environment, and builds with
-      # them: the runner's Python refuses a pip install of its own (PEP 668).
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.15" # the Python of the locks: CONTRIBUTING.md, "Python lock files"
+
+      # `python -m build` alone installs the build backend from PyPI, with no
+      # hash, in an isolated environment. So the job installs build and
+      # hatchling from requirements-release.txt, which locks them with hashes,
+      # and builds with what is installed (--no-isolation).
       - name: Build CLI distributions
         run: |
-          python3 -m venv "$RUNNER_TEMP/build-venv"
-          "$RUNNER_TEMP/build-venv/bin/python" -m pip install --require-hashes -r .github/requirements/release-build.txt
-          "$RUNNER_TEMP/build-venv/bin/python" -m build --no-isolation lustro-cli --outdir dist-cli
+          python -m pip install --require-hashes -r lustro-cli/requirements-release.txt
+          python -m build --no-isolation lustro-cli --outdir dist-cli
 
       - name: Upload the unsigned publications
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

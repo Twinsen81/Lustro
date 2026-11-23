@@ -32,13 +32,6 @@ import sys
 from pathlib import Path
 from typing import List, NamedTuple, Optional
 
-# The release workflows are rewritten after the first release, and that change
-# pins their actions and removes them from this set.
-SKIPPED = {
-    ".github/workflows/release.yml",
-    ".github/workflows/snapshot.yml",
-}
-
 # A `uses:` key at the start of a line, after the dashes of a list item, or in a
 # flow mapping such as `- { uses: owner/repo@ref }`. The key can be quoted. The
 # match ends at the colon, so that each key of a flow sequence such as
@@ -114,8 +107,6 @@ def main(argv: List[str]) -> int:
     findings: List[Finding] = []
     for path in files(root):
         name = path.relative_to(root).as_posix()
-        if name in SKIPPED:
-            continue
         checked.append(name)
         findings += check_file(path, name)
     if not checked:
@@ -130,8 +121,9 @@ def main(argv: List[str]) -> int:
         print("check_action_pins FAILED: {} `uses:` not pinned to a commit SHA.".format(len(findings)), file=sys.stderr)
         return 1
     print(
-        "check_action_pins: OK: every `uses:` in {} file(s) is pinned, a local path, or an image digest. "
-        "Skipped: {}.".format(len(checked), ", ".join(sorted(SKIPPED)))
+        "check_action_pins: OK: every `uses:` in {} file(s) is pinned, a local path, or an image digest.".format(
+            len(checked)
+        )
     )
     return 0
 

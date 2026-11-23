@@ -1,0 +1,9 @@
+# What the build job of release.yml installs to make the CLI's wheel and sdist
+# with `python -m build --no-isolation`: build, the build frontend, and
+# hatchling, the build backend of pyproject.toml. Without --no-isolation, build
+# would install hatchling from PyPI with no hash. requirements-release.txt
+# locks them and their dependencies with hashes, and the job installs only from
+# it. To change a version, edit this file and compile the lock again: see
+# CONTRIBUTING.md, "Python lock files".
+build
+hatchling
