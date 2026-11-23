@@ -1563,7 +1563,8 @@
 
     window.netCurlCommand = buildCurlCommand;
     function buildCurlCommand(tx) {
-        var parts = ['curl', '-X', tx.method || 'GET'];
+        // The method is any text, from the app's adapter or from network/send.
+        var parts = ['curl', '-X', shellQuote(tx.method || 'GET')];
         var headers = tx.requestHeaders || {};
         var hasBody = tx.requestBody && tx.method !== 'GET' && tx.method !== 'HEAD';
         // curl builds a multipart body from its parts, with a boundary of its own.

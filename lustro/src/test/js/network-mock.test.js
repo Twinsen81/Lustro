@@ -6,6 +6,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
+const { execFileSync } = require('node:child_process');
 const { loadNetworkJs } = require('./harness.js');
 
 const network = loadNetworkJs();
@@ -121,6 +122,15 @@ test('The detail says which rule answered the request and which one answers the 
     });
 });
 
+test('Copy as cURL quotes the method, so that a method does not run other commands', () => {
+    const method = "GET'; echo injected; '";
+    const command = network.netCurlCommand({ method, url: 'https://a.test/x', requestHeaders: {} });
+    assert.strictEqual(command, "curl -X 'GET'\\''; echo injected; '\\''' 'https://a.test/x'");
+    // The shell gives curl the method as one argument.
+    const args = execFileSync('sh', ['-c', command.replace(/^curl /, "printf '%s\\n' ")], { encoding: 'utf8' });
+    assert.deepStrictEqual(args.split('\n').slice(0, -1), ['-X', method, 'https://a.test/x']);
+});
+
 test('Copy as cURL keeps the type of a typed text part', () => {
     const command = network.netCurlCommand({
         method: 'POST',
@@ -131,7 +141,7 @@ test('Copy as cURL keeps the type of a typed text part', () => {
             + '{"a":"x;y","b":"back\\\\slash"}\r\n--b0--\r\n',
     });
     assert.strictEqual(command,
-        "curl -X POST -F 'meta=\"{\\\"a\\\":\\\"x;y\\\",\\\"b\\\":\\\"back\\\\\\\\slash\\\"}\";type=application/json' 'https://a.test/upload'");
+        "curl -X 'POST' -F 'meta=\"{\\\"a\\\":\\\"x;y\\\",\\\"b\\\":\\\"back\\\\\\\\slash\\\"}\";type=application/json' 'https://a.test/upload'");
 });
 
 test('Copy as cURL builds a multipart body from its parts', () => {
@@ -145,7 +155,7 @@ test('Copy as cURL builds a multipart body from its parts', () => {
             + 'Content-Length: 300\r\n\r\n[Lustro did not store this part: image/png, 300 bytes]\r\n--b0--\r\n',
     });
     assert.strictEqual(command,
-        "curl -X POST -H 'Authorization: [REDACTED]' --form-string 'description=@not a file' "
+        "curl -X 'POST' -H 'Authorization: [REDACTED]' --form-string 'description=@not a file' "
             + "-F 'file=@\"cat.png\";type=image/png' 'https://a.test/api/v2/media'");
 });
 
@@ -158,7 +168,7 @@ test('Copy as cURL quotes a file name that curl would split', () => {
         requestBody: '--b0\r\nContent-Disposition: form-data; name="file"; filename="photo,edited;v2.png"\r\n\r\n'
             + '[Lustro did not store this part: image/png, 7 bytes]\r\n--b0--\r\n',
     });
-    assert.strictEqual(command, "curl -X POST -F 'file=@\"photo,edited;v2.png\"' 'https://a.test/upload'");
+    assert.strictEqual(command, "curl -X 'POST' -F 'file=@\"photo,edited;v2.png\"' 'https://a.test/upload'");
 });
 
 test('A rule card shows the status a rule answers with, or the error it fails with', async (t) => {

@@ -12,7 +12,7 @@ the no-op halves out, so that its release build has no Lustro class: see
 | [The no-op halves](#the-no-op-halves) | The server and the capture in a release build | Gradle dependencies |
 | [The shared capability](#the-shared-capability) | The runtime and the no-op half on one configuration | Gradle resolution |
 | [The lint check](#the-lint-check) | Your `DebugTab` classes in a release build | Lint, which `assembleRelease` runs |
-| [The debuggable check](#the-debuggable-check) | A server in a build that is not debuggable | The app, at `start()` |
+| [The debuggable check](#the-debuggable-check) | A server, and the capture, in a build that is not debuggable | The app, at `start()` and in the network functions |
 
 ## The no-op halves
 
@@ -151,6 +151,12 @@ It logs a warning at the `Lustro` tag and returns `LustroStatus.DISABLED`:
 ```text
 Refusing to start: this app is not marked debuggable. ...
 ```
+
+The network functions make the same check, also when the app never calls `start()`:
+`networkInterceptor()` returns an interceptor that only passes each request on,
+`webSocketFactory()` returns its delegate, and `networkCaptureSink()` returns a sink that records
+nothing. So such a build does not keep its traffic in memory, and mock rules and the throttle do
+not change its requests, also a rule that a `MockRuleStorage` kept from a debuggable build.
 
 This check needs no Gradle setup and no lint run. It stops the server even when the dependencies
 are wrong. It does not remove Lustro's code from the APK: only the no-op halves do that.
