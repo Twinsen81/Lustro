@@ -150,7 +150,7 @@ public class Lustro internal constructor(
     // Cached so networkInterceptor() returns a stable instance and so start()
     // can hand the bound host:port to the tab for self-request detection.
     private val networkProvider: NetworkCaptureProvider? =
-        registry.sortedTabs.filterIsInstance<NetworkCaptureProvider>().firstOrNull()
+        registry.sortedTabs.filterIsInstance<NetworkDebugTab>().firstOrNull()?.captureProvider
 
     /**
      * Returns an OkHttp application interceptor that feeds captured traffic into
@@ -394,7 +394,7 @@ public class Lustro internal constructor(
         val actualPort = bound.listeningPort
         // Hand the ACTUAL bind host:port to the network tab so its Send panel can
         // reject self-requests precisely (the ephemeral port differs from config).
-        (networkProvider as? NetworkDebugTab)?.bindTo(config.bindAddress, actualPort)
+        networkProvider?.bindTo(config.bindAddress, actualPort)
         logEndpoint(actualPort)
     }
 

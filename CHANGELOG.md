@@ -1375,6 +1375,26 @@ see [DECISIONS.md](DECISIONS.md).
   `lustro` and in `lustro-noop`, said that the server bound and is serving,
   but `start()` returns it when the server is armed, before any bind: it now
   says that, and `DISABLED` names the causes that `start()` has for it.
+
+- **`NetworkDebugTab` in `lustro` has no public members that `lustro-noop`
+  does not have.** The tab implemented the internal `NetworkCaptureProvider`,
+  so `captureSink`, `createInterceptor`, `createAppCaptureSink`, and
+  `wrapWebSocketFactory` were public members of the tab in the runtime half,
+  and the no-op half has none of them. Code that called them compiled in the
+  debug build and failed in the release build. Now the tab holds an internal
+  object that implements the interface, and the four members of the tab are
+  internal. `Lustro` reaches the tab's capture through that object, as before,
+  and also gives it the address that the server bound, for the Send panel's
+  check of requests to the server itself. `checkFacadeParity` did not see the
+  four members (see "Added": the facade check compares the API dumps now).
+  With the new check, the code before this change fails, with the four members
+  and the internal interface in the header of the class, and the code after it
+  passes. Verified with the sample on an API 34 emulator: `lustro net list`
+  and the console's Network tab listed its OkHttp, WebSocket, and platform
+  requests; a mock rule for `PUT /put` answered 418; the WebSocket from
+  `webSocketFactory` showed its messages; and `lustro send` refused the
+  server's own port 8080 and sent to port 8081.
+
 - **The console's status pill stays "Live" when the app answers with an error,
   and a running poll sets it back to "Live".** The pill shows whether the
   console reaches the app, but `debugFetch` in `shared.js` set it to "Error"
