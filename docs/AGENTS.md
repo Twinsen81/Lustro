@@ -126,7 +126,12 @@ the `LustroToken` log line of the current process of that app: it gets its proce
 `--package`, the CLI takes the last `LustroToken` log line, then the prefs of the app in the
 foreground, which finds the token on a device that drops Info log lines. That last log line can be
 another app's, such as another build of the same app: pass `--package` in each command, and
-always when the device has more than one app with Lustro.
+always when the device has more than one app with Lustro. The CLI sends a token that it found
+only to a server whose listening socket, in `/proc/net/tcp` and `/proc/net/tcp6` of the device, has
+the uid of the app that owns the token: the app of the prefs, or the process that logged the line.
+Any app can log a line with the tag, and bind the app's port while the app is in the background.
+When another uid listens on the port, the CLI sends no request, names that app, and exits 6. A
+token from `--token` or `LUSTRO_TOKEN`, and a port from `--port`, get no such check.
 
 **Wait until the app is ready.** After a script starts the app, `lustro ready --package <package>
 --timeout 30` runs discovery and `GET /api/v1/_meta` again, once a second, until the server
@@ -148,11 +153,11 @@ and says that another server answers on the port.
 **Two apps with Lustro on one device.** Both bind port 8080 by default, so they take turns: the
 server of the app that starts binds the port when the server of the other app closes, when that
 app goes to the background, about 0.7 s after the new app shows its first screen. Until then, the
-other app's server answers the requests for the new app, with a `401` for its token. With
-`--package`, a command then exits 6 and names that app, such as `port 8080 of the device is held by
-com.example.other (uid 10217), not by com.example.app (uid 10213)`, and `lustro ready --package`
-waits until the app's own server answers. The CLI reads the uid that listens on the app's port in
-`/proc/net/tcp` and `/proc/net/tcp6`, compares it with the uid of the app's process, and gets the
+other app's server answers the requests for the new app, with a `401` for its token. The CLI does
+not send it the token: a command exits 6 and names that app, such as `port 8080 of the device is
+held by com.example.other (uid 10217), not by com.example.app (uid 10213)`, and `lustro ready
+--package` waits until the app's own server answers. The CLI reads the uid that listens on the
+app's port in `/proc/net/tcp` and `/proc/net/tcp6`, compares it with the app's uid, and gets the
 name from `pm list packages -U`, or before API 26 from `dumpsys package packages`. A client that is not the CLI can't tell this `401` from one for a
 wrong token: run `lustro ready --package <package>` before its first request, or compare the two
 uids in the same way (see [Troubleshooting](reference/troubleshooting.md#401-unauthorized)). Give
@@ -197,7 +202,7 @@ that finds the app uses them, not only `ready`:
 | 3 | No device: adb is not installed, or it finds no device, or the device is offline or not authorized. | Connect a device, or start an emulator. |
 | 4 | The app of `--package` is not installed. | Install a debug build that uses the Lustro artifacts. |
 | 5 | The installed build of `--package` does not contain the Lustro runtime: a build with the `-noop` artifacts, or one from before the app added Lustro. | Install a debug build that uses the Lustro artifacts. This replaces the installed build: when the user asked you to look at that build, ask first. |
-| 6 | The app can't be reached: it is not running or not in the foreground, it logged no ready line, its port does not answer, or, with `--package`, another app's server holds its port and answered `401`. | Start the app, and keep it in the foreground. For another app on the port, run `lustro ready --package`, which waits for the app's own server, and give each app its own `serverPort`. |
+| 6 | The app can't be reached: it is not running or not in the foreground, it logged no ready line, its port does not answer, or another app holds its port, so the CLI did not send the app's token there. | Start the app, and keep it in the foreground. For another app on the port, run `lustro ready --package`, which waits for the app's own server, and give each app its own `serverPort`. |
 
 Without `--package`, an app in the foreground without the runtime exits 6, not 5, because that app
 can be another app than yours. `lustro --version` prints the wire protocol that the CLI implements

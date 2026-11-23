@@ -2,11 +2,30 @@
 
 from __future__ import annotations
 
+import adb_parts
 import pytest
+from adb_parts import listening
 from fake_apk import APP_ENTRIES, RUNTIME_ENTRIES, apk_bytes, tail_of
 
 from lustro_cli import discovery, exitcodes
 from lustro_cli.discovery import DiscoveryError, Endpoint, parse_ready_line, resolve
+
+APP_UID = 10213
+OTHER_UID = 10217
+
+
+def _plain(endpoint):
+    """The endpoint without its owner, which these tests do not compare."""
+    return None if endpoint is None else endpoint._replace(owner=None)
+
+
+def _app(prefs=None, uid=APP_UID, net=None):
+    return discovery.AppRead(uid=uid, prefs=prefs, net=net)
+
+
+def _status(uid=APP_UID):
+    """The status of the run-as process that reads the prefs, which has the app's uid."""
+    return "Name:\tcat\nUmask:\t0077\nUid:\t{0}\t{0}\t{0}\t{0}\nGid:\t{0}\t{0}\t{0}\t{0}\n".format(uid)
 
 
 def test_parse_plain_ready_line():
@@ -113,14 +132,16 @@ def test_resolve_raises_clear_error_when_no_token(monkeypatch):
 
 def test_resolve_with_package_takes_the_endpoint_from_the_prefs(monkeypatch):
     monkeypatch.setattr(
-        discovery, "discover_from_logcat", lambda device=None, package=None: pytest.fail("read the log")
+        discovery, "discover_from_logcat", lambda device=None, package=None, pids=None: pytest.fail("read the log")
     )
     monkeypatch.setattr(
-        discovery,
-        "read_prefs",
-        lambda package, device=None: discovery.Prefs("ratok", "127.0.0.1", 8080),
+        discovery, "read_app", lambda package, device=None: _app(discovery.Prefs("ratok", "127.0.0.1", 8080))
     )
-    assert resolve(env={}, package="com.example.app") == Endpoint("127.0.0.1", 8080, "ratok")
+    endpoint = resolve(env={}, package="com.example.app")
+    assert _plain(endpoint) == Endpoint("127.0.0.1", 8080, "ratok")
+    # The token goes only to a server of the app's uid.
+    assert endpoint.owner.uid == APP_UID
+    assert endpoint.owner.name == "com.example.app"
 
 
 def test_discover_from_logcat_parses_subprocess_output(monkeypatch):
@@ -144,23 +165,19 @@ _PREFS_XML = (
 )
 
 
-def test_discover_from_run_as_parses_prefs(monkeypatch):
-    monkeypatch.setattr(discovery, "_run", lambda cmd, timeout=10.0: _PREFS_XML)
-    ep = discovery.discover_from_run_as("com.example.app")
-    assert ep.token == "prefstok"
+def test_parse_prefs_reads_the_token():
+    assert discovery.parse_prefs(_PREFS_XML).token == "prefstok"
 
 
-def test_discover_from_run_as_ignores_an_unrelated_token_key(monkeypatch):
+def test_parse_prefs_ignores_an_unrelated_token_key():
     # Only the runtime's own key counts; a plain "token" entry is somebody
     # else's preference and must not be handed out as the auth token.
-    xml = '<map><string name="token">notours</string></map>'
-    monkeypatch.setattr(discovery, "_run", lambda cmd, timeout=10.0: xml)
-    assert discovery.discover_from_run_as("com.example.app") is None
+    assert discovery.parse_prefs('<map><string name="token">notours</string></map>') is None
 
 
-def test_discover_from_run_as_none_when_no_match(monkeypatch):
-    monkeypatch.setattr(discovery, "_run", lambda cmd, timeout=10.0: "<map/>")
-    assert discovery.discover_from_run_as("com.example.app") is None
+def test_parse_prefs_none_when_no_match():
+    assert discovery.parse_prefs("<map/>") is None
+    assert discovery.parse_prefs("run-as: package not debuggable: com.example.app") is None
 
 
 # ── adb forward --list ─────────────────────────────────────────────────────────
@@ -196,6 +213,9 @@ def _fake_adb_run(monkeypatch, outputs, state=(0, "device\n")):
     calls = []
 
     def run(cmd, timeout=10.0):
+        parts = adb_parts.split(cmd)
+        if parts is not None:
+            return adb_parts.join(run(part) for part in parts)
         calls.append(cmd)
         out = outputs.get(" ".join(cmd))
         return out[1] if isinstance(out, tuple) else out
@@ -271,14 +291,51 @@ _PREFS_WITH_ENDPOINT = (
 )
 
 
-def test_discover_from_run_as_reads_the_endpoint_the_app_stored(monkeypatch):
-    monkeypatch.setattr(discovery, "_run", lambda cmd, timeout=10.0: _PREFS_WITH_ENDPOINT)
-    assert discovery.discover_from_run_as("com.example.app") == Endpoint("127.0.0.1", 8081, "prefstok")
+def test_parse_prefs_reads_the_endpoint_the_app_stored():
+    assert discovery.parse_prefs(_PREFS_WITH_ENDPOINT) == discovery.Prefs("prefstok", "127.0.0.1", 8081)
 
 
-def test_discover_from_run_as_defaults_the_endpoint_of_an_app_that_stored_none(monkeypatch):
-    monkeypatch.setattr(discovery, "_run", lambda cmd, timeout=10.0: _PREFS_XML)
-    assert discovery.discover_from_run_as("com.example.app") == Endpoint("127.0.0.1", 8080, "prefstok")
+def test_read_app_reads_the_prefs_the_uid_and_the_sockets_in_one_adb_call(monkeypatch):
+    calls = []
+
+    def run(cmd, timeout=10.0):
+        calls.append(cmd)
+        return adb_parts.join([_PREFS_WITH_ENDPOINT + "\n" + _status(), listening((8081, APP_UID))])
+
+    monkeypatch.setattr(discovery, "_run", run)
+    read = discovery.read_app("com.example.app", "emulator-5554")
+    assert read == _app(discovery.Prefs("prefstok", "127.0.0.1", 8081), net=listening((8081, APP_UID)))
+    assert len(calls) == 1
+    assert calls[0][:4] == ["adb", "-s", "emulator-5554", "shell"]
+    # The cat that reads the prefs runs with the app's uid, and reads its own status too.
+    assert [" ".join(part[4:]) for part in adb_parts.split(calls[0])] == [
+        "run-as com.example.app cat shared_prefs/lustro_debug.xml /proc/self/status 2>/dev/null",
+        "cat /proc/net/tcp /proc/net/tcp6 2>/dev/null",
+    ]
+
+
+def test_read_app_of_an_app_without_prefs_has_its_uid_and_no_token(monkeypatch):
+    monkeypatch.setattr(discovery, "_run", lambda cmd, timeout=10.0: adb_parts.join([_status(), ""]))
+    assert discovery.read_app("com.example.app") == _app()
+
+
+def test_read_app_of_a_build_that_is_not_debuggable_has_no_uid_and_no_prefs(monkeypatch):
+    monkeypatch.setattr(discovery, "_run", lambda cmd, timeout=10.0: adb_parts.join(["", listening()]))
+    assert discovery.read_app("com.example.app") == _app(uid=None, net=listening())
+
+
+def test_app_process_uids_has_the_uid_of_each_process(monkeypatch):
+    calls = _fake_adb_run(monkeypatch, {_PIDS: "4242 10213\n5151\n"})
+    assert discovery.app_process_uids("com.example.app") == {"4242": APP_UID, "5151": None}
+    assert calls == [["adb", "shell", _PIDS[len("adb shell "):]]]
+    _fake_adb_run(monkeypatch, {})
+    assert discovery.app_process_uids("com.example.app") is None
+
+
+@pytest.mark.parametrize("out", [None, "error: closed\n"])
+def test_read_app_is_none_when_adb_fails(monkeypatch, out):
+    monkeypatch.setattr(discovery, "_run", lambda cmd, timeout=10.0: out)
+    assert discovery.read_app("com.example.app") is None
 
 
 @pytest.mark.parametrize(
@@ -307,46 +364,88 @@ def test_foreground_package_is_none_when_adb_cannot_tell(monkeypatch):
 
 
 def test_resolve_reads_the_prefs_of_the_foreground_app_when_the_log_has_no_line(monkeypatch):
-    monkeypatch.setattr(discovery, "discover_from_logcat", lambda device=None, package=None: None)
+    monkeypatch.setattr(discovery, "discover_from_logcat", lambda device=None, package=None, pids=None: None)
     monkeypatch.setattr(discovery, "foreground_package", lambda device=None: "com.example.app")
     seen = []
 
-    def run_as(package, device=None):
+    def read_app(package, device=None):
         seen.append(package)
-        return Endpoint("127.0.0.1", 8081, "prefstok")
+        return _app(discovery.Prefs("prefstok", "127.0.0.1", 8081))
 
-    monkeypatch.setattr(discovery, "discover_from_run_as", run_as)
-    assert resolve(env={}) == Endpoint("127.0.0.1", 8081, "prefstok")
+    monkeypatch.setattr(discovery, "read_app", read_app)
+    endpoint = resolve(env={})
+    assert _plain(endpoint) == Endpoint("127.0.0.1", 8081, "prefstok")
     assert seen == ["com.example.app"]
+    # The owner of the token is the app in the foreground.
+    assert (endpoint.owner.uid, endpoint.owner.name) == (APP_UID, "com.example.app")
 
 
 def test_resolve_with_package_reads_its_prefs_and_not_those_of_the_foreground_app(monkeypatch):
-    monkeypatch.setattr(discovery, "discover_from_logcat", lambda device=None, package=None: None)
+    monkeypatch.setattr(discovery, "discover_from_logcat", lambda device=None, package=None, pids=None: None)
     monkeypatch.setattr(discovery, "foreground_package", lambda device=None: pytest.fail("asked for the foreground app"))
     seen = []
     monkeypatch.setattr(
-        discovery, "read_prefs", lambda package, device=None: seen.append(package) or discovery.Prefs("t", "h", 1)
+        discovery, "read_app", lambda package, device=None: seen.append(package) or _app(discovery.Prefs("t", "h", 1))
     )
     resolve(env={}, package="com.example.app")
     assert seen == ["com.example.app"]
 
 
+_FG_RUN_AS = "adb shell run-as com.example.app cat shared_prefs/lustro_debug.xml /proc/self/status 2>/dev/null"
+_PROC_NET = "adb shell cat /proc/net/tcp /proc/net/tcp6 2>/dev/null"
+
+
 def test_token_from_prefs(monkeypatch):
     monkeypatch.setattr(discovery, "foreground_package", lambda device=None: "com.example.app")
-    monkeypatch.setattr(discovery, "_run", lambda cmd, timeout=10.0: _PREFS_WITH_ENDPOINT)
+    _fake_adb_run(monkeypatch, {_FG_RUN_AS: _PREFS_WITH_ENDPOINT})
     assert discovery.token_from_prefs() == "prefstok"
     monkeypatch.setattr(discovery, "foreground_package", lambda device=None: None)
-    monkeypatch.setattr(discovery, "_run", lambda cmd, timeout=10.0: None)
     assert discovery.token_from_prefs() is None
 
 
-def test_resolve_takes_the_port_from_the_prefs_for_a_token_from_the_environment(monkeypatch):
-    monkeypatch.setattr(discovery, "discover_from_logcat", lambda device=None, package=None: None)
+def _found_by_another_app(host="127.0.0.1", port=8081):
+    """An endpoint that a line of another app's process gave."""
+    return Endpoint(host, port, "x", owner=discovery.Owner(uid=OTHER_UID, pid="6666"))
+
+
+@pytest.mark.parametrize(
+    "endpoint, listener, token",
+    [
+        # The app in the foreground listens on the line's port: its server gets its token.
+        (_found_by_another_app(), APP_UID, "prefstok"),
+        # Another app listens there: it does not.
+        (_found_by_another_app(), OTHER_UID, None),
+        # A host on the network gets it only when the prefs name that host and port.
+        (_found_by_another_app("192.168.1.50"), APP_UID, None),
+        # On loopback, the app's uid on the port is enough: its server can bind another
+        # port than the prefs name, as with bindFallback.
+        (_found_by_another_app(port=9999), APP_UID, "prefstok"),
+        # A token that the user gave, or a port, needs no check.
+        (Endpoint("127.0.0.1", 9999, "x"), OTHER_UID, "prefstok"),
+    ],
+)
+def test_token_from_prefs_for_an_endpoint_goes_only_to_the_server_of_the_app(monkeypatch, endpoint, listener, token):
     monkeypatch.setattr(discovery, "foreground_package", lambda device=None: "com.example.app")
-    monkeypatch.setattr(discovery, "discover_from_run_as", lambda package, device=None: Endpoint("127.0.0.1", 8081, "prefstok"))
+    outputs = {_FG_RUN_AS: _PREFS_WITH_ENDPOINT + "\n" + _status(), _PROC_NET: listening((endpoint.port, listener))}
+    _fake_adb_run(monkeypatch, outputs)
+    assert discovery.token_from_prefs(endpoint=endpoint) == token
+
+
+def test_token_from_prefs_for_a_host_on_the_network_that_the_prefs_name(monkeypatch):
+    prefs = _PREFS_WITH_ENDPOINT.replace("127.0.0.1", "192.168.1.50") + "\n" + _status()
+    _fake_adb_run(monkeypatch, {_FG_RUN_AS: prefs, _PROC_NET: listening((8081, APP_UID))})
+    endpoint = _found_by_another_app("192.168.1.50")
+    assert discovery.token_from_prefs(package="com.example.app", endpoint=endpoint) == "prefstok"
+
+
+def test_resolve_takes_the_port_from_the_prefs_for_a_token_from_the_environment(monkeypatch):
+    monkeypatch.setattr(discovery, "discover_from_logcat", lambda device=None, package=None, pids=None: None)
+    monkeypatch.setattr(discovery, "foreground_package", lambda device=None: "com.example.app")
+    monkeypatch.setattr(discovery, "read_app", lambda package, device=None: _app(discovery.Prefs("prefstok", "127.0.0.1", 8081)))
+    # A token that the user gives needs no check, so the endpoint has no owner.
     assert resolve(env={"LUSTRO_TOKEN": "envtok"}) == Endpoint("127.0.0.1", 8081, "envtok")
     # Flags that give all three need no prefs.
-    monkeypatch.setattr(discovery, "discover_from_run_as", lambda package, device=None: pytest.fail("read the prefs"))
+    monkeypatch.setattr(discovery, "read_app", lambda package, device=None: pytest.fail("read the prefs"))
     assert resolve(host="127.0.0.1", port=9000, token="t", env={}) == Endpoint("127.0.0.1", 9000, "t")
 
 
@@ -632,16 +731,21 @@ def test_diagnose_without_adb_required_ignores_a_computer_without_adb(monkeypatc
 
 
 def test_a_found_token_needs_no_check(monkeypatch):
-    calls = _fake_adb_run(monkeypatch, {_PIDOF: "4242\n", _LOGCAT_PIDS: _line(4242, "t")})
+    calls = _fake_adb_run(monkeypatch, {_PIDS: "4242 10213\n", _LOGCAT_PIDS: _line(4242, "t")})
     assert resolve(env={}, package="com.example.app").token == "t"
     assert not any("pm" in cmd or "exec-out" in cmd for cmd in calls)
 
 
 # ── --package: only the ready line of the app's current process ───────────────
 
-_LOGCAT = "adb logcat -d -s LustroToken"
-# With --package, the dump has the PID of each line.
-_LOGCAT_PIDS = "adb logcat -d -v threadtime -s LustroToken"
+# The dump has the PID of each line.
+_LOGCAT = "adb logcat -d -v threadtime -s LustroToken"
+_LOGCAT_PIDS = _LOGCAT
+_PIDS = "adb shell for p in $(pidof com.example.app); do echo $p $(stat -c %u /proc/$p 2>/dev/null); done"
+
+
+def _stat(pid):
+    return "adb shell stat -c %u /proc/{} 2>/dev/null".format(pid)
 
 
 def _ready(token, port=8080):
@@ -655,9 +759,18 @@ def _line(pid, token, port=8080):
 
 
 def test_without_package_the_last_ready_line_counts_whatever_app_logged_it(monkeypatch):
-    calls = _fake_adb_run(monkeypatch, {_LOGCAT: _ready("first") + _ready("other", 8081)})
-    assert resolve(env={}) == Endpoint("127.0.0.1", 8081, "other")
+    outputs = {
+        _LOGCAT: _line(3000, "first") + _line(3100, "other", 8081),
+        _stat(3100): "{}\n".format(OTHER_UID),
+        _PROC_NET: listening((8081, OTHER_UID)),
+    }
+    calls = _fake_adb_run(monkeypatch, outputs)
+    endpoint = resolve(env={})
+    assert _plain(endpoint) == Endpoint("127.0.0.1", 8081, "other")
+    # Its owner is the process that logged it: one adb call reads its uid and the sockets.
+    assert endpoint.owner == discovery.Owner(uid=OTHER_UID, pid="3100", net=listening((8081, OTHER_UID)))
     assert not any("pidof" in " ".join(cmd) for cmd in calls)
+    assert not any("run-as" in " ".join(cmd) for cmd in calls)
 
 
 def test_the_ready_line_of_another_app_is_not_used_for_a_package_that_is_not_installed(monkeypatch):
@@ -674,13 +787,15 @@ def test_the_ready_line_of_the_apps_current_process_is_used(monkeypatch):
     calls = _fake_adb_run(
         monkeypatch,
         {
-            _PIDOF: "4242\n",
+            _PIDS: "4242 10213\n",
             _LOGCAT_PIDS: "--------- beginning of main\n" + _line(4242, "current", 8082) + _line(3000, "other", 8081),
         },
     )
-    assert resolve(env={}, package="com.example.app") == Endpoint("127.0.0.1", 8082, "current")
-    assert ["adb", "shell", "pidof com.example.app || true"] in calls
-    assert ["adb", "logcat", "-d", "-s", "LustroToken"] not in calls
+    endpoint = resolve(env={}, package="com.example.app")
+    assert _plain(endpoint) == Endpoint("127.0.0.1", 8082, "current")
+    # One adb call gives the PIDs, and the uid of the process that logged the line.
+    assert ["adb", "shell", "pidof com.example.app || true"] not in calls
+    assert (endpoint.owner.uid, endpoint.owner.pid) == (APP_UID, "4242")
 
 
 def test_the_ready_line_of_an_earlier_process_of_the_app_is_not_used(monkeypatch):
@@ -689,12 +804,12 @@ def test_the_ready_line_of_an_earlier_process_of_the_app_is_not_used(monkeypatch
     _fake_adb_run(
         monkeypatch,
         {
-            _PIDOF: "5151\n",
+            _PIDS: "5151 10213\n",
             _LOGCAT_PIDS: _line(4242, "earlier"),
-            "adb shell run-as com.example.app cat shared_prefs/lustro_debug.xml": _PREFS_WITH_ENDPOINT,
+            _RUN_AS: _PREFS_WITH_ENDPOINT,
         },
     )
-    assert resolve(env={}, package="com.example.app") == Endpoint("127.0.0.1", 8081, "prefstok")
+    assert _plain(resolve(env={}, package="com.example.app")) == Endpoint("127.0.0.1", 8081, "prefstok")
 
 
 def test_a_pid_that_is_the_thread_id_of_another_line_does_not_match(monkeypatch):
@@ -722,7 +837,7 @@ def test_with_two_processes_of_the_app_the_last_ready_line_in_the_log_counts(mon
     calls = _fake_adb_run(
         monkeypatch, {_PIDOF: pids, _LOGCAT_PIDS: _line(5151, "old", 8081) + _line(4242, "new", 8082)}
     )
-    assert discovery.discover_from_logcat(package="com.example.app") == Endpoint("127.0.0.1", 8082, "new")
+    assert _plain(discovery.discover_from_logcat(package="com.example.app")) == Endpoint("127.0.0.1", 8082, "new")
     assert sum(1 for cmd in calls if cmd[1] == "logcat") == 1
 
 
@@ -734,21 +849,26 @@ def test_the_package_filter_reads_no_log_when_adb_can_not_tell_the_process(monke
 
 # ── --package: the app's prefs before the log ─────────────────────────────────
 
-_RUN_AS = "adb shell run-as com.example.app cat shared_prefs/lustro_debug.xml"
+_RUN_AS = _FG_RUN_AS
+# The commands of the one adb call that reads the app's prefs.
+_APP_READ = [
+    ["adb", "shell", "run-as com.example.app cat shared_prefs/lustro_debug.xml /proc/self/status 2>/dev/null"],
+    ["adb", "shell", "cat /proc/net/tcp /proc/net/tcp6 2>/dev/null"],
+]
 
 
 def _reads_the_log(calls):
-    return any(cmd[1:2] == ["logcat"] or "pidof" in " ".join(cmd) for cmd in calls)
+    return any(cmd[1:2] == ["logcat"] or " ".join(cmd) == _PIDOF for cmd in calls)
 
 
 def test_with_package_the_prefs_come_first_and_the_log_is_not_read(monkeypatch):
     # The log has the app's line with another port and token: the prefs win, and the CLI
     # runs no logcat, whose dump takes seconds on a device with full log buffers.
     calls = _fake_adb_run(
-        monkeypatch, {_RUN_AS: _PREFS_WITH_ENDPOINT, _PIDOF: "4242\n", _LOGCAT_PIDS: _line(4242, "logtok", 8082)}
+        monkeypatch, {_RUN_AS: _PREFS_WITH_ENDPOINT, _PIDS: "4242 10213\n", _LOGCAT_PIDS: _line(4242, "logtok", 8082)}
     )
-    assert resolve(env={}, package="com.example.app") == Endpoint("127.0.0.1", 8081, "prefstok")
-    assert calls == [["adb", "shell", "run-as", "com.example.app", "cat", "shared_prefs/lustro_debug.xml"]]
+    assert _plain(resolve(env={}, package="com.example.app")) == Endpoint("127.0.0.1", 8081, "prefstok")
+    assert calls == _APP_READ
 
 
 @pytest.mark.parametrize(
@@ -758,8 +878,9 @@ def test_with_package_the_prefs_come_first_and_the_log_is_not_read(monkeypatch):
 )
 def test_with_package_and_a_given_token_the_prefs_give_the_host_and_the_port(monkeypatch, flags, env):
     calls = _fake_adb_run(
-        monkeypatch, {_RUN_AS: _PREFS_WITH_ENDPOINT, _PIDOF: "4242\n", _LOGCAT_PIDS: _line(4242, "logtok", 8082)}
+        monkeypatch, {_RUN_AS: _PREFS_WITH_ENDPOINT, _PIDS: "4242 10213\n", _LOGCAT_PIDS: _line(4242, "logtok", 8082)}
     )
+    # A token that the user gives needs no check, so the endpoint has no owner.
     assert resolve(env=env, package="com.example.app", **flags) == Endpoint("127.0.0.1", 8081, "flagtok")
     assert not _reads_the_log(calls)
 
@@ -767,11 +888,10 @@ def test_with_package_and_a_given_token_the_prefs_give_the_host_and_the_port(mon
 def test_with_package_the_prefs_read_goes_to_the_selected_device(monkeypatch):
     calls = _fake_adb_run(
         monkeypatch,
-        {"adb -s emulator-5554 shell run-as com.example.app cat shared_prefs/lustro_debug.xml": _PREFS_WITH_ENDPOINT},
+        {"adb -s emulator-5554 " + _FG_RUN_AS[len("adb "):]: _PREFS_WITH_ENDPOINT},
     )
     assert resolve(env={}, device="emulator-5554", package="com.example.app").token == "prefstok"
-    assert calls == [["adb", "-s", "emulator-5554", "shell", "run-as", "com.example.app", "cat",
-                      "shared_prefs/lustro_debug.xml"]]
+    assert calls == [cmd[:1] + ["-s", "emulator-5554"] + cmd[1:] for cmd in _APP_READ]
 
 
 @pytest.mark.parametrize(
@@ -784,44 +904,139 @@ def test_with_package_the_log_of_the_current_process_gives_what_the_prefs_do_not
     # its token yet has none. The log still keeps only the lines of the current process.
     calls = _fake_adb_run(
         monkeypatch,
-        {_RUN_AS: prefs, _PIDOF: "4242\n", _LOGCAT_PIDS: _line(4242, "current", 8082) + _line(3000, "other", 8083)},
+        {_RUN_AS: prefs, _PIDS: "4242 10213\n", _LOGCAT_PIDS: _line(4242, "current", 8082) + _line(3000, "other", 8083)},
     )
-    assert resolve(env={}, package="com.example.app") == Endpoint("127.0.0.1", 8082, "current")
-    assert ["adb", "logcat", "-d", "-s", "LustroToken"] not in calls
-    assert [cmd for cmd in calls if "run-as" in cmd] == [
-        ["adb", "shell", "run-as", "com.example.app", "cat", "shared_prefs/lustro_debug.xml"]
-    ]
+    endpoint = resolve(env={}, package="com.example.app")
+    assert _plain(endpoint) == Endpoint("127.0.0.1", 8082, "current")
+    assert [cmd for cmd in calls if "run-as" in " ".join(cmd)] == _APP_READ[:1]
+    # The owner is the process that logged the line.
+    assert (endpoint.owner.uid, endpoint.owner.pid, endpoint.owner.prefs) == (APP_UID, "4242", None)
 
 
 def test_with_package_the_log_gives_the_endpoint_that_the_prefs_of_an_older_app_do_not_have(monkeypatch):
     # An app that predates storing the host and the port has only the token in its prefs.
-    _fake_adb_run(monkeypatch, {_RUN_AS: _PREFS_XML, _PIDOF: "4242\n", _LOGCAT_PIDS: _line(4242, "prefstok", 8082)})
-    assert resolve(env={}, package="com.example.app") == Endpoint("127.0.0.1", 8082, "prefstok")
+    _fake_adb_run(monkeypatch, {_RUN_AS: _PREFS_XML, _PIDS: "4242 10213\n", _LOGCAT_PIDS: _line(4242, "prefstok", 8082)})
+    assert _plain(resolve(env={}, package="com.example.app")) == Endpoint("127.0.0.1", 8082, "prefstok")
 
 
 def test_with_package_a_token_only_in_the_prefs_gets_the_default_endpoint(monkeypatch):
-    _fake_adb_run(monkeypatch, {_RUN_AS: _PREFS_XML, _PIDOF: "4242\n", _LOGCAT_PIDS: ""})
-    assert resolve(env={}, package="com.example.app") == Endpoint("127.0.0.1", 8080, "prefstok")
+    _fake_adb_run(monkeypatch, {_RUN_AS: _PREFS_XML, _PIDS: "4242 10213\n", _LOGCAT_PIDS: ""})
+    assert _plain(resolve(env={}, package="com.example.app")) == Endpoint("127.0.0.1", 8080, "prefstok")
 
 
 def test_with_package_the_prefs_of_an_app_that_does_not_run_are_used(monkeypatch):
     # They keep the endpoint of the app's last process: the connection then fails, and
     # diagnose() gives the cause. The log is not read, and pidof does not run.
-    calls = _fake_adb_run(monkeypatch, {_RUN_AS: _PREFS_WITH_ENDPOINT, _PIDOF: "", _LOGCAT: _ready("other")})
-    assert resolve(env={}, package="com.example.app") == Endpoint("127.0.0.1", 8081, "prefstok")
+    calls = _fake_adb_run(monkeypatch, {_RUN_AS: _PREFS_WITH_ENDPOINT, _PIDOF: "", _LOGCAT: _line(3000, "other")})
+    assert _plain(resolve(env={}, package="com.example.app")) == Endpoint("127.0.0.1", 8081, "prefstok")
     assert not _reads_the_log(calls)
 
 
 def test_without_package_the_log_comes_before_the_prefs(monkeypatch):
-    calls = _fake_adb_run(
-        monkeypatch, {_LOGCAT: _ready("logtok", 8082), _RUN_AS: _PREFS_WITH_ENDPOINT, _DUMPSYS: "x"}
+    outputs = {
+        _LOGCAT: _line(4242, "logtok", 8082),
+        _stat(4242): "{}\n".format(APP_UID),
+        _PROC_NET: listening((8082, APP_UID)),
+        _RUN_AS: _PREFS_WITH_ENDPOINT,
+        _DUMPSYS: _RESUMED.format("com.example.app"),
+    }
+    calls = _fake_adb_run(monkeypatch, outputs)
+    assert _plain(resolve(env={})) == Endpoint("127.0.0.1", 8082, "logtok")
+    assert calls == [
+        ["adb", "logcat", "-d", "-v", "threadtime", "-s", "LustroToken"],
+        ["adb", "shell", "stat -c %u /proc/4242 2>/dev/null"],
+        ["adb", "shell", "cat /proc/net/tcp /proc/net/tcp6 2>/dev/null"],
+    ]
+
+
+def test_without_package_a_token_from_the_user_reads_no_uid(monkeypatch):
+    calls = _fake_adb_run(monkeypatch, {_LOGCAT: _line(4242, "logtok", 8082)})
+    assert resolve(env={}, token="mine") == Endpoint("127.0.0.1", 8082, "mine")
+    assert calls == [["adb", "logcat", "-d", "-v", "threadtime", "-s", "LustroToken"]]
+
+
+def test_parse_prefs_keeps_a_missing_host_and_port_unknown():
+    assert discovery.parse_prefs(_PREFS_XML) == discovery.Prefs("prefstok", None, None)
+
+
+# ── withheld(): the server on the port must be the owner's ─────────────────────
+
+
+def _owner(**fields):
+    return discovery.Owner(**dict({"uid": APP_UID, "name": "com.example.app"}, **fields))
+
+
+def test_a_server_of_the_owners_uid_gets_the_token():
+    assert discovery.withheld(_owner(), "127.0.0.1", 8080, listening((8080, APP_UID))) is None
+    # A server bound to all addresses is reached through the forward too.
+    assert discovery.withheld(_owner(), "0.0.0.0", 8080, listening((8080, APP_UID))) is None
+
+
+def test_another_uid_on_the_port_holds_it():
+    error = discovery.withheld(_owner(), "127.0.0.1", 8080, listening((8080, OTHER_UID)))
+    assert isinstance(error, discovery.PortHeld)
+    assert (error.port, error.holder_uid) == (8080, OTHER_UID)
+    assert error.describe().startswith(
+        "port 8080 of the device is held by a process with uid 10217, not by com.example.app (uid 10213), so the CLI "
+        "did not send it the token of com.example.app."
     )
-    assert resolve(env={}) == Endpoint("127.0.0.1", 8082, "logtok")
-    assert calls == [["adb", "logcat", "-d", "-s", "LustroToken"]]
+    assert "waits for that" not in error.describe(waits=False)
 
 
-def test_read_prefs_keeps_a_missing_host_and_port_unknown(monkeypatch):
-    monkeypatch.setattr(discovery, "_run", lambda cmd, timeout=10.0: _PREFS_XML)
-    assert discovery.read_prefs("com.example.app") == discovery.Prefs("prefstok", None, None)
-    monkeypatch.setattr(discovery, "_run", lambda cmd, timeout=10.0: _PREFS_WITH_ENDPOINT)
-    assert discovery.read_prefs("com.example.app") == discovery.Prefs("prefstok", "127.0.0.1", 8081)
+def test_two_sockets_on_the_port_must_both_be_the_owners():
+    # Such as one on loopback and one on an address of the device on a network.
+    error = discovery.withheld(_owner(), "127.0.0.1", 8080, listening((8080, APP_UID), (8080, OTHER_UID)))
+    assert isinstance(error, discovery.PortHeld)
+
+
+def test_nothing_on_the_port_is_a_connection_that_fails():
+    error = discovery.withheld(_owner(), "127.0.0.1", 8080, listening((8081, APP_UID)))
+    assert not isinstance(error, discovery.TokenWithheld)
+    assert error.error == "connection_failed"
+    assert str(error).startswith(
+        "connection_failed: nothing listens on port 8080 of the device, so the CLI did not send the token of "
+        "com.example.app there"
+    )
+
+
+@pytest.mark.parametrize(
+    "owner, net, start",
+    [
+        (_owner(), None, "token_withheld: adb can't tell which app listens on port 8080 of the device"),
+        (_owner(uid=None), listening((8080, APP_UID)), "token_withheld: adb can't tell the uid of com.example.app"),
+        (
+            discovery.Owner(pid="4242"),
+            listening((8080, APP_UID)),
+            "token_withheld: the process that logged the last LustroToken line, PID 4242, has ended",
+        ),
+    ],
+)
+def test_what_adb_can_not_tell_withholds_the_token(owner, net, start):
+    error = discovery.withheld(owner, "127.0.0.1", 8080, net)
+    assert isinstance(error, discovery.TokenWithheld)
+    assert str(error).startswith(start), str(error)
+
+
+def test_a_token_from_the_prefs_goes_to_a_host_on_the_network_only_when_they_name_it():
+    prefs = discovery.Prefs("t", "192.168.1.50", 8080)
+    net = listening((8080, APP_UID))
+    assert discovery.withheld(_owner(prefs=prefs), "192.168.1.50", 8080, net) is None
+    error = discovery.withheld(_owner(prefs=prefs), "192.168.1.60", 8080, net)
+    assert isinstance(error, discovery.TokenWithheld)
+    assert str(error).startswith(
+        "token_withheld: the prefs of com.example.app name 192.168.1.50:8080, not 192.168.1.60:8080"
+    )
+    # A token from a line goes there when the process that logged it listens on the port.
+    assert discovery.withheld(_owner(), "192.168.1.60", 8080, net) is None
+
+
+def test_the_guard_uses_the_sockets_from_discovery_first_and_then_reads_them_again(monkeypatch):
+    reads = []
+    monkeypatch.setattr(discovery, "read_net", lambda device=None: reads.append(device) or listening((8080, OTHER_UID)))
+    endpoint = Endpoint("127.0.0.1", 8080, "t", owner=_owner(net=listening((8080, APP_UID))))
+    guard = discovery.TokenGuard(endpoint, "emulator-5554")
+    guard()
+    assert reads == []
+    with pytest.raises(discovery.PortHeld):
+        guard()
+    assert reads == ["emulator-5554"]

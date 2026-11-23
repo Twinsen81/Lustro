@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import http.client
 import json
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -135,6 +136,12 @@ def split_warnings(value: str) -> List[str]:
     return [warning for warning in warnings if warning]
 
 
+# How long the check of a ``guard`` holds. A command that sends more than one request
+# checks again before a request after this time: the app's server closes when the app
+# goes to the background, and another app can then bind the port.
+GUARD_SECONDS = 1.0
+
+
 # urllib honours http_proxy, HTTPS_PROXY, and the system's proxy settings. The
 # server is an adb forward on this machine, which a proxy can't reach, and the
 # token must not leave it, so requests never go through one.
@@ -153,6 +160,11 @@ class LustroClient:
     :param on_warning: called with each warning in a ``Lustro-Warning`` response
         header, such as ``unknown query parameter "uniqueName"``, also for an
         error response.
+    :param guard: called before the first request, and again before a request when
+        its last check is older than ``GUARD_SECONDS`` or a connection failed since:
+        it raises a :class:`LustroError` when the server on the port must not get
+        the token. For a token that discovery found, which goes only to the server
+        of the app that owns it.
     """
 
     def __init__(
@@ -162,12 +174,15 @@ class LustroClient:
         timeout: float = 30.0,
         refresh_token: Optional[Callable[[], Optional[str]]] = None,
         on_warning: Optional[Callable[[str], None]] = None,
+        guard: Optional[Callable[[], None]] = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.token = token
         self.timeout = timeout
         self._refresh_token = refresh_token
         self.on_warning = on_warning
+        self._guard = guard
+        self._guarded_at: Optional[float] = None
 
     # ── request plumbing ──────────────────────────────────────────────────────
 
@@ -239,6 +254,7 @@ class LustroClient:
         data: Optional[bytes] = None
         if json_body is not None:
             data = json.dumps(json_body).encode("utf-8")
+        self._check_server()
         try:
             try:
                 return self._open(url, data, method, accept)
@@ -250,12 +266,22 @@ class LustroClient:
             self._warn(exc.headers)
             raise _error_from_http(exc) from None
         except urllib.error.URLError as exc:
+            self._guarded_at = None
             raise _connection_failed(url, getattr(exc, "reason", exc)) from None
         except (http.client.HTTPException, OSError) as exc:
             # A connection that closes before the response raises these, not
             # URLError. adb forward does that while nothing listens on the device
             # port, for example while the app is in the background.
+            self._guarded_at = None
             raise _connection_failed(url, exc) from None
+
+    def _check_server(self) -> None:
+        if self._guard is None:
+            return
+        if self._guarded_at is not None and time.monotonic() - self._guarded_at < GUARD_SECONDS:
+            return
+        self._guard()
+        self._guarded_at = time.monotonic()
 
     def _open(self, url: str, data: Optional[bytes], method: str, accept: str) -> Tuple[bytes, Optional[str]]:
         headers = self._headers(accept)

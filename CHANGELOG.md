@@ -3026,6 +3026,67 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Security
 
+- **The CLI sends a token that it found only to a server of the app that owns
+  it (CLI revision 4).** On loopback, the token is the only protection against
+  the other apps on the device, which can connect to the server's port. The
+  CLI found the token in the app's prefs or in a `LustroToken` log line, and
+  sent it to whatever listened on the port that it found. Any app can log a
+  line with that tag, and the server closes its socket when its app goes to
+  the background, so another app can bind the port and wait. Without
+  `--package`, a line such as `Lustro ready
+  endpoint=http://127.0.0.1:9999 token=x` sent the CLI to port 9999, where a
+  `401` made it send the token of the app in the foreground, from its prefs,
+  once more, and `lustro open` put that token in the URL for port 9999. With
+  `--package`, the CLI sent the app's token to another app that held the
+  app's port; the uid check of `/proc/net/tcp` ran only after the `401`, when
+  the token had already gone. Now the CLI first reads the uids that listen on
+  the port of the device in `/proc/net/tcp` and `/proc/net/tcp6`, and sends
+  the token only when each of them is the uid of the app that owns the token:
+  for a token from the prefs, the uid that `run-as` runs with, which the `cat`
+  that reads them takes from its own `/proc/self/status`, and for a token from
+  a line, the uid of the process that logged it, from the `threadtime` format
+  and `stat -c %u /proc/<pid>`. It does not trust
+  `pidof`, which finds processes by name: another app can name its process as
+  the app with `android:process`. This covers the first request, a later
+  request after one second or after a connection failed (`net poll` and
+  `net wait` check while the app comes and goes), the retry with the token of
+  the prefs after a `401`, the URL of `lustro open`, and the MCP tools. When
+  another uid listens, the CLI sends no request, names that app, and exits 6;
+  `lustro ready` waits, as it did after the `401`. When nothing listens, it
+  sends nothing and prints the cause from adb, as for a connection that fails.
+  Without `--package`, a line whose process has ended, or whose app does not
+  listen on its port, gives way to the prefs of the app in the foreground when
+  that app listens on the port of its prefs. A token from the prefs goes to a
+  host that is not loopback only when the prefs name that host and port. A
+  token from `--token` or `LUSTRO_TOKEN`, a port from `--port`, and a host on
+  the network from `--host` get no check. With `--package`, the uids come in
+  the same `adb shell` call as the prefs, so a command makes no more adb calls
+  than before; without it, one more call reads the uid of the line's process
+  and the sockets. SECURITY.md, the CLI README, docs/AGENTS.md, and
+  Troubleshooting describe the check. Verified on an emulator with API 24, one with API 35, and a physical device
+  with API 37. Before the fix, with the sample in front, `adb shell log -t
+  LustroToken 'Lustro ready endpoint=http://127.0.0.1:9999 token=x'` made
+  `lustro open --print-only --no-forward` print the sample's token in a URL
+  for port 9999, and a server of the shell on port 9999 that answers `401`
+  (`toybox nc -L -p 9999`) got `Bearer x` and then the sample's token from
+  `lustro meta`. With the sample in the background and that server on port
+  8080, `lustro --package <sample> meta` sent it the sample's token. Now, in
+  the first case, the process that logged the line has ended, so `open`
+  prints the URL of the sample's own port 8080, `meta` reaches the sample, and
+  the server on 9999 gets no request. In the second case, `meta`, `ready`, and
+  `open` send nothing, name `com.android.shell (uid 2000)`, and exit 6. With
+  the sample and a second app with Lustro, both on port 8080, `lustro
+  --package <second app> meta` right after the second app starts exits 6 and
+  names the sample, whose server still holds the port; `main` sent the second
+  app's token to the sample's server there and exited 1 with a `401`. `lustro
+  ready --package <second app>` answered 0.4 to 1.0 s after the start. The CLI
+  end-to-end script of CI passed on the three devices, as it is and with
+  `--package` on every call. `lustro --package <sample> net list` takes about
+  as long as before (medians of 8 to 16 runs: 0.47 and 0.44 s on API 24, 0.58
+  and 0.61 s on API 35, 0.48 and 0.52 s on the physical device). Without
+  `--package`, the one more adb call adds about 0.13 s on the API 35 emulator
+  and 0.2 s on the physical device, where the dump of the log itself takes
+  0.45 to 1.5 s.
 - **A build that `start()` refuses to arm does not capture, mock, or throttle
   its requests.** In an app that is not debuggable, without
   `DebugConfig.allowNonDebuggableBuilds`, `start()` opened no socket, but

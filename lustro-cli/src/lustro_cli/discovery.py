@@ -7,23 +7,26 @@ Resolution order (first that yields a value wins, per field):
 3. With ``--package``, the app's private ``lustro_debug`` prefs, through ``adb
    [-s <serial>] shell run-as <pkg> cat``. They hold the token, and the host and
    port of the app's last bind: each process of the app writes its token, and
-   each bind its host and port. One ``run-as`` read is fast, where the dump of
+   each bind its host and port. One adb call reads them, the app's uid, and
+   the listening sockets of the device (:func:`read_app`), where the dump of
    the log in 4 grows with the amount of log on the device, and takes seconds
    when its buffers are full. A build that is not debuggable fails ``run-as``,
    and an app that has not written the prefs yet has none: step 4 then gives
    what they did not.
-4. The ``LustroToken`` logcat ready-line: ``adb [-s <serial>] logcat -d -s
-   LustroToken`` parsed for the most recent
-   ``Lustro ready endpoint=http://<host>:<port> token=<token>`` (without
-   ``--package``, this is the first source for host/port/token, including a
-   fallback port). With ``--package``, only the lines of that app's current
-   process count: the CLI gets its process IDs with ``adb shell pidof <pkg>``,
-   and keeps the lines with one of these IDs in ``logcat -d -v threadtime -s
-   LustroToken``. Without it, the last line counts, whatever app logged it.
+4. The ``LustroToken`` logcat ready-line: ``adb [-s <serial>] logcat -d -v
+   threadtime -s LustroToken`` parsed for the most recent
+   ``Lustro ready endpoint=http://<host>:<port> token=<token>``, with the
+   process ID of the line (without ``--package``, this is the first source for
+   host/port/token, including a fallback port). With ``--package``, only the
+   lines of that app's current process count: the lines with one of the process
+   IDs of ``pidof <pkg>``, which :func:`app_process_uids` reads with their uids.
+   Without it, the last line counts, whatever app logged it.
 5. (best effort, without ``--package``) the ``run-as`` read of step 3, of the
    prefs of the app in the foreground, because Lustro listens only while its app
    is in the foreground. This is what finds the app on a device that drops Info
-   logs (``log.tag`` set to ``E``, for example), which drops the ready line.
+   logs (``log.tag`` set to ``E``, for example), which drops the ready line. It
+   also replaces a ready line whose app does not listen on the line's port, or
+   whose process has ended, when the app in the foreground listens on its port.
 
 If none of these determine the endpoint/token, a clear, actionable error is
 raised. :func:`diagnose` first looks for the cause, with the exit code of each:
@@ -34,6 +37,12 @@ dropped the new line. A token from the prefs can be stale too: until a new
 process of the app writes its token, they keep the one of its last process.
 :func:`token_from_prefs` reads the current one, for a client to retry with
 after a 401.
+
+A token that steps 3 to 5 find goes only to a server of the app that owns it:
+the app of the prefs, or the process that logged the line. Any app can log a
+line with the tag, and bind the app's port while the app is in the background.
+:func:`withheld` compares the uid that listens on the port of the device with
+the owner's uid, and the endpoint's ``owner`` carries what it needs.
 
 The port that these give is the app's port. On a device, the CLI reaches it
 through an ``adb forward``, whose local port can differ: :func:`forwarded_ports`
@@ -47,9 +56,10 @@ import re
 import shlex
 import struct
 import subprocess
-from typing import Callable, Iterable, List, NamedTuple, Optional, Tuple
+from typing import Callable, Dict, Iterable, List, NamedTuple, Optional, Tuple
 
 from . import exitcodes
+from .client import LustroError
 
 # Matches the single machine-parseable line Lustro logs at tag LustroToken:
 #   Lustro ready endpoint=http://127.0.0.1:8080 token=AbC123...
@@ -69,13 +79,33 @@ DEFAULT_PORT = 8080
 LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "::1", "0.0.0.0")
 
 
+class Owner(NamedTuple):
+    """The app that owns a token that the CLI found, and what :func:`withheld` needs to
+    check a server before the CLI sends it the token.
+
+    ``uid`` is the uid of the app's processes: the one that ``run-as`` runs with, for a
+    token from the prefs, or the one of the process that logged the ready line (``pid``),
+    for a token from the log. It is ``None`` when adb can't tell. ``name`` is the app's
+    package, ``None`` for the process of a line without ``--package``. ``prefs`` are the
+    prefs that gave the token. ``net`` is the text of ``/proc/net/tcp`` and
+    ``/proc/net/tcp6``, read in the same adb call as the uid."""
+
+    uid: Optional[int] = None
+    name: Optional[str] = None
+    pid: Optional[str] = None
+    prefs: Optional["Prefs"] = None
+    net: Optional[str] = None
+
+
 class Endpoint(NamedTuple):
-    """A resolved Lustro endpoint."""
+    """A resolved Lustro endpoint. ``owner`` is set for a token that the CLI found and must
+    check before it sends it (see :func:`withheld`)."""
 
     host: str
     port: int
     token: Optional[str]
     scheme: str = "http"
+    owner: Optional[Owner] = None
 
     @property
     def base_url(self) -> str:
@@ -171,28 +201,38 @@ def _run_status(cmd: List[str], timeout: float = 10.0) -> Tuple[int, str]:
     return proc.returncode, proc.stdout.decode("utf-8", "replace")
 
 
-def discover_from_logcat(device: Optional[str] = None, package: Optional[str] = None) -> Optional[Endpoint]:
-    """Discover the endpoint+token by dumping the ``LustroToken`` logcat buffer.
+def discover_from_logcat(
+    device: Optional[str] = None, package: Optional[str] = None, pids: Optional[List[str]] = None
+) -> Optional[Endpoint]:
+    """Discover the endpoint+token by dumping the ``LustroToken`` logcat buffer. The
+    endpoint's ``owner`` has the PID of the process that logged the line, which the
+    ``threadtime`` format gives, and no uid.
 
     With ``package``, only the lines of that app's current process count: the last
     line in the buffer can be another app's, and the line of an earlier process of
-    the app can have a port and a token that are no longer valid. An app that does
-    not run, or whose process adb can't tell, gives ``None``.
+    the app can have a port and a token that are no longer valid. ``pids`` are the
+    app's process IDs, when the caller has them. An app that does not run, or whose
+    process adb can't tell, gives ``None``.
     """
-    if not package:
-        out = _run(_adb_base(device) + ["logcat", "-d", "-s", "LustroToken"])
-        return None if out is None else parse_ready_line(out)
-    pids = app_pids(package, device)
-    if not pids:
-        return None
+    if package:
+        pids = app_pids(package, device) if pids is None else pids
+        if not pids:
+            return None
     # One dump with the PID of each line, not one `logcat --pid` per process: pidof
     # can print an old process that still exits, and the last line in the buffer,
     # which is the newest, must win.
     out = _run(_adb_base(device) + ["logcat", "-d", "-v", "threadtime", "-s", "LustroToken"])
     if out is None:
         return None
-    own = [line for line in out.splitlines() if _line_pid(line) in pids]
-    return parse_ready_line("\n".join(own))
+    last: Optional[Endpoint] = None
+    for line in out.splitlines():
+        pid = _line_pid(line)
+        if package and pid not in (pids or []):
+            continue
+        endpoint = parse_ready_line(line)
+        if endpoint is not None:
+            last = endpoint._replace(owner=Owner(pid=pid))
+    return last
 
 
 # A ``threadtime`` line: ``<date> <time> <pid> <tid> <level> <tag>: <message>``.
@@ -213,26 +253,15 @@ class Prefs(NamedTuple):
     port: Optional[int]
 
 
-def read_prefs(package: str, device: Optional[str] = None) -> Optional[Prefs]:
-    """Best-effort read of the app's private ``lustro_debug`` prefs, or ``None`` when
-    they hold no token or ``run-as <pkg>`` fails, as for a build that is not
-    debuggable."""
-    if not package:
-        return None
-    prefs_path = "shared_prefs/lustro_debug.xml"
-    out = _run(
-        _adb_base(device) + ["shell", "run-as", package, "cat", prefs_path]
-    )
-    if not out:
-        return None
+def parse_prefs(text: str) -> Optional[Prefs]:
+    """The token, the host, and the port in the text of the ``lustro_debug`` prefs file,
+    or ``None`` when it holds no token."""
     # Prefs XML: <string name="lustro_token">AbC123...</string>
-    match = re.search(
-        r'<string\s+name="lustro_token">\s*([^<\s]+)\s*</string>', out
-    )
+    match = re.search(r'<string\s+name="lustro_token">\s*([^<\s]+)\s*</string>', text)
     if not match:
         return None
-    host = re.search(r'<string\s+name="lustro_host">\s*([^<\s]+)\s*</string>', out)
-    port = re.search(r'<int\s+name="lustro_port"\s+value="(\d+)"', out)
+    host = re.search(r'<string\s+name="lustro_host">\s*([^<\s]+)\s*</string>', text)
+    port = re.search(r'<int\s+name="lustro_port"\s+value="(\d+)"', text)
     return Prefs(
         token=match.group(1),
         host=host.group(1) if host else None,
@@ -240,23 +269,111 @@ def read_prefs(package: str, device: Optional[str] = None) -> Optional[Prefs]:
     )
 
 
-def discover_from_run_as(
-    package: str, device: Optional[str] = None
-) -> Optional[Endpoint]:
-    """Best-effort read of the app's private ``lustro_debug`` prefs.
+# Separates the outputs of the commands that one ``adb shell`` call runs.
+_PART = "--lustro-part--"
+_PREFS_PATH = "shared_prefs/lustro_debug.xml"
+_PROC_NET = "cat /proc/net/tcp /proc/net/tcp6 2>/dev/null"
 
-    Returns the token, with the host and port the app stored at its last bind,
-    or the defaults for an app that stored none. Works only on debuggable builds
-    where ``run-as <pkg>`` is permitted.
-    """
-    prefs = read_prefs(package, device)
-    if prefs is None:
+
+def _shell_parts(commands: List[str], device: Optional[str]) -> Optional[List[str]]:
+    """Runs ``commands`` one after the other in one ``adb shell`` call, which costs one
+    round trip to the device, and returns the output of each, or ``None`` when adb fails."""
+    script = "".join("{}; echo; echo {}; ".format(command, _PART) for command in commands) + "true"
+    out = _run(_adb_base(device) + ["shell", script])
+    if out is None:
         return None
-    return Endpoint(
-        host=prefs.host if prefs.host is not None else DEFAULT_HOST,
-        port=prefs.port if prefs.port is not None else DEFAULT_PORT,
-        token=prefs.token,
+    parts = [""]
+    for line in out.splitlines(keepends=True):
+        if line.strip() == _PART:
+            parts.append("")
+        else:
+            parts[-1] += line
+    if len(parts) <= len(commands):
+        return None
+    # Without the line end that the echo before each separator adds.
+    return [part[:-1] if part.endswith("\n") else part for part in parts[: len(commands)]]
+
+
+def _number(text: str) -> Optional[int]:
+    word = text.strip()
+    return int(word) if word.isdigit() else None
+
+
+def _net(text: str) -> Optional[str]:
+    """The text of ``/proc/net/tcp`` and ``tcp6``, or ``None`` when the device did not let
+    the shell read them."""
+    return text if "local_address" in text else None
+
+
+class AppRead(NamedTuple):
+    """What one adb call reads about an app. ``uid`` is the uid that ``run-as`` runs the
+    app's commands with, ``None`` when ``run-as`` fails, as for a build that is not
+    debuggable. ``prefs`` are its ``lustro_debug`` prefs, ``None`` when they hold no token.
+    ``net`` is ``/proc/net/tcp`` and ``tcp6``."""
+
+    uid: Optional[int]
+    prefs: Optional[Prefs]
+    net: Optional[str]
+
+
+# The real uid in /proc/<pid>/status: ``Uid:`` and the real, effective, saved, and file
+# system uids, separated by tabs.
+_STATUS_UID = re.compile(r"^Uid:\s+(\d+)", re.MULTILINE)
+
+
+def read_app(package: str, device: Optional[str] = None) -> Optional[AppRead]:
+    """The app's prefs, its uid, and the sockets of the device, in one adb call, or
+    ``None`` when adb fails.
+
+    The uid comes from ``run-as``, which runs with the app's uid: the ``cat`` that reads
+    the prefs also reads its own ``/proc/self/status``. It does not come from the app's
+    processes: ``pidof`` finds them by name, and another app can give its process any
+    name, with ``android:process`` in its manifest. A process of the app in another
+    user, such as a work profile, has another uid and its own prefs."""
+    quoted = shlex.quote(package)
+    parts = _shell_parts(
+        ["run-as {} cat {} /proc/self/status 2>/dev/null".format(quoted, _PREFS_PATH), _PROC_NET], device
     )
+    if parts is None:
+        return None
+    uid = _STATUS_UID.search(parts[0])
+    return AppRead(uid=int(uid.group(1)) if uid else None, prefs=parse_prefs(parts[0]), net=_net(parts[1]))
+
+
+def app_process_uids(package: str, device: Optional[str] = None) -> Optional[Dict[str, Optional[int]]]:
+    """The uid of each process with the name ``package``, by its PID, ``None`` for a
+    process whose uid ``stat`` can't read, in one adb call, or ``None`` when adb fails."""
+    out = _run(
+        _adb_base(device)
+        + ["shell", "for p in $(pidof {}); do echo $p $(stat -c %u /proc/$p 2>/dev/null); done".format(
+            shlex.quote(package)
+        )]
+    )
+    if out is None:
+        return None
+    uids: Dict[str, Optional[int]] = {}
+    for line in out.splitlines():
+        fields = line.split()
+        if fields and fields[0].isdigit():
+            uids[fields[0]] = int(fields[1]) if len(fields) > 1 and fields[1].isdigit() else None
+    return uids
+
+
+def read_process(pid: str, device: Optional[str] = None) -> Tuple[Optional[int], Optional[str]]:
+    """The uid of process ``pid``, ``None`` when it has ended, and ``/proc/net/tcp`` and
+    ``tcp6``, in one adb call."""
+    if not pid.isdigit():
+        return None, None
+    parts = _shell_parts(["stat -c %u /proc/{} 2>/dev/null".format(pid), _PROC_NET], device)
+    if parts is None:
+        return None, None
+    return _number(parts[0]), _net(parts[1])
+
+
+def read_net(device: Optional[str] = None) -> Optional[str]:
+    """``/proc/net/tcp`` and ``tcp6`` of the device, or ``None`` when adb can't read them."""
+    parts = _shell_parts([_PROC_NET], device)
+    return None if parts is None else _net(parts[0])
 
 
 # The resumed activity in ``dumpsys activity activities``, which releases name
@@ -496,29 +613,6 @@ def parse_listening_uids(text: str, port: int) -> List[int]:
     return uids
 
 
-def listening_uids(port: int, device: Optional[str] = None) -> Optional[List[int]]:
-    """The uids of the sockets that listen on TCP ``port`` of the device, empty when
-    none does, or ``None`` when adb can't tell. A server bound to 127.0.0.1 shows in
-    ``tcp6`` as an IPv4-mapped address."""
-    out = _run(_adb_base(device) + ["shell", "cat /proc/net/tcp /proc/net/tcp6 2>/dev/null; true"])
-    if not out or "local_address" not in out:
-        return None
-    return parse_listening_uids(out, port)
-
-
-def process_uids(package: str, device: Optional[str] = None) -> Optional[List[int]]:
-    """The uids of the processes of ``package`` on the device, or ``None`` when no
-    process runs or adb can't tell. The uid of a process is the app's uid in the
-    user that runs it."""
-    pids = app_pids(package, device)
-    if not pids:
-        return None
-    paths = " ".join("/proc/{}".format(pid) for pid in pids)
-    out = _run(_adb_base(device) + ["shell", "stat -c %u {} 2>/dev/null; true".format(paths)])
-    uids = sorted({int(word) for word in (out or "").split() if word.isdigit()})
-    return uids or None
-
-
 # A line of ``pm list packages -U``: ``package:<name> uid:<uid>``, with one uid for
 # each user that has the app, comma-separated, such as ``uid:10773,9510773``.
 _PACKAGE_UIDS = re.compile(r"^package:(?P<package>\S+)\s+uid:(?P<uids>[\d,]+)\s*$")
@@ -561,43 +655,152 @@ def _unique(items: Iterable[str]) -> List[str]:
     return list(dict.fromkeys(items))
 
 
-class PortHolder(NamedTuple):
-    """Another app that listens on the app's port of the device: its uid, and its
-    packages, empty when ``pm`` can't tell. ``app_uids`` are the uids of the app."""
-
-    uid: int
-    packages: List[str]
-    app_uids: List[int]
-
-    @property
-    def name(self) -> str:
-        if not self.packages:
-            return "a process with uid {}".format(self.uid)
-        return "{} (uid {})".format(", ".join(self.packages), self.uid)
+_WITHHELD_HINT = (
+    "To send a token to a server that you choose, pass --token, and --port with the local port of an adb "
+    "forward that you made."
+)
 
 
-def other_app_on_port(package: str, holders: Optional[List[int]], device: Optional[str] = None) -> Optional[PortHolder]:
-    """The other app among ``holders``, the uids that :func:`listening_uids` found on the
-    app's port, when no process of ``package`` is one of them, or ``None``: the app
-    listens there, no socket listens, or adb can't tell.
+class TokenWithheld(LustroError):
+    """The CLI found a token and did not send it: it could not tell that the server on the
+    port is a server of the app that owns the token (see :func:`withheld`)."""
 
-    Two apps with Lustro that use the same port take turns: the server of the app in
-    the foreground binds the port when the server of the other app closes, when that
-    app goes to the background. Until then, the other app's server answers the
-    requests for the app, and a 401 for the app's token is its answer. That server
-    closes soon, so read ``holders`` first, right after the 401."""
-    if not holders:
+    def __init__(self, message: str, hint: Optional[str] = None, error: str = "token_withheld") -> None:
+        super().__init__(error, message, hint=hint)
+
+
+class PortHeld(TokenWithheld):
+    """Another app listens on the port of the device where the CLI would send the token,
+    such as another app with Lustro whose server did not close yet."""
+
+    def __init__(self, port: int, owner: Owner, holder_uid: int) -> None:
+        self.port = port
+        self.owner = owner
+        self.holder_uid = holder_uid
+        self.holder_packages: List[str] = []
+        self.owner_packages: List[str] = [owner.name] if owner.name else []
+        super().__init__(self.describe(), error="port_held")
+
+    def name_apps(self, device: Optional[str]) -> None:
+        """Names the app that holds the port, and the app of a log line, from ``pm``."""
+        self.holder_packages = packages_of_uid(self.holder_uid, device)
+        if not self.owner_packages and self.owner.uid is not None:
+            self.owner_packages = packages_of_uid(self.owner.uid, device)
+        self.message = self.describe()
+
+    def describe(self, *, waits: bool = True) -> str:
+        """The message. ``waits`` adds that ``lustro ready`` waits until the app gets the port."""
+        if self.holder_packages:
+            other = "{} (uid {})".format(", ".join(self.holder_packages), self.holder_uid)
+        else:
+            other = "a process with uid {}".format(self.holder_uid)
+        app = ", ".join(self.owner_packages) or "the app that logged the LustroToken line"
+        message = (
+            "port {port} of the device is held by {other}, not by {app} (uid {uid}), so the CLI did not send it "
+            "the token of {app}. Both apps use port {port}: the server of {app} binds it when the other app's "
+            "server closes, which it does when that app goes to the background."
+        ).format(port=self.port, other=other, app=app, uid=self.owner.uid)
+        if waits:
+            package = self.owner_packages[0] if len(self.owner_packages) == 1 else "<package>"
+            message += " `lustro ready --package {}` waits for that.".format(package)
+        return message + " To prevent this, give each app with Lustro on the device its own serverPort."
+
+
+def withheld(owner: Owner, host: str, port: int, net: Optional[str]) -> Optional[LustroError]:
+    """Why the CLI must not send the token of ``owner`` to the server at ``host``:``port``,
+    or ``None`` when that server is the owner's. ``net`` is ``/proc/net/tcp`` and ``tcp6``
+    of the device.
+
+    The server is the owner's when each socket that listens on ``port`` of the device has
+    the owner's uid. The host is loopback, which the CLI reaches through an adb forward,
+    or the address of the device on a network, which the runtime writes in the ready
+    line. A token from the prefs goes to a host that is not loopback only when the prefs
+    name that host and port: a ready line of another app can name any host. When nothing
+    listens, the error is ``connection_failed``, as the connection's would be.
+    """
+    app = owner.name or "the app that logged the LustroToken line"
+    prefs = owner.prefs
+    if prefs is not None and host not in LOOPBACK_HOSTS and (prefs.host, prefs.port) != (host, port):
+        return TokenWithheld(
+            "the prefs of {} name {}:{}, not {}:{}, so the CLI did not send their token to {}:{}".format(
+                app, prefs.host, prefs.port, host, port, host, port
+            ),
+            hint=_WITHHELD_HINT,
+        )
+    if owner.uid is None:
+        if owner.pid is not None:
+            return TokenWithheld(
+                "the process that logged the last LustroToken line, PID {}, has ended, so the CLI did not send its "
+                "token: start the app, and bring it to the front".format(owner.pid)
+            )
+        return TokenWithheld(
+            "adb can't tell the uid of {}, so the CLI did not send its token".format(app), hint=_WITHHELD_HINT
+        )
+    listeners = None if net is None else parse_listening_uids(net, port)
+    if listeners is None:
+        return TokenWithheld(
+            "adb can't tell which app listens on port {} of the device, so the CLI did not send the token of {} "
+            "there".format(port, app),
+            hint=_WITHHELD_HINT,
+        )
+    if not listeners:
+        return LustroError(
+            "connection_failed",
+            "nothing listens on port {} of the device, so the CLI did not send the token of {} there".format(port, app),
+            hint="Is the app running and foregrounded? Lustro listens only while its app is in the foreground.",
+        )
+    others = [uid for uid in listeners if uid != owner.uid]
+    if others:
+        return PortHeld(port, owner, others[0])
+    return None
+
+
+class TokenGuard:
+    """Checks, before a client sends the token of ``endpoint.owner``, that the server on the
+    endpoint's port of the device is the owner's (see :func:`withheld`), and raises the
+    error when it is not. The first check uses ``/proc/net`` from discovery, and each later
+    check reads it again: when the app goes to the background, its server closes, and
+    another app can bind the port."""
+
+    def __init__(self, endpoint: Endpoint, device: Optional[str] = None) -> None:
+        if endpoint.owner is None:
+            raise ValueError("an endpoint without an owner needs no check")
+        self.owner = endpoint.owner
+        self.host = endpoint.host
+        self.port = endpoint.port
+        self.device = device
+        self._net = endpoint.owner.net
+
+    def __call__(self) -> None:
+        net, self._net = self._net, None
+        if net is None:
+            net = read_net(self.device)
+        error = withheld(self.owner, self.host, self.port, net)
+        if error is None:
+            return
+        if isinstance(error, PortHeld):
+            error.name_apps(self.device)
+        raise error
+
+
+def token_from_prefs(
+    device: Optional[str] = None, package: Optional[str] = None, endpoint: Optional[Endpoint] = None
+) -> Optional[str]:
+    """The token in the prefs of ``package``, or of the app in the foreground. For an
+    ``endpoint`` with an ``owner``, only when the server at the endpoint is that app's (see
+    :func:`withheld`): the app in the foreground can be another app than the one that
+    logged the ready line."""
+    app = package or foreground_package(device)
+    if not app:
         return None
-    app_uids = process_uids(package, device)
-    if app_uids is None or any(uid in app_uids for uid in holders):
+    read = read_app(app, device)
+    if read is None or read.prefs is None:
         return None
-    return PortHolder(uid=holders[0], packages=packages_of_uid(holders[0], device), app_uids=app_uids)
-
-
-def token_from_prefs(device: Optional[str] = None, package: Optional[str] = None) -> Optional[str]:
-    """The token in the prefs of ``package``, or of the app in the foreground."""
-    ra = discover_from_run_as(package or foreground_package(device) or "", device)
-    return ra.token if ra is not None else None
+    if endpoint is not None and endpoint.owner is not None:
+        owner = Owner(uid=read.uid, name=app, prefs=read.prefs)
+        if withheld(owner, endpoint.host, endpoint.port, read.net) is not None:
+            return None
+    return read.prefs.token
 
 
 def parse_forwards(text: str, device_port: int) -> List[Tuple[str, int]]:
@@ -648,6 +851,14 @@ def resolve(
     :class:`DiscoveryError` if no token can be determined from any source: with
     the cause that :func:`diagnose` finds, or, with ``check_app`` false, without
     those adb calls, for a caller that tries again.
+
+    A token that this finds, with a port that it finds too, gets an ``owner`` on
+    the endpoint, which a client checks before it sends the token (see
+    :class:`TokenGuard`). A port from ``port`` is a local port, and a ``host`` that
+    is not loopback is the user's choice: these get no check. Without ``package``,
+    a ready line whose app does not listen on its port, or whose process has
+    ended, gives way to the prefs of the app in the foreground when that app's
+    server listens on the port that its prefs name.
     """
     env = os.environ if env is None else env
 
@@ -661,51 +872,65 @@ def resolve(
         if env_token:
             r_token = env_token
 
+    checks = r_token is None and port is None and (host is None or host in LOOPBACK_HOSTS)
+    owner: Optional[Owner] = None
+
     def missing() -> bool:
         return r_token is None or r_host is None or r_port is None
 
-    # With --package, the app's prefs: one run-as read, where the dump of the log
-    # takes seconds on a device with a full log buffer. They are the named app's
-    # own. Each process of the app writes its token, and each bind its host and
-    # port, so while its server listens they are the current process's; before
-    # that, a connection to them fails or gets 401, and the caller tries again or
-    # prints the cause. A build that is not debuggable fails
-    # run-as, and an app that has not written them yet has none: the log line
-    # gives those.
-    if package and missing():
-        prefs = read_prefs(package, device)
-        if prefs is not None:
-            if r_token is None:
-                r_token = prefs.token
-            if r_host is None:
-                r_host = prefs.host
-            if r_port is None:
-                r_port = prefs.port
+    def take(found_host: Optional[str], found_port: Optional[int], found_token: Optional[str], found: Owner) -> None:
+        nonlocal r_host, r_port, r_token, owner
+        if r_token is None and found_token:
+            r_token = found_token
+            owner = found
+        if r_host is None:
+            r_host = found_host
+        if r_port is None:
+            r_port = found_port
 
-    # Logcat ready line: fills any field still unknown.
-    if missing():
-        discovered = discover_from_logcat(device, package)
-        if discovered is not None:
-            if r_host is None:
-                r_host = discovered.host
-            if r_port is None:
-                r_port = discovered.port
-            if r_token is None:
-                r_token = discovered.token
-
-    # Without --package, the prefs of the app in the foreground, for whatever the
-    # log line didn't give: a device that drops Info logs drops the line. They have
-    # the host and port of the last bind too, unless the app predates storing
-    # them, so a token from --token or LUSTRO_TOKEN still gets the app's own port.
-    if not package and missing():
-        ra = discover_from_run_as(foreground_package(device) or "", device)
-        if ra is not None and ra.token:
-            if r_token is None:
-                r_token = ra.token
-            if r_host is None:
-                r_host = ra.host
-            if r_port is None:
-                r_port = ra.port
+    if package:
+        # The app's prefs: one adb call, where the dump of the log takes seconds on a
+        # device with a full log buffer. They are the named app's own. Each process of
+        # the app writes its token, and each bind its host and port, so while its server
+        # listens they are the current process's; before that, a connection to them
+        # fails or gets 401, and the caller tries again or prints the cause. A build that
+        # is not debuggable fails run-as, and an app that has not written them yet has
+        # none: the log line gives those. The same call reads the uid and the sockets that
+        # the check of the token needs.
+        app = read_app(package, device) if missing() else None
+        if app is not None and app.prefs is not None:
+            take(app.prefs.host, app.prefs.port, app.prefs.token, Owner(app.uid, package, None, app.prefs, app.net))
+        if missing():
+            # The PIDs that keep the app's lines, with the uid of each: the uid of the
+            # process that logged the line is the owner's.
+            uids = app_process_uids(package, device)
+            line = discover_from_logcat(device, package, None if uids is None else list(uids))
+            if line is not None:
+                pid = line.owner.pid if line.owner is not None else None
+                uid = uids.get(pid or "") if uids is not None else None
+                take(line.host, line.port, line.token, Owner(uid, package, pid, None, None if app is None else app.net))
+    else:
+        if missing():
+            line = discover_from_logcat(device)
+            if line is not None:
+                pid = line.owner.pid if line.owner is not None else None
+                uid, net = read_process(pid, device) if checks and pid else (None, None)
+                take(line.host, line.port, line.token, Owner(uid=uid, pid=pid, net=net))
+                if checks and owner is not None and withheld(owner, r_host or DEFAULT_HOST, r_port, net) is not None:
+                    fallback = _from_foreground(host, device)
+                    if fallback is not None and (owner.uid is None or fallback[1] is None):
+                        found = fallback[0]
+                        r_host, r_port, r_token, owner = found.host, found.port, found.token, found.owner
+        # The prefs of the app in the foreground, for whatever the log line didn't give:
+        # a device that drops Info logs drops the line. They have the host and port of
+        # the last bind too, unless the app predates storing them, so a token from
+        # --token or LUSTRO_TOKEN still gets the app's own port.
+        if missing():
+            app_name = foreground_package(device)
+            app = read_app(app_name, device) if app_name else None
+            if app is not None and app.prefs is not None:
+                prefs = app.prefs
+                take(prefs.host, prefs.port, prefs.token, Owner(app.uid, app_name, None, prefs, app.net))
 
     # Fill host/port defaults last.
     if r_host is None:
@@ -727,7 +952,26 @@ def resolve(
             "For a device, also try `--device <serial>`."
         )
 
-    return Endpoint(host=r_host, port=int(r_port), token=r_token)
+    return Endpoint(host=r_host, port=int(r_port), token=r_token, owner=owner if checks else None)
+
+
+def _from_foreground(
+    host: Optional[str], device: Optional[str]
+) -> Optional[Tuple[Endpoint, Optional[LustroError]]]:
+    """The endpoint in the prefs of the app in the foreground, with its owner, and why the
+    CLI must not send it the token (see :func:`withheld`), or ``None`` without such prefs.
+    ``host`` is the one from --host, when it is given."""
+    app_name = foreground_package(device)
+    app = read_app(app_name, device) if app_name else None
+    if app is None or app.prefs is None:
+        return None
+    endpoint = Endpoint(
+        host=host or app.prefs.host or DEFAULT_HOST,
+        port=app.prefs.port or DEFAULT_PORT,
+        token=app.prefs.token,
+        owner=Owner(app.uid, app_name, None, app.prefs, app.net),
+    )
+    return endpoint, withheld(endpoint.owner, endpoint.host, endpoint.port, app.net)
 
 
 def _no_runtime_message(package: str, *, from_foreground: bool) -> str:

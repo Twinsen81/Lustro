@@ -9,6 +9,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import pytest
 
 from lustro_cli import cli, wire
+from lustro_cli import client as client_module
 from lustro_cli.client import LustroClient, LustroError
 
 TOKEN = "test-token-123"
@@ -185,6 +186,63 @@ def test_a_401_is_an_error_when_the_fresh_token_is_the_same(server):
     with pytest.raises(LustroError) as excinfo:
         client.get("/api/v1/_meta")
     assert excinfo.value.status == 401
+
+
+class _Guard:
+    """A guard that counts its checks, and raises ``error`` when it is set."""
+
+    def __init__(self):
+        self.checks = 0
+        self.error = None
+
+    def __call__(self):
+        self.checks += 1
+        if self.error is not None:
+            raise self.error
+
+
+def test_the_guard_runs_before_the_first_request_and_not_again_soon(server):
+    guard = _Guard()
+    client = LustroClient(server, TOKEN, guard=guard)
+    client.get("/api/v1/_meta")
+    client.get("/api/v1/_meta")
+    assert guard.checks == 1
+
+
+def test_the_guard_runs_again_after_its_time(server, monkeypatch):
+    # A command that polls checks before each request: between two polls the app can go to
+    # the background, and another app can bind the port.
+    monkeypatch.setattr(client_module, "GUARD_SECONDS", 0.0)
+    guard = _Guard()
+    client = LustroClient(server, TOKEN, guard=guard)
+    client.get("/api/v1/_meta")
+    client.get("/api/v1/_meta")
+    assert guard.checks == 2
+
+
+def test_the_guard_runs_again_after_a_connection_fails(server):
+    guard = _Guard()
+    client = LustroClient("http://127.0.0.1:9", TOKEN, guard=guard)
+    with pytest.raises(LustroError) as excinfo:
+        client.get("/api/v1/_meta")
+    assert excinfo.value.error == "connection_failed"
+    client.base_url = server
+    client.get("/api/v1/_meta")
+    assert guard.checks == 2
+
+
+def test_a_guard_that_raises_stops_the_request(server):
+    guard = _Guard()
+    guard.error = LustroError("token_withheld", "another app holds the port")
+    sent = []
+    client = LustroClient(server, TOKEN, guard=guard, on_warning=sent.append)
+    with pytest.raises(LustroError) as excinfo:
+        client.get("/api/v1/_meta")
+    assert excinfo.value is guard.error
+    # It checks again on the next request, as the port can be free then.
+    guard.error = None
+    assert client.get("/api/v1/_meta")["protocolVersion"] == "1.17"
+    assert guard.checks == 2
 
 
 def test_send_post(server):
