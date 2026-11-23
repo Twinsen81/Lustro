@@ -2,4 +2,4 @@
 # dependencies with hashes, and CI installs only from it. To change a version,
 # edit this file and compile the lock again: see CONTRIBUTING.md, "Python lock
 # files".
-zensical==0.1.0
+zensical==0.1.1
