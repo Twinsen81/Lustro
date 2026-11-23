@@ -132,6 +132,13 @@ jobs:
       - name: Release artifacts
         run: ./gradlew collectReleaseArtifacts --console=plain --stacktrace
 
+      # Each published module asks for its own version of every other one, so
+      # that an app gets one version of all Lustro modules. The constraints come
+      # from the lustro.publishing plugin in build-logic/; this checks that they
+      # reach the .module file of each module.
+      - name: Published metadata asks for one version of all Lustro modules
+        run: ./gradlew checkPublishedConstraints --console=plain --stacktrace
+
       # What docs.yml publishes under api/ on the docs site at each push to main,
       # so that a change that breaks Dokka fails here and not the deploy.
       - name: API reference (Dokka)

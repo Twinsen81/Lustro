@@ -34,6 +34,24 @@ see [DECISIONS.md](DECISIONS.md).
   foreground; the normal sample logged no WARN, bound port 8080, and
   answered `lustro ready` and `lustro meta`.
 
+- **Each published module asks Gradle for its own version of every other
+  Lustro module.** The plugin AARs call the `@ExperimentalDebugRoutes` API of
+  `lustro-api`, which can change in a way that breaks binaries, and nothing
+  kept the artifacts on one version. An app that moved `lustro` to a new
+  version and kept an older `lustro-logs`, as a Dependabot pull request for
+  one artifact does, could fail with `NoSuchMethodError` in its debug build.
+  Now the `lustro.publishing` convention plugin adds a dependency constraint
+  on each other published module at the module's own version. So Gradle takes,
+  for all Lustro modules of the app, the highest version that one of them asks
+  for. A constraint adds no module, so the release classpath with the no-op
+  halves does not get the runtime halves. The constraints are in the API and
+  runtime variants of each `.module` file, and in the `dependencyManagement`
+  of each POM. A new task, `checkPublishedConstraints`, fails when the module
+  metadata of a module does not have them, and CI runs it. The install page
+  says to keep the artifacts on one version. Verified: the 14 `.module` files
+  of `publishToMavenLocal` each ask for the 13 other modules, and the consumer
+  check passes in its three configurations.
+
 - **A committed API baseline for every published module, and a facade check
   that sees constructors, default arguments, protected members, and members
   from internal interfaces.** Only `lustro-api` had a baseline of the binary

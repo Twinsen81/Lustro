@@ -8,7 +8,9 @@ import com.vanniktech.maven.publish.MavenPublishBaseExtension
 import org.gradle.api.GradleException
 import org.gradle.api.Plugin
 import org.gradle.api.Project
+import org.gradle.api.publish.tasks.GenerateModuleMetadata
 import org.gradle.kotlin.dsl.configure
+import org.gradle.kotlin.dsl.register
 
 /**
  * `lustro.publishing`: publishes the module to the Sonatype Central Portal with the vanniktech
@@ -44,6 +46,7 @@ class PublishingPlugin : Plugin<Project> {
                 "$path: apply lustro.publishing after lustro.android-library, lustro.kotlin-library, or java-library.",
             )
         }
+        alignLustroVersions()
         pluginManager.apply("com.vanniktech.maven.publish")
         extensions.configure<MavenPublishBaseExtension> {
             publishToMavenCentral()
@@ -55,4 +58,37 @@ class PublishingPlugin : Plugin<Project> {
             }
         }
     }
+}
+
+/**
+ * Adds a dependency constraint on each other published Lustro module at this module's version, so
+ * that the module's Gradle module metadata asks for the same version of all of them. The plugin
+ * AARs call the `@ExperimentalDebugRoutes` API of lustro-api, whose binary form can change from
+ * one version to the next. Without the constraints, an app that moves one artifact to a new
+ * version and keeps another one on an older version, as a Dependabot pull request for one
+ * artifact does, fails with `NoSuchMethodError` in its debug build. With them, Gradle takes the
+ * highest version that one of the app's Lustro modules asks for, for all of them. A constraint
+ * adds no module to the app: the release classpath with the no-op halves does not get the
+ * runtime halves.
+ */
+private fun Project.alignLustroVersions() {
+    val module = this
+    val others = sortedSetOf<String>()
+    rootProject.subprojects.filter { it != module }.forEach { other ->
+        other.pluginManager.withPlugin("lustro.publishing") {
+            others += other.name
+            module.dependencies.constraints.add("api", "${module.group}:${other.name}:${module.version}")
+        }
+    }
+    val check = tasks.register<PublishedConstraintsTask>("checkPublishedConstraints") {
+        // vanniktech names the publication "maven" and creates it after the build script runs.
+        metadata.set(
+            provider { tasks.named("generateMetadataFileForMavenPublication", GenerateModuleMetadata::class.java) }
+                .flatMap { task -> task.flatMap { it.outputFile } },
+        )
+        lustroGroup.set(module.group.toString())
+        lustroVersion.set(module.version.toString())
+        otherModules.set(provider { others })
+    }
+    tasks.named("check") { dependsOn(check) }
 }

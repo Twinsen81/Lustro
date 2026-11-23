@@ -194,9 +194,11 @@ CI adds the Dokka output under `api/` and `wire-protocol/` when it publishes.
   - `lustro.kotlin-library`: the same for a Kotlin/JVM module, such as
     `:lustro-api`.
   - `lustro.publishing`: the vanniktech publishing, after one of the two
-    above (or `java-library` alone). The root build adds every module with it
-    to the Dokka site and to `collectReleaseArtifacts`, which collects the files
-    of the GitHub Release.
+    above (or `java-library` alone). Each module with it asks for its own
+    version of every other module with it, with a dependency constraint, and
+    `checkPublishedConstraints` checks that its Gradle module metadata has
+    them. The root build adds every module with it to the Dokka site and to
+    `collectReleaseArtifacts`, which collects the files of the GitHub Release.
   - `lustro.facade-parity`: `checkFacadeParity`, at the root.
 
 The wire protocol is versioned under `wire-protocol/v1/`. Each tab's OpenAPI
@@ -370,7 +372,7 @@ Every commit in a pull request must carry a sign-off line.
 5. Make sure the full local gate passes:
 
    ```bash
-   ./gradlew test :build-logic:test detekt apiCheck checkFacadeParity checkDocsVersion checkPluginDocs checkCliVersion
+   ./gradlew test :build-logic:test detekt apiCheck checkFacadeParity checkPublishedConstraints checkDocsVersion checkPluginDocs checkCliVersion
    ```
 
 6. Open the PR, fill in the template, and confirm every commit is signed off.
