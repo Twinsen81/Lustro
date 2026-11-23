@@ -473,9 +473,13 @@ and Dependabot updates both:
 | `docs/requirements.txt` | Zensical | `docs.yml` |
 
 To change a version or add a package, edit the `.in` file, and compile the lock
-again in its directory. Use the newest Python release, which CI uses: pip-compile
-resolves for the Python that runs it, and leaves out a package that only an
-older Python needs.
+again in its directory, with Python 3.15. That is the `python-version` of the
+three jobs that install from a lock: the CLI's job and the instrumented tests in
+`ci.yml`, and the build in `docs.yml`. pip-compile resolves for the Python that
+runs it, and some locked packages, such as rpds-py, markupsafe, pyyaml, and
+zensical, have compiled wheels for each Python version. So the Python of those
+jobs and the locks move together: a pull request that changes that
+`python-version` also compiles both locks again with the new version.
 
 ```bash
 python -m pip install pip-tools   # in a virtual environment

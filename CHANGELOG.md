@@ -3047,7 +3047,10 @@ see [DECISIONS.md](DECISIONS.md).
   package with hashes, as pip-compile makes them from a `.in` file, and CI
   installs them with `--require-hashes`. The CLI's lock also has hatchling, so
   pip builds the CLI with `--no-build-isolation --no-index` and downloads
-  nothing else. Dependabot updates the pins and the locks, and CONTRIBUTING.md
+  nothing else. Some locked packages have compiled wheels for each Python
+  version, so the three jobs that install from a lock run Python 3.15, the
+  Python that compiled the locks, and not the newest release: a new Python on
+  the runner can't break CI without a change in the repository. Dependabot updates the pins and the locks, and CONTRIBUTING.md
   says how to compile a lock again. SECURITY.md said that Dependabot alerts are
   off: they are on, and it now says that they cover the Python packages and the
   actions, not the Gradle dependencies such as NanoHTTPD, which are still
