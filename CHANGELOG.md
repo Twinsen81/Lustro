@@ -2569,6 +2569,24 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Changed
 
+- **A release publishes only a commit that is on `main` and that CI passed.**
+  `release.yml` published to Maven Central on a `v*` tag on any commit, and
+  checked only the version. Maven Central keeps every release, so a release
+  from a wrong commit could not be taken back. A new job, `verify`, runs
+  before anything is published: `.github/scripts/check_release_commit.py`
+  fails when the tag's commit is not on `main`, or when `ci.yml` has no passed
+  run of a push to `main` for that commit. A run of a pull request does not
+  count, because a squash merge makes a new commit. When the tag comes before
+  the CI run has finished, the job fails, and the workflow can run again
+  later. The publish job runs after it, in an environment named `release`. Its
+  protection rules, and a ruleset for `v*` tags, are repository settings. The
+  pytest tests of the script, which the CLI job of CI runs, make a git
+  repository and a fake `gh`. They show that the check refuses a commit that
+  is not on `main`, a commit without a CI run, a run that failed or has not
+  finished, and a passed run of a pull request. Against this repository, the
+  check passed for the head of `main` and refused the head commit of a merged
+  pull request. The release steps in CONTRIBUTING describe it.
+
 - **The CLI makes a new adb forward on a local port that adb chooses, except
   for `lustro open`.** When the selected device had no forward to the app's
   port, every command made one on the same port number, 8080 by default, and

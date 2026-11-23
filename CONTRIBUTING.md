@@ -454,10 +454,18 @@ version. `main` takes changes only through pull requests.
    to the same version. Update the coordinates in the docs (`checkDocsVersion`
    says where), and move the `[Unreleased]` entries of `CHANGELOG.md` under the
    version.
-2. After the merge, push the tag `v<version>` on the merge commit. Before it
-   publishes anything, `release.yml` stops when the tag differs from
+2. After the merge, wait until the CI run of the merge commit on `main` has
+   passed, then push the tag `v<version>` on that commit. Before it publishes
+   anything, `release.yml` stops when the tag's commit is not on `main`, when
+   it has no passed CI run of a push to `main`
+   (`.github/scripts/check_release_commit.py`), when the tag differs from
    `VERSION_NAME`, when the version ends with `-SNAPSHOT`, or when
-   `checkCliVersion` fails.
+   `checkCliVersion` fails. When the tag came before the CI run finished, run
+   the release workflow again after the CI run has passed. The publish job runs
+   in the `release` environment, so it waits for the protection rules of that
+   environment, such as a required reviewer. Those rules, and a ruleset that
+   limits who can push `v*` tags, are repository settings: the workflow can't
+   set them.
 3. In the next pull request, set `VERSION_NAME` to the next `-SNAPSHOT`, such as
    `0.2.1-SNAPSHOT`, and `__version__` to the same version without `-SNAPSHOT`.
    The docs can keep the release until the next release.
