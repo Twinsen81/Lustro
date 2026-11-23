@@ -229,6 +229,12 @@ public class Lustro internal constructor(
      * Returns [LustroStatus.DISABLED] without arming — and logs a WARN — when the
      * host app is not marked debuggable and
      * [DebugConfig.allowNonDebuggableBuilds] is `false` (the default).
+     *
+     * Logs a WARN, and still returns [LustroStatus.ENABLED], when the process
+     * lifecycle is not initialized yet. androidx.startup's `InitializationProvider`
+     * initializes it with `ProcessLifecycleInitializer` before
+     * `Application.onCreate()`. In an app whose manifest removes either one, the
+     * lifecycle never reports the foreground, so the socket never binds.
      */
     public fun start(): LustroStatus {
         synchronized(this) {
@@ -242,6 +248,12 @@ public class Lustro internal constructor(
                 notifyTabs { it.onStart() }
                 lifecycle.addObserver(lifecycleObserver)
                 armed = true
+                // ProcessLifecycleInitializer moves the process lifecycle to CREATED before
+                // Application.onCreate(). Without it the lifecycle never reaches STARTED, so
+                // nothing binds, and Lustro can't initialize it: it refuses a lazy start.
+                if (lifecycle.currentState == Lifecycle.State.INITIALIZED) {
+                    Log.w(TAG, LIFECYCLE_NOT_INITIALIZED_WARNING)
+                }
                 // Robolectric/tests and any process already foregrounded won't fire
                 // a fresh onStart, so bind eagerly when already at least STARTED.
                 if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
@@ -617,6 +629,14 @@ public class Lustro internal constructor(
                 "the lustro-noop artifact for release. If this really is an " +
                 "internal build that ships android:debuggable=\"false\", opt in " +
                 "with DebugConfig.builder().allowNonDebuggableBuilds(true)."
+
+        private const val LIFECYCLE_NOT_INITIALIZED_WARNING =
+            "The process lifecycle is not initialized. The debug server binds when " +
+                "ProcessLifecycleOwner reports that the app is in the foreground, and a lifecycle " +
+                "that is not initialized never does, so the server does not bind. Keep the " +
+                "androidx.startup.InitializationProvider provider and its " +
+                "<meta-data android:name=\"androidx.lifecycle.ProcessLifecycleInitializer\"> entry " +
+                "in the app's merged manifest, and call start() in Application.onCreate()."
 
         // Machine-parseable endpoint-discovery log tag. The
         // CLI/agents grep for this tag to learn host:port + token.

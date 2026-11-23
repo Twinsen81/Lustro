@@ -227,12 +227,20 @@ build, and that even in debug builds it stays bound to the local device.
   [SQLite databases](#sqlite-databases) below.
 - **The WorkManager tab shows the output and the exceptions of the app's work,
   and cancels and prunes it.** See [WorkManager work](#workmanager-work) below.
-- **Nothing persisted to disk except mock rules.** Captured traffic, WebSocket
+- **Captured data is not persisted to disk.** Captured traffic, WebSocket
   messages included, and log lines live only in bounded in-memory buffers and
-  are lost when the process dies, as are the WorkManager tab's events. The sole
-  persisted state is user-authored mock rules. The Preferences tab writes to
-  disk only the app's own SharedPreferences files and the files of the
-  DataStores that the app registers, when a client edits them.
+  are lost when the process dies, as are the WorkManager tab's events. Lustro
+  keeps its own state in the app's private `lustro_debug` SharedPreferences
+  file: the token, and the host and port of the last bind, which the CLI reads
+  with `adb shell run-as`. Mock rules stay in memory, unless the app passes a
+  `MockRuleStorage` to `NetworkDebugTab.create(...)`: the
+  `SharedPreferencesMockRuleStorage` keeps them in the SharedPreferences file
+  that the app gives it. Otherwise Lustro writes to disk only the app's own
+  data, when a client changes it: the Preferences tab writes the app's
+  SharedPreferences files and the files of the DataStores that the app
+  registers, the SQLite tab writes to a database that the app registers with
+  `writable = true`, and the WorkManager tab's cancel and prune change
+  WorkManager's database.
 - **Exceptions are contained.** Library exceptions do not escape into the host
   app; server-level errors are logged through `android.util.Log` at WARN.
 
@@ -321,8 +329,8 @@ database file in the app's `databases` and `noBackupFilesDir` directories, under
   app's connection pool, which has no such time limit.
 
 An external review of the auth, CSP, and capture implementation is part of the
-work remaining before the first public release (`0.1.0`), alongside the
-publishing items listed in `CHANGELOG.md`.
+work remaining before the first public release (`0.1.0`), with the publishing
+of the artifacts to Sonatype Central and of the CLI to PyPI.
 
 ### WorkManager work
 
@@ -399,8 +407,14 @@ own its security lifecycle:
   API — it stays `internal` behind `LustroServer`. This keeps the attack
   surface narrow and the dependency swappable.
 - **Tracking.** NanoHTTPD CVEs and security discussions (its repository, the
-  GitHub Advisory Database, and OSV) are monitored. Dependabot is configured for
-  the Gradle ecosystem so any upstream release or advisory is surfaced promptly.
+  GitHub Advisory Database, and OSV) are monitored by hand: no automation
+  reports them. Dependabot's version updates leave NanoHTTPD out on purpose:
+  `.github/dependabot.yml` ignores `org.nanohttpd:*`, because the pin is a
+  dependency floor that moves by hand, and NanoHTTPD has had no release since
+  2.3.1, in 2016. Dependabot alerts report an advisory whatever
+  `dependabot.yml` ignores, but they are off for this repository:
+  `gh api repos/{owner}/{repo}/vulnerability-alerts` answers `404`, and it
+  answers `204` when they are on.
 - **Patching.** When a relevant security fix is needed:
   1. If upstream ships a patched release, we bump the pin and run the
      wire-protocol contract tests and emulator matrix before publishing.

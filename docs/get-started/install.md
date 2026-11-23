@@ -57,6 +57,33 @@ Each plugin is a pair of its own, which you add in the same way: see the Install
 [SQLite](../plugins/sqlite.md#install), [WorkManager](../plugins/work.md#install), and
 [Screen](../plugins/screen.md#install). [Modules](../reference/modules.md) lists every artifact.
 
+## Keep the process lifecycle initializer
+
+The server binds when `ProcessLifecycleOwner` reports that the app is in the foreground.
+androidx.startup's `InitializationProvider` initializes that lifecycle through
+`ProcessLifecycleInitializer` before `Application.onCreate()`, and `lifecycle-process` adds both to
+the merged manifest. An app that removes the provider, or that `meta-data` entry, with
+`tools:node="remove"` leaves the lifecycle not initialized: `start()` returns `ENABLED`, but the
+server never binds. `start()` then logs a WARN at the `Lustro` tag that names the entry. Lustro
+can't initialize the lifecycle itself, because `ProcessLifecycleInitializer` refuses to start after
+the app's startup.
+
+To turn off another initializer, remove only its own `meta-data` entry and keep the provider, as
+for WorkManager's:
+
+```xml
+<provider
+    android:name="androidx.startup.InitializationProvider"
+    android:authorities="${applicationId}.androidx-startup"
+    android:exported="false"
+    tools:node="merge">
+    <meta-data
+        android:name="androidx.work.WorkManagerInitializer"
+        android:value="androidx.startup"
+        tools:node="remove" />
+</provider>
+```
+
 ## Minimum versions
 
 Adding Lustro does not raise the versions of your app's own dependencies. Each published
