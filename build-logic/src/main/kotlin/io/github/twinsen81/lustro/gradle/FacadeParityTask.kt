@@ -2,18 +2,15 @@ package io.github.twinsen81.lustro.gradle
 
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
-import org.gradle.api.file.ConfigurableFileCollection
-import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
-import org.gradle.api.tasks.Classpath
 import org.gradle.api.tasks.Input
-import org.gradle.api.tasks.InputDirectory
+import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.Nested
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
-import java.io.File
 
 /** One entry of `checkFacadeParity`: a runtime module, its no-op half, and their facade packages. */
 abstract class FacadePair {
@@ -29,27 +26,30 @@ abstract class FacadePair {
     @get:Input
     abstract val packages: ListProperty<String>
 
-    @get:InputDirectory
-    @get:PathSensitive(PathSensitivity.RELATIVE)
-    abstract val runtimeClasses: DirectoryProperty
+    /** The API dump of the runtime module, which its `apiBuild` task writes. */
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val runtimeApi: RegularFileProperty
 
-    @get:InputDirectory
-    @get:PathSensitive(PathSensitivity.RELATIVE)
-    abstract val noopClasses: DirectoryProperty
+    /** The API dump of the no-op module, which its `apiBuild` task writes. */
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val noopApi: RegularFileProperty
 }
 
 /**
- * Fails when the runtime and no-op halves of a pair expose different public facades. BCV does not
- * dump the AGP-built Kotlin Android modules, so the task compares their compiled release classes
- * with javap: see [FacadeReader] and DECISIONS.md ("BCV / apiCheck").
+ * Fails when the runtime and no-op halves of a pair expose different public facades. It compares
+ * the API dumps of their release classes, which each module's `apiBuild` task writes: see
+ * [readFacade] and DECISIONS.md ("BCV / apiCheck").
  */
 abstract class FacadeParityTask : DefaultTask() {
     @get:Nested
     abstract val pairs: ListProperty<FacadePair>
 
-    /** The supertypes that both halves of a pair extend, such as the :lustro-api classes. */
-    @get:Classpath
-    abstract val sharedClasses: ConfigurableFileCollection
+    /** The API dump of the supertypes that both halves of a pair extend: the one of :lustro-api. */
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val sharedApi: RegularFileProperty
 
     init {
         group = "verification"
@@ -63,14 +63,14 @@ abstract class FacadeParityTask : DefaultTask() {
         if (entries.isEmpty()) {
             throw GradleException("checkFacadeParity: the facadeParity { } block of the root build lists no pair.")
         }
-        val reader = FacadeReader(javapExecutable(), sharedClasses.files)
+        val shared = dump(sharedApi)
         val failures = mutableListOf<String>()
         for (pair in entries) {
             val runtimeName = pair.runtime.get()
             val noopName = pair.noop.get()
             val packages = pair.packages.get()
-            val runtime = reader.read(pair.runtimeClasses.get().asFile, packages)
-            val noop = reader.read(pair.noopClasses.get().asFile, packages)
+            val runtime = readFacade(dump(pair.runtimeApi), shared, packages)
+            val noop = readFacade(dump(pair.noopApi), shared, packages)
             val failure = compareFacades(runtimeName, noopName, runtime, noop)
             if (failure != null) {
                 failures += failure
@@ -87,8 +87,6 @@ abstract class FacadeParityTask : DefaultTask() {
         }
     }
 
-    private fun javapExecutable(): String {
-        val javap = File(System.getProperty("java.home"), "bin/javap")
-        return if (javap.canExecute() || File("${javap.path}.exe").exists()) javap.absolutePath else "javap"
-    }
+    private fun dump(file: RegularFileProperty): Map<String, DumpedClass> =
+        file.get().asFile.let { parseApiDump(it.readText(), it.path) }
 }

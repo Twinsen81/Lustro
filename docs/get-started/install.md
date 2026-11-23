@@ -57,6 +57,13 @@ Each plugin is a pair of its own, which you add in the same way: see the Install
 [SQLite](../plugins/sqlite.md#install), [WorkManager](../plugins/work.md#install), and
 [Screen](../plugins/screen.md#install). [Modules](../reference/modules.md) lists every artifact.
 
+Keep all Lustro artifacts on one version, as the one `lustro` version above does. The plugins call
+an API of `lustro-api` that can change from one version to the next, so the artifacts work only
+together with the same version. Each artifact asks Gradle for its own version of every other
+Lustro artifact, so Gradle takes the highest version that one of them asks for, for all of them:
+when an update moves `lustro` to a new version and leaves `lustro-logs` on an older one, the build
+gets the new version of both.
+
 ## Keep the process lifecycle initializer
 
 The server binds when `ProcessLifecycleOwner` reports that the app is in the foreground.

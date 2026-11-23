@@ -1,0 +1,31 @@
+public final class io/github/twinsen81/lustro/work/WorkDebugTab : io/github/twinsen81/lustro/DebugTab {
+	public static final field Companion Lio/github/twinsen81/lustro/work/WorkDebugTab$Companion;
+	public static final field DEFAULT_BUFFER_BYTES I
+	public synthetic fun <init> (Lio/github/twinsen81/lustro/work/internal/WorkSource;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun configure (Landroidx/work/Configuration$Builder;)Landroidx/work/Configuration$Builder;
+	public static final fun create (Landroid/content/Context;)Lio/github/twinsen81/lustro/work/WorkDebugTab;
+	public static final fun create (Landroid/content/Context;Ljava/util/List;)Lio/github/twinsen81/lustro/work/WorkDebugTab;
+	public static final fun create (Landroid/content/Context;Ljava/util/List;I)Lio/github/twinsen81/lustro/work/WorkDebugTab;
+	public static final fun createWithMetrics (Landroid/content/Context;Landroidx/work/analytics/WorkMetricsInfoRepository;)Lio/github/twinsen81/lustro/work/WorkDebugTab;
+	public static final fun createWithMetrics (Landroid/content/Context;Landroidx/work/analytics/WorkMetricsInfoRepository;Ljava/util/List;)Lio/github/twinsen81/lustro/work/WorkDebugTab;
+	public static final fun createWithMetrics (Landroid/content/Context;Landroidx/work/analytics/WorkMetricsInfoRepository;Ljava/util/List;I)Lio/github/twinsen81/lustro/work/WorkDebugTab;
+	public fun getIcon ()Ljava/lang/String;
+	public fun getId ()Ljava/lang/String;
+	public fun getOrder ()I
+	public fun getTitle ()Ljava/lang/String;
+	public fun onStart ()V
+	public fun onStop ()V
+	public fun renderContent ()Ljava/lang/String;
+}
+
+public final class io/github/twinsen81/lustro/work/WorkDebugTab$Companion {
+	public final fun create (Landroid/content/Context;)Lio/github/twinsen81/lustro/work/WorkDebugTab;
+	public final fun create (Landroid/content/Context;Ljava/util/List;)Lio/github/twinsen81/lustro/work/WorkDebugTab;
+	public final fun create (Landroid/content/Context;Ljava/util/List;I)Lio/github/twinsen81/lustro/work/WorkDebugTab;
+	public static synthetic fun create$default (Lio/github/twinsen81/lustro/work/WorkDebugTab$Companion;Landroid/content/Context;Ljava/util/List;IILjava/lang/Object;)Lio/github/twinsen81/lustro/work/WorkDebugTab;
+	public final fun createWithMetrics (Landroid/content/Context;Landroidx/work/analytics/WorkMetricsInfoRepository;)Lio/github/twinsen81/lustro/work/WorkDebugTab;
+	public final fun createWithMetrics (Landroid/content/Context;Landroidx/work/analytics/WorkMetricsInfoRepository;Ljava/util/List;)Lio/github/twinsen81/lustro/work/WorkDebugTab;
+	public final fun createWithMetrics (Landroid/content/Context;Landroidx/work/analytics/WorkMetricsInfoRepository;Ljava/util/List;I)Lio/github/twinsen81/lustro/work/WorkDebugTab;
+	public static synthetic fun createWithMetrics$default (Lio/github/twinsen81/lustro/work/WorkDebugTab$Companion;Landroid/content/Context;Landroidx/work/analytics/WorkMetricsInfoRepository;Ljava/util/List;IILjava/lang/Object;)Lio/github/twinsen81/lustro/work/WorkDebugTab;
+}
+

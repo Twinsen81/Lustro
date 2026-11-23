@@ -35,7 +35,7 @@ Other useful targets:
 ```bash
 ./gradlew :lustro:testDebugUnitTest      # unit + Robolectric tests for :lustro
 ./gradlew test                           # all module unit tests
-./gradlew :build-logic:test              # the convention plugins, checkFacadeParity among them
+./gradlew :build-logic:test              # the convention plugins, checkFacadeParity and the API baselines among them
 ```
 
 Tests use JUnit 4, Robolectric for the Android pieces, and MockWebServer for
@@ -188,14 +188,17 @@ CI adds the Dokka output under `api/` and `wire-protocol/` when it publishes.
   - `lustro.android-library`: an Android library module. compileSdk and minSdk
     from the catalog, the `lustro_` resource prefix, no BuildConfig, toolchain
     21 with JVM 17 bytecode, explicit API, the Kotlin floor and
-    `checkKotlinFloor`, and detekt. Its `lustroLibrary { pairCapability(...) }`
+    `checkKotlinFloor`, detekt, and the API baseline (`apiCheck`, `apiDump`).
+    Its `lustroLibrary { pairCapability(...) }`
     declares the capability that both halves of a pair share.
   - `lustro.kotlin-library`: the same for a Kotlin/JVM module, such as
     `:lustro-api`.
   - `lustro.publishing`: the vanniktech publishing, after one of the two
-    above (or `java-library` alone). The root build adds every module with it
-    to the Dokka site and to `collectReleaseArtifacts`, which collects the files
-    of the GitHub Release.
+    above (or `java-library` alone). Each module with it asks for its own
+    version of every other module with it, with a dependency constraint, and
+    `checkPublishedConstraints` checks that its Gradle module metadata has
+    them. The root build adds every module with it to the Dokka site and to
+    `collectReleaseArtifacts`, which collects the files of the GitHub Release.
   - `lustro.facade-parity`: `checkFacadeParity`, at the root.
 
 The wire protocol is versioned under `wire-protocol/v1/`. Each tab's OpenAPI
@@ -369,7 +372,7 @@ Every commit in a pull request must carry a sign-off line.
 5. Make sure the full local gate passes:
 
    ```bash
-   ./gradlew test :build-logic:test detekt apiCheck checkFacadeParity checkDocsVersion checkPluginDocs checkCliVersion
+   ./gradlew test :build-logic:test detekt apiCheck checkFacadeParity checkPublishedConstraints checkDocsVersion checkPluginDocs checkCliVersion
    ```
 
 6. Open the PR, fill in the template, and confirm every commit is signed off.
@@ -380,26 +383,26 @@ Every commit in a pull request must carry a sign-off line.
 Lustro follows [Semantic Versioning](https://semver.org/): **major** for
 breaking changes, **minor** for additive changes, **patch** for fixes.
 
-- **Binary Compatibility Validator (`apiCheck`) must pass.** It covers
-  `:lustro-api`, the SPI both runtimes depend on, against the committed baseline
-  at `lustro-api/api/lustro-api.api`. It does **not** cover the Android modules
-  `:lustro` and `:lustro-noop`: BCV registers no tasks for them under AGP's
-  built-in Kotlin, so they have no committed baseline (see
-  [DECISIONS.md](DECISIONS.md#bcv--apicheck)). If you intentionally change the
-  SPI, regenerate the dump (`./gradlew apiDump`) and explain the change in your
-  PR.
-- **`checkFacadeParity` must pass.** It is what catches a change to the `:lustro`
-  facades (`Lustro`, `DebugConfig`, `NetworkDebugTab`, …), and to those of every
-  other pair in the `facadeParity { }` block of the root build: it compares the
-  public member signatures each facade itself contributes and fails on any
-  difference, so a method added to one side only is rejected. Two things are outside what it
-  compares, and neither is caught anywhere else, so review them by hand:
-  **constructors**, which it normalizes away, and a change made identically on
-  **both** facades, which passes it and passes `apiCheck` too because neither
-  Android module has a baseline. The cross-variant `:sample` compile (debug →
-  `:lustro`, release → `:lustro-noop`) is the third gate, and also a CI job, but
-  it only exercises what the sample actually calls. Call any change to the public
-  facades out in your PR.
+- **Binary Compatibility Validator (`apiCheck`) must pass.** Every published
+  module with a Kotlin API has a committed baseline, `<module>/api/<module>.api`:
+  `:lustro-api`, the SPI that both halves of each pair depend on, and both
+  halves of each runtime and no-op pair. BCV registers its tasks for
+  `:lustro-api` itself, and the `lustro.android-library` convention plugin
+  registers them for the Android modules, which BCV does not support under
+  AGP's built-in Kotlin (see [DECISIONS.md](DECISIONS.md#bcv--apicheck)). If you
+  change a public API on purpose, write the baselines again
+  (`./gradlew apiDump`), commit them, and explain the change in your PR.
+- **`checkFacadeParity` must pass.** It catches an API that only one half of a
+  pair has, such as a member of `Lustro`, `DebugConfig`, or `NetworkDebugTab`
+  in `:lustro` that `:lustro-noop` does not have, for every pair in the
+  `facadeParity { }` block of the root build. Code that uses such an API
+  compiles in the debug build and fails in the release build. It compares the
+  API dumps of the two halves: the types, their supertypes, and their members,
+  constructors and protected members included. A public member that a class
+  gets from an internal interface counts too: keep such an interface off the
+  public class, as `NetworkDebugTab` does with an internal object that it holds.
+  The cross-variant `:sample` compile (debug with `:lustro`, release with
+  `:lustro-noop`) is a third check, for what the sample calls.
 - Do not promote public functions to `inline` or rename public default-value
   parameters.
 - Deprecate for a full minor cycle (with `ReplaceWith` where the migration is
@@ -451,10 +454,18 @@ version. `main` takes changes only through pull requests.
    to the same version. Update the coordinates in the docs (`checkDocsVersion`
    says where), and move the `[Unreleased]` entries of `CHANGELOG.md` under the
    version.
-2. After the merge, push the tag `v<version>` on the merge commit. Before it
-   publishes anything, `release.yml` stops when the tag differs from
+2. After the merge, wait until the CI run of the merge commit on `main` has
+   passed, then push the tag `v<version>` on that commit. Before it publishes
+   anything, `release.yml` stops when the tag's commit is not on `main`, when
+   it has no passed CI run of a push to `main`
+   (`.github/scripts/check_release_commit.py`), when the tag differs from
    `VERSION_NAME`, when the version ends with `-SNAPSHOT`, or when
-   `checkCliVersion` fails.
+   `checkCliVersion` fails. When the tag came before the CI run finished, run
+   the release workflow again after the CI run has passed. The publish job runs
+   in the `release` environment, so it waits for the protection rules of that
+   environment, such as a required reviewer. Those rules, and a ruleset that
+   limits who can push `v*` tags, are repository settings: the workflow can't
+   set them.
 3. In the next pull request, set `VERSION_NAME` to the next `-SNAPSHOT`, such as
    `0.2.1-SNAPSHOT`, and `__version__` to the same version without `-SNAPSHOT`.
    The docs can keep the release until the next release.

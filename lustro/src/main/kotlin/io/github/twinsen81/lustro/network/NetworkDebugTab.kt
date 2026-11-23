@@ -65,7 +65,7 @@ public class NetworkDebugTab private constructor(
     maxBodyCaptureBytes: Long,
     redactor: Redactor,
     classifier: NetworkClassifier,
-) : DebugTab(), NetworkCaptureProvider {
+) : DebugTab() {
     override val id: String = "network"
     override val title: String = "Network"
     override val icon: String = "🌐"
@@ -98,7 +98,7 @@ public class NetworkDebugTab private constructor(
     @Volatile
     private var requestTimeoutMs: Long = DEFAULT_REQUEST_TIMEOUT_MS
 
-    override val captureSink: io.github.twinsen81.lustro.network.NetworkCaptureSink
+    internal val captureSink: NetworkCaptureSink
         get() = store
 
     private val webSocketStore = WebSocketTrafficStore()
@@ -130,12 +130,31 @@ public class NetworkDebugTab private constructor(
 
     private val mockRuleRoutes = MockRuleRoutes(store)
 
+    // What Lustro reaches the tab through. A separate object, not an interface
+    // of the tab: the members of an interface that the tab implemented would be
+    // public members of the tab, which the no-op half does not have.
+    internal val captureProvider: NetworkCaptureProvider =
+        object : NetworkCaptureProvider {
+            override fun createInterceptor(captureEnabled: () -> Boolean): Interceptor =
+                this@NetworkDebugTab.createInterceptor(captureEnabled)
+
+            override fun createAppCaptureSink(captureEnabled: () -> Boolean): NetworkCaptureSink =
+                this@NetworkDebugTab.createAppCaptureSink(captureEnabled)
+
+            override fun wrapWebSocketFactory(delegate: WebSocket.Factory): WebSocket.Factory =
+                this@NetworkDebugTab.wrapWebSocketFactory(delegate)
+
+            override fun bindTo(host: String, port: Int) {
+                this@NetworkDebugTab.bindTo(host, port)
+            }
+        }
+
     // A factory that is already capturing is returned as it is, so wrapping
     // twice doesn't record every message twice.
-    override fun wrapWebSocketFactory(delegate: WebSocket.Factory): WebSocket.Factory =
+    internal fun wrapWebSocketFactory(delegate: WebSocket.Factory): WebSocket.Factory =
         delegate as? CapturingWebSocketFactory ?: CapturingWebSocketFactory(delegate, webSocketCapture)
 
-    override fun createInterceptor(captureEnabled: () -> Boolean): Interceptor =
+    internal fun createInterceptor(captureEnabled: () -> Boolean): Interceptor =
         LustroNetworkInterceptor(
             sink = store,
             captureEnabled = { captureEnabled() && !store.isPaused() },
@@ -147,7 +166,7 @@ public class NetworkDebugTab private constructor(
             recordRequestBody = { id, body, contentType -> store.recordRequestBody(id, body, contentType) },
         )
 
-    override fun createAppCaptureSink(captureEnabled: () -> Boolean): NetworkCaptureSink =
+    internal fun createAppCaptureSink(captureEnabled: () -> Boolean): NetworkCaptureSink =
         AppCaptureSink(
             store = store,
             captureEnabled = { captureEnabled() && !store.isPaused() },

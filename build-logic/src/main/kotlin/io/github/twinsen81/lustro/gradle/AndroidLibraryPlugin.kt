@@ -40,6 +40,7 @@ class AndroidLibraryPlugin : Plugin<Project> {
         val kotlin = extensions.getByType<KotlinAndroidProjectExtension>()
         configureKotlin(kotlin, kotlin.compilerOptions, floorClasspath = "releaseCompileClasspath")
         configureDetekt()
+        configureApiBaseline()
         extensions.create<LustroLibraryExtension>("lustroLibrary", this)
     }
 }

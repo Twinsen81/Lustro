@@ -33,6 +33,53 @@ see [DECISIONS.md](DECISIONS.md).
   `LustroToken` line, and `lustro ready` exited 6 while the app was in the
   foreground; the normal sample logged no WARN, bound port 8080, and
   answered `lustro ready` and `lustro meta`.
+
+- **Each published module asks Gradle for its own version of every other
+  Lustro module.** The plugin AARs call the `@ExperimentalDebugRoutes` API of
+  `lustro-api`, which can change in a way that breaks binaries, and nothing
+  kept the artifacts on one version. An app that moved `lustro` to a new
+  version and kept an older `lustro-logs`, as a Dependabot pull request for
+  one artifact does, could fail with `NoSuchMethodError` in its debug build.
+  Now the `lustro.publishing` convention plugin adds a dependency constraint
+  on each other published module at the module's own version. So Gradle takes,
+  for all Lustro modules of the app, the highest version that one of them asks
+  for. A constraint adds no module, so the release classpath with the no-op
+  halves does not get the runtime halves. The constraints are in the API and
+  runtime variants of each `.module` file, and in the `dependencyManagement`
+  of each POM. A new task, `checkPublishedConstraints`, fails when the module
+  metadata of a module does not have them, and CI runs it. The install page
+  says to keep the artifacts on one version. Verified: the 14 `.module` files
+  of `publishToMavenLocal` each ask for the 13 other modules, and the consumer
+  check passes in its three configurations.
+
+- **A committed API baseline for every published module, and a facade check
+  that sees constructors, default arguments, protected members, and members
+  from internal interfaces.** Only `lustro-api` had a baseline of the binary
+  compatibility validator (BCV), because BCV 0.18 registers no tasks for the
+  Android modules, which compile with AGP's built-in Kotlin. So a change to a
+  public API of `lustro`, of a plugin, or of a no-op half that both halves of
+  a pair made in the same way passed CI. Now the `lustro.android-library`
+  convention plugin registers `apiBuild`, `apiCheck`, and `apiDump` in each
+  Android module with BCV's own task types, over the module's compiled release
+  classes, which are the classes of the published AAR. Each of the twelve
+  Android modules commits `api/<module>.api`, and `./gradlew apiCheck` checks
+  them with the one of `lustro-api`; `./gradlew apiDump` writes them again.
+  `checkFacadeParity` read the release classes with `javap -public`, and
+  dropped constructors, the `$default` methods of default arguments, and
+  protected members. It also took out the members that a class gets from any
+  Lustro supertype, also from an internal one. Now it compares the BCV dumps
+  of the two halves: the public types of the facade packages, their headers
+  with their supertypes, and their members. It leaves out only an override of
+  a member of a public supertype with the same visibility, and the synthetic
+  constructor through which a companion calls a private constructor. New tests
+  in `build-logic/` show that a change to a public constructor fails
+  `apiCheck`, and that a pair that differs in a constructor, a protected
+  member, or a public member from an interface that is not public fails
+  `checkFacadeParity`. DECISIONS.md ("BCV / apiCheck"), CONTRIBUTING, and the
+  pull request template describe the checks. Verified: a new parameter in the
+  public constructor of `PrefsFile` made both `:lustro-prefs:apiCheck` and
+  `checkFacadeParity` fail.
+
 - **`lustro --version` prints a revision of the CLI, so that a wrapper script
   can require a CLI with a given fix (CLI revision 1).** Every build from
   `main` printed `lustro 0.1.0 (protocol 1.17)`: the version follows the
@@ -1375,6 +1422,26 @@ see [DECISIONS.md](DECISIONS.md).
   `lustro` and in `lustro-noop`, said that the server bound and is serving,
   but `start()` returns it when the server is armed, before any bind: it now
   says that, and `DISABLED` names the causes that `start()` has for it.
+
+- **`NetworkDebugTab` in `lustro` has no public members that `lustro-noop`
+  does not have.** The tab implemented the internal `NetworkCaptureProvider`,
+  so `captureSink`, `createInterceptor`, `createAppCaptureSink`, and
+  `wrapWebSocketFactory` were public members of the tab in the runtime half,
+  and the no-op half has none of them. Code that called them compiled in the
+  debug build and failed in the release build. Now the tab holds an internal
+  object that implements the interface, and the four members of the tab are
+  internal. `Lustro` reaches the tab's capture through that object, as before,
+  and also gives it the address that the server bound, for the Send panel's
+  check of requests to the server itself. `checkFacadeParity` did not see the
+  four members (see "Added": the facade check compares the API dumps now).
+  With the new check, the code before this change fails, with the four members
+  and the internal interface in the header of the class, and the code after it
+  passes. Verified with the sample on an API 34 emulator: `lustro net list`
+  and the console's Network tab listed its OkHttp, WebSocket, and platform
+  requests; a mock rule for `PUT /put` answered 418; the WebSocket from
+  `webSocketFactory` showed its messages; and `lustro send` refused the
+  server's own port 8080 and sent to port 8081.
+
 - **The console's status pill stays "Live" when the app answers with an error,
   and a running poll sets it back to "Live".** The pill shows whether the
   console reaches the app, but `debugFetch` in `shared.js` set it to "Error"
@@ -2501,6 +2568,24 @@ see [DECISIONS.md](DECISIONS.md).
   body, and a gzip response over `HttpURLConnection`.
 
 ### Changed
+
+- **A release publishes only a commit that is on `main` and that CI passed.**
+  `release.yml` published to Maven Central on a `v*` tag on any commit, and
+  checked only the version. Maven Central keeps every release, so a release
+  from a wrong commit could not be taken back. A new job, `verify`, runs
+  before anything is published: `.github/scripts/check_release_commit.py`
+  fails when the tag's commit is not on `main`, or when `ci.yml` has no passed
+  run of a push to `main` for that commit. A run of a pull request does not
+  count, because a squash merge makes a new commit. When the tag comes before
+  the CI run has finished, the job fails, and the workflow can run again
+  later. The publish job runs after it, in an environment named `release`. Its
+  protection rules, and a ruleset for `v*` tags, are repository settings. The
+  pytest tests of the script, which the CLI job of CI runs, make a git
+  repository and a fake `gh`. They show that the check refuses a commit that
+  is not on `main`, a commit without a CI run, a run that failed or has not
+  finished, and a passed run of a pull request. Against this repository, the
+  check passed for the head of `main` and refused the head commit of a merged
+  pull request. The release steps in CONTRIBUTING describe it.
 
 - **The CLI makes a new adb forward on a local port that adb chooses, except
   for `lustro open`.** When the selected device had no forward to the app's

@@ -10,8 +10,14 @@ dependencies {
     compileOnly(libs.kotlin.gradle.plugin)
     compileOnly(libs.detekt.gradle.plugin)
     compileOnly(libs.vanniktech.gradle.plugin)
+    compileOnly(libs.binary.compatibility.validator)
 
     testImplementation(libs.junit)
+    // The tests make API dumps of fixture classes with BCV's library, as its worker does.
+    testImplementation(libs.binary.compatibility.validator)
+    testRuntimeOnly(libs.asm)
+    testRuntimeOnly(libs.asm.tree)
+    testRuntimeOnly(libs.kotlin.metadata.jvm)
 }
 
 gradlePlugin {

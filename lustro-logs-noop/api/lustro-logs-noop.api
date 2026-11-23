@@ -1,0 +1,24 @@
+public final class io/github/twinsen81/lustro/logs/LogsDebugTab : io/github/twinsen81/lustro/DebugTab {
+	public static final field Companion Lio/github/twinsen81/lustro/logs/LogsDebugTab$Companion;
+	public static final field DEFAULT_BUFFER_BYTES I
+	public static final field MAX_APPENDED_CHARS I
+	public final fun append (ILjava/lang/String;Ljava/lang/String;)V
+	public final fun append (ILjava/lang/String;Ljava/lang/String;Ljava/lang/Throwable;)V
+	public static synthetic fun append$default (Lio/github/twinsen81/lustro/logs/LogsDebugTab;ILjava/lang/String;Ljava/lang/String;Ljava/lang/Throwable;ILjava/lang/Object;)V
+	public static final fun create ()Lio/github/twinsen81/lustro/logs/LogsDebugTab;
+	public static final fun create (I)Lio/github/twinsen81/lustro/logs/LogsDebugTab;
+	public static final fun create (ILkotlin/jvm/functions/Function1;)Lio/github/twinsen81/lustro/logs/LogsDebugTab;
+	public fun getIcon ()Ljava/lang/String;
+	public fun getId ()Ljava/lang/String;
+	public fun getOrder ()I
+	public fun getTitle ()Ljava/lang/String;
+	public fun handle (Lio/github/twinsen81/lustro/DebugRequest;)Lio/github/twinsen81/lustro/DebugResponse;
+}
+
+public final class io/github/twinsen81/lustro/logs/LogsDebugTab$Companion {
+	public final fun create ()Lio/github/twinsen81/lustro/logs/LogsDebugTab;
+	public final fun create (I)Lio/github/twinsen81/lustro/logs/LogsDebugTab;
+	public final fun create (ILkotlin/jvm/functions/Function1;)Lio/github/twinsen81/lustro/logs/LogsDebugTab;
+	public static synthetic fun create$default (Lio/github/twinsen81/lustro/logs/LogsDebugTab$Companion;ILkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lio/github/twinsen81/lustro/logs/LogsDebugTab;
+}
+

@@ -31,53 +31,60 @@ below explain how.
 ## BCV / apiCheck
 
 Binary Compatibility Validator (`org.jetbrains.kotlinx.binary-compatibility-validator`)
-is applied at the root build with `apiValidation { ignoredProjects.add("sample") }`.
+is applied at the root build. Its `apiValidation { }` block ignores `sample`,
+`lustro-lint`, and `lustro-wire-schema`, which have no Kotlin API that an app
+compiles against.
 
-**Current coverage:** BCV registers its `apiDump`/`apiCheck` tasks for the
-pure-Kotlin `:lustro-api` module only. It does **not** register them for the
-Android library modules `:lustro` and `:lustro-noop`. The reason is the AGP 9 /
-built-in-Kotlin setup: these modules apply only `com.android.library` (never
-`org.jetbrains.kotlin.android`), and BCV 0.18.1 keys its task registration off
-the Kotlin Gradle plugin / a `KotlinProjectExtension`, which AGP's built-in
-Kotlin does not surface in the form BCV looks for. So `./gradlew apiCheck`
-validates `:lustro-api` and there is no committed `.api` baseline for the Android
-modules.
+**Coverage:** every published module with a Kotlin API has a committed
+baseline, `<module>/api/<module>.api`, and `./gradlew apiCheck` fails when the
+public API of a module differs from its baseline. BCV registers its tasks for the
+pure-Kotlin `:lustro-api` itself. For the Android modules, both halves of each
+runtime and no-op pair, BCV 0.18 registers nothing: these modules apply only
+`com.android.library` and compile with AGP 9's built-in Kotlin, never with
+`org.jetbrains.kotlin.android`, and BCV's Android support starts from that
+plugin. So the `lustro.android-library` convention plugin in `build-logic/`
+registers `apiBuild`, `apiCheck`, and `apiDump` in each of them, with BCV's own
+task types and BCV's settings from the root build. Their `apiBuild` reads the
+module's compiled release classes (the output of `compileReleaseKotlin` and
+`compileReleaseJavaWithJavac`), which are the classes of the published AAR. The
+dump format and the failure message are BCV's. `./gradlew apiDump` writes every
+baseline again: a pull request that changes the public API commits the new
+baseline and says why.
 
-**What this means for guarantees today:**
+**Facade parity:** `checkFacadeParity` (the `lustro.facade-parity` plugin in
+`build-logic/`, applied at the root) compares the runtime and no-op halves of
+each pair that the `facadeParity { }` block of the root build lists. It reads
+the API dumps that the `apiBuild` tasks of the two modules write, so it sees
+what BCV sees: constructors, the `$default` forms of default arguments,
+protected members, and the public members that a class gets from an interface
+that is not public. For the public types in the facade packages of the pair
+(`io.github.twinsen81.lustro` and `io.github.twinsen81.lustro.network` for
+`:lustro` and `:lustro-noop`), it compares the types, their headers with
+modifiers and supertypes, and their members, and fails on any difference. It
+leaves out two things that differ between the halves without a change to what a
+consumer compiles against:
 
-- `:lustro-api` (the frozen public SPI that both runtimes depend on) **is**
-  BCV-validated; its baseline lives at `lustro-api/api/lustro-api.api` and
-  `apiCheck` fails on any unintended change to that surface.
-- Runtime/no-op facade parity (`:lustro` vs `:lustro-noop`) is gated by **two**
-  independent checks:
-  1. The **cross-variant `:sample` compile** (debug → `:lustro`, release →
-     `:lustro-noop`): a signature drift between the two facades fails one of the
-     two variants.
-  2. A dedicated **`checkFacadeParity`** Gradle task (the
-     `lustro.facade-parity` plugin in `build-logic/`, applied at the root), the
-     BCV-Android follow-up suggested in this note. It compares each runtime and
-     no-op pair that the `facadeParity { }` block of the root build lists; for
-     `:lustro` and `:lustro-noop`, the facade packages are
-     `io.github.twinsen81.lustro` and `io.github.twinsen81.lustro.network`. It
-     runs `javap` over each module's compiled **release** classes, extracts the
-     public signatures of the facade packages, normalizes them (drops `internal`/synthetic classes, Kotlin-internal mangled
-     members, constructors, and members inherited/overridden from a supertype so
-     only the members each facade type itself contributes remain), and **fails on
-     any difference**. It passes today (the two facades expose an identical
-     contributed surface) and fails if a public facade member is added to only one
-     side — verified by injecting a one-sided method and observing the failure,
-     and by the unit tests in `build-logic/`, which compile a fixture pair with a
-     member and a type on one side only. CI runs it as an explicit job; it does
-     not need BCV or a committed baseline. A plugin pair adds an entry to the
-     block.
+- a member that overrides a member of a public Lustro supertype, from the
+  module or from `:lustro-api`, with the same visibility. A consumer calls it
+  through the supertype in both halves.
+- the synthetic constructor through which a companion calls a private
+  constructor. Its parameters are those of the private constructor, and javac
+  refuses to call a synthetic member.
 
-  Combined with the `:lustro-api`-level BCV check, these gate the full public
-  surface both runtimes share.
+The unit tests in `build-logic/` compile fixture pairs that differ in a member, a
+type, a constructor, a protected member, and a public member from an interface
+that is not public, and check that each pair fails.
 
-**Revisit:** if/when a BCV version (or configuration) cooperates with AGP
-built-in Kotlin, replace or back `checkFacadeParity` with a committed BCV ABI
-dump for `:lustro`/`:lustro-noop` (`lustro/api/*.api`, `lustro-noop/api/*.api`).
-Until then, `checkFacadeParity` is the canonical Android-facade ABI gate.
+**What each check catches:** `apiCheck` catches any change to the public API of
+a module, also a change that both halves of a pair make in the same way.
+`checkFacadeParity` catches an API that only one half has: code that uses it
+compiles in the debug build and fails in the release build. The cross-variant
+`:sample` compile (debug with `:lustro`, release with `:lustro-noop`) is a third
+check, for what the sample calls.
+
+**Revisit:** when a BCV release registers its tasks for AGP's built-in Kotlin,
+remove the tasks that `lustro.android-library` registers and keep the
+baselines, which have the same format.
 
 ## Kover coverage (same AGP-built-in-Kotlin limitation)
 

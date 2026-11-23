@@ -5,14 +5,13 @@ import okhttp3.Interceptor
 import okhttp3.WebSocket
 
 /**
- * Internal bridge implemented by the network tab so `Lustro.networkInterceptor()`
- * can find the registered tab's sink and build an interceptor without the
- * `network` facade package depending on the `internal` package's concrete types.
+ * Internal bridge that the network tab holds, so `Lustro` can build the tab's
+ * interceptor and sinks without the `network` facade package depending on the
+ * `internal` package's concrete types. The tab holds it as a separate object and
+ * does not implement it: the members of an interface that a public class
+ * implements are public members of that class, and the no-op half has none of them.
  */
 internal interface NetworkCaptureProvider {
-    /** The capture sink owned by the tab. */
-    val captureSink: NetworkCaptureSink
-
     /**
      * Builds an OkHttp interceptor that feeds this provider's sink. [captureEnabled]
      * gates capture (mock + throttle still run when capture is off).
@@ -30,4 +29,7 @@ internal interface NetworkCaptureProvider {
      * their messages into this provider's tab.
      */
     fun wrapWebSocketFactory(delegate: WebSocket.Factory): WebSocket.Factory
+
+    /** Records the live bind address so the Send panel can detect self-requests. */
+    fun bindTo(host: String, port: Int)
 }

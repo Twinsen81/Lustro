@@ -1,148 +1,128 @@
 package io.github.twinsen81.lustro.gradle
 
 import org.gradle.api.GradleException
-import java.io.File
 
 /**
- * The public facade of one module: the public types in its facade packages, and the member
- * signatures that each of those types contributes itself.
+ * The public facade of one module: the public types in its facade packages, and the signatures
+ * that each of those types contributes itself: its header, with its modifiers and supertypes, and
+ * its members.
  */
 internal class Facade(val signatures: Set<String>, val types: Set<String>)
 
 /**
- * Reads a module's facade from its compiled classes with `javap -public`, and normalizes away
- * what differs between a runtime and a no-op half without changing the API a consumer compiles
- * against: internal and synthetic members, constructors, and the members that a type inherits or
- * overrides from a supertype in `io.github.twinsen81`. A class that javap cannot read is an error,
- * so that drift cannot pass as an empty diff.
- *
- * [sharedClasspath] holds the supertypes that both halves extend, such as the :lustro-api SPI.
+ * One class of an API dump that the binary compatibility validator (BCV) writes: the [header]
+ * line without its `{`, such as `public final class a/b/C : a/b/D`, and the [members] lines.
  */
-internal class FacadeReader(private val javapExecutable: String, private val sharedClasspath: Collection<File>) {
+internal class DumpedClass(val name: String, val header: String, val supertypes: List<String>, val members: List<String>)
 
-    fun read(classesRoot: File, packages: List<String>): Facade {
-        if (!classesRoot.isDirectory) {
-            throw GradleException("checkFacadeParity: no classes at $classesRoot. Did the Kotlin compile task run?")
-        }
-        val classpath = (listOf(classesRoot) + sharedClasspath).joinToString(File.pathSeparator) { it.absolutePath }
-        val signatures = sortedSetOf<String>()
-        val types = sortedSetOf<String>()
+private val classHeader = Regex("""^(.*\bclass) (\S+?)(?: : (.+))?$""")
 
-        for (pkg in packages) {
-            val pkgDir = File(classesRoot, pkg.replace('.', '/'))
-            if (!pkgDir.isDirectory) continue
-            // Direct children only: a subpackage is a facade package only when it is
-            // in the list, so `internal` packages stay out.
-            val classFiles = pkgDir.listFiles { f -> f.isFile && f.name.endsWith(".class") }.orEmpty().sortedBy { it.name }
-            for (classFile in classFiles) {
-                val fqcn = "$pkg.${classFile.name.removeSuffix(".class")}"
-                // Skip synthetic anonymous classes: a `$` segment that starts with a digit.
-                if (fqcn.split('$').drop(1).any { it.firstOrNull()?.isDigit() == true }) continue
-
-                val header = javap(classpath, fqcn).lines
-                // Track every public facade type, even one that contributes no declared
-                // members, so that a type on one side only fails the diff.
-                val headerLine = header.firstOrNull { it.contains(" class ") || it.contains(" interface ") }
-                if (headerLine != null && isPublicTypeHeader(headerLine)) {
-                    types += fqcn
-                }
-                // Gather the members that the supertypes declare, transitively, so that
-                // inherited and overridden members can be subtracted.
-                val inherited = mutableSetOf<String>()
-                val seen = mutableSetOf<String>()
-                val queue = ArrayDeque(supertypesOf(header))
-                while (queue.isNotEmpty()) {
-                    val supertype = queue.removeFirst()
-                    if (!seen.add(supertype)) continue
-                    val supertypeHeader = javap(classpath, supertype).lines
-                    inherited += declaredMembers(supertypeHeader, supertype)
-                    queue += supertypesOf(supertypeHeader)
-                }
-                declaredMembers(header, fqcn)
-                    .filterNot { it in inherited }
-                    .forEach { signatures += "$fqcn :: $it" }
+/** Reads the text of a BCV API dump, the format of an `api/<module>.api` file, by class name. */
+internal fun parseApiDump(text: String, source: String): Map<String, DumpedClass> {
+    val classes = linkedMapOf<String, DumpedClass>()
+    var header: String? = null
+    val members = mutableListOf<String>()
+    text.lines().forEachIndexed { index, raw ->
+        val line = raw.trim()
+        when {
+            header == null && line.isEmpty() -> Unit
+            header == null && line.endsWith("{") -> header = line.removeSuffix("{").trim()
+            header != null && line == "}" -> {
+                val match = classHeader.matchEntire(header!!)
+                    ?: throw GradleException("checkFacadeParity: $source: no class name in the line '$header'.")
+                val name = match.groupValues[2]
+                val supertypes = match.groupValues[3].split(",").map { it.trim() }.filter { it.isNotEmpty() }
+                classes[name] = DumpedClass(name, header!!, supertypes, members.toList())
+                header = null
+                members.clear()
             }
+            header != null && line.isNotEmpty() -> members += line
+            header != null -> Unit
+            else -> throw GradleException("checkFacadeParity: $source, line ${index + 1}: '$line' is not a class header.")
         }
-        return Facade(signatures, types)
     }
+    if (header != null) throw GradleException("checkFacadeParity: $source: the class '$header' has no closing '}'.")
+    return classes
+}
 
-    private fun javap(classpath: String, fqcn: String): JavapResult {
-        val process = ProcessBuilder(javapExecutable, "-public", "-classpath", classpath, fqcn)
-            .redirectErrorStream(false)
-            .start()
-        val out = process.inputStream.bufferedReader().readText()
-        val err = process.errorStream.bufferedReader().readText().trim()
-        val code = process.waitFor()
-        if (code != 0) {
-            throw GradleException(
-                "checkFacadeParity: javap failed (exit $code) resolving '$fqcn'. A class javap " +
-                    "cannot read contributes no signatures and would hide facade drift. Fix the " +
-                    "classpath or the class before trusting this gate." +
-                    if (err.isNotEmpty()) "\n  javap stderr: $err" else "",
-            )
-        }
-        return JavapResult(out.lines())
+/**
+ * The facade of a module whose API dump is [module], in the [packages] that make its facade. A
+ * subpackage is in the facade only when it is in the list, so `internal` packages stay out.
+ *
+ * BCV has already removed internal and private members and internal classes, and kept the
+ * synthetic `$default` forms that a Kotlin caller of a default argument calls. A public member that
+ * a class gets from a supertype that is not public, such as an internal interface, is in the dump
+ * of the class itself. Two normalizations remain, for what differs between a runtime and a no-op
+ * half without changing the API that a consumer compiles against:
+ *  - a member that overrides a member of a public Lustro supertype, from [module] or from
+ *    [shared], with the same visibility: a consumer calls it through the supertype either way.
+ *  - the synthetic constructor that Kotlin adds so that a companion can call a private
+ *    constructor. Its parameters are the private constructor's, and javac refuses to call it.
+ */
+internal fun readFacade(module: Map<String, DumpedClass>, shared: Map<String, DumpedClass>, packages: List<String>): Facade {
+    val known = shared + module
+    val facadePackages = packages.map { it.replace('.', '/') }.toSet()
+    val signatures = sortedSetOf<String>()
+    val types = sortedSetOf<String>()
+    for (dumped in module.values) {
+        if (dumped.name.substringBeforeLast('/') !in facadePackages) continue
+        val type = dumped.name.replace('/', '.')
+        types += type
+        signatures += "$type :: ${dumped.header}"
+        val inherited = inheritedMembers(dumped, known)
+        val constructors = dumped.members.filter { "fun <init> " in it && !isSynthetic(it) }.map { descriptorOf(it) }.toSet()
+        dumped.members
+            .filterNot { overrideKey(it) in inherited }
+            .filterNot { isPrivateConstructorAccessor(it, constructors) }
+            .forEach { signatures += "$type :: $it" }
     }
+    return Facade(signatures, types)
+}
 
-    private class JavapResult(val lines: List<String>)
-
-    private companion object {
-        // Kotlin's JVM name for an `internal` member: `name$module`. The module
-        // suffix depends on the build, so match any.
-        val mangledInternalName = Regex("""^\w+\$\w+$""")
-
-        val modifierKeywords = setOf(
-            "public", "protected", "static", "final", "abstract", "default",
-            "synchronized", "native", "transient", "volatile", "strictfp",
-        )
-
-        fun methodNameToken(memberLine: String): String? {
-            val beforeParen = memberLine.substringBefore('(', missingDelimiterValue = "")
-            if (beforeParen.isEmpty()) return null // no '(' -> a field
-            return beforeParen.trim().split(Regex("""\s+""")).lastOrNull()
-        }
-
-        fun isMangledInternal(memberLine: String): Boolean =
-            methodNameToken(memberLine)?.let { mangledInternalName.matches(it) } == true
-
-        fun supertypesOf(headerLines: List<String>): List<String> {
-            val header = headerLines.firstOrNull { it.contains(" class ") || it.contains(" interface ") }
-                ?: return emptyList()
-            val result = mutableListOf<String>()
-            Regex("""extends\s+([\w.$]+)""").find(header)?.let { result += it.groupValues[1] }
-            Regex("""implements\s+([\w.,$\s]+?)(?:\s*\{|$)""").find(header)?.let { match ->
-                match.groupValues[1].split(",").map { it.trim().substringBefore("<") }
-                    .filter { it.isNotEmpty() }.forEach { result += it }
-            }
-            // Only Lustro's own supertypes: java.lang.Object, Enum, and the like add
-            // nothing that differs between the two halves.
-            return result.map { it.substringBefore("<") }.filter { it.startsWith("io.github.twinsen81") }
-        }
-
-        fun canonicalize(member: String): String =
-            member.replace(Regex("""\s+"""), " ").trim().split(" ").dropWhile { it in modifierKeywords }.joinToString(" ")
-
-        fun declaredMembers(javapLines: List<String>, fqcn: String): List<String> {
-            val simple = fqcn.substringAfterLast('.').substringAfterLast('$')
-            // Escape the names so that a `$` or another regex metacharacter in a binary
-            // name cannot corrupt the constructor patterns.
-            val ctorByFqcn = Regex("""(^|\s)${Regex.escape(fqcn)}\(""")
-            val ctorBySimple = Regex("""(^|\s)${Regex.escape(simple)}\(""")
-            return javapLines
-                .map { it.trim() }
-                .filter { it.endsWith(";") } // member lines end with ';'
-                .filterNot { isMangledInternal(it) }
-                .filterNot { it.contains("DefaultConstructorMarker") || it.contains("access\$") }
-                // A constructor line is the type name followed by '(' with no return type
-                // before it, such as `public <pkg>.<Simple>(...)`.
-                .filterNot { ctorByFqcn.containsMatchIn(it) }
-                .filterNot { ctorBySimple.containsMatchIn(it) && !it.contains(" $simple ") }
-                .map { canonicalize(it) }
-        }
-
-        fun isPublicTypeHeader(headerLine: String): Boolean =
-            headerLine.contains(Regex("""\bpublic\b""")) && headerLine.contains(Regex("""\b(class|interface|enum)\b"""))
+/** The keys of the members that [dumped] inherits from its public Lustro supertypes, transitively. */
+private fun inheritedMembers(dumped: DumpedClass, known: Map<String, DumpedClass>): Set<String> {
+    val inherited = mutableSetOf<String>()
+    val seen = mutableSetOf<String>()
+    val queue = ArrayDeque(dumped.supertypes)
+    while (queue.isNotEmpty()) {
+        val supertype = known[queue.removeFirst()] ?: continue
+        if (!seen.add(supertype.name)) continue
+        supertype.members.mapNotNullTo(inherited) { overrideKey(it) }
+        queue += supertype.supertypes
     }
+    return inherited
+}
+
+private val memberLine = Regex("""^(public|protected)\b(.*?)\b(fun|field) (.+)$""")
+
+/**
+ * The visibility, kind, name, and descriptor of an instance member, which an override keeps; null
+ * for a constructor or a static member, which a class does not inherit.
+ */
+private fun overrideKey(member: String): String? {
+    val match = memberLine.matchEntire(member) ?: return null
+    val (visibility, modifiers, kind, rest) = match.destructured
+    if (rest.startsWith("<init> ") || "static" in modifiers.split(' ')) return null
+    return "$visibility $kind $rest"
+}
+
+private fun isSynthetic(member: String): Boolean = memberLine.matchEntire(member)?.groupValues?.get(2)?.split(' ')?.contains("synthetic") == true
+
+private fun descriptorOf(member: String): String = member.substringAfter("fun <init> ")
+
+private const val DEFAULT_CONSTRUCTOR_MARKER = "Lkotlin/jvm/internal/DefaultConstructorMarker;)V"
+
+/**
+ * A synthetic constructor whose last parameter is the marker is either the constructor that a
+ * call with default arguments calls, with the parameters of a public constructor and an `int`
+ * mask, or the accessor of a private constructor.
+ */
+private fun isPrivateConstructorAccessor(member: String, constructors: Set<String>): Boolean {
+    if ("fun <init> " !in member || !isSynthetic(member)) return false
+    val descriptor = descriptorOf(member)
+    if (!descriptor.endsWith(DEFAULT_CONSTRUCTOR_MARKER)) return false
+    val parameters = descriptor.removeSuffix(DEFAULT_CONSTRUCTOR_MARKER)
+    return !(parameters.endsWith("I") && "${parameters.removeSuffix("I")})V" in constructors)
 }
 
 /**
@@ -176,12 +156,12 @@ internal fun compareFacades(runtimeName: String, noopName: String, runtime: Faca
         }
         section("Public TYPES only in $runtimeName (missing from $noopName):", onlyRuntimeTypes)
         section("Public TYPES only in $noopName (missing from $runtimeName):", onlyNoopTypes)
-        section("Members only in $runtimeName (missing from $noopName):", onlyRuntime)
-        section("Members only in $noopName (missing from $runtimeName):", onlyNoop)
+        section("Signatures only in $runtimeName (missing from $noopName):", onlyRuntime)
+        section("Signatures only in $noopName (missing from $runtimeName):", onlyNoop)
         appendLine()
         append(
             "Both facades MUST expose the same public API so consumer code compiles " +
-                "unchanged against either. Add the type/member to BOTH modules.",
+                "unchanged against either. Add the type/member to BOTH modules, or make it internal.",
         )
     }
 }

@@ -52,7 +52,7 @@ internal class DebugTabRegistry {
      * All registered tabs, sorted by order (ties broken alphabetically by id).
      *
      * Available BEFORE [start]: `Lustro.Builder.build()` resolves the
-     * [NetworkDebugTab]/[NetworkCaptureProvider] and pushes [DebugConfig] from this
+     * [NetworkDebugTab] and its [NetworkCaptureProvider] and pushes [DebugConfig] from this
      * list while still building (the registry only freezes — and dedups — at
      * [start], which runs later inside `Lustro.start()`). Returning an empty list
      * until [start] would silently disable network capture and config injection.
