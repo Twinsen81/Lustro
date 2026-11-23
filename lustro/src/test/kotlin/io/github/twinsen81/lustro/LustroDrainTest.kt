@@ -154,8 +154,28 @@ class LustroDrainTest {
         return true
     }
 
-    /** A port that was free a moment ago, for a test that binds the same port again. */
+    /** A port that was free a moment ago. Nothing reserves it: another process can bind it first. */
     private fun freePort(): Int = ServerSocket(0).use { it.localPort }
+
+    /**
+     * Arms a [Lustro] on a fixed port and brings the app to the foreground, for a test that
+     * binds the same port again. Another process on the machine can bind the port that
+     * [freePort] returned before Lustro does. Lustro then does not listen, and tries the port
+     * again for 10 s. So this tries other ports until Lustro listens on one.
+     */
+    private fun startOnFixedPort(tabRegistry: DebugTabRegistry): Lustro {
+        repeat(FIXED_PORT_ATTEMPTS) {
+            val port = freePort()
+            val config = DebugConfig.builder().serverPort(port).build()
+            val lustro = Lustro(app, config, tabRegistry, registry).also { started.add(it) }
+            assertEquals(LustroStatus.ENABLED, lustro.start())
+            registry.currentState = Lifecycle.State.STARTED
+            if (lustro.boundPort() == port) return lustro
+            lustro.stop()
+            registry.currentState = Lifecycle.State.CREATED
+        }
+        throw AssertionError("Lustro could not bind any of $FIXED_PORT_ATTEMPTS free ports")
+    }
 
     private fun awaitDrainEnd(lustro: Lustro) {
         val deadline = System.currentTimeMillis() + 6_000
@@ -231,12 +251,8 @@ class LustroDrainTest {
         val handlerStarted = CountDownLatch(1)
         val release = CountDownLatch(1)
         val tabRegistry = DebugTabRegistry().apply { addTab(BlockingTab(handlerStarted, release, AtomicInteger())) }
-        val port = freePort()
-        val config = DebugConfig.builder().serverPort(port).build()
-        val lustro = Lustro(app, config, tabRegistry, registry).also { started.add(it) }
-        assertEquals(LustroStatus.ENABLED, lustro.start())
-        registry.currentState = Lifecycle.State.STARTED
-        assertEquals(port, lustro.boundPort())
+        val lustro = startOnFixedPort(tabRegistry)
+        val port = lustro.boundPort()
         val token = LustroTokenStore(app).token()
 
         val request = SlowRequest(port, token)
@@ -272,10 +288,7 @@ class LustroDrainTest {
         val release = CountDownLatch(1)
         val inFlight = AtomicInteger(0)
         val tabRegistry = DebugTabRegistry().apply { addTab(BlockingTab(handlerStarted, release, inFlight)) }
-        val config = DebugConfig.builder().serverPort(freePort()).build()
-        val lustro = Lustro(app, config, tabRegistry, registry).also { started.add(it) }
-        assertEquals(LustroStatus.ENABLED, lustro.start())
-        registry.currentState = Lifecycle.State.STARTED
+        val lustro = startOnFixedPort(tabRegistry)
         val request = SlowRequest(lustro.boundPort(), LustroTokenStore(app).token())
         try {
             assertTrue("handler did not start in time", handlerStarted.await(5, TimeUnit.SECONDS))
@@ -454,5 +467,9 @@ class LustroDrainTest {
         )
         assertFalse(lustro.isBound())
         uncaught.assertNothingUncaught()
+    }
+
+    private companion object {
+        const val FIXED_PORT_ATTEMPTS = 5
     }
 }

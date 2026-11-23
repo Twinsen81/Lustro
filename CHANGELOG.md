@@ -1387,6 +1387,21 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Fixed
 
+- **Tests: two drain tests no longer fail when another process binds their
+  port first.** Two tests of `LustroDrainTest` need a fixed port, because a
+  foreground during the drain binds the same port again. They took a port
+  that was free a moment before, from a `ServerSocket(0)` that they closed,
+  and another process on the machine could bind that port before Lustro did.
+  Lustro then did not listen, the request of the test had no server, and the
+  test failed after 5 s with "handler did not start in time". This happened
+  once in a local `./gradlew test`. Now the tests try another free port when
+  Lustro does not bind the first one. Lustro does not change. Verified: in
+  2,000 runs of the test in the full unit-test suite under CPU load, 4
+  failed in this way, and `lsof` showed a listening socket of another app
+  on the port; after the change, 500 runs of each test of the class passed
+  under the same load, and a port that the test held made the test bind
+  the next port.
+
 - **CI: the instrumented job fails when a module ran no instrumented test.**
   `connectedCheck` can pass with no test run: when the install of the test
   APK failed with `INSTALL_FAILED_ALREADY_EXISTS`, AGP reported
