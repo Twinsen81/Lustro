@@ -570,8 +570,13 @@ def _client_through_forward(
     # A token from the ready line is stale when the app was installed again and
     # the device dropped the new line. On a 401, the client tries the app's prefs.
     discovered = _token_was_discovered(args)
-    refresh = (lambda: token_from_prefs(args.device, getattr(args, "package", None), found)) if discovered else None
+    package = getattr(args, "package", None)
     guard = TokenGuard(found, args.device) if found.owner is not None else None
+    refresh = None
+    if guard is not None:
+        refresh = lambda: guard.token_from_prefs(package)  # noqa: E731
+    elif discovered:
+        refresh = lambda: token_from_prefs(args.device, package)  # noqa: E731
     client = LustroClient(
         endpoint.base_url, endpoint.token, refresh_token=refresh, on_warning=_print_warning, guard=guard
     )

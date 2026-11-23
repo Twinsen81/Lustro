@@ -3050,7 +3050,9 @@ see [DECISIONS.md](DECISIONS.md).
   the app with `android:process`. This covers the first request, a later
   request after one second or after a connection failed (`net poll` and
   `net wait` check while the app comes and goes), the retry with the token of
-  the prefs after a `401`, the URL of `lustro open`, and the MCP tools. When
+  the prefs after a `401`, after which the checks are for the app of that
+  token, the URL of `lustro open`, and the MCP tools. The first check uses the
+  sockets that discovery read only while they are less than one second old. When
   another uid listens, the CLI sends no request, names that app, and exits 6;
   `lustro ready` waits, as it did after the `401`. When nothing listens, it
   sends nothing and prints the cause from adb, as for a connection that fails.

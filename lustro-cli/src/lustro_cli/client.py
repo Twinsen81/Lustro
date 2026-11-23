@@ -163,8 +163,9 @@ class LustroClient:
     :param guard: called before the first request, and again before a request when
         its last check is older than ``GUARD_SECONDS`` or a connection failed since:
         it raises a :class:`LustroError` when the server on the port must not get
-        the token. For a token that discovery found, which goes only to the server
-        of the app that owns it.
+        the token, and can return the ``time.monotonic()`` of what it checked. For a
+        token that discovery found, which goes only to the server of the app that
+        owns it.
     """
 
     def __init__(
@@ -174,7 +175,7 @@ class LustroClient:
         timeout: float = 30.0,
         refresh_token: Optional[Callable[[], Optional[str]]] = None,
         on_warning: Optional[Callable[[str], None]] = None,
-        guard: Optional[Callable[[], None]] = None,
+        guard: Optional[Callable[[], Optional[float]]] = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.token = token
@@ -280,8 +281,8 @@ class LustroClient:
             return
         if self._guarded_at is not None and time.monotonic() - self._guarded_at < GUARD_SECONDS:
             return
-        self._guard()
-        self._guarded_at = time.monotonic()
+        checked_at = self._guard()
+        self._guarded_at = time.monotonic() if checked_at is None else checked_at
 
     def _open(self, url: str, data: Optional[bytes], method: str, accept: str) -> Tuple[bytes, Optional[str]]:
         headers = self._headers(accept)

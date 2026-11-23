@@ -56,10 +56,11 @@ import re
 import shlex
 import struct
 import subprocess
+import time
 from typing import Callable, Dict, Iterable, List, NamedTuple, Optional, Tuple
 
 from . import exitcodes
-from .client import LustroError
+from .client import GUARD_SECONDS, LustroError
 
 # Matches the single machine-parseable line Lustro logs at tag LustroToken:
 #   Lustro ready endpoint=http://127.0.0.1:8080 token=AbC123...
@@ -88,13 +89,15 @@ class Owner(NamedTuple):
     for a token from the log. It is ``None`` when adb can't tell. ``name`` is the app's
     package, ``None`` for the process of a line without ``--package``. ``prefs`` are the
     prefs that gave the token. ``net`` is the text of ``/proc/net/tcp`` and
-    ``/proc/net/tcp6``, read in the same adb call as the uid."""
+    ``/proc/net/tcp6``, read in the same adb call as the uid, at ``read_at``, a
+    ``time.monotonic()`` value."""
 
     uid: Optional[int] = None
     name: Optional[str] = None
     pid: Optional[str] = None
     prefs: Optional["Prefs"] = None
     net: Optional[str] = None
+    read_at: Optional[float] = None
 
 
 class Endpoint(NamedTuple):
@@ -309,11 +312,16 @@ class AppRead(NamedTuple):
     """What one adb call reads about an app. ``uid`` is the uid that ``run-as`` runs the
     app's commands with, ``None`` when ``run-as`` fails, as for a build that is not
     debuggable. ``prefs`` are its ``lustro_debug`` prefs, ``None`` when they hold no token.
-    ``net`` is ``/proc/net/tcp`` and ``tcp6``."""
+    ``net`` is ``/proc/net/tcp`` and ``tcp6``. ``read_at`` is the ``time.monotonic()`` of the read."""
 
     uid: Optional[int]
     prefs: Optional[Prefs]
     net: Optional[str]
+    read_at: float = 0.0
+
+    def owner(self, name: str) -> Owner:
+        """The owner of the token in these prefs: the app ``name``."""
+        return Owner(self.uid, name, None, self.prefs, self.net, self.read_at)
 
 
 # The real uid in /proc/<pid>/status: ``Uid:`` and the real, effective, saved, and file
@@ -337,7 +345,12 @@ def read_app(package: str, device: Optional[str] = None) -> Optional[AppRead]:
     if parts is None:
         return None
     uid = _STATUS_UID.search(parts[0])
-    return AppRead(uid=int(uid.group(1)) if uid else None, prefs=parse_prefs(parts[0]), net=_net(parts[1]))
+    return AppRead(
+        uid=int(uid.group(1)) if uid else None,
+        prefs=parse_prefs(parts[0]),
+        net=_net(parts[1]),
+        read_at=time.monotonic(),
+    )
 
 
 def app_process_uids(package: str, device: Optional[str] = None) -> Optional[Dict[str, Optional[int]]]:
@@ -359,15 +372,15 @@ def app_process_uids(package: str, device: Optional[str] = None) -> Optional[Dic
     return uids
 
 
-def read_process(pid: str, device: Optional[str] = None) -> Tuple[Optional[int], Optional[str]]:
-    """The uid of process ``pid``, ``None`` when it has ended, and ``/proc/net/tcp`` and
-    ``tcp6``, in one adb call."""
+def read_process(pid: str, device: Optional[str] = None) -> Owner:
+    """The owner of a ready line that process ``pid`` logged: its uid, ``None`` when it has
+    ended, and ``/proc/net/tcp`` and ``tcp6``, in one adb call."""
     if not pid.isdigit():
-        return None, None
+        return Owner(pid=pid)
     parts = _shell_parts(["stat -c %u /proc/{} 2>/dev/null".format(pid), _PROC_NET], device)
     if parts is None:
-        return None, None
-    return _number(parts[0]), _net(parts[1])
+        return Owner(pid=pid)
+    return Owner(uid=_number(parts[0]), pid=pid, net=_net(parts[1]), read_at=time.monotonic())
 
 
 def read_net(device: Optional[str] = None) -> Optional[str]:
@@ -758,9 +771,9 @@ def withheld(owner: Owner, host: str, port: int, net: Optional[str]) -> Optional
 class TokenGuard:
     """Checks, before a client sends the token of ``endpoint.owner``, that the server on the
     endpoint's port of the device is the owner's (see :func:`withheld`), and raises the
-    error when it is not. The first check uses ``/proc/net`` from discovery, and each later
-    check reads it again: when the app goes to the background, its server closes, and
-    another app can bind the port."""
+    error when it is not. The first check uses ``/proc/net`` from discovery while it is
+    younger than ``GUARD_SECONDS``, and each later check reads it again: when the app goes
+    to the background, its server closes, and another app can bind the port."""
 
     def __init__(self, endpoint: Endpoint, device: Optional[str] = None) -> None:
         if endpoint.owner is None:
@@ -770,17 +783,46 @@ class TokenGuard:
         self.port = endpoint.port
         self.device = device
         self._net = endpoint.owner.net
+        self._read_at = endpoint.owner.read_at
 
-    def __call__(self) -> None:
-        net, self._net = self._net, None
-        if net is None:
+    def __call__(self) -> float:
+        """Raises when the server on the port is not the owner's. Returns the
+        ``time.monotonic()`` of the read that it checked."""
+        net, read_at, self._net = self._net, self._read_at, None
+        if net is None or read_at is None or time.monotonic() - read_at >= GUARD_SECONDS:
+            read_at = time.monotonic()
             net = read_net(self.device)
         error = withheld(self.owner, self.host, self.port, net)
         if error is None:
-            return
+            return read_at
         if isinstance(error, PortHeld):
             error.name_apps(self.device)
         raise error
+
+    def token_from_prefs(self, package: Optional[str] = None) -> Optional[str]:
+        """The token in the prefs of ``package``, or of the app in the foreground, when that
+        app's server is the one on the port (see :func:`token_from_prefs`), for a retry after
+        a 401. Later checks then check that app: its token is the one that the client sends."""
+        found = _owned_prefs(self.host, self.port, self.device, package)
+        if found is None:
+            return None
+        token, self.owner = found
+        return token
+
+
+def _owned_prefs(
+    host: str, port: int, device: Optional[str], package: Optional[str]
+) -> Optional[Tuple[str, Owner]]:
+    """The token in the prefs of ``package``, or of the app in the foreground, and its owner,
+    when the server at ``host``:``port`` is that app's (see :func:`withheld`)."""
+    app = package or foreground_package(device)
+    read = read_app(app, device) if app else None
+    if not app or read is None or read.prefs is None:
+        return None
+    owner = read.owner(app)
+    if withheld(owner, host, port, read.net) is not None:
+        return None
+    return read.prefs.token, owner
 
 
 def token_from_prefs(
@@ -790,17 +832,12 @@ def token_from_prefs(
     ``endpoint`` with an ``owner``, only when the server at the endpoint is that app's (see
     :func:`withheld`): the app in the foreground can be another app than the one that
     logged the ready line."""
-    app = package or foreground_package(device)
-    if not app:
-        return None
-    read = read_app(app, device)
-    if read is None or read.prefs is None:
-        return None
     if endpoint is not None and endpoint.owner is not None:
-        owner = Owner(uid=read.uid, name=app, prefs=read.prefs)
-        if withheld(owner, endpoint.host, endpoint.port, read.net) is not None:
-            return None
-    return read.prefs.token
+        found = _owned_prefs(endpoint.host, endpoint.port, device, package)
+        return None if found is None else found[0]
+    app = package or foreground_package(device)
+    read = read_app(app, device) if app else None
+    return None if read is None or read.prefs is None else read.prefs.token
 
 
 def parse_forwards(text: str, device_port: int) -> List[Tuple[str, int]]:
@@ -899,7 +936,7 @@ def resolve(
         # the check of the token needs.
         app = read_app(package, device) if missing() else None
         if app is not None and app.prefs is not None:
-            take(app.prefs.host, app.prefs.port, app.prefs.token, Owner(app.uid, package, None, app.prefs, app.net))
+            take(app.prefs.host, app.prefs.port, app.prefs.token, app.owner(package))
         if missing():
             # The PIDs that keep the app's lines, with the uid of each: the uid of the
             # process that logged the line is the owner's.
@@ -908,17 +945,21 @@ def resolve(
             if line is not None:
                 pid = line.owner.pid if line.owner is not None else None
                 uid = uids.get(pid or "") if uids is not None else None
-                take(line.host, line.port, line.token, Owner(uid, package, pid, None, None if app is None else app.net))
+                # The sockets of the read of the prefs, which the guard reads again when
+                # the dump of the log took longer than a check holds.
+                read = (app.net, app.read_at) if app is not None else (None, None)
+                take(line.host, line.port, line.token, Owner(uid, package, pid, None, *read))
     else:
         if missing():
             line = discover_from_logcat(device)
             if line is not None:
                 pid = line.owner.pid if line.owner is not None else None
-                uid, net = read_process(pid, device) if checks and pid else (None, None)
-                take(line.host, line.port, line.token, Owner(uid=uid, pid=pid, net=net))
-                if checks and owner is not None and withheld(owner, r_host or DEFAULT_HOST, r_port, net) is not None:
+                take(line.host, line.port, line.token, read_process(pid, device) if checks and pid else Owner(pid=pid))
+                line_owner = owner
+                line_host = r_host or DEFAULT_HOST
+                if checks and line_owner is not None and withheld(line_owner, line_host, r_port, line_owner.net):
                     fallback = _from_foreground(host, device)
-                    if fallback is not None and (owner.uid is None or fallback[1] is None):
+                    if fallback is not None and (line_owner.uid is None or fallback[1] is None):
                         found = fallback[0]
                         r_host, r_port, r_token, owner = found.host, found.port, found.token, found.owner
         # The prefs of the app in the foreground, for whatever the log line didn't give:
@@ -930,7 +971,7 @@ def resolve(
             app = read_app(app_name, device) if app_name else None
             if app is not None and app.prefs is not None:
                 prefs = app.prefs
-                take(prefs.host, prefs.port, prefs.token, Owner(app.uid, app_name, None, prefs, app.net))
+                take(prefs.host, prefs.port, prefs.token, app.owner(app_name))
 
     # Fill host/port defaults last.
     if r_host is None:
@@ -969,7 +1010,7 @@ def _from_foreground(
         host=host or app.prefs.host or DEFAULT_HOST,
         port=app.prefs.port or DEFAULT_PORT,
         token=app.prefs.token,
-        owner=Owner(app.uid, app_name, None, app.prefs, app.net),
+        owner=app.owner(app_name),
     )
     return endpoint, withheld(endpoint.owner, endpoint.host, endpoint.port, app.net)
 

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+
 import adb_parts
 import pytest
 from adb_parts import listening
@@ -304,7 +306,8 @@ def test_read_app_reads_the_prefs_the_uid_and_the_sockets_in_one_adb_call(monkey
 
     monkeypatch.setattr(discovery, "_run", run)
     read = discovery.read_app("com.example.app", "emulator-5554")
-    assert read == _app(discovery.Prefs("prefstok", "127.0.0.1", 8081), net=listening((8081, APP_UID)))
+    assert read._replace(read_at=0.0) == _app(discovery.Prefs("prefstok", "127.0.0.1", 8081), net=listening((8081, APP_UID)))
+    assert read.read_at > 0
     assert len(calls) == 1
     assert calls[0][:4] == ["adb", "-s", "emulator-5554", "shell"]
     # The cat that reads the prefs runs with the app's uid, and reads its own status too.
@@ -316,12 +319,12 @@ def test_read_app_reads_the_prefs_the_uid_and_the_sockets_in_one_adb_call(monkey
 
 def test_read_app_of_an_app_without_prefs_has_its_uid_and_no_token(monkeypatch):
     monkeypatch.setattr(discovery, "_run", lambda cmd, timeout=10.0: adb_parts.join([_status(), ""]))
-    assert discovery.read_app("com.example.app") == _app()
+    assert discovery.read_app("com.example.app")._replace(read_at=0.0) == _app()
 
 
 def test_read_app_of_a_build_that_is_not_debuggable_has_no_uid_and_no_prefs(monkeypatch):
     monkeypatch.setattr(discovery, "_run", lambda cmd, timeout=10.0: adb_parts.join(["", listening()]))
-    assert discovery.read_app("com.example.app") == _app(uid=None, net=listening())
+    assert discovery.read_app("com.example.app")._replace(read_at=0.0) == _app(uid=None, net=listening())
 
 
 def test_app_process_uids_has_the_uid_of_each_process(monkeypatch):
@@ -768,7 +771,7 @@ def test_without_package_the_last_ready_line_counts_whatever_app_logged_it(monke
     endpoint = resolve(env={})
     assert _plain(endpoint) == Endpoint("127.0.0.1", 8081, "other")
     # Its owner is the process that logged it: one adb call reads its uid and the sockets.
-    assert endpoint.owner == discovery.Owner(uid=OTHER_UID, pid="3100", net=listening((8081, OTHER_UID)))
+    assert endpoint.owner._replace(read_at=None) == discovery.Owner(uid=OTHER_UID, pid="3100", net=listening((8081, OTHER_UID)))
     assert not any("pidof" in " ".join(cmd) for cmd in calls)
     assert not any("run-as" in " ".join(cmd) for cmd in calls)
 
@@ -1033,10 +1036,42 @@ def test_a_token_from_the_prefs_goes_to_a_host_on_the_network_only_when_they_nam
 def test_the_guard_uses_the_sockets_from_discovery_first_and_then_reads_them_again(monkeypatch):
     reads = []
     monkeypatch.setattr(discovery, "read_net", lambda device=None: reads.append(device) or listening((8080, OTHER_UID)))
-    endpoint = Endpoint("127.0.0.1", 8080, "t", owner=_owner(net=listening((8080, APP_UID))))
+    read_at = time.monotonic()
+    endpoint = Endpoint("127.0.0.1", 8080, "t", owner=_owner(net=listening((8080, APP_UID)), read_at=read_at))
     guard = discovery.TokenGuard(endpoint, "emulator-5554")
-    guard()
+    # The client counts the time of the check from the read.
+    assert guard() == read_at
     assert reads == []
     with pytest.raises(discovery.PortHeld):
         guard()
     assert reads == ["emulator-5554"]
+
+
+def test_the_guard_reads_the_sockets_again_when_those_of_discovery_are_old(monkeypatch):
+    # With --package and a build that is not debuggable, the dump of the log comes after the
+    # read of the sockets, and can take seconds.
+    monkeypatch.setattr(discovery, "read_net", lambda device=None: listening((8080, OTHER_UID)))
+    old = time.monotonic() - discovery.GUARD_SECONDS
+    endpoint = Endpoint("127.0.0.1", 8080, "t", owner=_owner(net=listening((8080, APP_UID)), read_at=old))
+    with pytest.raises(discovery.PortHeld):
+        discovery.TokenGuard(endpoint)()
+
+
+def test_the_guard_checks_the_owner_of_the_token_of_a_retry_after_a_401(monkeypatch):
+    # The line's process owned the first token. After a 401, the token of the prefs of the
+    # app in the foreground goes out, so the later checks check that app.
+    net = {"now": listening((8080, APP_UID))}
+    monkeypatch.setattr(discovery, "read_net", lambda device=None: net["now"])
+    monkeypatch.setattr(discovery, "foreground_package", lambda device=None: "com.example.app")
+    monkeypatch.setattr(
+        discovery, "read_app", lambda package, device=None: _app(discovery.Prefs("prefstok", "127.0.0.1", 8080), net=net["now"])
+    )
+    endpoint = Endpoint("127.0.0.1", 8080, "x", owner=discovery.Owner(uid=OTHER_UID, pid="6666"))
+    guard = discovery.TokenGuard(endpoint)
+    assert guard.token_from_prefs() == "prefstok"
+    assert (guard.owner.uid, guard.owner.name) == (APP_UID, "com.example.app")
+    guard()
+    # The process of the line binds the port again: it does not get the app's token.
+    net["now"] = listening((8080, OTHER_UID))
+    with pytest.raises(discovery.PortHeld):
+        guard()
