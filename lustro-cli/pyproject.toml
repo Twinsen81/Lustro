@@ -29,6 +29,8 @@ Homepage = "https://github.com/Twinsen81/Lustro"
 Repository = "https://github.com/Twinsen81/Lustro"
 
 [project.optional-dependencies]
+# CI installs these from requirements-test.txt, a lock with hashes: a new one goes
+# into requirements-test.in too (see CONTRIBUTING.md, "Python lock files").
 test = ["pytest>=7", "jsonschema>=4"]
 
 [project.scripts]

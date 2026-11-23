@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{ github.event_name == 'pull_request' }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0 # need the full PR commit range, not just the tip
 
@@ -58,7 +58,7 @@ jobs:
     name: Build, test, lint, API & facade checks
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up JDK + Gradle
         uses: ./.github/actions/setup
@@ -149,7 +149,7 @@ jobs:
 
       - name: Upload Kover report
         if: ${{ always() }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: kover-report
           path: lustro/build/reports/kover/report.xml
@@ -157,7 +157,7 @@ jobs:
 
       - name: Upload test + lint reports
         if: ${{ always() }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: reports
           path: |
@@ -199,7 +199,7 @@ jobs:
           - name: app minSdk 23, WorkManager 2.10
             overrides: "-PappMinSdk=23 -PworkVersion=2.10.3"
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up JDK + Gradle
         uses: ./.github/actions/setup
@@ -229,15 +229,21 @@ jobs:
       run:
         working-directory: lustro-cli
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          python-version: "3.x"
+          python-version: "3.15" # the Python of the locks: CONTRIBUTING.md, "Python lock files"
 
+      # Each package comes from requirements-test.txt, which locks the test
+      # extras of pyproject.toml and hatchling, the build backend, with hashes.
+      # So pip builds the CLI with what is installed, and --no-index makes it
+      # fail rather than download a package that the lock does not have.
       - name: Install lustro-cli (with test extras)
-        run: python -m pip install '.[test]'
+        run: |
+          python -m pip install --require-hashes -r requirements-test.txt
+          python -m pip install --no-deps --no-build-isolation --no-index .
 
       - name: Run pytest
         run: pytest -q
@@ -263,6 +269,15 @@ jobs:
           git fetch --no-tags --depth=1 origin "$BASE"
           python .github/scripts/check_cli_revision.py "$BASE" HEAD
 
+      # The owner of an action can move a tag or a branch to other code without
+      # a change in this repository, and a commit SHA always names the same
+      # code. So each `uses:` of a workflow or a composite action must name a
+      # full commit SHA, a local path, or an image digest. The script skips
+      # release.yml and snapshot.yml until they are pinned (see SKIPPED there).
+      - name: Workflows use each action at a commit SHA
+        working-directory: .
+        run: python .github/scripts/check_action_pins.py
+
       # Guard against drift between the canonical wire sources and the copies the
       # CLI vendors under src/lustro_cli/wire/. sync.py locates the repo root
       # relative to its own file, so it must run from the source tree (PYTHONPATH=src),
@@ -283,10 +298,10 @@ jobs:
     name: Debug console JS tests (node --test)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Node
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "22"
 
@@ -326,7 +341,7 @@ jobs:
           - api-level: 35
             e2e: true
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up JDK + Gradle
         uses: ./.github/actions/setup
@@ -334,9 +349,9 @@ jobs:
       # The CLI end to end installs the CLI with pip, which the runner's system
       # Python refuses (PEP 668).
       - name: Set up Python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          python-version: "3.x"
+          python-version: "3.15" # the Python of the locks: CONTRIBUTING.md, "Python lock files"
 
       - name: Enable KVM
         run: |
@@ -349,7 +364,7 @@ jobs:
       # stops at the first one that fails. So the end-to-end steps live in a
       # script file, and a failed connectedCheck saves logcat itself.
       - name: connectedCheck, then the CLI end to end on API 24 and 35
-        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
           api-level: ${{ matrix.api-level }}
           arch: x86_64
@@ -360,7 +375,7 @@ jobs:
 
       - name: Upload test reports and logcat
         if: ${{ always() }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: emulator-api-${{ matrix.api-level }}
           path: |

@@ -90,9 +90,14 @@ adb shell svc power stayon true || true
 adb shell input keyevent KEYCODE_WAKEUP || true
 adb shell wm dismiss-keyguard || true
 
+# As in the CLI's job of ci.yml: the packages come only from the lock, with
+# hashes, and pip builds the CLI with the hatchling of the lock.
 step "Install the CLI from the checkout"
 "$PYTHON" -m venv "$OUT/venv"
-"$OUT/venv/bin/python" -m pip install --quiet --disable-pip-version-check "./lustro-cli[test]"
+"$OUT/venv/bin/python" -m pip install --quiet --disable-pip-version-check \
+  --require-hashes -r lustro-cli/requirements-test.txt
+"$OUT/venv/bin/python" -m pip install --quiet --disable-pip-version-check \
+  --no-deps --no-build-isolation --no-index ./lustro-cli
 export PATH="$OUT/venv/bin:$PATH"
 
 # Each CLI call also copies its stderr to $OUT/stderr.txt, also when the caller
