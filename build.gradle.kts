@@ -67,6 +67,11 @@ if (testOkHttpVersion.isPresent) {
     }
 }
 
+// Registers `robolectricJars`: Gradle resolves the android-all jars that the
+// Robolectric tests run on, and the unit tests of the Android modules read them
+// offline, so a test downloads nothing. See gradle/robolectric.gradle.kts.
+apply(from = "gradle/robolectric.gradle.kts")
+
 // checkFacadeParity: the runtime and no-op halves of each pair must expose the
 // same public facades. The task compares the API dumps of their release classes,
 // which each module's apiBuild task writes. A new pair adds an entry. See
