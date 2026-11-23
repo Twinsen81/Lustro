@@ -40,10 +40,10 @@ SKIPPED = {
 }
 
 # A `uses:` key at the start of a line, after the dashes of a list item, or in a
-# flow mapping such as `- { uses: owner/repo@ref }`. The key can be quoted.
-USES = re.compile(
-    r"""(?:^\s*(?:-\s+)*|[{,]\s*)(?P<quote>["']?)uses(?P=quote)\s*:(?P<value>.*)$"""
-)
+# flow mapping such as `- { uses: owner/repo@ref }`. The key can be quoted. The
+# match ends at the colon, so that each key of a flow sequence such as
+# `[{uses: a}, {uses: b}]` is found.
+USES = re.compile(r"""(?:^\s*(?:-\s+)*|[{,]\s*)(?P<quote>["']?)uses(?P=quote)\s*:""")
 VALUE = re.compile(r"""\s*(?:"(?P<double>[^"]*)"|'(?P<single>[^']*)'|(?P<plain>[^\s,}#]+))""")
 COMMIT = re.compile(r"[^@\s]+@[0-9a-f]{40}")
 DOCKER_DIGEST = re.compile(r"docker://[^@\s]+@sha256:[0-9a-f]{64}")
@@ -91,7 +91,7 @@ def check_file(path: Path, name: str) -> List[Finding]:
         if line.lstrip().startswith("#"):
             continue
         for match in USES.finditer(line):
-            problem = _problem(_value(match.group("value")))
+            problem = _problem(_value(line[match.end() :]))
             if problem:
                 findings.append(Finding(name, number, problem))
     return findings

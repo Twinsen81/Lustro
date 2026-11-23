@@ -3053,7 +3053,7 @@ see [DECISIONS.md](DECISIONS.md).
   actions, not the Gradle dependencies such as NanoHTTPD, which are still
   monitored by hand. Verified: the check fails on each of the 18 `uses:` that
   had a tag, and passes after the pins; on Python 3.15, the CLI's 697 tests and
-  the 39 tests of `.github/scripts` pass with the lock installed, and the strict
+  the 40 tests of `.github/scripts` pass with the lock installed, and the strict
   docs build passes with the docs lock.
 
 - **The CLI sends a token that it found only to a server of the app that owns

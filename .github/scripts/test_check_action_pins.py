@@ -91,6 +91,14 @@ def test_flow_mapping_and_quoted_key_are_read(tmp_path: Path) -> None:
     assert "ci.yml:9: uses actions/setup-node@v7" in result.stderr
 
 
+def test_each_uses_of_a_flow_sequence_is_read(tmp_path: Path) -> None:
+    text = _workflow("./.github/actions/setup") + "  other:\n    steps: [{uses: ./.github/actions/setup}, {uses: actions/checkout@main}]\n"
+    result = _run(tmp_path, {".github/workflows/ci.yml": text})
+    assert result.returncode == 1
+    assert "ci.yml:9: uses actions/checkout@main by a tag or a branch" in result.stderr
+    assert "1 `uses:` not pinned" in result.stderr
+
+
 def test_value_on_the_next_line_fails(tmp_path: Path) -> None:
     text = _workflow("./.github/actions/setup") + "      - uses: >-\n          actions/checkout@{}\n".format(SHA)
     result = _run(tmp_path, {".github/workflows/ci.yml": text})
