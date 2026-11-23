@@ -388,6 +388,15 @@ jobs:
             if [ "${{ matrix.e2e }}" = "true" ]; then .github/scripts/cli-e2e.sh; else echo "The CLI end to end runs on API 24 and 35"; fi
         timeout-minutes: 20
 
+      # connectedCheck can pass with no test run: when the install of the test
+      # APK failed with INSTALL_FAILED_ALREADY_EXISTS, AGP reported BUILD
+      # SUCCESSFUL and 0 tests. So each module with a source file in
+      # src/androidTest must have a result file under
+      # build/outputs/androidTest-results/connected/, and each of its result
+      # files must have at least one test.
+      - name: Each module with instrumented tests ran at least one
+        run: python .github/scripts/check_connected_results.py
+
       - name: Upload test reports and logcat
         if: ${{ always() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

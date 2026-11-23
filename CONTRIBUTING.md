@@ -110,7 +110,12 @@ The test asserts which way the capture got the handlers, so a release that
 blocks it fails the test instead of turning capture off. When a new release
 fails it, update the expectation in `PlatformHttpCaptureTest`. An instrumented
 test that runs longer than 60 s fails with its name (`timeout_msec` in
-`lustro/build.gradle.kts`).
+`lustro/build.gradle.kts`). `connectedCheck` can pass with no test run, for
+example when the install of the test APK fails, so CI then runs
+`python3 .github/scripts/check_connected_results.py`: it fails when a module
+with a `.kt` or `.java` file in `src/androidTest` has no result file under
+`build/outputs/androidTest-results/connected/`, or a result file with 0 tests,
+and names those modules.
 
 `.github/scripts/cli-e2e.sh` runs the CLI against the debug sample on the
 connected device. It installs the sample, installs the CLI from the checkout

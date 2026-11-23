@@ -1387,6 +1387,20 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Fixed
 
+- **CI: the instrumented job fails when a module ran no instrumented test.**
+  `connectedCheck` can pass with no test run: when the install of the test
+  APK failed with `INSTALL_FAILED_ALREADY_EXISTS`, AGP reported
+  `BUILD SUCCESSFUL` and 0 tests, and the job would have been green. Now each
+  instrumented job runs `.github/scripts/check_connected_results.py` after
+  `connectedCheck`. Each module with a `.kt` or `.java` file in
+  `src/androidTest` must have a result file under
+  `build/outputs/androidTest-results/connected/`, and each of its result files
+  must have at least one test; otherwise the step fails with the names of
+  those modules. The cause of the failed install is not in this change.
+  Verified on an API 35 emulator: with the results of `:lustro` (5 tests) the
+  check passed; with the result file removed, and after a run with an
+  annotation filter that no test has (AGP reported `BUILD SUCCESSFUL` and
+  wrote a result with `tests="0"`), it failed and named `lustro`.
 - **CI: Robolectric takes its Android jars from Gradle, and a hang in the
   instrumented job leaves its log.** Robolectric downloaded the `android-all`
   jar of each SDK level from Maven Central while the tests ran, with no retry,
