@@ -88,6 +88,9 @@ jobs:
       - name: Published modules compile against the Kotlin floor
         run: ./gradlew checkKotlinFloor --console=plain --stacktrace
 
+      # Gradle resolves the android-all jars that Robolectric runs the tests on,
+      # and the tests read them offline, so a test downloads nothing (see
+      # gradle/robolectric.gradle.kts).
       - name: Unit + Robolectric tests
         run: ./gradlew test --console=plain --stacktrace
 
@@ -362,7 +365,16 @@ jobs:
 
       # The action runs each line of `script` as its own `sh -c` command and
       # stops at the first one that fails. So the end-to-end steps live in a
-      # script file, and a failed connectedCheck saves logcat itself.
+      # script file.
+      #
+      # A hung instrumented test fails after its own time limit (timeout_msec
+      # in lustro/build.gradle.kts), with its name in the report. Something
+      # that hangs outside a test, such as an install, ends at this step's
+      # time limit, which is below the job's, so the next step still uploads
+      # the reports and logcat. logcat goes to its file from before the tests
+      # start, so the file has the log also when the step is stopped. Its
+      # output does not go to the action's pipes, so the line does not wait
+      # for it.
       - name: connectedCheck, then the CLI end to end on API 24 and 35
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
@@ -370,8 +382,11 @@ jobs:
           arch: x86_64
           profile: Nexus 6
           script: |
-            ./gradlew connectedCheck --console=plain --stacktrace || { mkdir -p build; adb logcat -d -v threadtime > build/connected-logcat.txt; exit 1; }
+            mkdir -p build
+            adb logcat -v threadtime > build/connected-logcat.txt 2>&1 < /dev/null &
+            ./gradlew connectedCheck --console=plain --stacktrace
             if [ "${{ matrix.e2e }}" = "true" ]; then .github/scripts/cli-e2e.sh; else echo "The CLI end to end runs on API 24 and 35"; fi
+        timeout-minutes: 20
 
       - name: Upload test reports and logcat
         if: ${{ always() }}

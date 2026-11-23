@@ -1387,6 +1387,31 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Fixed
 
+- **CI: Robolectric takes its Android jars from Gradle, and a hang in the
+  instrumented job leaves its log.** Robolectric downloaded the `android-all`
+  jar of each SDK level from Maven Central while the tests ran, with no retry,
+  and when a download failed, each Robolectric test class of that level failed
+  in its setup (`MavenArtifactFetcher`). Now Gradle resolves the jars of the
+  levels that the tests run on, 28, 34, and 35, as dependencies, with its
+  retries and into the cache that CI keeps, and the unit tests of the Android
+  modules read them offline from `build/robolectric-jars` (see
+  `gradle/robolectric.gradle.kts`). In 4 of the last 200 CI runs, the API 24
+  job made no progress for 28 minutes, until GitHub cancelled it at its
+  30-minute limit, and it uploaded no report and no logcat: twice at
+  `adb install` in the CLI end to end, before that install got a limit, and
+  twice when the instrumented tests of `:lustro` started, before any result.
+  Now each instrumented test fails after 60 s with its name (the runner's
+  `timeout_msec`), the emulator step stops after 20 minutes, below the job's
+  limit, so that the next step still uploads the reports, and logcat goes to
+  `build/connected-logcat.txt` from before the tests start. The cause of the
+  hang is not known yet: 140 runs of the `:lustro` instrumented tests on an
+  API 24 emulator did not hang. With `installd` paused on that emulator, the
+  run printed the same last line as in CI and waited with no limit, also with
+  `android.experimental.testOptions.installApkTimeout` set, so a stalled
+  install is one cause that fits. Verified: with outbound network blocked and
+  an empty local Maven repository for Robolectric, `./gradlew test` passed,
+  and on the previous commit the same run failed as CI did; a test that
+  sleeps for 90 s failed after 60 s with `TestTimedOutException` and its name.
 - **SECURITY.md, CONTRIBUTING.md, the wire protocol README, the lustro skill,
   and the KDoc of `LustroStatus` say what the code does.** SECURITY.md said
   that nothing is persisted to disk except mock rules: the `lustro_debug`

@@ -24,6 +24,10 @@ android {
         // R8 rules shipped to consumers (keep public API + the NanoHTTPD engine).
         consumerProguardFiles("consumer-rules.pro")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // A test that runs longer than this fails with its name, and the run goes
+        // on with the next test. Without a limit, a hung test held the CI job until
+        // GitHub cancelled it, and the job then had no report.
+        testInstrumentationRunnerArguments["timeout_msec"] = "60000"
     }
 
     testOptions {

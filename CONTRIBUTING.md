@@ -43,6 +43,12 @@ OkHttp-side tests. Wire-protocol changes must keep the contract tests and JSON
 Schema validation green. CI does not require internet access — network tests
 run against MockWebServer fixtures.
 
+Robolectric downloads nothing while the tests run. Gradle resolves the
+`android-all` jar of each SDK level that the tests run on, and the unit tests
+of the Android modules read the jars offline from `build/robolectric-jars`. A
+test on a level that `gradle/robolectric.gradle.kts` does not list fails with
+the name of the jar that Robolectric could not find: add the level there.
+
 A change of the wire protocol version in `lustro/build.gradle.kts` also sets
 `PROTOCOL_VERSION` in `lustro-cli/src/lustro_cli/__init__.py`, which
 `lustro --version` prints: `./gradlew checkCliVersion` fails until the two are
@@ -102,7 +108,9 @@ reflection, so it has an instrumented test that needs a device or emulator:
 
 The test asserts which way the capture got the handlers, so a release that
 blocks it fails the test instead of turning capture off. When a new release
-fails it, update the expectation in `PlatformHttpCaptureTest`.
+fails it, update the expectation in `PlatformHttpCaptureTest`. An instrumented
+test that runs longer than 60 s fails with its name (`timeout_msec` in
+`lustro/build.gradle.kts`).
 
 `.github/scripts/cli-e2e.sh` runs the CLI against the debug sample on the
 connected device. It installs the sample, installs the CLI from the checkout
