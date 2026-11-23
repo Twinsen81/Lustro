@@ -35,7 +35,7 @@ Other useful targets:
 ```bash
 ./gradlew :lustro:testDebugUnitTest      # unit + Robolectric tests for :lustro
 ./gradlew test                           # all module unit tests
-./gradlew :build-logic:test              # the convention plugins, checkFacadeParity among them
+./gradlew :build-logic:test              # the convention plugins, checkFacadeParity and the API baselines among them
 ```
 
 Tests use JUnit 4, Robolectric for the Android pieces, and MockWebServer for
@@ -188,7 +188,8 @@ CI adds the Dokka output under `api/` and `wire-protocol/` when it publishes.
   - `lustro.android-library`: an Android library module. compileSdk and minSdk
     from the catalog, the `lustro_` resource prefix, no BuildConfig, toolchain
     21 with JVM 17 bytecode, explicit API, the Kotlin floor and
-    `checkKotlinFloor`, and detekt. Its `lustroLibrary { pairCapability(...) }`
+    `checkKotlinFloor`, detekt, and the API baseline (`apiCheck`, `apiDump`).
+    Its `lustroLibrary { pairCapability(...) }`
     declares the capability that both halves of a pair share.
   - `lustro.kotlin-library`: the same for a Kotlin/JVM module, such as
     `:lustro-api`.
@@ -380,26 +381,26 @@ Every commit in a pull request must carry a sign-off line.
 Lustro follows [Semantic Versioning](https://semver.org/): **major** for
 breaking changes, **minor** for additive changes, **patch** for fixes.
 
-- **Binary Compatibility Validator (`apiCheck`) must pass.** It covers
-  `:lustro-api`, the SPI both runtimes depend on, against the committed baseline
-  at `lustro-api/api/lustro-api.api`. It does **not** cover the Android modules
-  `:lustro` and `:lustro-noop`: BCV registers no tasks for them under AGP's
-  built-in Kotlin, so they have no committed baseline (see
-  [DECISIONS.md](DECISIONS.md#bcv--apicheck)). If you intentionally change the
-  SPI, regenerate the dump (`./gradlew apiDump`) and explain the change in your
-  PR.
-- **`checkFacadeParity` must pass.** It is what catches a change to the `:lustro`
-  facades (`Lustro`, `DebugConfig`, `NetworkDebugTab`, …), and to those of every
-  other pair in the `facadeParity { }` block of the root build: it compares the
-  public member signatures each facade itself contributes and fails on any
-  difference, so a method added to one side only is rejected. Two things are outside what it
-  compares, and neither is caught anywhere else, so review them by hand:
-  **constructors**, which it normalizes away, and a change made identically on
-  **both** facades, which passes it and passes `apiCheck` too because neither
-  Android module has a baseline. The cross-variant `:sample` compile (debug →
-  `:lustro`, release → `:lustro-noop`) is the third gate, and also a CI job, but
-  it only exercises what the sample actually calls. Call any change to the public
-  facades out in your PR.
+- **Binary Compatibility Validator (`apiCheck`) must pass.** Every published
+  module with a Kotlin API has a committed baseline, `<module>/api/<module>.api`:
+  `:lustro-api`, the SPI that both halves of each pair depend on, and both
+  halves of each runtime and no-op pair. BCV registers its tasks for
+  `:lustro-api` itself, and the `lustro.android-library` convention plugin
+  registers them for the Android modules, which BCV does not support under
+  AGP's built-in Kotlin (see [DECISIONS.md](DECISIONS.md#bcv--apicheck)). If you
+  change a public API on purpose, write the baselines again
+  (`./gradlew apiDump`), commit them, and explain the change in your PR.
+- **`checkFacadeParity` must pass.** It catches an API that only one half of a
+  pair has, such as a member of `Lustro`, `DebugConfig`, or `NetworkDebugTab`
+  in `:lustro` that `:lustro-noop` does not have, for every pair in the
+  `facadeParity { }` block of the root build. Code that uses such an API
+  compiles in the debug build and fails in the release build. It compares the
+  API dumps of the two halves: the types, their supertypes, and their members,
+  constructors and protected members included. A public member that a class
+  gets from an internal interface counts too: keep such an interface off the
+  public class, as `NetworkDebugTab` does with an internal object that it holds.
+  The cross-variant `:sample` compile (debug with `:lustro`, release with
+  `:lustro-noop`) is a third check, for what the sample calls.
 - Do not promote public functions to `inline` or rename public default-value
   parameters.
 - Deprecate for a full minor cycle (with `ReplaceWith` where the migration is

@@ -109,7 +109,10 @@ jobs:
       - name: Detekt
         run: ./gradlew detekt --console=plain --stacktrace
 
-      - name: Public API check (BCV; :lustro-api baseline)
+      # Each published module with a Kotlin API has a baseline in api/: BCV's
+      # own tasks for :lustro-api, and the ones that lustro.android-library
+      # registers for the Android modules (see DECISIONS.md, "BCV / apiCheck").
+      - name: Public API check (BCV; a baseline for each published module)
         run: ./gradlew apiCheck --console=plain --stacktrace
 
       # The no-op halves ship no keep rule, so R8 removes their classes or
@@ -119,8 +122,8 @@ jobs:
         run: ./gradlew :sample:assembleDebug :sample:assembleRelease :sample:checkReleaseHasNoLustroClasses --console=plain --stacktrace
 
       # The release-safe no-op half of each pair must match its runtime facade
-      # exactly, :lustro-noop to :lustro first (the BCV-Android follow-up; see the
-      # facadeParity block of the root build.gradle.kts).
+      # exactly, :lustro-noop to :lustro first. It compares the API dumps of the
+      # two halves (see the facadeParity block of the root build.gradle.kts).
       - name: Facade parity (runtime vs no-op pairs)
         run: ./gradlew checkFacadeParity --console=plain --stacktrace
 

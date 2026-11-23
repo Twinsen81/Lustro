@@ -33,6 +33,35 @@ see [DECISIONS.md](DECISIONS.md).
   `LustroToken` line, and `lustro ready` exited 6 while the app was in the
   foreground; the normal sample logged no WARN, bound port 8080, and
   answered `lustro ready` and `lustro meta`.
+
+- **A committed API baseline for every published module, and a facade check
+  that sees constructors, default arguments, protected members, and members
+  from internal interfaces.** Only `lustro-api` had a baseline of the binary
+  compatibility validator (BCV), because BCV 0.18 registers no tasks for the
+  Android modules, which compile with AGP's built-in Kotlin. So a change to a
+  public API of `lustro`, of a plugin, or of a no-op half that both halves of
+  a pair made in the same way passed CI. Now the `lustro.android-library`
+  convention plugin registers `apiBuild`, `apiCheck`, and `apiDump` in each
+  Android module with BCV's own task types, over the module's compiled release
+  classes, which are the classes of the published AAR. Each of the twelve
+  Android modules commits `api/<module>.api`, and `./gradlew apiCheck` checks
+  them with the one of `lustro-api`; `./gradlew apiDump` writes them again.
+  `checkFacadeParity` read the release classes with `javap -public`, and
+  dropped constructors, the `$default` methods of default arguments, and
+  protected members. It also took out the members that a class gets from any
+  Lustro supertype, also from an internal one. Now it compares the BCV dumps
+  of the two halves: the public types of the facade packages, their headers
+  with their supertypes, and their members. It leaves out only an override of
+  a member of a public supertype with the same visibility, and the synthetic
+  constructor through which a companion calls a private constructor. New tests
+  in `build-logic/` show that a change to a public constructor fails
+  `apiCheck`, and that a pair that differs in a constructor, a protected
+  member, or a public member from an interface that is not public fails
+  `checkFacadeParity`. DECISIONS.md ("BCV / apiCheck"), CONTRIBUTING, and the
+  pull request template describe the checks. Verified: a new parameter in the
+  public constructor of `PrefsFile` made both `:lustro-prefs:apiCheck` and
+  `checkFacadeParity` fail.
+
 - **`lustro --version` prints a revision of the CLI, so that a wrapper script
   can require a CLI with a given fix (CLI revision 1).** Every build from
   `main` printed `lustro 0.1.0 (protocol 1.17)`: the version follows the

@@ -12,7 +12,7 @@
 ## Checklist
 
 - [ ] Tests added or updated for the change
-- [ ] `./gradlew apiCheck` passes (no unintended public API changes; dump updated if intended)
+- [ ] `./gradlew apiCheck checkFacadeParity` passes (no unintended public API changes; `./gradlew apiDump` run and the baselines committed if intended)
 - [ ] `./gradlew detekt` passes
 - [ ] `CHANGELOG.md` updated under `[Unreleased]`
 - [ ] Public API changes are documented with KDoc

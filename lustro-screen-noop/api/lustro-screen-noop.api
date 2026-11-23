@@ -1,0 +1,22 @@
+public abstract interface class io/github/twinsen81/lustro/screen/ScreenContextProvider {
+	public abstract fun contextJson ()Ljava/lang/String;
+}
+
+public final class io/github/twinsen81/lustro/screen/ScreenDebugTab : io/github/twinsen81/lustro/DebugTab {
+	public static final field Companion Lio/github/twinsen81/lustro/screen/ScreenDebugTab$Companion;
+	public static final fun create (Landroid/content/Context;)Lio/github/twinsen81/lustro/screen/ScreenDebugTab;
+	public static final fun create (Landroid/content/Context;Lio/github/twinsen81/lustro/screen/ScreenContextProvider;)Lio/github/twinsen81/lustro/screen/ScreenDebugTab;
+	public fun getIcon ()Ljava/lang/String;
+	public fun getId ()Ljava/lang/String;
+	public fun getOrder ()I
+	public fun getShowInTabBar ()Z
+	public fun getTitle ()Ljava/lang/String;
+	public fun handle (Lio/github/twinsen81/lustro/DebugRequest;)Lio/github/twinsen81/lustro/DebugResponse;
+}
+
+public final class io/github/twinsen81/lustro/screen/ScreenDebugTab$Companion {
+	public final fun create (Landroid/content/Context;)Lio/github/twinsen81/lustro/screen/ScreenDebugTab;
+	public final fun create (Landroid/content/Context;Lio/github/twinsen81/lustro/screen/ScreenContextProvider;)Lio/github/twinsen81/lustro/screen/ScreenDebugTab;
+	public static synthetic fun create$default (Lio/github/twinsen81/lustro/screen/ScreenDebugTab$Companion;Landroid/content/Context;Lio/github/twinsen81/lustro/screen/ScreenContextProvider;ILjava/lang/Object;)Lio/github/twinsen81/lustro/screen/ScreenDebugTab;
+}
+

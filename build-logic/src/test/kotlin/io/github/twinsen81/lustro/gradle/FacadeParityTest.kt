@@ -1,6 +1,7 @@
 package io.github.twinsen81.lustro.gradle
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -8,11 +9,11 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
-import javax.tools.ToolProvider
 
 /**
- * Compiles a small runtime and no-op pair with javac and compares their facades, as
- * `checkFacadeParity` does for each pair of the root build.
+ * Compiles a small runtime and no-op pair with javac, writes their API dumps with BCV's library, and
+ * compares their facades, as `checkFacadeParity` does for each pair of the root build. The tests
+ * of Kotlin's own forms, which javac does not write, use the text of a dump.
  */
 class FacadeParityTest {
     @get:Rule
@@ -23,14 +24,17 @@ class FacadeParityTest {
     // A supertype that both halves implement, as the facades of a real pair
     // implement DebugTab from :lustro-api.
     private val shared by lazy {
-        compile(
+        compileJava(
+            tmp,
             "shared",
-            "Base" to """
-                package $pkg.api;
-                public interface Base {
-                    default String id() { return "base"; }
-                }
-            """,
+            sources = listOf(
+                "Base" to """
+                    package $pkg.api;
+                    public interface Base {
+                        default String id() { return "base"; }
+                    }
+                """,
+            ),
         )
     }
 
@@ -49,8 +53,8 @@ class FacadeParityTest {
     private val noopWidget = """
         package $pkg;
         public final class Widget implements $pkg.api.Base {
-            public Widget() {}
-            public static Widget create(String name) { return new Widget(); }
+            public Widget(String name) {}
+            public static Widget create(String name) { return new Widget(name); }
             public String getName() { return ""; }
         }
     """
@@ -74,9 +78,9 @@ class FacadeParityTest {
         val report = compare(runtime, noop)
 
         assertNotNull(report)
-        assertTrue(report!!, report.contains("Members only in :fixture-noop (missing from :fixture):"))
-        assertTrue(report, report.contains("  + $pkg.Widget :: void reset()"))
-        assertTrue(report, !report.contains("Members only in :fixture (missing"))
+        assertTrue(report!!, report.contains("Signatures only in :fixture-noop (missing from :fixture):"))
+        assertTrue(report, report.contains("  + $pkg.Widget :: public fun reset ()V"))
+        assertFalse(report, report.contains("Signatures only in :fixture (missing"))
     }
 
     @Test
@@ -89,6 +93,57 @@ class FacadeParityTest {
         assertNotNull(report)
         assertTrue(report!!, report.contains("Public TYPES only in :fixture (missing from :fixture-noop):"))
         assertTrue(report, report.contains("  + $pkg.Options"))
+    }
+
+    @Test
+    fun `a constructor that differs fails`() {
+        val runtime = compile("runtime", "Widget" to runtimeWidget)
+        val noop = compile(
+            "noop",
+            "Widget" to noopWidget
+                .replace("public Widget(String name) {}", "public Widget() {}")
+                .replace("new Widget(name)", "new Widget()"),
+        )
+
+        val report = compare(runtime, noop)
+
+        assertNotNull(report)
+        assertTrue(report!!, report.contains("  + $pkg.Widget :: public fun <init> (Ljava/lang/String;)V"))
+        assertTrue(report, report.contains("  + $pkg.Widget :: public fun <init> ()V"))
+    }
+
+    @Test
+    fun `a protected member on one side only fails`() {
+        val panel = "package $pkg; public class Panel { public void show() {} }"
+        val runtime = compile(
+            "runtime",
+            "Widget" to runtimeWidget,
+            "Panel" to panel.replace("public void show() {}", "public void show() {} protected void refresh() {}"),
+        )
+        val noop = compile("noop", "Widget" to noopWidget, "Panel" to panel)
+
+        val report = compare(runtime, noop)
+
+        assertNotNull(report)
+        assertTrue(report!!, report.contains("  + $pkg.Panel :: protected fun refresh ()V"))
+    }
+
+    @Test
+    fun `a public member that comes from an interface that is not public fails`() {
+        // A package-private interface is not public, as an internal Kotlin interface is not.
+        val runtime = compile(
+            "runtime",
+            "Hidden" to "package $pkg; interface Hidden { String secret(); }",
+            "Widget" to runtimeWidget
+                .replace("implements $pkg.api.Base", "implements $pkg.api.Base, Hidden")
+                .replace("private void log() {}", "public String secret() { return name; }"),
+        )
+        val noop = compile("noop", "Widget" to noopWidget)
+
+        val report = compare(runtime, noop)
+
+        assertNotNull(report)
+        assertTrue(report!!, report.contains("  + $pkg.Widget :: public fun secret ()Ljava/lang/String;"))
     }
 
     @Test
@@ -118,40 +173,89 @@ class FacadeParityTest {
     }
 
     @Test
-    fun `the facade lists the public types and their own members`() {
+    fun `the facade lists the public types, their headers, and their own members`() {
         val runtime = compile("runtime", "Widget" to runtimeWidget)
 
-        val facade = reader().read(runtime, listOf(pkg))
+        val facade = readFacade(parseApiDump(apiDump(runtime), "runtime"), sharedDump(), listOf(pkg))
 
+        val type = "io/github/twinsen81/fixture/Widget"
         assertEquals(setOf("$pkg.Widget"), facade.types)
         assertEquals(
-            setOf("$pkg.Widget :: $pkg.Widget create(java.lang.String);", "$pkg.Widget :: java.lang.String getName();"),
+            setOf(
+                "$pkg.Widget :: public final class $type : io/github/twinsen81/fixture/api/Base",
+                "$pkg.Widget :: public fun <init> (Ljava/lang/String;)V",
+                "$pkg.Widget :: public static fun create (Ljava/lang/String;)L$type;",
+                "$pkg.Widget :: public fun getName ()Ljava/lang/String;",
+            ),
             facade.signatures,
         )
     }
 
-    private fun compare(runtime: File, noop: File, packages: List<String> = listOf(pkg)): String? {
-        val reader = reader()
-        return compareFacades(":fixture", ":fixture-noop", reader.read(runtime, packages), reader.read(noop, packages))
-    }
-
-    private fun reader() = FacadeReader(File(System.getProperty("java.home"), "bin/javap").absolutePath, listOf(shared))
-
-    /** Compiles the Java [sources], each a simple name and its text, into a new directory. */
-    private fun compile(name: String, vararg sources: Pair<String, String>): File {
-        val srcDir = tmp.newFolder("$name-src")
-        val outDir = tmp.newFolder("$name-classes")
-        val files = sources.map { (simpleName, text) ->
-            val packageName = Regex("""package\s+([\w.]+);""").find(text)!!.groupValues[1]
-            File(srcDir, "${packageName.replace('.', '/')}/$simpleName.java").apply {
-                parentFile.mkdirs()
-                writeText(text.trimIndent())
+    @Test
+    fun `the accessor of a private constructor is left out, and a constructor with default arguments is not`() {
+        val marker = "Lkotlin/jvm/internal/DefaultConstructorMarker;"
+        val runtime = """
+            public final class a/Tab {
+            	public fun <init> (Ljava/lang/String;)V
+            	public synthetic fun <init> (Ljava/lang/String;I$marker)V
+            	public synthetic fun <init> (La/internal/Store;$marker)V
             }
-        }
-        val classpath = if (name == "shared") emptyList() else listOf("-classpath", shared.path)
-        val args = classpath + listOf("-d", outDir.path) + files.map { it.path }
-        val status = ToolProvider.getSystemJavaCompiler().run(null, null, null, *args.toTypedArray())
-        assertEquals("javac failed for $name", 0, status)
-        return outDir
+        """.trimIndent()
+        val noop = """
+            public final class a/Tab {
+            	public fun <init> (Ljava/lang/String;)V
+            	public synthetic fun <init> (Ljava/lang/String;I$marker)V
+            }
+        """.trimIndent()
+
+        assertNull(compareDumps(runtime, noop, listOf("a")))
+        val noDefaults = noop.lines().filterNot { "synthetic" in it }.joinToString("\n")
+        val report = compareDumps(runtime, noDefaults, listOf("a"))
+        assertNotNull(report)
+        assertTrue(report!!, report.contains("  + a.Tab :: public synthetic fun <init> (Ljava/lang/String;I$marker)V"))
     }
+
+    @Test
+    fun `an override of a public supertype's member is left out only with the same visibility`() {
+        val shared = """
+            public abstract class a/Base {
+            	public fun <init> ()V
+            	protected fun onStart ()V
+            	public fun getId ()Ljava/lang/String;
+            }
+        """.trimIndent()
+        val noop = """
+            public final class b/Tab : a/Base {
+            	public fun <init> ()V
+            }
+        """.trimIndent()
+        val runtime = noop.replace(
+            "public fun <init> ()V",
+            "public fun <init> ()V\n\tprotected fun onStart ()V\n\tpublic final fun getId ()Ljava/lang/String;",
+        )
+
+        assertNull(compareDumps(runtime, noop, listOf("b"), shared))
+        val widened = runtime.replace("protected fun onStart", "public fun onStart")
+        val report = compareDumps(widened, noop, listOf("b"), shared)
+        assertNotNull(report)
+        assertTrue(report!!, report.contains("  + b.Tab :: public fun onStart ()V"))
+    }
+
+    private fun compare(runtime: File, noop: File, packages: List<String> = listOf(pkg)): String? =
+        compareDumps(apiDump(runtime), apiDump(noop), packages, apiDump(shared))
+
+    private fun compareDumps(runtime: String, noop: String, packages: List<String>, shared: String = ""): String? {
+        val sharedClasses = parseApiDump(shared, "shared")
+        return compareFacades(
+            ":fixture",
+            ":fixture-noop",
+            readFacade(parseApiDump(runtime, "runtime"), sharedClasses, packages),
+            readFacade(parseApiDump(noop, "noop"), sharedClasses, packages),
+        )
+    }
+
+    private fun sharedDump() = parseApiDump(apiDump(shared), "shared")
+
+    private fun compile(name: String, vararg sources: Pair<String, String>): File =
+        compileJava(tmp, name, sources.toList(), classpath = listOf(shared))
 }

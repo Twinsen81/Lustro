@@ -1,0 +1,186 @@
+public final class io/github/twinsen81/lustro/DebugConfig {
+	public static final field Companion Lio/github/twinsen81/lustro/DebugConfig$Companion;
+	public static final field DEFAULT Lio/github/twinsen81/lustro/DebugConfig;
+	public synthetic fun <init> (ZILjava/lang/String;ZLjava/lang/String;JIJIIJJIIJLjava/util/List;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public static final fun builder ()Lio/github/twinsen81/lustro/DebugConfig$Builder;
+	public final fun getAllowNonDebuggableBuilds ()Z
+	public final fun getAllowedOrigins ()Ljava/util/List;
+	public final fun getAppServerBaseUrl ()Ljava/lang/String;
+	public final fun getBindAddress ()Ljava/lang/String;
+	public final fun getBindFallback ()Z
+	public final fun getCaptureBudgetBytes ()J
+	public final fun getMaxBodyCaptureBytes ()J
+	public final fun getMaxCaptureTransactions ()I
+	public final fun getMaxCaptureWebSockets ()I
+	public final fun getMaxConcurrentRequests ()I
+	public final fun getMaxRequestBodyBytes ()J
+	public final fun getMaxWebSocketEvents ()I
+	public final fun getRequestQueueCapacity ()I
+	public final fun getRequestTimeoutMs ()J
+	public final fun getServerPort ()I
+	public final fun getWebSocketCaptureBudgetBytes ()J
+}
+
+public final class io/github/twinsen81/lustro/DebugConfig$Builder {
+	public fun <init> ()V
+	public final fun allowNonDebuggableBuilds (Z)Lio/github/twinsen81/lustro/DebugConfig$Builder;
+	public final fun allowedOrigins (Ljava/util/List;)Lio/github/twinsen81/lustro/DebugConfig$Builder;
+	public final fun appServerBaseUrl (Ljava/lang/String;)Lio/github/twinsen81/lustro/DebugConfig$Builder;
+	public final fun bindAddress (Ljava/lang/String;)Lio/github/twinsen81/lustro/DebugConfig$Builder;
+	public final fun bindFallback (Z)Lio/github/twinsen81/lustro/DebugConfig$Builder;
+	public final fun build ()Lio/github/twinsen81/lustro/DebugConfig;
+	public final fun captureBudgetBytes (J)Lio/github/twinsen81/lustro/DebugConfig$Builder;
+	public final fun maxBodyCaptureBytes (J)Lio/github/twinsen81/lustro/DebugConfig$Builder;
+	public final fun maxCaptureTransactions (I)Lio/github/twinsen81/lustro/DebugConfig$Builder;
+	public final fun maxCaptureWebSockets (I)Lio/github/twinsen81/lustro/DebugConfig$Builder;
+	public final fun maxConcurrentRequests (I)Lio/github/twinsen81/lustro/DebugConfig$Builder;
+	public final fun maxRequestBodyBytes (J)Lio/github/twinsen81/lustro/DebugConfig$Builder;
+	public final fun maxWebSocketEvents (I)Lio/github/twinsen81/lustro/DebugConfig$Builder;
+	public final fun requestQueueCapacity (I)Lio/github/twinsen81/lustro/DebugConfig$Builder;
+	public final fun requestTimeoutMs (J)Lio/github/twinsen81/lustro/DebugConfig$Builder;
+	public final fun serverPort (I)Lio/github/twinsen81/lustro/DebugConfig$Builder;
+	public final fun webSocketCaptureBudgetBytes (J)Lio/github/twinsen81/lustro/DebugConfig$Builder;
+}
+
+public final class io/github/twinsen81/lustro/DebugConfig$Companion {
+	public final fun builder ()Lio/github/twinsen81/lustro/DebugConfig$Builder;
+}
+
+public final class io/github/twinsen81/lustro/Lustro {
+	public static final field Companion Lio/github/twinsen81/lustro/Lustro$Companion;
+	public static final fun builder (Landroid/app/Application;)Lio/github/twinsen81/lustro/Lustro$Builder;
+	public final fun endpoint ()Lio/github/twinsen81/lustro/LustroEndpoint;
+	public final fun networkCaptureSink ()Lio/github/twinsen81/lustro/network/NetworkCaptureSink;
+	public final fun networkInterceptor ()Lokhttp3/Interceptor;
+	public final fun start ()Lio/github/twinsen81/lustro/LustroStatus;
+	public final fun stop ()V
+	public final fun webSocketFactory (Lokhttp3/WebSocket$Factory;)Lokhttp3/WebSocket$Factory;
+}
+
+public final class io/github/twinsen81/lustro/Lustro$Builder {
+	public final fun addTab (Lio/github/twinsen81/lustro/DebugTab;)Lio/github/twinsen81/lustro/Lustro$Builder;
+	public final fun build ()Lio/github/twinsen81/lustro/Lustro;
+	public final fun config (Lio/github/twinsen81/lustro/DebugConfig;)Lio/github/twinsen81/lustro/Lustro$Builder;
+}
+
+public final class io/github/twinsen81/lustro/Lustro$Companion {
+	public final fun builder (Landroid/app/Application;)Lio/github/twinsen81/lustro/Lustro$Builder;
+}
+
+public final class io/github/twinsen81/lustro/LustroEndpoint {
+	public final fun getHost ()Ljava/lang/String;
+	public final fun getLanHosts ()Ljava/util/List;
+	public final fun getLanUrls ()Ljava/util/List;
+	public final fun getPort ()I
+	public final fun getToken ()Ljava/lang/String;
+	public final fun getUrl ()Ljava/lang/String;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/twinsen81/lustro/LustroStatus : java/lang/Enum {
+	public static final field DISABLED Lio/github/twinsen81/lustro/LustroStatus;
+	public static final field ENABLED Lio/github/twinsen81/lustro/LustroStatus;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lio/github/twinsen81/lustro/LustroStatus;
+	public static fun values ()[Lio/github/twinsen81/lustro/LustroStatus;
+}
+
+public final class io/github/twinsen81/lustro/network/DefaultRedactor : io/github/twinsen81/lustro/network/Redactor {
+	public static final field INSTANCE Lio/github/twinsen81/lustro/network/DefaultRedactor;
+	public fun redactBody (Ljava/lang/String;Lio/github/twinsen81/lustro/MediaType;)Ljava/lang/String;
+	public fun redactHeaderValue (Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+	public fun redactUrl (Ljava/lang/String;)Ljava/lang/String;
+	public fun redactWebSocketBinary ([BLio/github/twinsen81/lustro/network/WebSocketMessageInfo;)[B
+	public fun redactWebSocketText (Ljava/lang/String;Lio/github/twinsen81/lustro/network/WebSocketMessageInfo;)Ljava/lang/String;
+}
+
+public abstract interface class io/github/twinsen81/lustro/network/MockRuleStorage {
+	public abstract fun load ()Ljava/util/List;
+	public abstract fun save (Ljava/util/List;)V
+}
+
+public final class io/github/twinsen81/lustro/network/NetworkDebugTab : io/github/twinsen81/lustro/DebugTab {
+	public static final field Companion Lio/github/twinsen81/lustro/network/NetworkDebugTab$Companion;
+	public static final fun create ()Lio/github/twinsen81/lustro/network/NetworkDebugTab;
+	public static final fun create (Ljava/util/List;)Lio/github/twinsen81/lustro/network/NetworkDebugTab;
+	public static final fun create (Ljava/util/List;Lio/github/twinsen81/lustro/network/NetworkClassifier;)Lio/github/twinsen81/lustro/network/NetworkDebugTab;
+	public static final fun create (Ljava/util/List;Lio/github/twinsen81/lustro/network/NetworkClassifier;Lio/github/twinsen81/lustro/network/Redactor;)Lio/github/twinsen81/lustro/network/NetworkDebugTab;
+	public static final fun create (Ljava/util/List;Lio/github/twinsen81/lustro/network/NetworkClassifier;Lio/github/twinsen81/lustro/network/Redactor;Lio/github/twinsen81/lustro/network/MockRuleStorage;)Lio/github/twinsen81/lustro/network/NetworkDebugTab;
+	public static final fun create (Ljava/util/List;Lio/github/twinsen81/lustro/network/NetworkClassifier;Lio/github/twinsen81/lustro/network/Redactor;Lio/github/twinsen81/lustro/network/MockRuleStorage;Lio/github/twinsen81/lustro/network/NetworkCaptureFilter;)Lio/github/twinsen81/lustro/network/NetworkDebugTab;
+	public static final fun create (Ljava/util/List;Z)Lio/github/twinsen81/lustro/network/NetworkDebugTab;
+	public static final fun create (Ljava/util/List;ZLio/github/twinsen81/lustro/network/NetworkClassifier;)Lio/github/twinsen81/lustro/network/NetworkDebugTab;
+	public static final fun create (Ljava/util/List;ZLio/github/twinsen81/lustro/network/NetworkClassifier;Lio/github/twinsen81/lustro/network/Redactor;)Lio/github/twinsen81/lustro/network/NetworkDebugTab;
+	public static final fun create (Ljava/util/List;ZLio/github/twinsen81/lustro/network/NetworkClassifier;Lio/github/twinsen81/lustro/network/Redactor;Lio/github/twinsen81/lustro/network/MockRuleStorage;)Lio/github/twinsen81/lustro/network/NetworkDebugTab;
+	public static final fun create (Ljava/util/List;ZLio/github/twinsen81/lustro/network/NetworkClassifier;Lio/github/twinsen81/lustro/network/Redactor;Lio/github/twinsen81/lustro/network/MockRuleStorage;Lio/github/twinsen81/lustro/network/NetworkCaptureFilter;)Lio/github/twinsen81/lustro/network/NetworkDebugTab;
+	public static final fun create (Lokhttp3/OkHttpClient;)Lio/github/twinsen81/lustro/network/NetworkDebugTab;
+	public static final fun create (Lokhttp3/OkHttpClient;Lio/github/twinsen81/lustro/network/NetworkClassifier;)Lio/github/twinsen81/lustro/network/NetworkDebugTab;
+	public static final fun create (Lokhttp3/OkHttpClient;Lio/github/twinsen81/lustro/network/NetworkClassifier;Lio/github/twinsen81/lustro/network/Redactor;)Lio/github/twinsen81/lustro/network/NetworkDebugTab;
+	public static final fun create (Lokhttp3/OkHttpClient;Lio/github/twinsen81/lustro/network/NetworkClassifier;Lio/github/twinsen81/lustro/network/Redactor;Lio/github/twinsen81/lustro/network/MockRuleStorage;)Lio/github/twinsen81/lustro/network/NetworkDebugTab;
+	public static final fun create (Lokhttp3/OkHttpClient;Lio/github/twinsen81/lustro/network/NetworkClassifier;Lio/github/twinsen81/lustro/network/Redactor;Lio/github/twinsen81/lustro/network/MockRuleStorage;Lio/github/twinsen81/lustro/network/NetworkCaptureFilter;)Lio/github/twinsen81/lustro/network/NetworkDebugTab;
+	public static final fun create (Lokhttp3/OkHttpClient;Z)Lio/github/twinsen81/lustro/network/NetworkDebugTab;
+	public static final fun create (Lokhttp3/OkHttpClient;ZLio/github/twinsen81/lustro/network/NetworkClassifier;)Lio/github/twinsen81/lustro/network/NetworkDebugTab;
+	public static final fun create (Lokhttp3/OkHttpClient;ZLio/github/twinsen81/lustro/network/NetworkClassifier;Lio/github/twinsen81/lustro/network/Redactor;)Lio/github/twinsen81/lustro/network/NetworkDebugTab;
+	public static final fun create (Lokhttp3/OkHttpClient;ZLio/github/twinsen81/lustro/network/NetworkClassifier;Lio/github/twinsen81/lustro/network/Redactor;Lio/github/twinsen81/lustro/network/MockRuleStorage;)Lio/github/twinsen81/lustro/network/NetworkDebugTab;
+	public static final fun create (Lokhttp3/OkHttpClient;ZLio/github/twinsen81/lustro/network/NetworkClassifier;Lio/github/twinsen81/lustro/network/Redactor;Lio/github/twinsen81/lustro/network/MockRuleStorage;Lio/github/twinsen81/lustro/network/NetworkCaptureFilter;)Lio/github/twinsen81/lustro/network/NetworkDebugTab;
+	public fun getIcon ()Ljava/lang/String;
+	public fun getId ()Ljava/lang/String;
+	public fun getOrder ()I
+	public fun getTitle ()Ljava/lang/String;
+	public fun handle (Lio/github/twinsen81/lustro/DebugRequest;)Lio/github/twinsen81/lustro/DebugResponse;
+	public fun renderContent ()Ljava/lang/String;
+	public fun schema ()Ljava/lang/String;
+}
+
+public final class io/github/twinsen81/lustro/network/NetworkDebugTab$Companion {
+	public final fun create ()Lio/github/twinsen81/lustro/network/NetworkDebugTab;
+	public final fun create (Ljava/util/List;)Lio/github/twinsen81/lustro/network/NetworkDebugTab;
+	public final fun create (Ljava/util/List;Lio/github/twinsen81/lustro/network/NetworkClassifier;)Lio/github/twinsen81/lustro/network/NetworkDebugTab;
+	public final fun create (Ljava/util/List;Lio/github/twinsen81/lustro/network/NetworkClassifier;Lio/github/twinsen81/lustro/network/Redactor;)Lio/github/twinsen81/lustro/network/NetworkDebugTab;
+	public final fun create (Ljava/util/List;Lio/github/twinsen81/lustro/network/NetworkClassifier;Lio/github/twinsen81/lustro/network/Redactor;Lio/github/twinsen81/lustro/network/MockRuleStorage;)Lio/github/twinsen81/lustro/network/NetworkDebugTab;
+	public final fun create (Ljava/util/List;Lio/github/twinsen81/lustro/network/NetworkClassifier;Lio/github/twinsen81/lustro/network/Redactor;Lio/github/twinsen81/lustro/network/MockRuleStorage;Lio/github/twinsen81/lustro/network/NetworkCaptureFilter;)Lio/github/twinsen81/lustro/network/NetworkDebugTab;
+	public final fun create (Ljava/util/List;Z)Lio/github/twinsen81/lustro/network/NetworkDebugTab;
+	public final fun create (Ljava/util/List;ZLio/github/twinsen81/lustro/network/NetworkClassifier;)Lio/github/twinsen81/lustro/network/NetworkDebugTab;
+	public final fun create (Ljava/util/List;ZLio/github/twinsen81/lustro/network/NetworkClassifier;Lio/github/twinsen81/lustro/network/Redactor;)Lio/github/twinsen81/lustro/network/NetworkDebugTab;
+	public final fun create (Ljava/util/List;ZLio/github/twinsen81/lustro/network/NetworkClassifier;Lio/github/twinsen81/lustro/network/Redactor;Lio/github/twinsen81/lustro/network/MockRuleStorage;)Lio/github/twinsen81/lustro/network/NetworkDebugTab;
+	public final fun create (Ljava/util/List;ZLio/github/twinsen81/lustro/network/NetworkClassifier;Lio/github/twinsen81/lustro/network/Redactor;Lio/github/twinsen81/lustro/network/MockRuleStorage;Lio/github/twinsen81/lustro/network/NetworkCaptureFilter;)Lio/github/twinsen81/lustro/network/NetworkDebugTab;
+	public final fun create (Lokhttp3/OkHttpClient;)Lio/github/twinsen81/lustro/network/NetworkDebugTab;
+	public final fun create (Lokhttp3/OkHttpClient;Lio/github/twinsen81/lustro/network/NetworkClassifier;)Lio/github/twinsen81/lustro/network/NetworkDebugTab;
+	public final fun create (Lokhttp3/OkHttpClient;Lio/github/twinsen81/lustro/network/NetworkClassifier;Lio/github/twinsen81/lustro/network/Redactor;)Lio/github/twinsen81/lustro/network/NetworkDebugTab;
+	public final fun create (Lokhttp3/OkHttpClient;Lio/github/twinsen81/lustro/network/NetworkClassifier;Lio/github/twinsen81/lustro/network/Redactor;Lio/github/twinsen81/lustro/network/MockRuleStorage;)Lio/github/twinsen81/lustro/network/NetworkDebugTab;
+	public final fun create (Lokhttp3/OkHttpClient;Lio/github/twinsen81/lustro/network/NetworkClassifier;Lio/github/twinsen81/lustro/network/Redactor;Lio/github/twinsen81/lustro/network/MockRuleStorage;Lio/github/twinsen81/lustro/network/NetworkCaptureFilter;)Lio/github/twinsen81/lustro/network/NetworkDebugTab;
+	public final fun create (Lokhttp3/OkHttpClient;Z)Lio/github/twinsen81/lustro/network/NetworkDebugTab;
+	public final fun create (Lokhttp3/OkHttpClient;ZLio/github/twinsen81/lustro/network/NetworkClassifier;)Lio/github/twinsen81/lustro/network/NetworkDebugTab;
+	public final fun create (Lokhttp3/OkHttpClient;ZLio/github/twinsen81/lustro/network/NetworkClassifier;Lio/github/twinsen81/lustro/network/Redactor;)Lio/github/twinsen81/lustro/network/NetworkDebugTab;
+	public final fun create (Lokhttp3/OkHttpClient;ZLio/github/twinsen81/lustro/network/NetworkClassifier;Lio/github/twinsen81/lustro/network/Redactor;Lio/github/twinsen81/lustro/network/MockRuleStorage;)Lio/github/twinsen81/lustro/network/NetworkDebugTab;
+	public final fun create (Lokhttp3/OkHttpClient;ZLio/github/twinsen81/lustro/network/NetworkClassifier;Lio/github/twinsen81/lustro/network/Redactor;Lio/github/twinsen81/lustro/network/MockRuleStorage;Lio/github/twinsen81/lustro/network/NetworkCaptureFilter;)Lio/github/twinsen81/lustro/network/NetworkDebugTab;
+	public static synthetic fun create$default (Lio/github/twinsen81/lustro/network/NetworkDebugTab$Companion;Ljava/util/List;Lio/github/twinsen81/lustro/network/NetworkClassifier;Lio/github/twinsen81/lustro/network/Redactor;Lio/github/twinsen81/lustro/network/MockRuleStorage;Lio/github/twinsen81/lustro/network/NetworkCaptureFilter;ILjava/lang/Object;)Lio/github/twinsen81/lustro/network/NetworkDebugTab;
+	public static synthetic fun create$default (Lio/github/twinsen81/lustro/network/NetworkDebugTab$Companion;Ljava/util/List;ZLio/github/twinsen81/lustro/network/NetworkClassifier;Lio/github/twinsen81/lustro/network/Redactor;Lio/github/twinsen81/lustro/network/MockRuleStorage;Lio/github/twinsen81/lustro/network/NetworkCaptureFilter;ILjava/lang/Object;)Lio/github/twinsen81/lustro/network/NetworkDebugTab;
+	public static synthetic fun create$default (Lio/github/twinsen81/lustro/network/NetworkDebugTab$Companion;Lokhttp3/OkHttpClient;Lio/github/twinsen81/lustro/network/NetworkClassifier;Lio/github/twinsen81/lustro/network/Redactor;Lio/github/twinsen81/lustro/network/MockRuleStorage;Lio/github/twinsen81/lustro/network/NetworkCaptureFilter;ILjava/lang/Object;)Lio/github/twinsen81/lustro/network/NetworkDebugTab;
+	public static synthetic fun create$default (Lio/github/twinsen81/lustro/network/NetworkDebugTab$Companion;Lokhttp3/OkHttpClient;ZLio/github/twinsen81/lustro/network/NetworkClassifier;Lio/github/twinsen81/lustro/network/Redactor;Lio/github/twinsen81/lustro/network/MockRuleStorage;Lio/github/twinsen81/lustro/network/NetworkCaptureFilter;ILjava/lang/Object;)Lio/github/twinsen81/lustro/network/NetworkDebugTab;
+}
+
+public final class io/github/twinsen81/lustro/network/OkHttpSender : io/github/twinsen81/lustro/network/NetworkSender {
+	public static final field Companion Lio/github/twinsen81/lustro/network/OkHttpSender$Companion;
+	public synthetic fun <init> (Ljava/lang/String;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Lokhttp3/OkHttpClient;)V
+	public static final fun create (Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function0;)Lio/github/twinsen81/lustro/network/OkHttpSender;
+	public static final fun create (Ljava/lang/String;Lkotlin/jvm/functions/Function0;)Lio/github/twinsen81/lustro/network/OkHttpSender;
+	public static final fun createWithBaseUrlProvider (Ljava/lang/String;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;)Lio/github/twinsen81/lustro/network/OkHttpSender;
+	public final fun getBaseUrl ()Ljava/lang/String;
+	public final fun getName ()Ljava/lang/String;
+	public fun send (Lio/github/twinsen81/lustro/network/NetworkSendRequest;)Lio/github/twinsen81/lustro/network/NetworkSendResult;
+}
+
+public final class io/github/twinsen81/lustro/network/OkHttpSender$Companion {
+	public final fun create (Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function0;)Lio/github/twinsen81/lustro/network/OkHttpSender;
+	public final fun create (Ljava/lang/String;Lkotlin/jvm/functions/Function0;)Lio/github/twinsen81/lustro/network/OkHttpSender;
+	public static synthetic fun create$default (Lio/github/twinsen81/lustro/network/OkHttpSender$Companion;Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function0;ILjava/lang/Object;)Lio/github/twinsen81/lustro/network/OkHttpSender;
+	public final fun createWithBaseUrlProvider (Ljava/lang/String;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;)Lio/github/twinsen81/lustro/network/OkHttpSender;
+}
+
+public final class io/github/twinsen81/lustro/network/SharedPreferencesMockRuleStorage : io/github/twinsen81/lustro/network/MockRuleStorage {
+	public fun <init> (Landroid/content/SharedPreferences;)V
+	public fun load ()Ljava/util/List;
+	public fun save (Ljava/util/List;)V
+}
+

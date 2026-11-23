@@ -22,8 +22,9 @@ plugins {
 // Binary Compatibility Validator tracks the public API. Excluded projects have no
 // consumable Kotlin/Java API: `sample` is an app, `lustro-lint` ships a lint jar
 // (lintPublish'd into the :lustro and :lustro-noop AARs), `lustro-wire-schema`
-// ships only JSON resources. BCV's handling of the AGP-built Android modules is
-// in DECISIONS.md ("BCV / apiCheck").
+// ships only JSON resources. BCV registers its tasks for :lustro-api, and the
+// lustro.android-library plugin registers them for the Android modules, which BCV
+// does not support under AGP's built-in Kotlin: see DECISIONS.md ("BCV / apiCheck").
 apiValidation {
     ignoredProjects.add("sample")
     ignoredProjects.add("lustro-lint")
@@ -67,9 +68,9 @@ if (testOkHttpVersion.isPresent) {
 }
 
 // checkFacadeParity: the runtime and no-op halves of each pair must expose the
-// same public facades. BCV can't dump the AGP-built Kotlin Android modules, so
-// the task compares their compiled release classes directly. A new pair adds an
-// entry. See build-logic/.../FacadeParityTask.kt and DECISIONS.md ("BCV / apiCheck").
+// same public facades. The task compares the API dumps of their release classes,
+// which each module's apiBuild task writes. A new pair adds an entry. See
+// build-logic/.../FacadeParityTask.kt and DECISIONS.md ("BCV / apiCheck").
 facadeParity {
     pair(
         runtime = ":lustro",

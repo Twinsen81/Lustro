@@ -73,6 +73,9 @@ work = "2.12.0"
 # Build / publishing tooling.
 detekt = "1.23.8"
 bcv = "0.18.2"
+# What BCV reads class files with. BCV runs its API dump in a worker with these on the
+# worker's classpath, and build-logic does the same for the Android modules.
+asm = "9.6"
 vanniktech = "0.37.0"
 dokka = "2.3.0"
 kover = "0.9.11"
@@ -137,6 +140,11 @@ android-gradle-api = { group = "com.android.tools.build", name = "gradle-api", v
 kotlin-gradle-plugin = { group = "org.jetbrains.kotlin", name = "kotlin-gradle-plugin", version.ref = "kotlin" }
 detekt-gradle-plugin = { group = "io.gitlab.arturbosch.detekt", name = "detekt-gradle-plugin", version.ref = "detekt" }
 vanniktech-gradle-plugin = { group = "com.vanniktech", name = "gradle-maven-publish-plugin", version.ref = "vanniktech" }
+binary-compatibility-validator = { group = "org.jetbrains.kotlinx", name = "binary-compatibility-validator", version.ref = "bcv" }
+# The classpath of the API dump worker (see asm above).
+asm = { group = "org.ow2.asm", name = "asm", version.ref = "asm" }
+asm-tree = { group = "org.ow2.asm", name = "asm-tree", version.ref = "asm" }
+kotlin-metadata-jvm = { group = "org.jetbrains.kotlin", name = "kotlin-metadata-jvm", version.ref = "kotlin" }
 
 [plugins]
 android-library = { id = "com.android.library", version.ref = "agp" }
