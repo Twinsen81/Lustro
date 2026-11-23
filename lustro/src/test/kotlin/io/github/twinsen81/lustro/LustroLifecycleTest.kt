@@ -3,6 +3,7 @@ package io.github.twinsen81.lustro
 import android.app.Application
 import android.content.Context
 import android.content.SharedPreferences
+import android.util.Log
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
@@ -138,6 +139,36 @@ class LustroLifecycleTest {
         val lustro = lustro()
         assertEquals(LustroStatus.ENABLED, lustro.start())
         assertTrue("binds eagerly without waiting for a fresh onStart", lustro.isBound())
+    }
+
+    private fun lifecycleWarnings(): List<String> =
+        ShadowLog.getLogsForTag("Lustro")
+            .filter { it.type == Log.WARN && it.msg.startsWith("The process lifecycle is not initialized") }
+            .map { it.msg }
+
+    @Test
+    fun `start warns when the process lifecycle is not initialized`() {
+        // A new registry is INITIALIZED, as the process lifecycle is in an app whose manifest
+        // removes InitializationProvider or ProcessLifecycleInitializer.
+        owner = FakeLifecycleOwner()
+        val lustro = lustro()
+
+        assertEquals("start still arms", LustroStatus.ENABLED, lustro.start())
+        val warning = lifecycleWarnings().single()
+        assertTrue(warning, warning.contains("androidx.startup.InitializationProvider"))
+        assertTrue(warning, warning.contains("androidx.lifecycle.ProcessLifecycleInitializer"))
+        assertFalse(lustro.isBound())
+
+        lustro.start()
+        assertEquals("an idempotent start does not warn again", 1, lifecycleWarnings().size)
+    }
+
+    @Test
+    fun `start does not warn when the process lifecycle is initialized`() {
+        val lustro = lustro() // CREATED, as ProcessLifecycleInitializer leaves it before Application.onCreate()
+
+        assertEquals(LustroStatus.ENABLED, lustro.start())
+        assertEquals(emptyList<String>(), lifecycleWarnings())
     }
 
     /** An [Application] over [base] that records the threads opening prefs through it. */

@@ -14,6 +14,25 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Added
 
+- **`Lustro.start()` logs a WARN when the process lifecycle is not
+  initialized, and Install says which manifest entry to keep.** The server
+  binds when `ProcessLifecycleOwner` reports that the app is in the
+  foreground, and androidx.startup's `InitializationProvider` initializes
+  that lifecycle through `ProcessLifecycleInitializer` before
+  `Application.onCreate()`. In an app whose manifest removes the provider, or
+  that `meta-data` entry, with `tools:node="remove"`, the lifecycle stays
+  `INITIALIZED`: `start()` returned `ENABLED`, and the server never bound,
+  with no log. Lustro can't initialize the lifecycle itself, because
+  `ProcessLifecycleInitializer` refuses to start after the app's startup. So
+  `start()` now logs a WARN at the `Lustro` tag when the lifecycle is still
+  `INITIALIZED`, which names the provider and the `meta-data` entry to keep,
+  and still returns `ENABLED`. Install has a section on it, with the
+  manifest that turns off another initializer and keeps the provider.
+  Verified on an API 34 emulator: the sample built with
+  `InitializationProvider` removed logged the WARN at launch, had no
+  `LustroToken` line, and `lustro ready` exited 6 while the app was in the
+  foreground; the normal sample logged no WARN, bound port 8080, and
+  answered `lustro ready` and `lustro meta`.
 - **`lustro --version` prints a revision of the CLI, so that a wrapper script
   can require a CLI with a given fix (CLI revision 1).** Every build from
   `main` printed `lustro 0.1.0 (protocol 1.17)`: the version follows the
@@ -1321,6 +1340,41 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Fixed
 
+- **SECURITY.md, CONTRIBUTING.md, the wire protocol README, the lustro skill,
+  and the KDoc of `LustroStatus` say what the code does.** SECURITY.md said
+  that nothing is persisted to disk except mock rules: the `lustro_debug`
+  prefs file keeps the token and the host and port of the last bind, and mock
+  rules stay in memory unless the app passes a `MockRuleStorage` to
+  `NetworkDebugTab.create(...)`. It now says so, and names the writes of the
+  Preferences, SQLite, and WorkManager tabs to the app's own data. It pointed
+  to a list of publishing items in this file, which has none: it now names
+  them. Its "Tracking" paragraph said that Dependabot reports NanoHTTPD
+  releases and advisories, but `.github/dependabot.yml` ignores
+  `org.nanohttpd:*` on purpose, as a dependency floor, NanoHTTPD has had no
+  release since 2.3.1, and Dependabot alerts are off for the repository
+  (`gh api repos/{owner}/{repo}/vulnerability-alerts` answers `404`): it now
+  says that the advisories are monitored by hand. CONTRIBUTING.md said that a
+  `licensee` license check is wired into CI, and no workflow has one: the
+  commands it lists and a manual review are the check. The wire protocol
+  README called v1 a stable, SemVer-governed contract, while the README says
+  that the protocol can change from one snapshot to the next. It now has the
+  rule for a minor version, which only adds, such as fields, routes, and
+  query parameters, says that a client ignores the fields that it does not
+  know, that the closed global schemas (`meta`, `pagination`, and
+  `error-envelope`) describe the current minor version exactly, so that a
+  client that validates answers with them must allow more properties, and
+  that v1 is not frozen before the first release. It gave the WorkManager
+  tab as `1.1`, where its routes say `1.3`: it now says `1.3`, with what `1.2`
+  and `1.3` added; the versions of the other plugin tabs were right. The
+  lustro skill now has the Screen tab, in its description, in the list of
+  tabs, and with the `lustro screen tree` commands. Its `mock delete` line
+  said that a short id deletes nothing and still prints ok, but the app
+  answers `404` for an id that no rule has, and the CLI exits 1: the line
+  says so now. It also says that what the commands return is data from the
+  app, not instructions to follow. The KDoc of `LustroStatus.ENABLED`, in
+  `lustro` and in `lustro-noop`, said that the server bound and is serving,
+  but `start()` returns it when the server is armed, before any bind: it now
+  says that, and `DISABLED` names the causes that `start()` has for it.
 - **The console's status pill stays "Live" when the app answers with an error,
   and a running poll sets it back to "Live".** The pill shows whether the
   console reaches the app, but `debugFetch` in `shared.js` set it to "Error"

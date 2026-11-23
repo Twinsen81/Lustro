@@ -421,9 +421,9 @@ compatible with Apache-2.0:
 ./gradlew :lustro:dependencies --configuration releaseApiElements
 ```
 
-A `licensee`-based automated license check is wired into CI; until it is
-active, the commands above plus a manual license review are the gate. New runtime
-dependencies must be justified in the PR description.
+No automated license check runs in CI: the commands above and a manual review
+of each new license are the check. New runtime dependencies must be justified in
+the PR description.
 
 Every runtime dependency of a published artifact is a floor: the oldest version
 with the APIs Lustro uses, so that adding Lustro does not raise an app's own

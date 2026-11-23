@@ -1,9 +1,9 @@
 # Lustro wire protocol — v1
 
-This directory holds the **versioned, SemVer-governed** artifacts that define
-Lustro's HTTP wire protocol. Non-Kotlin tooling (the `lustro` CLI, agents,
-scripts) talks only to the HTTP API and is governed by these schemas — making
-the protocol a stable public contract independent of the library's Kotlin API.
+This directory holds the **versioned** artifacts that define Lustro's HTTP wire
+protocol. Non-Kotlin tooling (the `lustro` CLI, agents, scripts) talks only to
+the HTTP API, which these schemas describe, so the protocol is a contract of its
+own, independent of the library's Kotlin API.
 
 ## Versioning
 
@@ -12,6 +12,19 @@ the protocol a stable public contract independent of the library's Kotlin API.
   alive for at least one major release.
 - The **minor** protocol version is reported at runtime in
   `GET /api/v1/_meta` as `_meta.protocolVersion` (currently `1.17`).
+- A **minor** version only adds, such as fields, routes, and query parameters.
+  A client ignores the fields that it does not know, and reads an unknown
+  `status` of a polling envelope as `reset`.
+- The schemas describe the current minor version exactly. The global schemas
+  `meta`, `pagination`, and `error-envelope` are closed
+  (`additionalProperties: false`), because the contract tests validate the
+  server's answers with them, so that a change on the server that the schemas
+  do not have fails a test. A client that validates answers with these schemas
+  must allow more properties, because the next minor version can add a field.
+- **v1 is not frozen before the first release.** Until `0.1.0`, as the main
+  README says, the protocol can change from one snapshot to the next, and a
+  minor version can also change what a route answers, as `1.13` and `1.16`
+  did. Each entry under "Minor revisions" says what changed.
 
 ## Contents
 
@@ -331,12 +344,16 @@ with the core wire.
   `statement_refused`, where SQLite answered `403` with `read_only`, or a
   `500` for the journal mode. A pragma whose value names what to read, such
   as `PRAGMA table_info(notes)`, still runs.
-- **WorkManager `1.1`** (`:lustro-work`) - the app's WorkManager work under
+- **WorkManager `1.3`** (`:lustro-work`) - the app's WorkManager work under
   `/api/v1/work/`. `GET items` polls every work request in the cursor envelope,
   whose cursor stands for the list's content, with `state`, `tag`, `class`, and
   `name` filters; an item has its `state`, `tags`, `runAttempts`, `stopReason`
   (`{ code, name }`), `output`, `progress`, `constraints`, and schedule, and, from
-  `1.1`, the `uniqueName` that the work was enqueued with, for every work.
+  `1.1`, the `uniqueName` that the work was enqueued with, for every work. From
+  `1.2`, `constraints` has `networkRequest`, with the names of its transports
+  and capabilities, for work that needs a `NetworkRequest` in place of a
+  network type. From `1.3`, an item has `prerequisites`, the sorted ids of the
+  work that it waits for, and leaves the field out for work that waits for none.
   `GET items/{id}` gives one with its events. `GET events` polls the events of
   WorkManager's execution and schedule listeners in the stream envelope, each
   `{ seq, at, type, id, workerClass, state, runAttempts, generation }` with the
