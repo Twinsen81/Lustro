@@ -92,7 +92,23 @@ build, and that even in debug builds it stays bound to the local device.
   loopback, the token is the boundary against the other apps on the device,
   which can connect to the port. They have no way to get it: it is in the
   app's private storage, an app can't read the log of another app, and the
-  traffic stays on the device. Before
+  traffic stays on the device. But another app can log a line with the tag
+  `LustroToken` that names its own port, and it can bind the app's port while
+  the app is in the background, when the server has closed its socket. So the
+  CLI sends a token that it found itself, in the app's prefs or in the log,
+  only to a server whose listening socket has the uid of the app that owns the
+  token: for the prefs, the uid that `run-as` runs with, and for a line, the
+  uid of the process that logged it. It does not take the uid from the
+  process name, which another app can copy with `android:process`. The CLI
+  reads the uids that listen on the port of the device in `/proc/net/tcp` and
+  `/proc/net/tcp6`, in the same adb call as the prefs, before the first
+  request, again before a later request when one second has passed or a
+  connection failed, before it sends a token from the prefs again after a
+  `401`, and before `lustro open` puts the token in the URL. When another uid
+  listens there, the CLI sends no request, names that app, and exits 6. It
+  sends a token from the prefs to a host that is not loopback only when the
+  prefs name that host and port. A token from `--token` or `LUSTRO_TOKEN`,
+  and a port from `--port`, are the user's choice and get no check. Before
   authentication, the server serves only framework chrome — no tab-authored
   output or captured data.
 - **Credentials stop at the server.** The server authenticates a request before

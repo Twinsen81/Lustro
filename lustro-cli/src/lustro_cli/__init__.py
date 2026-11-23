@@ -23,7 +23,7 @@ PROTOCOL_VERSION = "1.17"
 # does not (.github/scripts/check_cli_revision.py). The two versions above change
 # only at a release or with the protocol, so a wrapper script that needs a fix of
 # the CLI requires the revision of that fix or a later one.
-REVISION = 3
+REVISION = 4
 
 from .client import CursorState, LustroClient, LustroError  # noqa: E402
 from .cli import main  # noqa: E402

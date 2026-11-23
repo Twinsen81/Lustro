@@ -20,6 +20,6 @@ NOT_INSTALLED = 4
 # artifacts, or one from before the app added Lustro.
 NO_RUNTIME = 5
 # The app is not running or not in the foreground, it logged no ready line, its
-# port does not answer, or, with --package, another app's server holds its port
-# and answered 401.
+# port does not answer, or another app holds its port, so the CLI did not send
+# the app's token there.
 NOT_REACHABLE = 6

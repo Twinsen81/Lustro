@@ -44,18 +44,19 @@ The request has no valid token.
     that app goes to the background: Android tells it so about 0.7 s after the new app shows its
     first screen, or later. Until then, that server answers the requests for the new app, with a
     `401` for the new app's token. Then the new app's server binds the port, at its next retry,
-    every 250 ms. With `--package`, the CLI tells this `401` from one for a wrong token: it exits
-    with code 6, and names the app that listens on the port. `lustro ready --package
-    <your.app.id>` waits until the app's own server answers. A client that is not the CLI, such
-    as a script with `curl`, can't tell the two apart: run `lustro ready --package <your.app.id>`
-    before its first request, or compare the uid that listens on the port with the uid of the
-    app:
+    every 250 ms. The CLI does not send the token to that server: it compares the uid that
+    listens on the port with the app's uid first, exits with code 6, and names the app that
+    listens on the port. `lustro ready --package <your.app.id>` waits until the app's own server
+    answers. A client that is not the CLI, such
+    as a script with `curl`, can't tell the two apart, and gives that server the app's token: run
+    `lustro ready --package <your.app.id>` before its first request, or compare the uid that
+    listens on the port with the uid of the app:
 
     ```bash
     # The uid that listens on port 8080 (1F90 in hex): the state of a listening socket is 0A.
     adb shell cat /proc/net/tcp /proc/net/tcp6 | awk '$4 == "0A" && $2 ~ /:1F90$/ {print $8}'
-    # The uid of the app's process.
-    adb shell 'stat -c %u /proc/$(pidof <your.app.id>)'
+    # The app's uid. Not from `pidof`: another app can give its process the app's name.
+    adb shell run-as <your.app.id> id -u
     ```
 
     To prevent this, give each app with Lustro on the device its own `serverPort`, such as 8080

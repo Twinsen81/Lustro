@@ -239,7 +239,7 @@ def base_urls(monkeypatch):
     urls = []
 
     class _Client:
-        def __init__(self, base_url, token, refresh_token=None, on_warning=None):
+        def __init__(self, base_url, token, refresh_token=None, on_warning=None, guard=None):
             urls.append(base_url)
 
         def get(self, path, params=None):

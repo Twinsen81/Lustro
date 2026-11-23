@@ -127,14 +127,13 @@ The CLI resolves the endpoint+token in this order (first hit wins, per field):
    or the prefs do not have all three, as before the app writes them, the CLI goes to step 4
    for the rest. When the app does not run, its prefs keep the values of its last process: the
    connection then fails, and the CLI prints the cause.
-4. The `LustroToken` logcat ready line: `adb [-s <serial>] logcat -d -s
-   LustroToken` is parsed for the most recent
+4. The `LustroToken` logcat ready line: `adb [-s <serial>] logcat -d -v threadtime -s
+   LustroToken`, which shows the process ID of each line, is parsed for the most recent
    `Lustro ready endpoint=http://<host>:<port> token=<token>`. Without
    `--package`, this is the first source for host/port/token, **including a fallback port**,
    and the last line counts, whatever app logged it. With
    `--package <id>`, only the lines of that app's current process count: the CLI
-   gets its process IDs with `adb shell pidof <id>`, reads `adb logcat -d -v
-   threadtime -s LustroToken`, which shows the process ID of each line, and takes
+   gets its process IDs with `adb shell pidof <id>`, with the uid of each, and takes
    the last line of these processes. The line of another app, such as another
    build of the same app, and the line of an earlier process of the app are not
    used. That line can name a port that the app no longer uses, and a token that
@@ -143,7 +142,29 @@ The CLI resolves the endpoint+token in this order (first hit wins, per field):
 5. (best effort, without `--package`) the `run-as` read of step 3, of the app in the
    foreground, because Lustro listens only while its app is in the foreground. This finds the
    app on a device that drops Info logs, such as one with `adb shell getprop log.tag` set to
-   `E`, where the ready line never reaches logcat.
+   `E`, where the ready line never reaches logcat. It also replaces a ready line whose app does
+   not listen on the line's port, or whose process has ended, when the app in the foreground
+   listens on the port of its prefs.
+
+**The token goes only to its app's server.** Any app on the device can log a line with the tag
+`LustroToken`, and bind the app's port while the app is in the background. So the CLI sends a
+token that it found in steps 3 to 5 only to a server whose listening socket has the uid of the
+app that owns the token: for the prefs, the uid that `run-as` runs with (the `cat` that reads them
+also reads its own `/proc/self/status`), and for a log line, the uid of the process that logged it
+(`stat -c %u /proc/<pid>`). The process name is not
+enough: `pidof` finds processes by name, and an app can give its process another app's name with
+`android:process`. The CLI reads the uids that listen on the port of the device in
+`/proc/net/tcp` and `/proc/net/tcp6`. With `--package`, the adb call of step 3 reads them, so the
+check costs no extra adb call; without it, one adb call reads the uid of the line's process and
+the sockets. A command checks before its first request, and again before a later request when
+one second has passed or a connection failed, so that `net poll` and `net wait` check while the
+app comes and goes. When another uid listens on the port, the CLI sends no request: it names that
+app, from `pm list packages -U`, or before API 26 from `dumpsys package packages`, and exits 6.
+When nothing listens, it sends nothing either, and prints the cause from adb, as for a connection
+that fails. A token from the prefs goes to a host that is not loopback only when the prefs name
+that host and port: a line of another app can name any host. A token from `--token` or
+`LUSTRO_TOKEN`, and a port from `--port`, which is a local port, are your choice and get no
+check. A host from `--host` that is not loopback gets none either.
 
 If none of these determine the token, the CLI looks for the cause with adb, and
 prints it and exits with its code (see [Exit codes](#exit-codes)). It checks, in
@@ -171,19 +192,17 @@ A token from the ready line can be stale: when the app was installed again and t
 dropped the new line, the last line in the log is from the earlier install. A token from the
 prefs can be stale too, when a new process of an app that listens beyond loopback answers
 before it writes its new token. When the server answers `401` to a token that discovery found,
-the CLI reads the app's prefs and sends the request once more with the token there. When that
-gets `401` too, the CLI looks for the cause with adb, as for a connection that fails: the port
-can be that of another app with Lustro, such as the one in the foreground. It prints the cause
-with its exit code. When adb finds no cause, with `--package`, the CLI reads the uid that listens
-on the app's port of the device in `/proc/net/tcp` and `/proc/net/tcp6`, and compares it with the
-uid of the app's process (`stat -c %u /proc/<pid>`). When another app holds the port, as right
-after the app starts while the server of another app with Lustro on the same port still listens,
-the `401` is that app's answer: the CLI names it, from `pm list packages -U`, or before API 26
-from `dumpsys package packages`, and exits 6. That
-server closes when its app goes to the background, and the app's own server then binds the port;
-`lustro ready --package` waits for it. Give each app with Lustro on one device its own
-`serverPort` to prevent this. In every other case, the CLI prints the `401` with exit 1. `lustro open` compares the two before it prints the
-URL, because the browser gets no second try.
+the CLI reads the prefs of the app (of `--package`, or in the foreground) and sends the request
+once more with the token there, when that app's uid listens on the port (see above). When that
+gets `401` too, or the CLI does not send it, the CLI looks for the cause with adb, as for a
+connection that fails, and prints it with its exit code. In every other case, the CLI prints the
+`401` with exit 1. Right after an app starts, the server of another app with Lustro on the same
+port can still listen there: the CLI does not send it the token, names that app, and exits 6.
+That server closes when its app goes to the background, and the app's own server then binds the
+port; `lustro ready --package` waits for it. Give each app with Lustro on one device its own
+`serverPort` to prevent this. Without `--package`, `lustro open` compares the token of the line
+with the one in the prefs of the app in the foreground before it prints the URL, because the
+browser gets no second try.
 
 The port that discovery finds is the app's port on the device. The CLI reaches
 it through an `adb forward`, and the local port of the forward can be a
@@ -284,9 +303,9 @@ because the app in the foreground changes while the app starts, and it can be
 the launcher. An error response that a new try
 can't change, such as a `401` for a `--token` that is not the app's, ends the
 wait at once with exit 1; `ready` tries again after a `5xx` or a `429`, and after
-a `401` for a token that discovery found, which the next try reads again. When
-that `401` comes from another app's server on the app's port until the timeout,
-`ready` names that app and exits 6.
+a `401` for a token that discovery found, which the next try reads again. While
+another app's uid listens on the app's port, the CLI sends it no token, and `ready`
+waits; when that lasts until the timeout, `ready` names that app and exits 6.
 
 A `404` for `GET /api/v1/_meta` is not from Lustro, which always has that route.
 It comes from another server on the port, such as the debug server of another
@@ -318,7 +337,7 @@ the message:
 | 3 | No device: adb is not installed, or it finds no device, or the device is offline or not authorized. | Connect a device, or start an emulator. |
 | 4 | The app of `--package` is not installed. | Install a debug build that uses the Lustro artifacts. |
 | 5 | The installed build of `--package` does not contain the Lustro runtime: a build with the `-noop` artifacts, or one from before the app added Lustro. | Install a debug build that uses the Lustro artifacts. This replaces the installed build. |
-| 6 | The app can't be reached: it is not running or not in the foreground, it logged no ready line, its port does not answer, or, with `--package`, another app's server holds its port and answered `401`. | Start the app, and keep it in the foreground. For another app on the port, run `lustro ready --package`, which waits for the app's own server, and give each app its own `serverPort`. |
+| 6 | The app can't be reached: it is not running or not in the foreground, it logged no ready line, its port does not answer, or another app holds its port, so the CLI did not send the app's token there. | Start the app, and keep it in the foreground. For another app on the port, run `lustro ready --package`, which waits for the app's own server, and give each app its own `serverPort`. |
 
 Without `--package`, an app in the foreground without the runtime exits 6, not 5:
 that app can be the launcher, or another app than yours. Every command that
