@@ -100,8 +100,11 @@ public class Lustro internal constructor(
     @Volatile
     private var armed: Boolean = false
 
-    @Volatile
-    private var captureEnabled: Boolean = true
+    // The check of start(), made again for the network functions, so that a build that
+    // start() refuses to arm does not capture, mock, or throttle the app's requests, also
+    // when the app never calls start(). Mock rules can come from a MockRuleStorage that a
+    // debuggable build of the app filled.
+    private val networkAllowed: Boolean = debuggable || config.allowNonDebuggableBuilds
 
     // Single daemon thread for the lifecycle work that must stay off the main
     // thread, where the ProcessLifecycleOwner fires onStart/onStop: the endpoint log
@@ -152,11 +155,13 @@ public class Lustro internal constructor(
     /**
      * Returns an OkHttp application interceptor that feeds captured traffic into
      * the registered [NetworkDebugTab]. When no network tab is registered, returns
-     * a pass-through interceptor.
+     * a pass-through interceptor. It returns the pass-through also in a build that
+     * [start] refuses to arm, also when the app never calls [start]: such a build
+     * does not capture, mock, or throttle its requests.
      */
     public fun networkInterceptor(): Interceptor {
-        val provider = networkProvider ?: return Interceptor { it.proceed(it.request()) }
-        return provider.createInterceptor { captureEnabled }
+        val provider = networkProvider?.takeIf { networkAllowed } ?: return Interceptor { it.proceed(it.request()) }
+        return provider.createInterceptor { true }
     }
 
     /**
@@ -176,10 +181,11 @@ public class Lustro internal constructor(
      * `close`, and `queueSize` return what [delegate]'s socket returns. Capture
      * adds a constant cost to each message on the calling thread.
      *
-     * When no network tab is registered, returns [delegate].
+     * When no network tab is registered, or in a build that [start] refuses to
+     * arm, returns [delegate].
      */
     public fun webSocketFactory(delegate: WebSocket.Factory): WebSocket.Factory =
-        networkProvider?.wrapWebSocketFactory(delegate) ?: delegate
+        networkProvider?.takeIf { networkAllowed }?.wrapWebSocketFactory(delegate) ?: delegate
 
     /**
      * Returns a [NetworkCaptureSink] that records the requests of an HTTP client
@@ -203,10 +209,11 @@ public class Lustro internal constructor(
      * answering it: report that with the [NetworkCaptureSink.failRequest] that
      * takes the rule. No call throws.
      *
-     * When no network tab is registered, the sink records nothing.
+     * When no network tab is registered, or in a build that [start] refuses to
+     * arm, the sink records nothing and finds no mock rule.
      */
     public fun networkCaptureSink(): NetworkCaptureSink =
-        networkProvider?.createAppCaptureSink { captureEnabled } ?: NoOpCaptureSink
+        networkProvider?.takeIf { networkAllowed }?.createAppCaptureSink { true } ?: NoOpCaptureSink
 
     /**
      * ARMS the debug server: freezes the tab registry and registers the

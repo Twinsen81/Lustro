@@ -45,7 +45,10 @@ build, and that even in debug builds it stays bound to the local device.
   real runtime reads `ApplicationInfo.FLAG_DEBUGGABLE` at startup: in a build
   that is not marked debuggable, `Lustro.start()` logs a WARN and returns
   `LustroStatus.DISABLED` without binding a socket, unless the consumer opts in
-  with `DebugConfig.allowNonDebuggableBuilds(true)` for an internal build. A
+  with `DebugConfig.allowNonDebuggableBuilds(true)` for an internal build. In
+  such a build the network interceptor, the WebSocket factory, and the capture
+  sink also pass everything through: they capture, mock, and throttle nothing,
+  also when the app never calls `start()`. A
   published lint check (`LustroDebugUsageInRelease`, severity FATAL) additionally
   flags `DebugTab` subclasses — consumer code the no-op swap cannot remove from
   an APK — outside `src/debug`, such as in `src/main` or `src/release`, in a
