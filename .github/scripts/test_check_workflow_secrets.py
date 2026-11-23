@@ -54,6 +54,10 @@ def test_a_secret_in_a_job_without_gradle_passes(tmp_path):
         "${{ secrets.MAVEN_CENTRAL_PASSWORD }}",
         "${{ secrets['MAVEN_CENTRAL_PASSWORD'] }}",
         "${{ toJSON(secrets) }}",
+        # GitHub resolves the names in an expression in any case.
+        "${{ SECRETS.MAVEN_CENTRAL_PASSWORD }}",
+        "${{ Secrets['X'] }}",
+        "${{ toJSON(SECRETS) }}",
     ],
 )
 def test_a_secret_in_a_job_that_runs_gradle_fails(tmp_path, secret):
@@ -69,6 +73,7 @@ def test_a_secret_in_a_job_that_runs_gradle_fails(tmp_path, secret):
         "      - run: cd consumer-check && ../gradlew :app:assemble",
         "      - run: gradle build",
         "      - uses: gradle/actions/setup-gradle@v6",
+        "      - uses: Gradle/Actions/setup-gradle@v6",
         "      - uses: './.github/actions/setup'",
         "      - uses: reactivecircus/android-emulator-runner@v2\n        with:\n          script: ./gradlew connectedCheck",
     ],
@@ -104,8 +109,9 @@ def test_prose_about_secrets_passes(tmp_path):
     assert problems(tmp_path, "jobs:\n" + job) == []
 
 
-def test_a_secret_in_the_workflow_env_reaches_the_gradle_jobs(tmp_path):
-    text = "on: push\nenv:\n  KEY: ${{ secrets.KEY }}\njobs:\n" + BUILD + PUBLISH
+@pytest.mark.parametrize("secret", ["${{ secrets.KEY }}", "${{ SECRETS.KEY }}"])
+def test_a_secret_in_the_workflow_env_reaches_the_gradle_jobs(tmp_path, secret):
+    text = f"on: push\nenv:\n  KEY: {secret}\njobs:\n" + BUILD + PUBLISH
     assert problems(tmp_path, text) == [
         f"{tmp_path / 'workflow.yml'}: a secret outside `jobs:` reaches the jobs that run Gradle: 'build'"
     ]

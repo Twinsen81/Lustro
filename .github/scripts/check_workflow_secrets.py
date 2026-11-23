@@ -12,7 +12,7 @@ publish job that runs no Gradle (see SECURITY.md, "Release Publishing").
 A job runs Gradle when its text has `gradlew`, a `gradle` command, the
 gradle/actions actions, or the setup action of this repository, which sets up Gradle.
 A job references a secret when its text has `secrets.NAME`, `secrets[...]`,
-`toJSON(secrets)`, or `secrets: inherit`, in a comment too: in a `run` script, GitHub
+`toJSON(secrets)`, or `secrets: inherit`, in any case, and in a comment too: in a `run` script, GitHub
 replaces an expression in a shell comment as well. A secret in the workflow's own `env`
 reaches every job. The check also fails on a job that runs Gradle and uses a YAML
 alias, because it reads text and can't follow the alias. WORKFLOW_DIR is
@@ -33,11 +33,15 @@ from typing import List, Optional, Tuple
 GRADLE = re.compile(
     r"gradlew"
     r"|(?:^|[\s;&|(])gradle\s"
-    r"|uses:\s*['\"]?gradle/actions/"
+    # GitHub matches the owner and the repository of an action in any case.
+    r"|uses:\s*['\"]?(?i:gradle/actions)/"
     r"|uses:\s*['\"]?\./\.github/actions/setup\b"
 )
-SECRET = re.compile(r"\bsecrets\.[A-Za-z_]|\bsecrets\s*\[|\(\s*secrets\s*\)|\bsecrets\s*:\s*inherit\b")
-EXPRESSION_SECRET = re.compile(r"\$\{\{[^}]*(?:" + SECRET.pattern + ")")
+# GitHub resolves the names in an expression in any case: SECRETS.X is secrets.X.
+SECRET = re.compile(
+    r"\bsecrets\.[A-Za-z_]|\bsecrets\s*\[|\(\s*secrets\s*\)|\bsecrets\s*:\s*inherit\b", re.IGNORECASE
+)
+EXPRESSION_SECRET = re.compile(r"\$\{\{[^}]*(?:" + SECRET.pattern + ")", re.IGNORECASE)
 ALIAS = re.compile(r"(?:^|[\s\[{,:-])\*[A-Za-z0-9_][A-Za-z0-9_.-]*\s*(?:#.*)?$")
 KEY = re.compile(r"^(\s*)([A-Za-z0-9_-]+|'[^']*'|\"[^\"]*\")\s*:(\s|$)")
 
@@ -113,7 +117,7 @@ def main(argv: List[str]) -> int:
     if problems:
         print(
             "A Gradle build loads every build plugin, which can read what its job gets. Give a "
-            "secret only to a job that runs no Gradle (see SECURITY.md, \"Release publishing\")."
+            "secret only to a job that runs no Gradle (see SECURITY.md, \"Release Publishing\")."
         )
         return 1
     print(f"No job that runs Gradle references a secret ({len(workflows)} workflows).")
