@@ -344,7 +344,8 @@ database file in the app's `databases` and `noBackupFilesDir` directories, under
   there stops after 2 s. Through the app's own handle, a read waits in the
   app's connection pool, which has no such time limit.
 
-An external review of the auth, CSP, and capture implementation is planned.
+No external review of the auth, CSP, and capture implementation has been done
+yet. Report a problem through GitHub Security Advisories.
 
 ### WorkManager work
 
