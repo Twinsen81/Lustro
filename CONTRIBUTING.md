@@ -533,6 +533,10 @@ version. `main` takes changes only through pull requests.
    `0.2.1-SNAPSHOT`, and `__version__` to the same version without `-SNAPSHOT`.
    The docs can keep the release until the next release.
 
+A pull request that changes `__version__` also increases `REVISION` in the same
+file by one, because `check_cli_revision.py` fails each change under
+`lustro-cli/src/` that does not.
+
 `lustro-cli/README.md` is also the CLI's page on PyPI.
 
 ## Code of Conduct
