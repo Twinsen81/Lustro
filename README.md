@@ -24,9 +24,10 @@ without a browser.
 
 ![The Lustro Network tab in a desktop browser: a list of captured OkHttp requests with method, status, and time, and the JSON response of the selected request](docs/images/network-tab.png)
 
-> **Status:** pre-1.0. The artifacts are on Maven Central and the CLI is on PyPI. Until `1.0.0`, a
-> minor version, such as `0.2.0`, can change the Kotlin API and the wire protocol in ways that are
-> not compatible. The [CHANGELOG](CHANGELOG.md) lists each change.
+> **Status:** `0.1.0` is the first stable release. Patch releases (`0.1.x`) fix bugs and do not
+> change the Kotlin API or the wire protocol. If a change ever breaks either one, it comes in a new
+> minor version, and the [CHANGELOG](CHANGELOG.md) says so. The API that declares a tab's routes,
+> marked `@ExperimentalDebugRoutes`, can change in any release.
 
 **[Read the Lustro documentation](https://twinsen81.github.io/Lustro/)**
 

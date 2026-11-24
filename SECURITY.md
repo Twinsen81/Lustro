@@ -8,10 +8,8 @@ threat model, and the process for handling the vendored NanoHTTPD dependency.
 
 ## Supported Versions
 
-Lustro is pre-1.0 and under active development. Until `1.0.0`, only the latest
-release (currently `0.1.0`) receives security fixes. A fix comes in a new
-release. After `1.0.0`, the most recent minor release of the current major will
-be supported.
+Only the latest release (currently `0.1.0`) receives security fixes. A fix
+comes in a new patch release, such as `0.1.1`.
 
 | Version | Supported |
 | ------- | --------- |

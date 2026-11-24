@@ -15,6 +15,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   docs keep `0.1.0`, the release on Maven Central and PyPI. CONTRIBUTING says
   that a change to `__version__` also increases `REVISION`.
 
+- **The docs say that `0.1.0` is stable, in place of the pre-1.0 notes.**
+  The README, the docs home page, `docs/AGENTS.md`, SECURITY.md, and the
+  wire protocol's README said that until `1.0.0` a minor version can break
+  the Kotlin API and the wire protocol. Now they say that patch releases
+  (`0.1.x`) fix bugs and do not change either one, that a change that breaks
+  either one comes in a new minor version with a CHANGELOG entry, and that
+  only the API marked `@ExperimentalDebugRoutes` can change in any release.
+  Wire protocol v1 is stable: a minor protocol version only adds.
+
 ### Fixed
 
 - **CI: the Robolectric tests on SDK 35 run again after the update to
