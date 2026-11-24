@@ -21,9 +21,10 @@ own, independent of the library's Kotlin API.
   server's answers with them, so that a change on the server that the schemas
   do not have fails a test. A client that validates answers with these schemas
   must allow more properties, because the next minor version can add a field.
-- **v1 is not frozen before `1.0.0`.** Until the library's `1.0.0`, as the
-  main README says, a minor version can also change what a route answers, as
-  `1.13` and `1.16` did. Each entry under "Minor revisions" says what changed.
+- **v1 is stable from the library's `0.1.0` release.** From then on, a minor
+  version only adds, as the rules above say. Before the release, a minor
+  version could also change what a route answers, as `1.13` and `1.16` did.
+  Each entry under "Minor revisions" says what changed.
 
 ## Contents
 

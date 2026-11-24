@@ -9,8 +9,9 @@ not the Kotlin API, is the stable contract. It is versioned, and SemVer applies 
 This document is about using a running Lustro. To add Lustro to an app, follow
 [Install](get-started/install.md) and [Quick start](get-started/quick-start.md).
 
-> **Status:** pre-1.0. Until `1.0.0`, the protocol may still change between minor versions. Always
-> read `_meta` and the per-tab `_schema` at runtime rather than hard-coding shapes.
+> **Status:** v1 is stable from the `0.1.0` release: a minor protocol version only adds fields,
+> routes, and query parameters. Still read `_meta` and the per-tab `_schema` at runtime rather than
+> hard-coding shapes, because a tab's routes depend on what the app registered.
 
 ## The agent's view
 

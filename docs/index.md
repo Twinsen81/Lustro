@@ -13,12 +13,12 @@ small web server in the app's process and shows the app's data as tabs in a
 desktop browser. Every tab is also a JSON API, so AI agents, scripts, and the
 `lustro` command-line tool can use the same data without a browser.
 
-!!! note "Pre-1.0"
-
-    Lustro is pre-1.0. Until `1.0.0`, a minor version, such as `0.2.0`, can
-    change the Kotlin API and the HTTP API in ways that are not compatible.
-    The [CHANGELOG](https://github.com/Twinsen81/Lustro/blob/main/CHANGELOG.md)
-    lists each change.
+`0.1.0` is the first stable release. Patch releases (`0.1.x`) fix bugs and
+do not change the Kotlin API or the HTTP API. If a change ever breaks either
+one, it comes in a new minor version, and the
+[CHANGELOG](https://github.com/Twinsen81/Lustro/blob/main/CHANGELOG.md) says
+so. The API that declares a tab's routes, marked `@ExperimentalDebugRoutes`,
+can change in any release.
 
 ![The Network tab in a desktop browser: the sample app's requests, and the JSON response of one of them](images/network-tab.png)
 
