@@ -17,7 +17,7 @@ val androidAllVersions =
     mapOf(
         28 to "9-robolectric-4913185-2-i7",
         34 to "14-robolectric-10818077-i7",
-        35 to "15-robolectric-13954326-i7",
+        35 to "15-robolectric-14663667-2-i7",
     )
 
 // One configuration for each level: in one configuration, Gradle would resolve
