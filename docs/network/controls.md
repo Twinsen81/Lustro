@@ -6,7 +6,7 @@ change what Lustro records, and the throttle changes the app's traffic. The thre
 the app's memory: they apply to every console and every CLI client, and the app forgets them when
 its process ends.
 
-![The Network tab: the sample's requests, with several methods, statuses, and categories, and the JSON response of GET /json in the Tree view](../images/network-tab.png)
+![The Network tab: the sample's requests, with several methods, statuses, and categories, two requests to other hosts with a tag of the host, and the JSON response of GET /json in the Tree view](../images/network-tab.png)
 
 ## The toolbar
 
@@ -60,8 +60,8 @@ in your browser.
 ## The list
 
 Each row has the method, the path of the URL without its query, the status, the time, and the
-categories. Click a row to show
-the request on the right.
+categories. Point at the path to see the whole URL, and click a row to show the request on the
+right.
 
 The checkbox of a row selects it. Shift-click selects the rows between two checkboxes, and the
 checkbox in the header selects every row that the filters show. With a selection, a bar shows:
@@ -69,6 +69,27 @@ checkbox in the header selects every row that the filters show. With a selection
 - **Copy Markdown** copies the selected requests and their responses as one Markdown document.
 - **Export HAR** saves them as a HAR file. See [Export](export.md).
 - **Clear selection** deselects every row.
+
+### Hosts
+
+A row on one of the app's hosts shows only the path. A row on any other host, such as the
+server of an analytics or a maps SDK, starts with a tag of its host: `/api/v1/events` of an SDK
+then does not look like a request to the app's own server. The same host always has the same
+color. A long host is cut on the left, so the end of the domain stays in view.
+
+![The header of the URL column with the menu of hosts open: httpbingo.org is checked and has 15 rows, and 127.0.0.1:1 and echo.websocket.org are not checked and show as tags; in the list, their rows start with the same tags](../images/network-hosts-menu.png)
+
+The button in the header of the URL column names the app's hosts, for example
+`api.example.com`, or `api.example.com +1` for two. They are the hosts of the base URLs of the
+[senders](send-request.md), so most apps need no setting. Click the button to choose others: the
+menu lists each host in the list with its number of rows, and a checked host shows only the path.
+The console remembers your choice in your browser, for each app, so two apps that you reach on
+the same port keep their own hosts. **Use the senders' hosts** forgets it. When
+no sender has a base URL, the button says `no app host`, and every row has a tag until you check
+a host.
+
+The CLI and the API always give the whole URL, so they need no such setting: `lustro net list`
+prints it on each row, and `--url <host>` finds the requests to a host.
 
 ## The selected request
 

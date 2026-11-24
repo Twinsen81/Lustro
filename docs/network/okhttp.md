@@ -19,7 +19,7 @@ request OkHttp sends for it: a redirect that OkHttp follows is one transaction, 
 your code requested. The Network tab shows where the response came from (`finalUrl`), and each
 redirect and authentication challenge on the way (`priorResponses`), with its status.
 
-![The Network tab: the sample's requests, with several methods, statuses, and categories, and the JSON response of GET /json in the Tree view](../images/network-tab.png)
+![The Network tab: the sample's requests, with several methods, statuses, and categories, two requests to other hosts with a tag of the host, and the JSON response of GET /json in the Tree view](../images/network-tab.png)
 
 **Capture doesn't hold up the call.** The interceptor copies what it captures and returns;
 redaction, classification, and storing run on a background thread. A request's row shows in the

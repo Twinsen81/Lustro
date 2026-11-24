@@ -58,7 +58,10 @@ Defined on `:root` (dark default) with light overrides under
   `--work-enqueued/running/succeeded/failed/blocked/cancelled` (a WorkManager
   work state; an event of a run takes the color of the state it leads to),
   `--cat-sync/ai/config/media/auth/
-  other/wiretap`, `--syn-key/str/num/bool/punc` (JSON highlighting).
+  other/wiretap`, `--host-1` to `--host-6` (the tag of a host that is not one
+  of the app's hosts, chosen by a hash of the host name; the tag's text tells
+  two hosts with one color apart), `--syn-key/str/num/bool/punc` (JSON
+  highlighting).
 - **Row states**: `--row-selected`, `--row-zebra`, `--row-hover`, `--row-warn`,
   `--row-error`.
 - **Radii**: `--radius-sm` 3px · `--radius` 4px (default controls) ·

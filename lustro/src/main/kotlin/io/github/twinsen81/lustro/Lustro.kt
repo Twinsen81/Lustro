@@ -698,6 +698,7 @@ public class Lustro internal constructor(
                     maxCaptureWebSockets = config.maxCaptureWebSockets,
                     maxWebSocketEvents = config.maxWebSocketEvents,
                     webSocketCaptureBudgetBytes = config.webSocketCaptureBudgetBytes,
+                    appId = application.packageName,
                 )
             }
             return Lustro(application, config, registry)

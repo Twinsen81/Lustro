@@ -14,6 +14,27 @@ see [DECISIONS.md](DECISIONS.md).
 
 ### Added
 
+- **The Network list shows the host of a request that is not to one of the
+  app's hosts.** The URL column showed only the path, so a request of an SDK,
+  such as `POST https://collector.example.com/api/v1/events`, looked like a
+  request to the app's own server. Now a row on any other host starts with a
+  tag of its host, in a color that the host always has, and a row on one of
+  the app's hosts shows only the path, as before. The app's hosts are the
+  hosts of the senders' base URLs (`GET senders`), so an app that registers
+  senders needs no setting. The header of the URL column names them, and its
+  menu lists each host in the list with its number of rows: check the hosts
+  that are the app's. The browser remembers the choice for each app, under
+  its package name, so two apps on the same forwarded port keep their own
+  hosts, and **Use the senders' hosts** forgets it. Without a sender base URL, every row has a tag
+  until you check a host. The tooltip of the URL cell is now the whole URL,
+  with the host and the query, not the path again. The wire protocol and the
+  CLI do not change: they already give the whole URL. Verified on an API 30
+  emulator with the sample: the rows on `httpbingo.org` showed the path only,
+  the WebSocket handshake to `echo.websocket.org` and the refused request to
+  `127.0.0.1:1` started with a tag, a host that was checked in the menu
+  lost its tag, also after a reload, and the reset gave the senders' host
+  back.
+
 - **`Lustro.start()` logs a WARN when the process lifecycle is not
   initialized, and Install says which manifest entry to keep.** The server
   binds when `ProcessLifecycleOwner` reports that the app is in the

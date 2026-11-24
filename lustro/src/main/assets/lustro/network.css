@@ -247,6 +247,64 @@
 .net-url-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .net-url-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .net-replaced-badge { flex: none; --c: var(--accent); }
+
+/* The host of a row that is not on one of the app's hosts, before its path.
+   rtl cuts a long host on the left, so the end of the domain stays in view;
+   the bdi keeps the host's own order, as for a port after it. */
+.net-host-tag {
+    flex: none;
+    max-width: 50%;
+    padding: 0 5px;
+    border: 1px solid color-mix(in srgb, var(--c) 35%, transparent);
+    border-radius: var(--radius-sm);
+    background: color-mix(in srgb, var(--c) 14%, transparent);
+    color: var(--c);
+    font-size: 11px;
+    line-height: 15px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    direction: rtl;
+}
+.net-host-tag > bdi { direction: ltr; unicode-bidi: isolate; }
+
+/* The URL column's header: the app's hosts, and the menu that changes them.
+   The column is as wide as the table leaves it, so the button's text is cut
+   before the header grows. */
+.net-url-col { max-width: 0; }
+.net-url-col--open { z-index: 35; } /* above the rows and the other sticky headers while the menu is open */
+.net-url-head { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.net-hosts { min-width: 0; display: flex; }
+.net-hosts-btn {
+    min-width: 0;
+    min-height: 24px;
+    margin: -6px 0;
+    padding: 0 7px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    border: 1px solid var(--btn-border);
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--t3);
+    font: inherit;
+    font-size: 11px;
+    font-weight: 400;
+    letter-spacing: normal;
+    text-transform: none;
+    cursor: pointer;
+}
+.net-hosts-btn:hover { color: var(--t1); border-color: var(--hover-border); }
+.net-hosts-btn[aria-expanded="true"] { color: var(--t1); border-color: var(--accent-border); }
+.net-hosts-menu { min-width: 260px; max-width: 420px; text-transform: none; letter-spacing: normal; font-weight: 400; }
+.net-hosts-note { padding: 6px 11px 8px; color: var(--t4); font-size: 11.5px; white-space: normal; }
+/* The menu's items are buttons, for the keyboard; :where() keeps the .dc-menu rules first. */
+:where(.net-hosts-menu) button.dc-menu__item,
+:where(.net-hosts-menu) button.dc-menu__head { width: 100%; background: none; border: none; font-family: inherit; text-align: left; }
+:where(.net-hosts-menu) button.dc-menu__head { border-bottom: 1px solid var(--border-soft); }
+.net-hosts-item .net-host-tag { max-width: none; flex: 0 1 auto; min-width: 0; }
+.net-hosts-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.net-hosts-count { margin-left: auto; padding-left: 12px; color: var(--t4); font-size: 11px; }
 .net-row--replaced { animation: net-replaced-flash 1.6s ease-out; }
 @keyframes net-replaced-flash {
     from { background: color-mix(in srgb, var(--accent) 30%, transparent); }

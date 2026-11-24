@@ -530,6 +530,9 @@
         updateSelectionControls(filtered);
         var visible = filtered.slice(0, displayLimit);
         updateHttpCount(filtered.length, visible.length);
+        var appHosts = currentAppHosts();
+        updateHostsButton(appHosts);
+        if (hostsMenuOpen()) renderHostsMenu();
 
         tbody.innerHTML = visible.map(function(tx) {
             var sc = statusClass(tx);
@@ -537,16 +540,14 @@
             var statusText = tx.error ? 'ERR' : (tx.statusCode ? tx.statusCode + (streaming ? '…' : '') : '…');
             var dur = (tx.durationMs != null ? tx.durationMs + 'ms' + (streaming ? '…' : '') : '…') + throttleBadge(tx);
             var pathOnly = extractPath(tx.url).split('?')[0];
-            var shortUrl = pathOnly.length > 100 ? pathOnly.substring(0, 100) + '…' : pathOnly;
+            var host = hostOf(tx.url);
+            var tagged = isOtherHost(host, appHosts);
             var sel = tx.id === selectedTxId ? ' dc-row--selected' : '';
             var flashAge = replacedFlashAge(tx);
             // The list is drawn again on every change, so the highlight goes on from where it was.
             var rowAttrs = flashAge == null
                 ? 'class="dc-row' + sel + '"'
                 : 'class="dc-row' + sel + ' net-row--replaced" style="animation-delay:-' + flashAge + 'ms"';
-            var urlText = tx.replacedCount > 0
-                ? '<span class="net-url-line"><span class="net-url-text">' + debugEscapeHtml(shortUrl) + '</span>' + replacedBadge(tx) + '</span>'
-                : debugEscapeHtml(shortUrl);
             var mockedBadge = tx.isMocked ? ' <span class="dc-badge" style="--c: var(--ai)">Mocked</span>' : armedMockTag(tx);
             var streamingBadge = streaming ? ' <span class="dc-badge">Streaming</span>' : '';
             var redirectBadge = tx.finalUrl
@@ -558,12 +559,12 @@
                 : '';
             var check = '<td class="dc-cell net-cell-select" data-action="toggleTxSelection" data-tx-id="' + debugEscapeHtml(tx.id) + '"'
                 + ' title="Select this request, to copy it as Markdown or export it as a HAR file. Shift-click selects the rows from the last one you clicked.">'
-                + '<input type="checkbox" class="net-check" aria-label="Select ' + debugEscapeHtml((tx.method || '') + ' ' + pathOnly) + '"'
+                + '<input type="checkbox" class="net-check" aria-label="Select ' + debugEscapeHtml((tx.method || '') + ' ' + (tagged ? host : '') + pathOnly) + '"'
                 + (selectedIds[tx.id] ? ' checked' : '') + '></td>';
             return '<tr ' + rowAttrs + ' data-action="selectTransaction" data-tx-id="' + debugEscapeHtml(tx.id) + '">'
                 + check
                 + '<td class="dc-cell net-cell-method ' + methodClass(tx) + '">' + debugEscapeHtml(tx.method || '') + '</td>'
-                + '<td class="dc-cell net-cell-url" title="' + debugEscapeHtml(pathOnly) + '">' + urlText + '</td>'
+                + urlCell(tx, appHosts)
                 + '<td class="dc-cell net-cell-status ' + sc + '">' + statusText + mockedBadge + redirectBadge + streamingBadge + socketBadge + '</td>'
                 + '<td class="dc-cell net-cell-time">' + dur + '</td>'
                 + '<td class="dc-cell net-cell-cat">' + ((tx.categories || []).map(function(c) {
@@ -614,6 +615,231 @@
         var age = Date.now() - at;
         return age < REPLACED_FLASH_MS ? age : null;
     }
+
+    // ── Hosts ──
+    // A row on one of the app's hosts shows only its path. A row on any other
+    // host starts with a tag of its host, so that an SDK's /api/v1/events does
+    // not look like a request to the app's own server. The app's hosts are the
+    // hosts of the senders' base URLs until the user checks others in the menu
+    // of the URL column; the browser remembers that choice for each app.
+    var HOST_COLORS = 6;           // --host-1 to --host-6 in shared.css
+    var appHostsKey = appHostsStorageKey(null);
+    var pickedAppHosts = null;     // read in init(), once the view names the app
+    var sendersLoaded = false;
+
+    // localStorage is per origin, and every app reached through the same adb
+    // forward has the same origin, so the choice is kept under the app's
+    // package name, which the tab puts on #net-root.
+    window.netAppHostsStorageKey = appHostsStorageKey;
+    function appHostsStorageKey(appId) {
+        return 'debug-network-app-hosts' + (appId ? ':' + appId : '');
+    }
+
+    function loadPickedAppHosts() {
+        var root = document.getElementById('net-root');
+        appHostsKey = appHostsStorageKey(root && root.dataset ? root.dataset.appId : null);
+        try {
+            var saved = JSON.parse(localStorage.getItem(appHostsKey));
+            pickedAppHosts = Array.isArray(saved) ? saved.filter(function(h) { return typeof h === 'string' && h; }) : null;
+        } catch(e) { pickedAppHosts = null; }
+    }
+
+    function savePickedAppHosts() {
+        try {
+            if (pickedAppHosts === null) localStorage.removeItem(appHostsKey);
+            else localStorage.setItem(appHostsKey, JSON.stringify(pickedAppHosts));
+        } catch(e) {}
+    }
+
+    // The host and its port, when it is not the default one of the scheme, or
+    // '' when the URL is not absolute.
+    window.netHostOf = hostOf;
+    function hostOf(url) {
+        try { return new URL(url).host; } catch(e) { return ''; }
+    }
+
+    function senderHosts(list) {
+        var hosts = [];
+        list.forEach(function(s) {
+            var host = s && s.baseUrl ? hostOf(s.baseUrl) : '';
+            if (host && hosts.indexOf(host) < 0) hosts.push(host);
+        });
+        return hosts;
+    }
+
+    // null while the senders are not loaded and the user checked no host: the
+    // rows then get no tag, so they don't flash one until the senders arrive.
+    window.netAppHosts = appHostsFrom;
+    function appHostsFrom(picked, senderList, loaded) {
+        if (picked !== null) return picked;
+        return loaded ? senderHosts(senderList) : null;
+    }
+
+    function currentAppHosts() {
+        return appHostsFrom(pickedAppHosts, senders, sendersLoaded);
+    }
+
+    function isOtherHost(host, appHosts) {
+        return host !== '' && appHosts !== null && appHosts.indexOf(host) < 0;
+    }
+
+    // The same host always gets the same color, from a 32-bit FNV-1a hash of its
+    // name. Two hosts can share one: the tag's text tells them apart.
+    window.netHostColor = hostColor;
+    function hostColor(host) {
+        var hash = 0x811c9dc5;
+        for (var i = 0; i < host.length; i++) hash = Math.imul(hash ^ host.charCodeAt(i), 0x01000193) >>> 0;
+        return hash % HOST_COLORS + 1;
+    }
+
+    // The tag cuts a long host on the left, so the end of the domain stays in view.
+    function hostTag(host) {
+        return '<span class="net-host-tag" style="--c: var(--host-' + hostColor(host) + ')"><bdi>' + debugEscapeHtml(host) + '</bdi></span>';
+    }
+
+    window.netUrlCell = urlCell;
+    function urlCell(tx, appHosts) {
+        var path = extractPath(tx.url || '').split('?')[0];
+        var shortPath = path.length > 100 ? path.substring(0, 100) + '…' : path;
+        var host = hostOf(tx.url || '');
+        var tag = isOtherHost(host, appHosts) ? hostTag(host) : '';
+        var badge = replacedBadge(tx);
+        var text = tag || badge
+            ? '<span class="net-url-line">' + tag + '<span class="net-url-text">' + debugEscapeHtml(shortPath) + '</span>' + badge + '</span>'
+            : debugEscapeHtml(shortPath);
+        return '<td class="dc-cell net-cell-url" title="' + debugEscapeHtml(tx.url || '') + '">' + text + '</td>';
+    }
+
+    window.netHostsButtonLabel = hostsButtonLabel;
+    function hostsButtonLabel(appHosts) {
+        if (!appHosts || !appHosts.length) return 'no app host';
+        return appHosts[0] + (appHosts.length > 1 ? ' +' + (appHosts.length - 1) : '');
+    }
+
+    function hostsButtonTitle(appHosts) {
+        if (!appHosts || !appHosts.length) {
+            return 'Every row starts with a tag of its host. Click to choose the hosts of the app\'s own servers: their rows then show only the path.';
+        }
+        return 'Rows on ' + appHosts.join(', ') + ' show only the path. A row on another host starts with a tag of its host. '
+            + (pickedAppHosts === null
+                ? 'These hosts come from the base URLs of the senders. Click to choose others.'
+                : 'Click to change them. Your browser remembers the choice.');
+    }
+
+    function updateHostsButton(appHosts) {
+        var btn = document.getElementById('hosts-btn');
+        if (!btn) return;
+        btn.hidden = appHosts === null;
+        if (appHosts === null) return;
+        btn.textContent = hostsButtonLabel(appHosts) + ' ▾';
+        btn.title = hostsButtonTitle(appHosts);
+    }
+
+    // Each host in the list, with its number of rows, and each app host that has
+    // none: most rows first.
+    window.netHostCounts = hostCounts;
+    function hostCounts(txs, appHosts) {
+        // No prototype: a host such as "constructor" or "__proto__" is a plain key.
+        var counts = Object.create(null);
+        txs.forEach(function(tx) {
+            var host = hostOf(tx.url || '');
+            if (host) counts[host] = (counts[host] || 0) + 1;
+        });
+        (appHosts || []).forEach(function(host) { if (!counts[host]) counts[host] = 0; });
+        return Object.keys(counts)
+            .map(function(host) { return { host: host, count: counts[host] }; })
+            .sort(function(a, b) { return b.count - a.count || (a.host < b.host ? -1 : a.host > b.host ? 1 : 0); });
+    }
+
+    // The menu is drawn again when the list or the choice changes while it is
+    // open. The focused item keeps the focus, and the menu keeps its scroll
+    // position; a menu that would not change is left as it is, so a click that
+    // is in progress does not lose its target.
+    var hostsMenuShown = null;     // the HTML in the menu, so that an unchanged menu is not drawn again
+
+    function renderHostsMenu() {
+        var menu = document.getElementById('hosts-menu');
+        if (!menu) return;
+        var html = hostsMenuHtml();
+        if (html === hostsMenuShown) return;
+        var focused = document.activeElement && menu.contains(document.activeElement) ? document.activeElement : null;
+        var focusedAction = focused ? focused.getAttribute('data-action') : null;
+        var focusedHost = focused ? focused.getAttribute('data-host') : null;
+        var scrollTop = menu.scrollTop;
+        menu.innerHTML = html;
+        hostsMenuShown = html;
+        menu.scrollTop = scrollTop;
+        if (!focused) return;
+        var items = Array.prototype.slice.call(menu.querySelectorAll('[data-action]'));
+        var target = items.find(function(el) {
+            return el.getAttribute('data-action') === focusedAction && el.getAttribute('data-host') === focusedHost;
+        }) || items[0];
+        if (target) target.focus();
+    }
+
+    function hostsMenuHtml() {
+        var appHosts = currentAppHosts() || [];
+        var html = pickedAppHosts !== null
+            ? '<button type="button" class="dc-menu__head" role="menuitem" data-action="resetAppHosts" title="Forget your choice, and use the hosts of the senders\' base URLs.">'
+                + (senderHosts(senders).length ? 'Use the senders\' hosts' : 'Clear the choice') + '</button>'
+            : '';
+        html += '<div class="net-hosts-note">Rows on a checked host show only the path.</div>';
+        var rows = hostCounts(allTransactions, appHosts);
+        if (!rows.length) html += '<div class="net-hosts-note">No requests yet.</div>';
+        html += rows.map(function(row) {
+            var on = appHosts.indexOf(row.host) >= 0;
+            return '<button type="button" class="dc-menu__item net-hosts-item" role="menuitemcheckbox" aria-checked="' + on + '" data-action="toggleAppHost" data-host="' + debugEscapeHtml(row.host) + '">'
+                + '<span class="dc-check' + (on ? ' dc-check--on' : '') + '">' + (on ? '✓' : '') + '</span>'
+                + (on ? '<span class="net-hosts-name">' + debugEscapeHtml(row.host) + '</span>' : hostTag(row.host))
+                + '<span class="net-hosts-count">' + row.count + '</span></button>';
+        }).join('');
+        return html;
+    }
+
+    function setHostsMenuOpen(open) {
+        var menu = document.getElementById('hosts-menu');
+        var scrim = document.getElementById('hosts-menu-scrim');
+        var btn = document.getElementById('hosts-btn');
+        var col = document.getElementById('url-col');
+        if (!menu || !scrim || !btn) return;
+        if (open) {
+            hostsMenuShown = null;
+            renderHostsMenu();
+        }
+        menu.hidden = !open;
+        scrim.hidden = !open;
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        if (col) col.classList.toggle('net-url-col--open', open);
+    }
+
+    function hostsMenuOpen() {
+        var menu = document.getElementById('hosts-menu');
+        return !!menu && !menu.hidden;
+    }
+
+    window.toggleHostsMenu = function() { setHostsMenuOpen(!hostsMenuOpen()); };
+    window.closeHostsMenu = function(returnFocus) {
+        setHostsMenuOpen(false);
+        var btn = document.getElementById('hosts-btn');
+        if (returnFocus && btn) btn.focus();
+    };
+
+    window.toggleAppHost = function(host) {
+        if (!host) return;
+        var hosts = (currentAppHosts() || []).slice();
+        var at = hosts.indexOf(host);
+        if (at >= 0) hosts.splice(at, 1);
+        else hosts.push(host);
+        pickedAppHosts = hosts;
+        savePickedAppHosts();
+        renderList();
+    };
+
+    window.resetAppHosts = function() {
+        pickedAppHosts = null;
+        savePickedAppHosts();
+        renderList();
+    };
 
     // The selection follows the filters: what they hide is no longer selected,
     // so an export has exactly the selected rows on screen. hidden counts those
@@ -2123,7 +2349,10 @@
     }
 
     function setSenders(list) {
+        var before = JSON.stringify(currentAppHosts());
         senders = list;
+        sendersLoaded = true;
+        if (JSON.stringify(currentAppHosts()) !== before) renderList();
         var btn = document.getElementById('new-request-btn');
         if (btn) btn.hidden = senders.length === 0;
         if (!senders.length && rightPane === 'send') window.closeRightPane();
@@ -3610,6 +3839,11 @@
             if (search) { search.focus(); search.select(); }
             return;
         }
+        if (e.key === 'Escape' && !e.defaultPrevented && hostsMenuOpen()) {
+            e.preventDefault();
+            window.closeHostsMenu(true);
+            return;
+        }
         // Escape in a search field clears it first; the next one closes the detail.
         if (e.key === 'Escape' && !e.defaultPrevented && t && (t.id === 'search-input' || t.id === 'ws-search') && t.value) {
             e.preventDefault();
@@ -3718,6 +3952,10 @@
         toggleSearchRegex: function(el) { window.toggleSearchRegex(el.dataset.target); },
         showSearchHelp: function() { window.showSearchHelp(); },
         closeSearchHelp: function() { window.closeSearchHelp(); },
+        toggleHostsMenu: function() { window.toggleHostsMenu(); },
+        closeHostsMenu: function() { window.closeHostsMenu(); },
+        toggleAppHost: function(el) { window.toggleAppHost(el.dataset.host); },
+        resetAppHosts: function() { window.resetAppHosts(); },
     };
 
     var delegationRoot = null;
@@ -3789,6 +4027,7 @@
         buildStatusFilters();
         buildMethodFilters();
         debugInitResizers();
+        loadPickedAppHosts();
         loadSenders();
         startPolling();
         startWsPolling();
