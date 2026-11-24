@@ -116,17 +116,18 @@ def test_comments_and_run_text_are_not_read(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
 
 
-def test_release_workflows_are_skipped(tmp_path: Path) -> None:
+def test_release_workflows_are_checked_too(tmp_path: Path) -> None:
     result = _run(
         tmp_path,
         {
             ".github/workflows/ci.yml": _workflow("actions/checkout@{}".format(SHA)),
             ".github/workflows/release.yml": _workflow("actions/checkout@v7"),
-            ".github/workflows/snapshot.yml": _workflow("actions/checkout@v7"),
+            ".github/workflows/snapshot.yml": _workflow("actions/checkout@{}".format(SHA)),
         },
     )
-    assert result.returncode == 0, result.stderr
-    assert "1 file(s)" in result.stdout
+    assert result.returncode == 1
+    assert ".github/workflows/release.yml:7: uses actions/checkout@v7 by a tag" in result.stderr
+    assert "snapshot.yml" not in result.stderr
 
 
 def test_annotations_in_github_actions(tmp_path: Path) -> None:

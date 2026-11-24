@@ -264,6 +264,14 @@ jobs:
         working-directory: .
         run: python -m pytest -q .github/scripts
 
+      # release.yml and snapshot.yml give the signing key and the Central
+      # credentials only to a job that runs no Gradle, because a Gradle build
+      # loads every build plugin (see SECURITY.md, "Release Publishing"). The
+      # step above runs the tests of this check and of central_publish.py.
+      - name: No job that runs Gradle references a secret
+        working-directory: .
+        run: python .github/scripts/check_workflow_secrets.py .github/workflows
+
       - name: A change to the CLI increases its revision
         working-directory: .
         env:
@@ -275,8 +283,7 @@ jobs:
       # The owner of an action can move a tag or a branch to other code without
       # a change in this repository, and a commit SHA always names the same
       # code. So each `uses:` of a workflow or a composite action must name a
-      # full commit SHA, a local path, or an image digest. The script skips
-      # release.yml and snapshot.yml until they are pinned (see SKIPPED there).
+      # full commit SHA, a local path, or an image digest.
       - name: Workflows use each action at a commit SHA
         working-directory: .
         run: python .github/scripts/check_action_pins.py
