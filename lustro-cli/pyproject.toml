@@ -13,7 +13,7 @@ license = { text = "Apache-2.0" }
 authors = [{ name = "Evgenii Plokhov" }]
 keywords = ["lustro", "android", "debug", "network", "cli"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 5 - Production/Stable",
     "Environment :: Console",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: Apache Software License",
@@ -26,7 +26,9 @@ dependencies = []
 
 [project.urls]
 Homepage = "https://github.com/Twinsen81/Lustro"
+Documentation = "https://twinsen81.github.io/Lustro/"
 Repository = "https://github.com/Twinsen81/Lustro"
+Changelog = "https://github.com/Twinsen81/Lustro/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 # CI installs these from requirements-test.txt, a lock with hashes: a new one goes

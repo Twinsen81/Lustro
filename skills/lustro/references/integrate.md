@@ -37,7 +37,7 @@ leave the `-noop` halves out, see "Without the no-op halves" in step 4.
 ```toml
 # gradle/libs.versions.toml
 [versions]
-lustro = "0.1.0-SNAPSHOT"
+lustro = "0.1.0"
 
 [libraries]
 lustro             = { group = "io.github.twinsen81", name = "lustro",             version.ref = "lustro" }
@@ -65,15 +65,15 @@ dependencies {
 ```groovy
 // app/build.gradle: Groovy, without a version catalog
 dependencies {
-    debugImplementation "io.github.twinsen81:lustro:0.1.0-SNAPSHOT"
-    releaseImplementation "io.github.twinsen81:lustro-noop:0.1.0-SNAPSHOT"
+    debugImplementation "io.github.twinsen81:lustro:0.1.0"
+    releaseImplementation "io.github.twinsen81:lustro-noop:0.1.0"
 }
 ```
 
-A `-SNAPSHOT` version resolves only from the snapshots repository. Add it to
-`dependencyResolutionManagement { repositories { } }`: in `settings.gradle.kts`,
-`maven("https://central.sonatype.com/repository/maven-snapshots/")`; in `settings.gradle`,
-`maven { url = "https://central.sonatype.com/repository/maven-snapshots/" }`.
+The releases are on Maven Central, so `mavenCentral()` is enough. Only a `-SNAPSHOT` version
+needs the snapshots repository in `dependencyResolutionManagement { repositories { } }`: in
+`settings.gradle.kts`, `maven("https://central.sonatype.com/repository/maven-snapshots/")`; in
+`settings.gradle`, `maven { url = "https://central.sonatype.com/repository/maven-snapshots/" }`.
 
 ## 3. A minSdk below 24
 

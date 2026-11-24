@@ -28,8 +28,8 @@ that `uvx lustro-cli` finds it by the package's name.
 > command, so `pip install lustro` and `uvx lustro` install that project, not
 > this CLI.
 
-Until the first release, the CLI is not on PyPI. Install it from GitHub, or from
-a checkout:
+To get the CLI of `main` before a release, install it from GitHub, or from a
+checkout:
 
 ```bash
 uv tool install "git+https://github.com/Twinsen81/Lustro#subdirectory=lustro-cli"   # pipx takes the same URL
@@ -51,7 +51,7 @@ The revision is a whole number that each change to the CLI on `main` increases
 by one. The version changes only at a release, and the protocol only with the
 wire protocol, so a fix to the CLI alone changes only the revision. A script that
 needs a fix requires the revision of that fix or a later one, such as "revision 1
-or later". The [CHANGELOG](../CHANGELOG.md) names the revision of each change to
+or later". The [CHANGELOG](https://github.com/Twinsen81/Lustro/blob/main/CHANGELOG.md) names the revision of each change to
 the CLI:
 
 ```bash
@@ -474,7 +474,7 @@ window 1  dialog  com.example/com.example.MainActivity  focus  [120,963][960,151
 `--unmerged` reads the unmerged Compose semantics tree, `--settle MS` waits until two reads in a
 row are the same, for up to MS milliseconds, and `--json` prints the whole response. Each call
 looks up the token and the port again, so a script that reads the screen often sends the GET
-itself (see [docs/AGENTS.md](../docs/AGENTS.md#screen-tab-operations)).
+itself (see [docs/AGENTS.md](https://github.com/Twinsen81/Lustro/blob/main/docs/AGENTS.md#screen-tab-operations)).
 
 ## Any route
 
@@ -524,7 +524,7 @@ Add it to the client's MCP config:
 }
 ```
 
-[With a coding agent](../docs/get-started/coding-agent.md#agents-without-a-shell-the-mcp-server)
+[With a coding agent](https://github.com/Twinsen81/Lustro/blob/main/docs/get-started/coding-agent.md#agents-without-a-shell-the-mcp-server)
 has the config for Claude Desktop, Claude Code, Cursor, VS Code, Codex, and Gemini CLI. A desktop
 app starts the server with a short `PATH`: give `command` the full path that `which lustro`
 prints. When `adb` is not on the `PATH`, the server looks for it in `$ANDROID_HOME/platform-tools`,
@@ -534,7 +534,7 @@ The tools: `list_requests`, `get_request`, `list_mock_rules`, `add_mock_rule`,
 `delete_mock_rule`, `set_throttle`, `read_logs`, `call_api`, which reaches any route as
 `lustro api` does, and `get_schema`, which returns the tabs or a tab's OpenAPI document. Each says
 in its annotations and its description whether it changes the app.
-[docs/AGENTS.md](../docs/AGENTS.md#the-mcp-server-for-agents-without-a-shell) lists the route of
+[docs/AGENTS.md](https://github.com/Twinsen81/Lustro/blob/main/docs/AGENTS.md#the-mcp-server-for-agents-without-a-shell) lists the route of
 each.
 
 Each tool call finds the app as a command does, so the global flags apply to every call:

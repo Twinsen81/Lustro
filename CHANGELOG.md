@@ -7,10 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Everything below is implemented and building toward the first public release
-(`0.1.0`). The remaining work is execution that needs credentials/infrastructure
-(Sonatype Central publish, PyPI, external security review) —
-see [DECISIONS.md](DECISIONS.md).
+## [0.1.0] - 2026-11-24
+
+The first public release. The library artifacts are on Maven Central under
+`io.github.twinsen81`, and the CLI is on PyPI as `lustro-cli`. The entries
+below list every change since the first snapshot.
 
 ### Added
 
@@ -3332,4 +3333,5 @@ see [DECISIONS.md](DECISIONS.md).
   submits an HTML form to the debug server, rather than calling `fetch()`, needs
   to move to `fetch()`.
 
-[Unreleased]: https://github.com/Twinsen81/Lustro/compare/HEAD
+[Unreleased]: https://github.com/Twinsen81/Lustro/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/Twinsen81/Lustro/releases/tag/v0.1.0

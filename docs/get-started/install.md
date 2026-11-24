@@ -17,7 +17,7 @@ Gradle **cannot** put both on one configuration. Add each half to its own build 
 ```toml
 # gradle/libs.versions.toml
 [versions]
-lustro = "0.1.0-SNAPSHOT"
+lustro = "0.1.0"
 
 [libraries]
 lustro      = { group = "io.github.twinsen81", name = "lustro",      version.ref = "lustro" }
@@ -37,8 +37,13 @@ An app whose code in `src/main` names no Lustro type can leave out the no-op hal
 has no Lustro class: see
 [Without the no-op halves](../concepts/release-safety.md#without-the-no-op-halves).
 
-`-SNAPSHOT` versions come from the Sonatype Central snapshots repository, so add it. You need it
-only until Lustro has a release:
+The releases are on Maven Central, so `mavenCentral()` in the repositories of
+`settings.gradle.kts` is enough.
+
+Each merge to `main` also publishes a `-SNAPSHOT` of the next version to the Sonatype Central
+snapshots repository. To try a change before its release, add that repository and use the
+`-SNAPSHOT` version that `VERSION_NAME` in
+[`gradle.properties`](https://github.com/Twinsen81/Lustro/blob/main/gradle.properties) names:
 
 ```kotlin
 // settings.gradle.kts
@@ -146,20 +151,18 @@ The `lustro` command opens the console with its token, and drives every tab from
 script, or a coding agent: see [Agents and automation](../AGENTS.md#use-the-lustro-cli). It is a
 Python package, `lustro-cli`, that needs Python 3.9 or newer and no other package.
 
-Until the first release, the CLI is not on PyPI. Install it from GitHub:
+Each release publishes the CLI to PyPI as `lustro-cli`, with the library's version:
 
 ```bash
-uv tool install "git+https://github.com/Twinsen81/Lustro#subdirectory=lustro-cli"
-# or: pipx install "git+https://github.com/Twinsen81/Lustro#subdirectory=lustro-cli"
+uv tool install lustro-cli    # or: pipx install lustro-cli
 lustro open                   # forwards the port, and opens the console with the token
+uvx lustro-cli net list       # runs the CLI without an install
 ```
 
-From a checkout of this repository, `uv tool install ./lustro-cli` installs the CLI of that
-checkout.
-
-From the first release, each release publishes the CLI to PyPI as `lustro-cli`, with the
-library's version. Then `uv tool install lustro-cli` or `pipx install lustro-cli` installs it, and
-`uvx lustro-cli net list` runs it without an install.
+To get the CLI of `main` before a release, install it from GitHub with
+`uv tool install "git+https://github.com/Twinsen81/Lustro#subdirectory=lustro-cli"`, which pipx
+also takes. From a checkout of this repository, `uv tool install ./lustro-cli` installs the CLI
+of that checkout.
 
 The PyPI package `lustro` is a different project that also installs a `lustro` command, so do not
 install it, and do not run `uvx lustro`.

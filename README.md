@@ -11,7 +11,8 @@ databases, and preferences, with a JSON API for AI agents.</b></p>
 <p align="center">
   <a href="LICENSE"><img alt="License: Apache 2.0" src="https://img.shields.io/badge/license-Apache%202.0-blue"></a>
   <a href="https://github.com/Twinsen81/Lustro/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Twinsen81/Lustro/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://central.sonatype.com/repository/maven-snapshots/io/github/twinsen81/lustro/"><img alt="Snapshot version" src="https://img.shields.io/maven-metadata/v?metadataUrl=https%3A%2F%2Fcentral.sonatype.com%2Frepository%2Fmaven-snapshots%2Fio%2Fgithub%2Ftwinsen81%2Flustro%2Fmaven-metadata.xml&label=snapshot"></a>
+  <a href="https://central.sonatype.com/artifact/io.github.twinsen81/lustro"><img alt="Maven Central" src="https://img.shields.io/maven-central/v/io.github.twinsen81/lustro"></a>
+  <a href="https://pypi.org/project/lustro-cli/"><img alt="PyPI" src="https://img.shields.io/pypi/v/lustro-cli?label=lustro-cli"></a>
   <a href="https://twinsen81.github.io/Lustro/"><img alt="Documentation" src="https://img.shields.io/badge/docs-online-informational"></a>
 </p>
 
@@ -23,9 +24,9 @@ without a browser.
 
 ![The Lustro Network tab in a desktop browser: a list of captured OkHttp requests with method, status, and time, and the JSON response of the selected request](docs/images/network-tab.png)
 
-> **Status:** early development (pre-1.0). There is no stable release yet. Only `0.1.0-SNAPSHOT`
-> builds exist, in the Sonatype Central snapshots repository. The Kotlin API and the wire protocol
-> can change from one snapshot to the next.
+> **Status:** pre-1.0. The artifacts are on Maven Central and the CLI is on PyPI. Until `1.0.0`, a
+> minor version, such as `0.2.0`, can change the Kotlin API and the wire protocol in ways that are
+> not compatible. The [CHANGELOG](CHANGELOG.md) lists each change.
 
 **[Read the Lustro documentation](https://twinsen81.github.io/Lustro/)**
 
@@ -58,28 +59,17 @@ The Network tab is in the main artifact. Each other tab is a plugin with its own
 
 ## Quick start: add Lustro to an Android app
 
-1. Add the snapshots repository to `settings.gradle.kts`:
-
-    ```kotlin
-    dependencyResolutionManagement {
-        repositories {
-            mavenCentral()
-            maven("https://central.sonatype.com/repository/maven-snapshots/")
-        }
-    }
-    ```
-
-2. Add the runtime for debug builds and the no-op half for release builds, in
-   the app module's `build.gradle.kts`:
+1. Add the runtime for debug builds and the no-op half for release builds, in
+   the app module's `build.gradle.kts`. The artifacts are on Maven Central:
 
     ```kotlin
     dependencies {
-        debugImplementation("io.github.twinsen81:lustro:0.1.0-SNAPSHOT")
-        releaseImplementation("io.github.twinsen81:lustro-noop:0.1.0-SNAPSHOT")
+        debugImplementation("io.github.twinsen81:lustro:0.1.0")
+        releaseImplementation("io.github.twinsen81:lustro-noop:0.1.0")
     }
     ```
 
-3. Build Lustro once, in `Application.onCreate()`, add its interceptor to your
+2. Build Lustro once, in `Application.onCreate()`, add its interceptor to your
    OkHttp client, and start it on the main thread:
 
     ```kotlin
@@ -94,7 +84,7 @@ The Network tab is in the main artifact. Each other tab is a plugin with its own
     lustro.start()
     ```
 
-4. Run the debug build, keep the app in the foreground, and open the console.
+3. Run the debug build, keep the app in the foreground, and open the console.
    The [`lustro` CLI](https://twinsen81.github.io/Lustro/get-started/install/#the-lustro-cli) forwards the
    port and opens the browser with the token:
 

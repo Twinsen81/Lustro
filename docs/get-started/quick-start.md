@@ -1,7 +1,6 @@
 # Quick start
 
-First add the snapshots repository and the two halves of `lustro`, as
-[Install](install.md) shows. Then build Lustro once, usually in your `Application`, add the tabs,
+First add the two halves of `lustro`, as [Install](install.md) shows. Then build Lustro once, usually in your `Application`, add the tabs,
 add the interceptor to your OkHttp client, and start Lustro:
 
 ```kotlin

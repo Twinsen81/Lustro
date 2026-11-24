@@ -13,11 +13,12 @@ small web server in the app's process and shows the app's data as tabs in a
 desktop browser. Every tab is also a JSON API, so AI agents, scripts, and the
 `lustro` command-line tool can use the same data without a browser.
 
-!!! warning "Early development"
+!!! note "Pre-1.0"
 
-    Lustro is pre-1.0. Only `0.1.0-SNAPSHOT` builds exist, from the Sonatype
-    Central snapshots repository. The Kotlin API and the HTTP API can change
-    from one snapshot to the next.
+    Lustro is pre-1.0. Until `1.0.0`, a minor version, such as `0.2.0`, can
+    change the Kotlin API and the HTTP API in ways that are not compatible.
+    The [CHANGELOG](https://github.com/Twinsen81/Lustro/blob/main/CHANGELOG.md)
+    lists each change.
 
 ![The Network tab in a desktop browser: the sample app's requests, and the JSON response of one of them](images/network-tab.png)
 
@@ -44,28 +45,17 @@ for both build types.
 
 ## Quick start
 
-1. Add the snapshots repository to `settings.gradle.kts`:
-
-    ```kotlin
-    dependencyResolutionManagement {
-        repositories {
-            mavenCentral()
-            maven("https://central.sonatype.com/repository/maven-snapshots/")
-        }
-    }
-    ```
-
-2. Add the runtime for debug builds and the no-op half for release builds, in
-   the app module's `build.gradle.kts`:
+1. Add the runtime for debug builds and the no-op half for release builds, in
+   the app module's `build.gradle.kts`. The artifacts are on Maven Central:
 
     ```kotlin
     dependencies {
-        debugImplementation("io.github.twinsen81:lustro:0.1.0-SNAPSHOT")
-        releaseImplementation("io.github.twinsen81:lustro-noop:0.1.0-SNAPSHOT")
+        debugImplementation("io.github.twinsen81:lustro:0.1.0")
+        releaseImplementation("io.github.twinsen81:lustro-noop:0.1.0")
     }
     ```
 
-3. Build Lustro once, in `Application.onCreate()`, add its interceptor to your
+2. Build Lustro once, in `Application.onCreate()`, add its interceptor to your
    OkHttp client, and start it on the main thread:
 
     ```kotlin
@@ -80,7 +70,7 @@ for both build types.
     lustro.start()
     ```
 
-4. Run the debug build, keep the app in the foreground, and open the console.
+3. Run the debug build, keep the app in the foreground, and open the console.
    Forward the port and read the token:
 
     ```bash
