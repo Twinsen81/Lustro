@@ -285,7 +285,7 @@ public class NetworkDebugTab private constructor(
                             <tr>
                                 <th class="dc-th net-select-col" id="select-col" data-action="toggleSelectAll" title="Select every request the filters show, or none. Selected requests can be copied as Markdown or exported as a HAR file."><input type="checkbox" id="select-all" class="net-check" aria-label="Select every request the filters show"></th>
                                 <th class="dc-th" style="width:74px">Method</th>
-                                <th class="dc-th">URL</th>
+                                <th class="dc-th net-url-col" id="url-col"><div class="net-url-head">URL<div class="dc-menu-anchor net-hosts"><button type="button" class="net-hosts-btn" id="hosts-btn" data-action="toggleHostsMenu" aria-haspopup="true" aria-expanded="false" aria-controls="hosts-menu"></button><div class="dc-menu-scrim" id="hosts-menu-scrim" data-action="closeHostsMenu" hidden></div><div class="dc-menu net-hosts-menu" id="hosts-menu" role="menu" aria-label="The app's hosts" hidden></div></div></div></th>
                                 <th class="dc-th" style="width:60px">Status</th>
                                 <th class="dc-th" style="width:66px">Time</th>
                                 <th class="dc-th" style="width:96px">Cat</th>

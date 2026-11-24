@@ -159,6 +159,15 @@
   --cat-other:   #94a3b8;
   --cat-wiretap: #34d399;
 
+  /* Network host tags: a row on a host that is not one of the app's hosts.
+     A host takes one of these by a hash of its name. */
+  --host-1: #a78bfa;
+  --host-2: #fb923c;
+  --host-3: #f472b6;
+  --host-4: #22d3ee;
+  --host-5: #a3e635;
+  --host-6: #2dd4bf;
+
   /* JSON syntax highlighting */
   --syn-key:  #60a5fa;
   --syn-str:  #34d399;
@@ -264,6 +273,13 @@
   --cat-auth:    #b45309;
   --cat-other:   #475569;
   --cat-wiretap: #059669;
+
+  --host-1: #6d28d9;
+  --host-2: #c2410c;
+  --host-3: #be185d;
+  --host-4: #0e7490;
+  --host-5: #4d7c0f;
+  --host-6: #0f766e;
 
   --syn-key:  #2563eb;
   --syn-str:  #059669;

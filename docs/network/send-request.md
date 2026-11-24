@@ -29,6 +29,10 @@ takes absolute URLs only. Names must be unique. `OkHttpSender.create` throws
 `IllegalArgumentException` for a blank name, and for a base URL that is not an absolute `http` or
 `https` URL.
 
+The hosts of the base URLs are also the app's hosts in the list of requests: a row on one of
+them shows only its path, and a row on another host starts with a tag of its host. See
+[Hosts](controls.md#hosts).
+
 **Lustro asks for each client only when you send.** The lambda runs at the first send through
 that sender, off the main thread, and Lustro keeps the client it returns. So a sender can be a
 client that carries `lustro.networkInterceptor()`, although that client has to be built after
@@ -46,7 +50,8 @@ OkHttpSender.create("API", baseUrlProvider = { serverSettings.currentBaseUrl }) 
 ```
 
 The tab calls the function off the main thread, for each send of a relative URL and each time it
-lists the senders, which the console does each time the Send form opens. A `null` means that the
+lists the senders, which the console does when the tab opens and each time the Send form opens.
+The list of requests takes the app's hosts from the last base URLs that the console read. A `null` means that the
 sender takes absolute URLs only until the function returns a URL again. The URL is checked at
 send time: when the function throws, or returns a URL that is not an absolute `http` or `https`
 URL, the send gets a `400` with `field: baseUrl`. The senders list shows the value that the
