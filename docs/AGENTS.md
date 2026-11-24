@@ -9,8 +9,8 @@ not the Kotlin API, is the stable contract. It is versioned, and SemVer applies 
 This document is about using a running Lustro. To add Lustro to an app, follow
 [Install](get-started/install.md) and [Quick start](get-started/quick-start.md).
 
-> **Status:** pre-1.0. The protocol may still change between snapshots. Always read `_meta` and
-> the per-tab `_schema` at runtime rather than hard-coding shapes.
+> **Status:** pre-1.0. Until `1.0.0`, the protocol may still change between minor versions. Always
+> read `_meta` and the per-tab `_schema` at runtime rather than hard-coding shapes.
 
 ## The agent's view
 
@@ -36,17 +36,15 @@ This document is about using a running Lustro. To add Lustro to an app, follow
 
 ## Use the `lustro` CLI
 
-Agents should drive Lustro with the `lustro` CLI. It is a Python client in `lustro-cli/`. Until
-the first release, the CLI is not on PyPI. Install it from GitHub:
+Agents should drive Lustro with the `lustro` CLI. It is a Python client in `lustro-cli/`, and
+each release publishes it to PyPI as `lustro-cli`:
 
 ```bash
-uv tool install "git+https://github.com/Twinsen81/Lustro#subdirectory=lustro-cli"   # pipx takes the same URL
+uv tool install lustro-cli    # or: pipx install lustro-cli
 ```
 
-From the first release, each release publishes it to PyPI as `lustro-cli`. Then install it with
-`uv tool install lustro-cli` or `pipx install lustro-cli`, or run it without an install as
-`uvx lustro-cli <command>`. The PyPI package `lustro` is a different project with a `lustro`
-command of its own: do not install it, and do not run `uvx lustro`.
+`uvx lustro-cli <command>` runs it without an install. The PyPI package `lustro` is a different
+project with a `lustro` command of its own: do not install it, and do not run `uvx lustro`.
 
 The CLI reads the token and the endpoint from the `LustroToken` log line, and it prints much less
 than the routes return: `GET transactions` returns every captured transaction with all its fields,

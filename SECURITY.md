@@ -9,14 +9,14 @@ threat model, and the process for handling the vendored NanoHTTPD dependency.
 ## Supported Versions
 
 Lustro is pre-1.0 and under active development. Until `1.0.0`, only the latest
-published version (currently the `0.1.0-SNAPSHOT` line) receives security fixes.
-After `1.0.0`, the most recent minor release of the current major will be
-supported.
+release (currently `0.1.0`) receives security fixes. A fix comes in a new
+release. After `1.0.0`, the most recent minor release of the current major will
+be supported.
 
 | Version | Supported |
 | ------- | --------- |
-| `0.1.0-SNAPSHOT` (latest) | Yes |
-| Older snapshots | No |
+| `0.1.0` (latest) | Yes |
+| `-SNAPSHOT` builds | No |
 
 ## Reporting a Vulnerability
 
@@ -344,9 +344,8 @@ database file in the app's `databases` and `noBackupFilesDir` directories, under
   there stops after 2 s. Through the app's own handle, a read waits in the
   app's connection pool, which has no such time limit.
 
-An external review of the auth, CSP, and capture implementation is part of the
-work remaining before the first public release (`0.1.0`), with the publishing
-of the artifacts to Sonatype Central and of the CLI to PyPI.
+No external review of the auth, CSP, and capture implementation has been done
+yet. Report a problem through GitHub Security Advisories.
 
 ### WorkManager work
 
