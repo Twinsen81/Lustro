@@ -15,6 +15,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   docs keep `0.1.0`, the release on Maven Central and PyPI. CONTRIBUTING says
   that a change to `__version__` also increases `REVISION`.
 
+### Fixed
+
+- **CI: the Robolectric tests on SDK 35 run again after the update to
+  Robolectric 4.18.** Robolectric 4.18 runs SDK 35 on the `android-all` jar
+  `15-robolectric-14663667-2-i7`, and 4.17 ran it on
+  `15-robolectric-13954326-i7`. `gradle/robolectric.gradle.kts` still
+  resolved the old jar, and the tests run offline, so each SDK 35 test failed
+  in its setup with an `IllegalArgumentException` from
+  `LocalDependencyResolver`: 60 of the 84 tests of `lustro-prefs` and 7 of the
+  71 of `lustro-logs`. The jar of SDK 35 is now the one of 4.18. The jars of
+  SDK 28 and 34 did not change. Verified: `./gradlew testDebugUnitTest`
+  passes, and without the change `:lustro-prefs` fails 60 of 84 tests, as on
+  `main`.
+
 ### Security
 
 - **No job that runs Gradle gets a publishing secret: a job without Gradle
