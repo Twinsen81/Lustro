@@ -11,7 +11,7 @@ __all__ = ["__version__", "PROTOCOL_VERSION", "REVISION", "LustroError", "Lustro
 # The package's only version: pyproject.toml reads it from here. It is
 # VERSION_NAME in gradle.properties without -SNAPSHOT, so a release publishes the
 # CLI with the version of the library; `./gradlew checkCliVersion` fails when not.
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 # The wire protocol version that this CLI implements, which `lustro --version`
 # prints. It is the server's protocolVersion in lustro/build.gradle.kts, and
@@ -23,7 +23,7 @@ PROTOCOL_VERSION = "1.17"
 # does not (.github/scripts/check_cli_revision.py). The two versions above change
 # only at a release or with the protocol, so a wrapper script that needs a fix of
 # the CLI requires the revision of that fix or a later one.
-REVISION = 4
+REVISION = 5
 
 from .client import CursorState, LustroClient, LustroError  # noqa: E402
 from .cli import main  # noqa: E402

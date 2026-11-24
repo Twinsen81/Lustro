@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`main` builds `0.1.1-SNAPSHOT` after the `0.1.0` release, and the CLI
+  of `main` is `0.1.1` (CLI revision 5).** Each merge to `main` publishes
+  `0.1.1-SNAPSHOT` to the Sonatype Central snapshots repository again. The
+  docs keep `0.1.0`, the release on Maven Central and PyPI. CONTRIBUTING says
+  that a change to `__version__` also increases `REVISION`.
+
 ## [0.1.0] - 2026-11-24
 
 The first public release. The library artifacts are on Maven Central under
