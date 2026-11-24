@@ -236,6 +236,27 @@ class NetworkDebugTabTest {
     }
 
     @Test
+    fun `the view names the app, so the console keeps the checked hosts for each app`() {
+        assertFalse(tab().renderContent().contains("data-app-id"))
+        val named =
+            tab().apply {
+                applyConfig(
+                    maxCaptureTransactions = 1000,
+                    maxBodyCaptureBytes = 4096,
+                    appServerBaseUrl = null,
+                    captureBudgetBytes = 50L * 1024 * 1024,
+                    requestTimeoutMs = 30_000,
+                    maxCaptureWebSockets = 100,
+                    maxWebSocketEvents = 1000,
+                    webSocketCaptureBudgetBytes = 16L * 1024 * 1024,
+                    appId = "com.example.app\"<",
+                )
+            }
+        val html = named.renderContent()
+        assertTrue(html, html.contains("""id="net-root" data-view="http" data-app-id="com.example.app&quot;&lt;">"""))
+    }
+
+    @Test
     fun `a cursor from another tab instance gets a reset`() {
         // Models an app restart: the new tab's sequence reaches the value of the
         // client's old cursor with a different list.

@@ -83,7 +83,8 @@ The button in the header of the URL column names the app's hosts, for example
 `api.example.com`, or `api.example.com +1` for two. They are the hosts of the base URLs of the
 [senders](send-request.md), so most apps need no setting. Click the button to choose others: the
 menu lists each host in the list with its number of rows, and a checked host shows only the path.
-The console remembers your choice in your browser. **Use the senders' hosts** forgets it. When
+The console remembers your choice in your browser, for each app, so two apps that you reach on
+the same port keep their own hosts. **Use the senders' hosts** forgets it. When
 no sender has a base URL, the button says `no app host`, and every row has a tag until you check
 a host.
 

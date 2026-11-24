@@ -532,6 +532,7 @@
         updateHttpCount(filtered.length, visible.length);
         var appHosts = currentAppHosts();
         updateHostsButton(appHosts);
+        if (hostsMenuOpen()) renderHostsMenu();
 
         tbody.innerHTML = visible.map(function(tx) {
             var sc = statusClass(tx);
@@ -620,23 +621,33 @@
     // host starts with a tag of its host, so that an SDK's /api/v1/events does
     // not look like a request to the app's own server. The app's hosts are the
     // hosts of the senders' base URLs until the user checks others in the menu
-    // of the URL column; the browser remembers that choice.
-    var APP_HOSTS_KEY = 'debug-network-app-hosts';
+    // of the URL column; the browser remembers that choice for each app.
     var HOST_COLORS = 6;           // --host-1 to --host-6 in shared.css
-    var pickedAppHosts = loadPickedAppHosts();
+    var appHostsKey = appHostsStorageKey(null);
+    var pickedAppHosts = null;     // read in init(), once the view names the app
     var sendersLoaded = false;
 
+    // localStorage is per origin, and every app reached through the same adb
+    // forward has the same origin, so the choice is kept under the app's
+    // package name, which the tab puts on #net-root.
+    window.netAppHostsStorageKey = appHostsStorageKey;
+    function appHostsStorageKey(appId) {
+        return 'debug-network-app-hosts' + (appId ? ':' + appId : '');
+    }
+
     function loadPickedAppHosts() {
+        var root = document.getElementById('net-root');
+        appHostsKey = appHostsStorageKey(root && root.dataset ? root.dataset.appId : null);
         try {
-            var saved = JSON.parse(localStorage.getItem(APP_HOSTS_KEY));
-            return Array.isArray(saved) ? saved.filter(function(h) { return typeof h === 'string' && h; }) : null;
-        } catch(e) { return null; }
+            var saved = JSON.parse(localStorage.getItem(appHostsKey));
+            pickedAppHosts = Array.isArray(saved) ? saved.filter(function(h) { return typeof h === 'string' && h; }) : null;
+        } catch(e) { pickedAppHosts = null; }
     }
 
     function savePickedAppHosts() {
         try {
-            if (pickedAppHosts === null) localStorage.removeItem(APP_HOSTS_KEY);
-            else localStorage.setItem(APP_HOSTS_KEY, JSON.stringify(pickedAppHosts));
+            if (pickedAppHosts === null) localStorage.removeItem(appHostsKey);
+            else localStorage.setItem(appHostsKey, JSON.stringify(pickedAppHosts));
         } catch(e) {}
     }
 
@@ -728,7 +739,8 @@
     // none: most rows first.
     window.netHostCounts = hostCounts;
     function hostCounts(txs, appHosts) {
-        var counts = {};
+        // No prototype: a host such as "constructor" or "__proto__" is a plain key.
+        var counts = Object.create(null);
         txs.forEach(function(tx) {
             var host = hostOf(tx.url || '');
             if (host) counts[host] = (counts[host] || 0) + 1;
@@ -739,9 +751,33 @@
             .sort(function(a, b) { return b.count - a.count || (a.host < b.host ? -1 : a.host > b.host ? 1 : 0); });
     }
 
+    // The menu is drawn again when the list or the choice changes while it is
+    // open. The focused item keeps the focus, and the menu keeps its scroll
+    // position; a menu that would not change is left as it is, so a click that
+    // is in progress does not lose its target.
+    var hostsMenuShown = null;     // the HTML in the menu, so that an unchanged menu is not drawn again
+
     function renderHostsMenu() {
         var menu = document.getElementById('hosts-menu');
         if (!menu) return;
+        var html = hostsMenuHtml();
+        if (html === hostsMenuShown) return;
+        var focused = document.activeElement && menu.contains(document.activeElement) ? document.activeElement : null;
+        var focusedAction = focused ? focused.getAttribute('data-action') : null;
+        var focusedHost = focused ? focused.getAttribute('data-host') : null;
+        var scrollTop = menu.scrollTop;
+        menu.innerHTML = html;
+        hostsMenuShown = html;
+        menu.scrollTop = scrollTop;
+        if (!focused) return;
+        var items = Array.prototype.slice.call(menu.querySelectorAll('[data-action]'));
+        var target = items.find(function(el) {
+            return el.getAttribute('data-action') === focusedAction && el.getAttribute('data-host') === focusedHost;
+        }) || items[0];
+        if (target) target.focus();
+    }
+
+    function hostsMenuHtml() {
         var appHosts = currentAppHosts() || [];
         var html = pickedAppHosts !== null
             ? '<button type="button" class="dc-menu__head" role="menuitem" data-action="resetAppHosts" title="Forget your choice, and use the hosts of the senders\' base URLs.">'
@@ -757,7 +793,7 @@
                 + (on ? '<span class="net-hosts-name">' + debugEscapeHtml(row.host) + '</span>' : hostTag(row.host))
                 + '<span class="net-hosts-count">' + row.count + '</span></button>';
         }).join('');
-        menu.innerHTML = html;
+        return html;
     }
 
     function setHostsMenuOpen(open) {
@@ -766,7 +802,10 @@
         var btn = document.getElementById('hosts-btn');
         var col = document.getElementById('url-col');
         if (!menu || !scrim || !btn) return;
-        if (open) renderHostsMenu();
+        if (open) {
+            hostsMenuShown = null;
+            renderHostsMenu();
+        }
         menu.hidden = !open;
         scrim.hidden = !open;
         btn.setAttribute('aria-expanded', open ? 'true' : 'false');
@@ -779,7 +818,11 @@
     }
 
     window.toggleHostsMenu = function() { setHostsMenuOpen(!hostsMenuOpen()); };
-    window.closeHostsMenu = function() { setHostsMenuOpen(false); };
+    window.closeHostsMenu = function(returnFocus) {
+        setHostsMenuOpen(false);
+        var btn = document.getElementById('hosts-btn');
+        if (returnFocus && btn) btn.focus();
+    };
 
     window.toggleAppHost = function(host) {
         if (!host) return;
@@ -789,14 +832,12 @@
         else hosts.push(host);
         pickedAppHosts = hosts;
         savePickedAppHosts();
-        renderHostsMenu();
         renderList();
     };
 
     window.resetAppHosts = function() {
         pickedAppHosts = null;
         savePickedAppHosts();
-        renderHostsMenu();
         renderList();
     };
 
@@ -3800,7 +3841,7 @@
         }
         if (e.key === 'Escape' && !e.defaultPrevented && hostsMenuOpen()) {
             e.preventDefault();
-            window.closeHostsMenu();
+            window.closeHostsMenu(true);
             return;
         }
         // Escape in a search field clears it first; the next one closes the detail.
@@ -3986,6 +4027,7 @@
         buildStatusFilters();
         buildMethodFilters();
         debugInitResizers();
+        loadPickedAppHosts();
         loadSenders();
         startPolling();
         startWsPolling();

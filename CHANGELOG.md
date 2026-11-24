@@ -23,8 +23,9 @@ see [DECISIONS.md](DECISIONS.md).
   hosts of the senders' base URLs (`GET senders`), so an app that registers
   senders needs no setting. The header of the URL column names them, and its
   menu lists each host in the list with its number of rows: check the hosts
-  that are the app's. The browser remembers the choice, and **Use the
-  senders' hosts** forgets it. Without a sender base URL, every row has a tag
+  that are the app's. The browser remembers the choice for each app, under
+  its package name, so two apps on the same forwarded port keep their own
+  hosts, and **Use the senders' hosts** forgets it. Without a sender base URL, every row has a tag
   until you check a host. The tooltip of the URL cell is now the whole URL,
   with the host and the query, not the path again. The wire protocol and the
   CLI do not change: they already give the whole URL. Verified on an API 30

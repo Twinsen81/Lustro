@@ -11,6 +11,7 @@ import io.github.twinsen81.lustro.ExperimentalPlatformCapture
 import io.github.twinsen81.lustro.Headers
 import io.github.twinsen81.lustro.MediaType
 import io.github.twinsen81.lustro.escapeForJson
+import io.github.twinsen81.lustro.escapeHtml
 import io.github.twinsen81.lustro.internal.Versions
 import io.github.twinsen81.lustro.internal.network.AppCaptureSink
 import io.github.twinsen81.lustro.internal.network.CaptureSource
@@ -92,6 +93,12 @@ public class NetworkDebugTab private constructor(
     // DebugConfig.appServerBaseUrl.
     @Volatile
     private var appServerBaseUrl: String? = null
+
+    // The app's package name, pushed in via applyConfig. The console keeps the
+    // hosts that the user checked under it: localStorage is per origin, and every
+    // app reached through the same adb forward has the same origin.
+    @Volatile
+    private var appId: String? = null
 
     // Bounds a Send Request call; pushed in via applyConfig from
     // DebugConfig.requestTimeoutMs.
@@ -183,8 +190,8 @@ public class NetworkDebugTab private constructor(
      * Internal config-injection seam invoked by `Lustro.Builder.build()` so the
      * tab honours [DebugConfig] instead of its standalone factory defaults:
      * the transaction ring cap, the per-body capture cap, the base URL used
-     * to resolve relative Send Request URLs, and the per-request timeout that
-     * bounds a Send Request call.
+     * to resolve relative Send Request URLs, the per-request timeout that
+     * bounds a Send Request call, and the app's package name.
      */
     internal fun applyConfig(
         maxCaptureTransactions: Int,
@@ -195,7 +202,9 @@ public class NetworkDebugTab private constructor(
         maxCaptureWebSockets: Int,
         maxWebSocketEvents: Int,
         webSocketCaptureBudgetBytes: Long,
+        appId: String? = null,
     ) {
+        this.appId = appId
         store.maxTransactions = maxCaptureTransactions
         store.captureBudgetBytes = captureBudgetBytes
         webSocketStore.maxConnections = maxCaptureWebSockets
@@ -227,7 +236,7 @@ public class NetworkDebugTab private constructor(
 
     override fun renderContent(): String =
         """
-        <div class="dc-split" id="net-root" data-view="http">
+        <div class="dc-split" id="net-root" data-view="http"${appId?.let { " data-app-id=\"${it.escapeHtml()}\"" }.orEmpty()}>
             <div class="dc-pane net-list-pane">
                 <div class="dc-toolbar net-list-head">
                     <h3 class="dc-mono-label net-list-title">Network Traffic</h3>

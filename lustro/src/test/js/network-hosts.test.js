@@ -113,6 +113,20 @@ test("The hosts button names the app's hosts", () => {
     assert.strictEqual(network.netHostsButtonLabel([]), 'no app host');
 });
 
+test('The checked hosts are kept for each app', () => {
+    assert.strictEqual(network.netAppHostsStorageKey('com.example.app'), 'debug-network-app-hosts:com.example.app');
+    assert.strictEqual(network.netAppHostsStorageKey('com.example.other'), 'debug-network-app-hosts:com.example.other');
+    assert.strictEqual(network.netAppHostsStorageKey(undefined), 'debug-network-app-hosts');
+});
+
+test('The hosts menu counts a host named like a member of Object.prototype', () => {
+    const txs = [tx('http://constructor/v1'), tx('http://constructor/v2'), tx('http://__proto__/v1'), tx('http://tostring/')];
+    assert.deepStrictEqual(
+        [...network.netHostCounts(txs, []).map((row) => row.host + ' ' + row.count)],
+        ['constructor 2', '__proto__ 1', 'tostring 1'],
+    );
+});
+
 test('The hosts menu lists each host, most rows first, and the app hosts without rows', () => {
     const txs = [
         tx('https://maps.googleapis.com/vt/1'),
