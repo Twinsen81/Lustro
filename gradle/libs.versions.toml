@@ -1,6 +1,6 @@
 [versions]
 # Build toolchain.
-agp = "9.5.2"
+agp = "9.5.3"
 kotlin = "2.3.21"
 # The sample's Room code generation.
 ksp = "2.3.14"
@@ -82,7 +82,7 @@ kover = "0.9.11"
 
 # Test.
 junit = "4.13.2"
-robolectric = "4.18"
+robolectric = "4.18.1"
 json = "20260814"
 androidxTestCore = "1.7.0"
 androidxTestRunner = "1.7.0"
